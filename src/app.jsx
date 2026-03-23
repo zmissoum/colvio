@@ -13,22 +13,7 @@ function useDebounce(value, delay = 150) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Colvio — v2
-   Data Explorer & Loader pour Microsoft Dynamics 365
-
-   Features added vs v1:
-   ✅ Show All Data (record inspector contextuel)
-   ✅ Paste from Excel / clipboard (pas besoin de CSV)
-   ✅ Query history + saved queries
-   ✅ Fuzzy autocomplete on entities/fields
-   ✅ OptionSet value viewer
-   ✅ Metadata Browser (entities, fields, relations, OptionSets)
-   ✅ PROD/SANDBOX environment detection
-   ✅ Keyboard shortcuts (Ctrl+Enter = execute)
-   ✅ Copy logical name / value in 1 click
-   ✅ Navigation lookup → record parent
-   ✅ Compteur API calls restants
-   ✅ Responsive mobile/tablet/desktop
+   Colvio v1.5 — Data Explorer & Loader for Microsoft Dynamics 365
    ═══════════════════════════════════════════════════════════════ */
 
 // ── ICONS ──────────────────────────────────────────────────────
@@ -145,13 +130,13 @@ function detectExtension() {
 export default function App(){
   const[tab,setTab]=useState("explorer");
   const[connected,setConnected]=useState(false);
-  useEffect(()=>{document.body.style.background=C.bg;document.body.style.color=C.tx;},[theme]);
   const[connecting,setConnecting]=useState(false);
   const[sideOpen,setSideOpen]=useState(false);
-  const[queryHistory,setQueryHistory]=useState([]);
   const[theme,setTheme]=useState(()=>{try{const t=localStorage.getItem("colvio_theme");return t||"dark";}catch{return "dark";}});
   C=theme==="light"?LIGHT:DARK;
   const toggleTheme=()=>{const t=theme==="dark"?"light":"dark";setTheme(t);try{localStorage.setItem("colvio_theme",t);}catch{}};
+  useEffect(()=>{document.body.style.background=C.bg;document.body.style.color=C.tx;},[theme]);
+  const[queryHistory,setQueryHistory]=useState([]);
   const[orgInfo,setOrgInfo]=useState(null); // { orgUrl, orgName, isProduction }
   const bp=useBP();
 
@@ -188,7 +173,7 @@ export default function App(){
 
   const tabs=[
     {id:"explorer",label:"Data Explorer",desc:"Query & export",icon:<I.Search/>},
-    {id:"show",label:"Show All Data",desc:"Inspect un record",icon:<I.Eye/>},
+    {id:"show",label:"Show All Data",desc:"Inspect a record",icon:<I.Eye/>},
     {id:"metadata",label:"Metadata",desc:"Entities, fields, OptionSets",icon:<I.Grid/>},
     {id:"logins",label:"Login History",desc:"Login timeline",icon:<I.Clock/>},
     {id:"loader",label:"Data Loader",desc:"Load data",icon:<I.Upload/>},
@@ -648,7 +633,7 @@ function MetadataBrowser({bp,orgInfo}){
                     <td style={{...tds,textAlign:"center"}}>{f.cust&&<span style={{width:5,height:5,borderRadius:"50%",background:C.or,display:"inline-block"}}/>}</td>
                     <td style={tds}><span style={{color:C.cy,...mono,fontSize:13,cursor:"pointer"}} onClick={()=>cp(f.l,`m-${i}`)}>{f.l}</span>{copied===`m-${i}`&&<span style={{color:C.gn,fontSize:11,marginLeft:3}}>✓</span>}</td>
                     <td style={{...tds,color:C.txm}}>{f.d}</td>
-                    <td style={tds}><span style={{fontSize:12,padding:"2px 6px",borderRadius:3,background:f.t==="Lookup"?C.vid:(f.t==="Picklist"||f.t==="State"||f.t==="Status")?C.gnd:C.sfh,color:f.t==="Lookup"?C.lv:(f.t==="Picklist"||f.t==="State"||f.t==="Status")?C.gn:C.txm}}>{f.t==="Picklist"?"OptionSet":f.t}</span></td>
+                    <td style={tds}><span style={{fontSize:12,padding:"2px 6px",borderRadius:3,background:f.t==="Lookup"?C.vid:(f.t==="Picklist"||f.t==="State"||f.t==="Status")?C.gnd:C.sfh,color:f.t==="Lookup"?C.lv:(f.t==="Picklist"||f.t==="State"||f.t==="Status")?C.gn:C.txm}}>{displayType(f.t)}</span></td>
                     <td style={tds}>{f.req?<span style={{color:C.rd,fontSize:13}}>●</span>:<span style={{color:C.txd}}>—</span>}</td>
                     <td style={tds}>{(f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<button onClick={()=>setShowPicklist(showPicklist===f.l?null:f.l)} style={{...bt(showPicklist===f.l?C.vi:null,{fontSize:12,padding:"3px 10px"})}}>{showPicklist===f.l?"Close":"Values"}{optionSetData[f.l]?` (${optionSetData[f.l].length})`:""}</button>}</td>
                   </tr>
@@ -662,7 +647,7 @@ function MetadataBrowser({bp,orgInfo}){
               const field=fields.find(f=>f.l===showPicklist);
               if(!field)return null;
               const opts=optionSetData[field.l]||field.opts||[];
-              const [osSearch, setOsSearch] = [""]; // will use parent state
+              // OptionSet data loaded via useEffect
               return(
                 <div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowPicklist(null)}>
                   {/* Backdrop */}
@@ -733,10 +718,9 @@ function FieldPicker({ fields, selected, onToggle, onBulkAdd, onBulkRemove, onSe
   const types = useMemo(() => [...new Set(fields.map(f => f.t))].sort(), [fields]);
 
   const filtered = useMemo(() => {
-    const s = debouncedSearch.toLowerCase();
     return fields.filter(f => {
-      if (search) {
-        const s = search.toLowerCase();
+      if (debouncedSearch) {
+        const s = debouncedSearch.toLowerCase();
         if (!f.l.toLowerCase().includes(s) && !f.d.toLowerCase().includes(s)) return false;
       }
       if (typeFilter !== "all" && f.t !== typeFilter) return false;
@@ -971,9 +955,11 @@ function Explorer({bp,addHistory,orgInfo}){
   },[]);
   const addToHistory=(entity,query,mode,fieldCount)=>{
     const entry={entity:entity?.l||"?",query:query?.substring(0,200),mode,fields:fieldCount,ts:Date.now()};
-    const updated=[entry,...queryHistory.filter(h=>h.query!==entry.query)].slice(0,20);
-    setQueryHistory(updated);
-    if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_query_history:updated});
+    setQueryHistory(prev=>{
+      const updated=[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20);
+      if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_query_history:updated});
+      return updated;
+    });
   };
   // Load saved queries from chrome.storage
   useEffect(()=>{
@@ -1164,7 +1150,7 @@ function Explorer({bp,addHistory,orgInfo}){
     return ps.length?q+"?"+ps.join("&"):q;
   };
 
-  // Helper: get OData name for a field for a field (Lookups need _xxx_value format)
+  // Helper: get OData name for a field (Lookups need _xxx_value format)
   const getOdataName = (logicalName) => {
     const f = fields.find(x => x.l === logicalName);
     return f?.odata || logicalName;
@@ -1208,7 +1194,7 @@ function Explorer({bp,addHistory,orgInfo}){
     return `${odataField} ${op} '${escaped}'`;
   };
 
-  // Build $filter string from filter groups with parentheses with parentheses
+  // Build $filter string from filter groups with parentheses
   const buildGroupFilter = () => {
     const groupParts = filterGroups.map(g => {
       const active = g.conditions.filter(c => c.field && (c.value || c.op === "is_null" || c.op === "is_not_null"));
@@ -1238,7 +1224,7 @@ function Explorer({bp,addHistory,orgInfo}){
       const matchingExpand = expands.find(ex => ex.navProperty === k);
       if (matchingExpand && v && typeof v === "object") {
         if (Array.isArray(v)) {
-          // OneToMany (collection): flatten array values as comma-separated as comma-separated
+          // OneToMany (collection): flatten array values as comma-separated
           for (const f of matchingExpand.fields) {
             const vals = v.map(item => {
               const fv = item[f + "@OData.Community.Display.V1.FormattedValue"] || item[f];
@@ -1302,7 +1288,7 @@ function Explorer({bp,addHistory,orgInfo}){
         const data=await bridge.executeFetchXml(fxml);
         const t1=((Date.now()-t0)/1000).toFixed(1);
         if(!data?.records){setError("No results");setLoading(false);return;}
-        // FetchXML returns flat records with aliases with aliases
+        // FetchXML returns flat records with aliases
         const firstRec=data.records[0]||{};
         const headerFields=Object.keys(firstRec).filter(k=>!k.startsWith("@")&&!k.includes("@")&&k!=="__error");
         const odataFieldMap={};
@@ -1317,7 +1303,7 @@ function Explorer({bp,addHistory,orgInfo}){
         let cookie=data.pagingCookie;
         while(cookie&&!fetchAbort.current){
           page++;
-          // Inject paging cookie + page number into FetchXML + page number into FetchXML
+          // Inject paging cookie + page number into FetchXML
           let pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}" paging-cookie="${cookie.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"`);
           if(!pagedXml.includes(`page="`))pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}"`);
           try{
@@ -1363,7 +1349,7 @@ function Explorer({bp,addHistory,orgInfo}){
       addToHistory(ent,q,qm,headerFields.length);
       setLoading(false);
 
-      // Background fetch remaining pages (sequential — OData nextLinks are chained cursors) (sequential — OData nextLinks are chained cursors)
+      // Background fetch remaining pages (sequential — OData nextLinks are chained cursors)
       let pageNum = 1;
       const hasExpand = expandClauses.length > 0;
       while (nextLink && !fetchAbort.current) {
@@ -1470,7 +1456,7 @@ function Explorer({bp,addHistory,orgInfo}){
                       <span style={{fontSize:13,color:C.lv,fontWeight:500}}>{sf.length} columns</span>
                       <span style={{fontSize:11,color:C.txd,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,...mono}}>{sf.slice(0,6).join(", ")}{sf.length>6?"…":""}</span>
                       <button onClick={(e)=>{e.stopPropagation();setQueryCollapsed(false);}} style={{padding:"3px 10px",background:C.vid,border:"none",borderRadius:3,color:C.lv,cursor:"pointer",fontSize:11,flexShrink:0}}>Expand ▼</button>
-                      <button onClick={(e)=>{e.stopPropagation();setSf(fields.map(f=>f.l));}} style={{padding:"4px 10px",background:"transparent",border:"none",color:C.cy,cursor:"pointer",fontSize:11,textDecoration:"underline",flexShrink:0}}>Tout</button>
+                      <button onClick={(e)=>{e.stopPropagation();setSf(fields.map(f=>f.l));}} style={{padding:"4px 10px",background:"transparent",border:"none",color:C.cy,cursor:"pointer",fontSize:11,textDecoration:"underline",flexShrink:0}}>All</button>
                       <button onClick={(e)=>{e.stopPropagation();setSf([]);}} style={{padding:"4px 10px",background:"transparent",border:"none",color:C.txd,cursor:"pointer",fontSize:11,textDecoration:"underline",flexShrink:0}}>Clear</button>
                       <button onClick={(e)=>{e.stopPropagation();setPicker(!picker);}} disabled={loadingFields} style={{padding:"3px 10px",background:picker?C.vi:"transparent",border:`1px ${picker?"solid":"dashed"} ${picker?C.vi:C.bd}`,borderRadius:3,color:picker?"white":C.txd,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
                         {picker?<I.X/>:<I.Plus/>}{picker?"Close":"Columns"}
@@ -1631,7 +1617,7 @@ function Explorer({bp,addHistory,orgInfo}){
 
               <div style={{display:"flex",alignItems:"center",gap:5}}>
                 <span style={{fontSize:12,color:C.vi,fontWeight:700,minWidth:44,...mono}}>LIMIT</span>
-                <select value={lim} onChange={e=>setLim(+e.target.value)} style={inp({width:"auto",fontSize:12,padding:"3px 6px"})}>{[10,25,50,100,200,500,1000,5000].map(n=><option key={n} value={n}>{n}</option>)}<option value={0}>Tout</option></select>
+                <select value={lim} onChange={e=>setLim(+e.target.value)} style={inp({width:"auto",fontSize:12,padding:"3px 6px"})}>{[10,25,50,100,200,500,1000,5000].map(n=><option key={n} value={n}>{n}</option>)}<option value={0}>All</option></select>
                 {lim===0&&<span style={{fontSize:11,color:C.yw}}>⚠ may be slow</span>}
                 {lim===0&&expands.length>0&&<span style={{fontSize:11,color:C.or}}>⚠ D365 limits results with $expand</span>}
               </div>
@@ -1848,7 +1834,7 @@ function Results({res,bp,orgInfo,onStop,onDeleteDone}){
   const doDelete=async()=>{
     if(!selected.size) return;
     const count=selected.size;
-    if(!confirm(`Delete ${count} record(s) de ${res.entity.l} ? This action is irreversible.`)) return;
+    if(!confirm(`Delete ${count} record(s) from ${res.entity.l}? This action is irreversible.`)) return;
     setDeleting(true);
     try{
       const result=await bridge.batchDelete(res.entity.p,Array.from(selected));
@@ -1936,7 +1922,7 @@ function Results({res,bp,orgInfo,onStop,onDeleteDone}){
       XLSX.utils.book_append_sheet(wb,ws,res.entity.l.substring(0,31));
       XLSX.writeFile(wb,`${res.entity.l}_export.xlsx`);
       showFeedback("XLSX downloaded!");
-    }catch(e){console.error("XLSX export error:",e);showFeedback("XLSX error");}
+    }catch(e){showFeedback("XLSX error: "+e.message);}
   };
   const dlJSON=()=>dl(toJSON(),"application/json;charset=utf-8",`${res.entity.l}_export.json`);
 
@@ -2074,17 +2060,17 @@ function LoginHistory({bp,orgInfo}){
     try{
       const data=await bridge.getLoginHistory(user.id,limit);
       if(!data?.length){
-        setError("No audit records found pour cet utilisateur. Check that auditing is enabled : Settings > Administration > System Settings > Auditing tab > cocher 'Start Auditing' ET 'Audit user access'.");
+        setError("No audit records found for this user. Check that auditing is enabled: Settings > Administration > System Settings > Auditing tab > enable 'Start Auditing' AND 'Audit user access'.");
       } else if(data.length===1 && data[0].action==="__AUDIT_EXISTS_BUT_NO_LOGINS"){
         // Audit works but no login events specifically
-        setError(`Auditing is active (${data[0].info}) but no login events were found. Activez 'Audit user access' dans Settings > Administration > System Settings > Auditing tab.`);
+        setError(`Auditing is active (${data[0].info}) but no login events were found. Enable 'Audit user access' in Settings > Administration > System Settings > Auditing tab.`);
         setHistory([]);
       } else {
         setHistory(data);
       }
     }catch(e){
       if(e.message?.includes("401")||e.message?.includes("SESSION_EXPIRED")){
-        setError("Session expired — refresh D5 (F5)");
+        setError("Session expired — refresh D365 (F5)");
       } else if(e.message?.includes("404")||e.message?.includes("audits")){
         setError("The audit entity is not accessible. Auditing must be enabled : Settings > Administration > System Settings > Auditing.");
       } else {
@@ -2294,7 +2280,7 @@ function LoginHistory({bp,orgInfo}){
         <div style={{textAlign:"center",padding:40,color:C.txd}}>
           <div style={{fontSize:24,marginBottom:8}}>🔍</div>
           <div style={{fontSize:15}}>Search for a user to view their login history</div>
-          <div style={{fontSize:13,marginTop:4}}>Auditing must be enabled dans votre org D365</div>
+          <div style={{fontSize:13,marginTop:4}}>Auditing must be enabled in your D365 org</div>
         </div>
       )}
     </div>
@@ -2319,7 +2305,7 @@ function Loader({bp,orgInfo}){
     const commonMapping={firstname:"firstname",lastname:"lastname",email:"emailaddress1",phone:"telephone1",title:"jobtitle",mailingstreet:"address1_line1",mailingcity:"address1_city",mailingpostalcode:"address1_postalcode",mailingcountry:"address1_country",name:"name",accountnumber:"accountnumber",description:"description",website:"websiteurl",fax:"fax"};
     const d365Set=new Set(targetFields);
 
-    // Read-only system fields: never send in CREATE/UPSERT (computed by D365): never send in CREATE/UPSERT (computed by D365)
+    // Read-only system fields: never send in CREATE/UPSERT (computed by D365)
     const SKIP_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
 
     // Auto-detect: columns ending with 'id' where values look like GUIDs → lookup candidates "id" where values look like GUIDs → lookup candidates
@@ -2352,9 +2338,9 @@ function Loader({bp,orgInfo}){
       if(SKIP_FIELDS.has(low)) return {csv:h,d365:"",transform:"",skip:true};
       // Skip primary key (used for UPSERT key) (handled separately as UPSERT key)
       if(low===primaryKey) return {csv:h,d365:"",transform:"",skip:true,isPK:true};
-      // Skip auto-detected lookup columns (handled in Lookups step) columns (handled in Lookups step)
+      // Skip auto-detected lookup columns (handled in Lookups step)
       if(lookupCols.has(h)) return {csv:h,d365:"",transform:"",skip:true,isLookup:true};
-      // Auto-detect statecode/statuscode/statuscode
+      // Auto-detect statecode/statuscode
       if(low==="statecode") return {csv:h,d365:"statecode",transform:"statecode"};
       if(low==="statuscode") return {csv:h,d365:"statuscode",transform:"int"};
       // Direct match: CSV column IS a D365 field name
@@ -2592,7 +2578,7 @@ function Loader({bp,orgInfo}){
               <input ref={fRef} type="file" accept=".csv,.tsv,.txt" onChange={handleFile} style={{display:"none"}}/>
               <div style={{fontSize:36,marginBottom:10}}>📂</div>
               <h3 style={{color:C.tx,fontWeight:600,marginBottom:4,fontSize:15}}>Drop your file here</h3>
-              <p style={{color:C.txm,fontSize:14}}>CSV, TSV, ou TXT</p>
+              <p style={{color:C.txm,fontSize:14}}>CSV, TSV, or TXT</p>
               <p style={{color:C.txd,fontSize:13,marginTop:8}}>Dot-notation supported: <code style={{color:C.cy}}>account.new_externalid</code></p>
             </div>
           ):(
@@ -2612,7 +2598,7 @@ function Loader({bp,orgInfo}){
           <div style={{display:"flex",gap:10,marginBottom:12,flexDirection:bp.mobile?"column":"row"}}>
             <div style={{...crd({padding:12}),flex:1}}><label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Target D365 entity</label><select value={target} onChange={e=>setTarget(e.target.value)} style={inp({fontSize:14})}>{entityList.map(e=><option key={e.l} value={e.l}>{e.i} {e.d} ({e.l})</option>)}</select></div>
             <div style={{...crd({padding:12}),flex:1}}>
-              <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Mode d'insertion</label>
+              <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Import mode</label>
               <div style={{display:"flex",gap:6,marginBottom:6}}>
                 <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
                   <input type="radio" checked={!uKey.d} onChange={()=>setUKey({d:"",c:""})} style={{accentColor:C.gn}}/> CREATE (new records)

@@ -60,7 +60,7 @@ NA, EMEA, APAC, UK, France, Canada, Australia, Japan, India, UAE, and all crm*.d
 
 📖 OPEN SOURCE
 
-Colvio is MIT licensed. Source code, documentation, and security audit available on GitHub.
+Source code, documentation, and security audit available on GitHub.
 github.com/zmissoum/colvio
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
