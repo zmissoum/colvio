@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Colvio for Dynamics 365</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+    body {
+      background: #0B0E14;
+      color: #E8EAF0;
+      font-family: 'DM Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+    * { scrollbar-width: thin; scrollbar-color: #252A36 transparent; }
+    ::placeholder { color: #5C6380; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!--
+    En mode extension Chrome :
+      panel.js est buildé par Vite depuis src/panel.jsx
+      Il contient React + l'app Colvio
+
+    En mode dev standalone :
+      Lancer `npm run dev` et ouvrir localhost:5173
+  -->
+  <script type="module" src="/src/panel.jsx"></script>
+</body>
+</html>

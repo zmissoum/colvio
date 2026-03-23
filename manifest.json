@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Colvio for Dynamics 365",
+  "version": "1.5.0",
+  "description": "Colvio \u2014 Data Explorer, Loader & Inspector for Microsoft Dynamics 365 / Dataverse.",
+  "author": "zmissoum",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "declarativeContent"
+  ],
+  "host_permissions": [
+    "https://*.dynamics.com/*",
+    "https://*.crm.dynamics.com/*",
+    "https://*.crm2.dynamics.com/*",
+    "https://*.crm3.dynamics.com/*",
+    "https://*.crm4.dynamics.com/*",
+    "https://*.crm5.dynamics.com/*",
+    "https://*.crm6.dynamics.com/*",
+    "https://*.crm7.dynamics.com/*",
+    "https://*.crm8.dynamics.com/*",
+    "https://*.crm9.dynamics.com/*",
+    "https://*.crm10.dynamics.com/*",
+    "https://*.crm11.dynamics.com/*",
+    "https://*.crm12.dynamics.com/*",
+    "https://*.crm14.dynamics.com/*",
+    "https://*.crm15.dynamics.com/*",
+    "https://*.crm16.dynamics.com/*",
+    "https://*.crm17.dynamics.com/*",
+    "https://*.crm19.dynamics.com/*",
+    "https://*.crm20.dynamics.com/*",
+    "https://*.crm21.dynamics.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.dynamics.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Colvio",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

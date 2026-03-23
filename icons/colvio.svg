@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#003380"/>
+      <stop offset="100%" stop-color="#001840"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0066FF"/>
+      <stop offset="100%" stop-color="#00B7C3"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0066FF"/>
+      <stop offset="100%" stop-color="#3388FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="url(#bg)"/>
+
+  <!-- Data grid lines (subtle, behind the lens) -->
+  <g opacity="0.15" stroke="#00B7C3" stroke-width="2">
+    <line x1="100" y1="140" x2="340" y2="140"/>
+    <line x1="100" y1="185" x2="340" y2="185"/>
+    <line x1="100" y1="230" x2="340" y2="230"/>
+    <line x1="100" y1="275" x2="310" y2="275"/>
+    <line x1="170" y1="100" x2="170" y2="300"/>
+    <line x1="255" y1="100" x2="255" y2="300"/>
+  </g>
+
+  <!-- Small data dots on grid intersections -->
+  <g fill="#00B7C3" opacity="0.25">
+    <circle cx="135" cy="140" r="4"/>
+    <circle cx="135" cy="185" r="4"/>
+    <circle cx="212" cy="140" r="4"/>
+    <circle cx="212" cy="185" r="4"/>
+    <circle cx="212" cy="230" r="4"/>
+    <circle cx="297" cy="140" r="4"/>
+    <circle cx="297" cy="185" r="4"/>
+  </g>
+
+  <!-- Magnifying glass — lens circle -->
+  <circle cx="240" cy="220" r="120" fill="none" stroke="url(#lens)" stroke-width="24" opacity="0.9"/>
+
+  <!-- Glass reflection arc -->
+  <path d="M 175 160 A 95 95 0 0 1 280 148" fill="none" stroke="white" stroke-width="6" opacity="0.2" stroke-linecap="round"/>
+
+  <!-- Inner lens glow -->
+  <circle cx="240" cy="220" r="95" fill="#0066FF" opacity="0.08"/>
+
+  <!-- Magnifying glass handle -->
+  <line x1="330" y1="310" x2="420" y2="400" stroke="url(#handle)" stroke-width="32" stroke-linecap="round"/>
+
+  <!-- Handle highlight -->
+  <line x1="335" y1="305" x2="415" y2="385" stroke="white" stroke-width="4" stroke-linecap="round" opacity="0.15"/>
+
+  <!-- "C" letter inside the lens -->
+  <text x="240" y="245" text-anchor="middle" font-family="Arial" font-weight="900" font-size="120" fill="white" opacity="0.85">C</text>
+</svg>
