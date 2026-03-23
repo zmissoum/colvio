@@ -39,6 +39,15 @@ View user login/logout timeline from D365 audit logs. Stats and CSV export.
 ▸ Saved Queries
 Save and reload your frequent queries. Persisted across sessions.
 
+▸ Relationship Graph
+Visual SVG graph of entity relationships. See N:1 parents and 1:N children at a glance. Click any node to navigate.
+
+▸ Solution Explorer
+Browse D365 solutions and their components grouped by type (Entity, View, Web Resource, Plugin, etc.).
+
+▸ Translation Manager
+View and edit field labels in multiple languages. Export/import CSV for bulk translation workflows.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 🔒 SECURITY & PRIVACY

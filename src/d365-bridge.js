@@ -10,7 +10,7 @@
  */
 
 // ── Detection ────────────────────────────────────────────────
-const isExtension = typeof chrome !== "undefined" && !!chrome?.runtime?.sendMessage;
+const isExtension = typeof chrome !== "undefined" && !!chrome?.runtime?.id && !!chrome?.runtime?.sendMessage;
 
 // Get D365 tabId from panel URL params
 function getD365TabId() {
@@ -215,6 +215,9 @@ export const bridge = {
     if (!isExtension) return [
       { lookupField: "parentcustomerid", navProperty: "parentcustomerid_account", targetEntity: "account", type: "single" },
       { lookupField: "ownerid", navProperty: "ownerid", targetEntity: "systemuser", type: "single" },
+      { lookupField: "transactioncurrencyid", navProperty: "transactioncurrencyid", targetEntity: "transactioncurrency", type: "single" },
+      { lookupField: "primarycontactid", navProperty: "primarycontactid", targetEntity: "contact", type: "single" },
+      { lookupField: "preferredsystemuserid", navProperty: "preferredsystemuserid", targetEntity: "systemuser", type: "single" },
     ];
     const k = cacheKey("lookups", logicalName);
     const cached = await cacheGet(k);
@@ -227,6 +230,11 @@ export const bridge = {
   async getChildRelationships(logicalName) {
     if (!isExtension) return [
       { lookupField: "customerid", navProperty: "opportunity_customer_accounts", targetEntity: "opportunity", type: "collection" },
+      { lookupField: "parentcustomerid", navProperty: "contact_customer_accounts", targetEntity: "contact", type: "collection" },
+      { lookupField: "regardingobjectid", navProperty: "account_tasks", targetEntity: "task", type: "collection" },
+      { lookupField: "regardingobjectid", navProperty: "account_emails", targetEntity: "email", type: "collection" },
+      { lookupField: "customerid", navProperty: "order_customer_accounts", targetEntity: "salesorder", type: "collection" },
+      { lookupField: "parentcustomerid", navProperty: "incident_customer_accounts", targetEntity: "incident", type: "collection" },
     ];
     const k = cacheKey("childrels", logicalName);
     const cached = await cacheGet(k);
@@ -282,5 +290,84 @@ export const bridge = {
   async getApiLimits() {
     if (isExtension) { try { return callD365("getApiLimits"); } catch { return null; } }
     return { remaining: 55479, limit: 60000 };
+  },
+
+  // ── Solutions ──
+  async getSolutions() {
+    if (!isExtension) return [
+      { id: "aaa-111-bbb", uniqueName: "ColvioDemo", displayName: "Colvio Demo Solution", version: "1.0.0.0", isManaged: false, installedOn: "2025-01-15T10:00:00Z", description: "Custom entities and fields" },
+      { id: "bbb-222-ccc", uniqueName: "SalesEnterprise", displayName: "Dynamics 365 Sales Enterprise", version: "9.2.24014.10032", isManaged: true, installedOn: "2024-06-01T08:00:00Z", description: "" },
+      { id: "ccc-333-ddd", uniqueName: "msdynce_ServicePatch", displayName: "Service Patch", version: "9.2.24013.10010", isManaged: true, installedOn: "2024-06-01T08:00:00Z", description: "" },
+      { id: "ddd-444-eee", uniqueName: "CustomerInsights", displayName: "Customer Insights", version: "1.0.0.8", isManaged: true, installedOn: "2025-02-10T14:30:00Z", description: "" },
+    ];
+    const k = cacheKey("solutions");
+    const cached = await cacheGet(k);
+    if (cached) return cached;
+    const data = await callD365("getSolutions");
+    if (data) await cacheSet(k, data, CACHE_TTL.entities);
+    return data;
+  },
+
+  async getSolutionComponents(solutionId) {
+    if (!isExtension) return [
+      { id: "c1", type: 1, objectId: "a1b2c3d4-0001", behavior: 0 },
+      { id: "c2", type: 1, objectId: "a1b2c3d4-0002", behavior: 0 },
+      { id: "c3", type: 1, objectId: "a1b2c3d4-0003", behavior: 0 },
+      { id: "c4", type: 2, objectId: "b1b2c3d4-0001", behavior: 0 },
+      { id: "c5", type: 2, objectId: "b1b2c3d4-0002", behavior: 0 },
+      { id: "c6", type: 2, objectId: "b1b2c3d4-0003", behavior: 0 },
+      { id: "c7", type: 2, objectId: "b1b2c3d4-0004", behavior: 0 },
+      { id: "c8", type: 9, objectId: "c1c2c3d4-0001", behavior: 0 },
+      { id: "c9", type: 9, objectId: "c1c2c3d4-0002", behavior: 0 },
+      { id: "c10", type: 26, objectId: "d1d2d3d4-0001", behavior: 0 },
+      { id: "c11", type: 26, objectId: "d1d2d3d4-0002", behavior: 0 },
+      { id: "c12", type: 26, objectId: "d1d2d3d4-0003", behavior: 0 },
+      { id: "c13", type: 60, objectId: "e1e2e3e4-0001", behavior: 0 },
+      { id: "c14", type: 60, objectId: "e1e2e3e4-0002", behavior: 0 },
+      { id: "c15", type: 10, objectId: "f1f2f3f4-0001", behavior: 0 },
+      { id: "c16", type: 10, objectId: "f1f2f3f4-0002", behavior: 0 },
+      { id: "c17", type: 59, objectId: "g1g2g3g4-0001", behavior: 0 },
+      { id: "c18", type: 91, objectId: "h1h2h3h4-0001", behavior: 0 },
+    ];
+    return callD365("getSolutionComponents", { solutionId });
+  },
+
+  // ── Translations ──
+  async getOrgLanguages() {
+    if (!isExtension) return [
+      { code: 1033, name: "English" }, { code: 1036, name: "French" }, { code: 1031, name: "German" },
+    ];
+    const k = cacheKey("orglangs");
+    const cached = await cacheGet(k);
+    if (cached) return cached;
+    const data = await callD365("getOrgLanguages");
+    if (data) await cacheSet(k, data, CACHE_TTL.entities);
+    return data;
+  },
+
+  async getAttributeLabels(logicalName) {
+    if (!isExtension) return [
+      { logical: "name", type: "String", labels: [{ label: "Account Name", languageCode: 1033 },{ label: "Nom du compte", languageCode: 1036 },{ label: "Firmenname", languageCode: 1031 }], descriptions: [] },
+      { logical: "revenue", type: "Money", labels: [{ label: "Annual Revenue", languageCode: 1033 },{ label: "Chiffre d'affaires", languageCode: 1036 },{ label: "Jahresumsatz", languageCode: 1031 }], descriptions: [] },
+      { logical: "telephone1", type: "String", labels: [{ label: "Main Phone", languageCode: 1033 },{ label: "Telephone principal", languageCode: 1036 },{ label: "Haupttelefon", languageCode: 1031 }], descriptions: [] },
+      { logical: "emailaddress1", type: "String", labels: [{ label: "Email", languageCode: 1033 },{ label: "Courriel", languageCode: 1036 },{ label: "E-Mail", languageCode: 1031 }], descriptions: [] },
+      { logical: "address1_city", type: "String", labels: [{ label: "City", languageCode: 1033 },{ label: "Ville", languageCode: 1036 },{ label: "Stadt", languageCode: 1031 }], descriptions: [] },
+      { logical: "industrycode", type: "Picklist", labels: [{ label: "Industry", languageCode: 1033 },{ label: "Secteur", languageCode: 1036 },{ label: "Branche", languageCode: 1031 }], descriptions: [] },
+      { logical: "statecode", type: "State", labels: [{ label: "Status", languageCode: 1033 },{ label: "Statut", languageCode: 1036 },{ label: "Status", languageCode: 1031 }], descriptions: [] },
+      { logical: "numberofemployees", type: "Integer", labels: [{ label: "Employees", languageCode: 1033 },{ label: "Employes", languageCode: 1036 },{ label: "Mitarbeiter", languageCode: 1031 }], descriptions: [] },
+      { logical: "websiteurl", type: "String", labels: [{ label: "Website", languageCode: 1033 },{ label: "Site web", languageCode: 1036 },{ label: "Webseite", languageCode: 1031 }], descriptions: [] },
+      { logical: "accountnumber", type: "String", labels: [{ label: "Account Number", languageCode: 1033 },{ label: "Numero de compte", languageCode: 1036 },{ label: "Kontonummer", languageCode: 1031 }], descriptions: [] },
+    ];
+    return callD365("getAttributeLabels", { logicalName });
+  },
+
+  async updateAttributeLabel(entityName, attributeName, localizedLabels) {
+    if (!isExtension) return { ok: true };
+    return callD365("updateAttributeLabel", { entityName, attributeName, localizedLabels });
+  },
+
+  async publishEntity(logicalName) {
+    if (!isExtension) return { ok: true };
+    return callD365("publishEntity", { logicalName });
   },
 };

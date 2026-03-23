@@ -38,6 +38,21 @@ Colvio is a free Chrome extension that lets consultants, admins, and developers 
 - $batch OData (100/batch, ~10x faster), Direct GUID lookups, UPSERT primary key
 - Transforms: statecode, picklist, boolean, int, float, date_iso
 
+### Relationship Graph
+- Visual SVG graph of entity relationships (N:1 parents + 1:N children)
+- Click any node to re-center the graph on that entity
+- Deduplication and edge labels
+
+### Solution Explorer
+- Browse D365 solutions and their components
+- Components grouped by type (Entity, Attribute, View, Web Resource, Plugin, etc.)
+- Managed/Unmanaged badges, collapsible sections
+
+### Translation Manager
+- View and edit field labels across multiple languages
+- Export/Import CSV for bulk translation workflows
+- Save changes + auto-publish entity
+
 ### Login History
 - Session duration, access type breakdown, CSV export
 
@@ -48,10 +63,10 @@ Colvio is a free Chrome extension that lets consultants, admins, and developers 
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | 3,758 |
-| API actions | 20 |
-| React components | 12 |
-| Build size | ~575 KB |
+| Lines of code | 4,290 |
+| API actions | 26 |
+| React components | 15 |
+| Build size | ~596 KB |
 
 ## Security
 

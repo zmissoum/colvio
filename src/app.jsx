@@ -13,7 +13,7 @@ function useDebounce(value, delay = 150) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Colvio v1.5 — Data Explorer & Loader for Microsoft Dynamics 365
+   Colvio v1.6 — Data Explorer & Loader for Microsoft Dynamics 365
    ═══════════════════════════════════════════════════════════════ */
 
 // ── ICONS ──────────────────────────────────────────────────────
@@ -177,6 +177,9 @@ export default function App(){
     {id:"metadata",label:"Metadata",desc:"Entities, fields, OptionSets",icon:<I.Grid/>},
     {id:"logins",label:"Login History",desc:"Login timeline",icon:<I.Clock/>},
     {id:"loader",label:"Data Loader",desc:"Load data",icon:<I.Upload/>},
+    {id:"graph",label:"Relationships",desc:"Entity graph",icon:<I.Link/>},
+    {id:"solutions",label:"Solutions",desc:"Browse solutions",icon:<I.Database/>},
+    {id:"translations",label:"Translations",desc:"Import/export labels",icon:<I.Clipboard/>},
   ];
 
   return(
@@ -244,6 +247,9 @@ export default function App(){
           {tab==="metadata"&&<MetadataBrowser bp={bp} orgInfo={orgInfo}/>}
           {tab==="logins"&&<LoginHistory bp={bp} orgInfo={orgInfo}/>}
           {tab==="loader"&&<Loader bp={bp} orgInfo={orgInfo}/>}
+          {tab==="graph"&&<RelationshipGraph bp={bp} orgInfo={orgInfo}/>}
+          {tab==="solutions"&&<SolutionExplorer bp={bp} orgInfo={orgInfo}/>}
+          {tab==="translations"&&<TranslationManager bp={bp} orgInfo={orgInfo}/>}
         </div>
       </div>
       <style>{`
@@ -2283,6 +2289,392 @@ function LoginHistory({bp,orgInfo}){
           <div style={{fontSize:13,marginTop:4}}>Auditing must be enabled in your D365 org</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RELATIONSHIP GRAPH
+// ═══════════════════════════════════════════════════════════════
+function RelationshipGraph({bp,orgInfo}){
+  const isLive=orgInfo?.isExtension;
+  const[entities,setEntities]=useState(ENTS);
+  const[search,setSearch]=useState("");
+  const[selEnt,setSelEnt]=useState(null);
+  const[parents,setParents]=useState([]);
+  const[children,setChildren]=useState([]);
+  const[loading,setLoading]=useState(false);
+  const[showAllP,setShowAllP]=useState(false);
+  const[showAllC,setShowAllC]=useState(false);
+  const containerRef=useRef(null);
+
+  useEffect(()=>{if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p})))}).catch(()=>{});},[]);
+
+  const handleSelect=async(e)=>{
+    setSelEnt(e);setLoading(true);setShowAllP(false);setShowAllC(false);
+    try{
+      const[p,c]=await Promise.all([bridge.getLookups(e.l),bridge.getChildRelationships(e.l)]);
+      // Deduplicate by targetEntity
+      const pMap={};(p||[]).forEach(r=>{if(!pMap[r.targetEntity])pMap[r.targetEntity]={...r,count:1};else pMap[r.targetEntity].count++;});
+      const cMap={};(c||[]).forEach(r=>{if(!cMap[r.targetEntity])cMap[r.targetEntity]={...r,count:1};else cMap[r.targetEntity].count++;});
+      setParents(Object.values(pMap));
+      setChildren(Object.values(cMap));
+    }catch{}
+    setLoading(false);
+  };
+
+  const filtered=entities.filter(e=>!search||e.l.includes(search.toLowerCase())||e.d?.toLowerCase().includes(search.toLowerCase()));
+  const NODE_W=150,NODE_H=56,GAP=18;
+  const maxP=showAllP?parents.length:Math.min(parents.length,12);
+  const maxC=showAllC?children.length:Math.min(children.length,12);
+  const visP=parents.slice(0,maxP);
+  const visC=children.slice(0,maxC);
+  const svgW=Math.max(600,Math.max(visP.length,visC.length)*(NODE_W+GAP)+GAP*2);
+  const svgH=selEnt?420:0;
+  const centerX=svgW/2,centerY=190;
+
+  const renderNode=(x,y,label,sub,isCenter,onClick)=>(
+    <g key={label+sub} onClick={onClick} style={{cursor:onClick?"pointer":"default"}}>
+      <rect x={x-NODE_W/2} y={y} width={NODE_W} height={NODE_H} rx={8} fill={isCenter?C.vi:C.sf} stroke={isCenter?C.vi:C.bd} strokeWidth={1.5}/>
+      <text x={x} y={y+22} textAnchor="middle" fill={isCenter?"white":C.tx} fontSize={12} fontWeight={600}>{label.length>18?label.substring(0,18)+"…":label}</text>
+      <text x={x} y={y+38} textAnchor="middle" fill={isCenter?"rgba(255,255,255,0.6)":C.txd} fontSize={10}>{sub.length>20?sub.substring(0,20)+"…":sub}</text>
+    </g>
+  );
+
+  return(
+    <div style={{display:"flex",height:"100%"}}>
+      {/* Entity list */}
+      <div style={{width:bp.mobile?"100%":260,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:8}}><input placeholder="Search entity..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/></div>
+        <div style={{flex:1,overflow:"auto",padding:"0 6px"}}>
+          {filtered.slice(0,50).map(e=>(
+            <button key={e.l} onClick={()=>handleSelect(e)} style={{width:"100%",textAlign:"left",padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm,fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><div style={{fontWeight:selEnt?.l===e.l?600:400}}>{e.d||e.l}</div><div style={{fontSize:11,color:C.txd}}>{e.l}</div></div>
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Graph area */}
+      <div ref={containerRef} style={{flex:1,overflow:"auto",padding:20}}>
+        {!selEnt&&<div style={{textAlign:"center",color:C.txd,marginTop:60}}>Select an entity to view its relationships</div>}
+        {selEnt&&loading&&<div style={{textAlign:"center",marginTop:60}}><Spin s={20}/></div>}
+        {selEnt&&!loading&&(
+          <div>
+            <div style={{textAlign:"center",marginBottom:12}}>
+              <span style={{fontSize:16,fontWeight:700}}>{selEnt.d||selEnt.l}</span>
+              <span style={{color:C.txd,marginLeft:8,fontSize:13}}>{parents.length} parent{parents.length!==1?"s":""} · {children.length} child{children.length!==1?"ren":""}</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <svg width={svgW} height={svgH} style={{display:"block",margin:"0 auto"}}>
+                <defs>
+                  <marker id="arrowDown" viewBox="0 0 10 10" refX="5" refY="10" markerWidth={8} markerHeight={8} orient="auto"><path d="M0,0 L5,10 L10,0" fill={C.cy}/></marker>
+                  <marker id="arrowUp" viewBox="0 0 10 10" refX="5" refY="0" markerWidth={8} markerHeight={8} orient="auto"><path d="M0,10 L5,0 L10,10" fill={C.or}/></marker>
+                </defs>
+                {/* Arrows to parents */}
+                {visP.map((p,i)=>{
+                  const px=centerX-((visP.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
+                  return <line key={"lp"+i} x1={centerX} y1={centerY} x2={px} y2={40+NODE_H} stroke={C.or} strokeWidth={1.5} strokeDasharray="6,3" markerEnd="url(#arrowUp)"/>;
+                })}
+                {/* Arrows to children */}
+                {visC.map((c,i)=>{
+                  const cx=centerX-((visC.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
+                  return <line key={"lc"+i} x1={centerX} y1={centerY+NODE_H} x2={cx} y2={340} stroke={C.cy} strokeWidth={1.5} strokeDasharray="6,3" markerEnd="url(#arrowDown)"/>;
+                })}
+                {/* Parent nodes */}
+                {visP.map((p,i)=>{
+                  const px=centerX-((visP.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
+                  return renderNode(px,40,p.targetEntity,p.lookupField+(p.count>1?` (×${p.count})`:""),false,()=>handleSelect({l:p.targetEntity,d:p.targetEntity}));
+                })}
+                {/* Center node */}
+                {renderNode(centerX,centerY,selEnt.d||selEnt.l,selEnt.l,true,null)}
+                {/* Child nodes */}
+                {visC.map((c,i)=>{
+                  const cx=centerX-((visC.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
+                  return renderNode(cx,340,c.targetEntity,c.lookupField+(c.count>1?` (×${c.count})`:""),false,()=>handleSelect({l:c.targetEntity,d:c.targetEntity}));
+                })}
+                {/* Labels: N:1 / 1:N */}
+                <text x={20} y={40+NODE_H/2} fill={C.or} fontSize={11} fontWeight={700}>N:1 Parents ↑</text>
+                <text x={20} y={340+NODE_H/2} fill={C.cy} fontSize={11} fontWeight={700}>1:N Children ↓</text>
+              </svg>
+            </div>
+            {parents.length>12&&!showAllP&&<button onClick={()=>setShowAllP(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {parents.length} parents</button>}
+            {children.length>12&&!showAllC&&<button onClick={()=>setShowAllC(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {children.length} children</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SOLUTION EXPLORER
+// ═══════════════════════════════════════════════════════════════
+const COMP_TYPES={1:{l:"Entity",i:"📋"},2:{l:"Attribute",i:"🔤"},9:{l:"OptionSet",i:"📊"},10:{l:"Relationship",i:"🔗"},26:{l:"View",i:"👁"},29:{l:"Message",i:"💬"},31:{l:"Message Filter",i:"🔍"},59:{l:"Chart",i:"📈"},60:{l:"Web Resource",i:"🌐"},61:{l:"Sitemap",i:"🗺"},62:{l:"Connection Role",i:"🔌"},63:{l:"Security Role",i:"🛡"},65:{l:"Field Security",i:"🔒"},66:{l:"Entity Key",i:"🔑"},91:{l:"Plugin Type",i:"⚙"},92:{l:"Plugin Assembly",i:"🔧"},95:{l:"SDK Step",i:"📍"},300:{l:"Canvas App",i:"🎨"},371:{l:"Connector",i:"🔌"}};
+
+function SolutionExplorer({bp,orgInfo}){
+  const isLive=orgInfo?.isExtension;
+  const[solutions,setSolutions]=useState([]);
+  const[search,setSearch]=useState("");
+  const[selSol,setSelSol]=useState(null);
+  const[components,setComponents]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[loadingComp,setLoadingComp]=useState(false);
+  const[collapsed,setCollapsed]=useState({});
+
+  useEffect(()=>{bridge.getSolutions().then(d=>{setSolutions(d||[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
+
+  const handleSelect=async(sol)=>{
+    setSelSol(sol);setLoadingComp(true);setCollapsed({});
+    try{const d=await bridge.getSolutionComponents(sol.id);setComponents(d||[]);}catch{setComponents([]);}
+    setLoadingComp(false);
+  };
+
+  const grouped=useMemo(()=>{
+    const map={};
+    components.forEach(c=>{
+      const t=c.type;
+      const def=COMP_TYPES[t]||{l:`Type ${t}`,i:"?"};
+      if(!map[t])map[t]={...def,items:[]};
+      map[t].items.push(c);
+    });
+    return Object.entries(map).sort((a,b)=>a[1].l.localeCompare(b[1].l));
+  },[components]);
+
+  const filtered=solutions.filter(s=>!search||s.displayName.toLowerCase().includes(search.toLowerCase())||s.uniqueName.toLowerCase().includes(search.toLowerCase()));
+
+  return(
+    <div style={{display:"flex",height:"100%"}}>
+      {/* Solution list */}
+      <div style={{width:bp.mobile?"100%":280,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:"12px 10px",borderBottom:`1px solid ${C.bd}`}}>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>Solutions</div>
+          <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/>
+        </div>
+        <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
+          {loading&&<div style={{textAlign:"center",padding:20}}><Spin/></div>}
+          {filtered.map(s=>(
+            <button key={s.id} onClick={()=>handleSelect(s)} style={{width:"100%",textAlign:"left",padding:"8px 10px",border:"none",borderRadius:6,cursor:"pointer",marginBottom:2,background:selSol?.id===s.id?C.sfa:"transparent",color:selSol?.id===s.id?C.tx:C.txm}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:selSol?.id===s.id?600:400,fontSize:13}}>{s.displayName}</span>
+                <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:s.isManaged?C.vid:C.gnd,color:s.isManaged?C.vi:C.gn}}>{s.isManaged?"Managed":"Unmanaged"}</span>
+              </div>
+              <div style={{fontSize:11,color:C.txd,...mono}}>{s.uniqueName} · v{s.version}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Components */}
+      <div style={{flex:1,overflow:"auto",padding:20}}>
+        {!selSol&&<div style={{textAlign:"center",color:C.txd,marginTop:60}}>Select a solution to browse its components</div>}
+        {selSol&&loadingComp&&<div style={{textAlign:"center",marginTop:60}}><Spin s={20}/></div>}
+        {selSol&&!loadingComp&&(
+          <div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:18,fontWeight:700}}>{selSol.displayName}</div>
+              <div style={{fontSize:13,color:C.txd,...mono}}>{selSol.uniqueName} · v{selSol.version} · {components.length} components</div>
+              {selSol.description&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{selSol.description}</div>}
+            </div>
+            {grouped.map(([typeKey,group])=>{
+              const isOpen=!collapsed[typeKey];
+              return(
+                <div key={typeKey} style={{marginBottom:6,...crd({overflow:"hidden"})}}>
+                  <button onClick={()=>setCollapsed(p=>({...p,[typeKey]:!p[typeKey]}))} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"10px 14px",border:"none",background:C.sfh,cursor:"pointer",color:C.tx,fontSize:14,fontWeight:600}}>
+                    <span>{group.i}</span>
+                    <span>{group.l}</span>
+                    <span style={{fontSize:12,color:C.txd,fontWeight:400,marginLeft:"auto"}}>{group.items.length}</span>
+                    <span style={{color:C.txd,transform:isOpen?"rotate(90deg)":"rotate(0)",transition:"transform .15s"}}>▸</span>
+                  </button>
+                  {isOpen&&(
+                    <div style={{padding:"4px 14px 8px"}}>
+                      {group.items.map((item,i)=>(
+                        <div key={item.id||i} style={{padding:"3px 0",fontSize:12,color:C.txm,...mono,borderBottom:i<group.items.length-1?`1px solid ${C.bd}22`:""}}>{item.objectId}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRANSLATION MANAGER
+// ═══════════════════════════════════════════════════════════════
+function TranslationManager({bp,orgInfo}){
+  const isLive=orgInfo?.isExtension;
+  const[entities,setEntities]=useState(ENTS);
+  const[search,setSearch]=useState("");
+  const[selEnt,setSelEnt]=useState(null);
+  const[languages,setLanguages]=useState([]);
+  const[selLangs,setSelLangs]=useState([]);
+  const[attributes,setAttributes]=useState([]);
+  const[edits,setEdits]=useState({});
+  const[loading,setLoading]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[saveMsg,setSaveMsg]=useState(null);
+  const[attrSearch,setAttrSearch]=useState("");
+  const fRef=useRef(null);
+
+  useEffect(()=>{
+    bridge.getOrgLanguages().then(d=>{if(d){setLanguages(d);setSelLangs(d.map(l=>l.code));}}).catch(()=>{});
+    if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d})))}).catch(()=>{});
+  },[]);
+
+  const handleSelect=async(e)=>{
+    setSelEnt(e);setLoading(true);setEdits({});setSaveMsg(null);
+    try{const d=await bridge.getAttributeLabels(e.l);setAttributes(d||[]);}catch{setAttributes([]);}
+    setLoading(false);
+  };
+
+  const handleEdit=(attrLogical,langCode,value)=>{
+    setEdits(prev=>({...prev,[attrLogical]:{...(prev[attrLogical]||{}),[langCode]:value}}));
+  };
+
+  const editCount=Object.keys(edits).reduce((n,k)=>n+Object.keys(edits[k]).length,0);
+
+  const handleSave=async()=>{
+    if(!selEnt||editCount===0)return;
+    setSaving(true);setSaveMsg(null);
+    let ok=0,fail=0;
+    for(const[attrName,langEdits] of Object.entries(edits)){
+      const attr=attributes.find(a=>a.logical===attrName);
+      if(!attr)continue;
+      // Build full labels array: existing + edited
+      const labelsMap={};
+      attr.labels.forEach(l=>{labelsMap[l.languageCode]={Label:l.label,LanguageCode:l.languageCode};});
+      Object.entries(langEdits).forEach(([code,val])=>{labelsMap[+code]={Label:val,LanguageCode:+code};});
+      try{await bridge.updateAttributeLabel(selEnt.l,attrName,Object.values(labelsMap));ok++;}catch{fail++;}
+    }
+    if(ok>0){try{await bridge.publishEntity(selEnt.l);}catch{}}
+    setSaveMsg(`${ok} updated${fail?`, ${fail} failed`:""}`);
+    setEdits({});
+    // Reload
+    try{const d=await bridge.getAttributeLabels(selEnt.l);setAttributes(d||[]);}catch{}
+    setSaving(false);
+  };
+
+  const exportCSV=()=>{
+    if(!selEnt||!attributes.length)return;
+    const codes=selLangs;
+    const header=["logical_name","type",...codes.map(c=>`label_${c}`)].join(",");
+    const rows=attributes.map(a=>{
+      const vals=[a.logical,a.type];
+      codes.forEach(c=>{const lbl=a.labels.find(l=>l.languageCode===c)?.label||"";vals.push(`"${lbl.replace(/"/g,'""')}"`)});
+      return vals.join(",");
+    });
+    dl("\uFEFF"+header+"\n"+rows.join("\n"),"text/csv;charset=utf-8",`${selEnt.l}_translations.csv`);
+  };
+
+  const handleImport=(text)=>{
+    const lines=text.split("\n").filter(l=>l.trim());
+    if(lines.length<2)return;
+    const headers=lines[0].split(",").map(h=>h.trim().replace(/^"|"$/g,""));
+    const langCols=headers.map((h,i)=>{const m=h.match(/^label_(\d+)$/);return m?{idx:i,code:+m[1]}:null;}).filter(Boolean);
+    const logIdx=headers.indexOf("logical_name");
+    if(logIdx===-1)return;
+    const newEdits={};
+    for(let i=1;i<lines.length;i++){
+      const cells=lines[i].match(/(".*?"|[^,]*)/g)?.map(c=>c.replace(/^"|"$/g,"").replace(/""/g,'"'))||[];
+      const logical=cells[logIdx]?.trim();
+      if(!logical)continue;
+      const attr=attributes.find(a=>a.logical===logical);
+      if(!attr)continue;
+      langCols.forEach(({idx,code})=>{
+        const val=cells[idx]?.trim()||"";
+        const existing=attr.labels.find(l=>l.languageCode===code)?.label||"";
+        if(val&&val!==existing){if(!newEdits[logical])newEdits[logical]={};newEdits[logical][code]=val;}
+      });
+    }
+    setEdits(newEdits);
+    setSaveMsg(`Imported ${Object.keys(newEdits).length} changes from CSV`);
+  };
+
+  const filteredAttrs=attributes.filter(a=>!attrSearch||a.logical.includes(attrSearch.toLowerCase())||a.labels.some(l=>l.label.toLowerCase().includes(attrSearch.toLowerCase())));
+
+  const filtered=entities.filter(e=>!search||e.l.includes(search.toLowerCase())||e.d?.toLowerCase().includes(search.toLowerCase()));
+
+  return(
+    <div style={{display:"flex",height:"100%"}}>
+      {/* Entity list */}
+      <div style={{width:bp.mobile?"100%":260,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:8}}><input placeholder="Search entity..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/></div>
+        <div style={{flex:1,overflow:"auto",padding:"0 6px"}}>
+          {filtered.slice(0,50).map(e=>(
+            <button key={e.l} onClick={()=>handleSelect(e)} style={{width:"100%",textAlign:"left",padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm,fontSize:13}}>
+              <div style={{fontWeight:selEnt?.l===e.l?600:400}}>{e.d||e.l}</div>
+              <div style={{fontSize:11,color:C.txd}}>{e.l}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Translation table */}
+      <div style={{flex:1,overflow:"auto",padding:16}}>
+        {!selEnt&&<div style={{textAlign:"center",color:C.txd,marginTop:60}}>Select an entity to manage translations</div>}
+        {selEnt&&loading&&<div style={{textAlign:"center",marginTop:60}}><Spin s={20}/></div>}
+        {selEnt&&!loading&&(
+          <div>
+            {/* Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+              <div>
+                <span style={{fontSize:16,fontWeight:700}}>{selEnt.d||selEnt.l}</span>
+                <span style={{color:C.txd,marginLeft:8,fontSize:13}}>{attributes.length} attributes · {languages.length} languages</span>
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {saveMsg&&<span style={{fontSize:12,color:C.gn}}>{saveMsg}</span>}
+                <button onClick={exportCSV} style={bt(null,{fontSize:12})}><I.Download/> Export CSV</button>
+                <input ref={fRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>handleImport(ev.target.result);r.readAsText(f);}}}/>
+                <button onClick={()=>fRef.current?.click()} style={bt(null,{fontSize:12})}><I.Upload/> Import CSV</button>
+                <button onClick={handleSave} disabled={editCount===0||saving} style={bt(editCount>0?C.vi:C.sfh,{fontSize:12,opacity:editCount===0?.5:1})}>{saving?<Spin s={12}/>:null} Save {editCount>0?`(${editCount})`:""}</button>
+              </div>
+            </div>
+            {/* Language toggles */}
+            <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+              {languages.map(lang=>(
+                <label key={lang.code} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:selLangs.includes(lang.code)?C.tx:C.txd,cursor:"pointer"}}>
+                  <input type="checkbox" checked={selLangs.includes(lang.code)} onChange={e=>{if(e.target.checked)setSelLangs(p=>[...p,lang.code]);else setSelLangs(p=>p.filter(c=>c!==lang.code));}}/>
+                  {lang.name} ({lang.code})
+                </label>
+              ))}
+            </div>
+            {/* Search */}
+            <input placeholder="Filter attributes..." value={attrSearch} onChange={e=>setAttrSearch(e.target.value)} style={inp({fontSize:12,marginBottom:8,maxWidth:300})}/>
+            {/* Table */}
+            <div style={{overflowX:"auto",...crd()}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead>
+                  <tr>
+                    <th style={ths()}>Logical Name</th>
+                    <th style={ths()}>Type</th>
+                    {selLangs.map(code=><th key={code} style={ths()}>{languages.find(l=>l.code===code)?.name||code}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAttrs.map((attr,ri)=>(
+                    <tr key={attr.logical} style={{borderBottom:`1px solid ${C.bd}22`,background:ri%2===0?"transparent":C.sfh+"33"}}>
+                      <td style={{...tds,...mono,fontSize:12,color:C.vi}}>{attr.logical}</td>
+                      <td style={{...tds,fontSize:12,color:C.txd}}>{displayType(attr.type)}</td>
+                      {selLangs.map(code=>{
+                        const existing=attr.labels.find(l=>l.languageCode===code)?.label||"";
+                        const edited=edits[attr.logical]?.[code];
+                        const val=edited!==undefined?edited:existing;
+                        return(
+                          <td key={code} style={{padding:"2px 4px"}}>
+                            <input value={val} onChange={e=>handleEdit(attr.logical,code,e.target.value)} style={inp({fontSize:12,padding:"3px 6px",borderColor:edited!==undefined?C.yw:C.bd,...mono})}/>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

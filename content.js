@@ -558,6 +558,74 @@
             } catch { result = null; }
             break;
 
+          // ── Solutions ──
+          case "getSolutions": {
+            const data = await dvRequest("GET",
+              "solutions?$select=solutionid,uniquename,friendlyname,version,ismanaged,installedon,description&$filter=isvisible eq true&$orderby=friendlyname asc"
+            );
+            result = (data.value || []).map(s => ({
+              id: s.solutionid,
+              uniqueName: s.uniquename,
+              displayName: s.friendlyname || s.uniquename,
+              version: s.version,
+              isManaged: s.ismanaged,
+              installedOn: s.installedon,
+              description: s.description || "",
+            }));
+            break;
+          }
+          case "getSolutionComponents": {
+            validateGuid(params.solutionId);
+            const data = await dvRequest("GET",
+              `solutioncomponents?$select=solutioncomponentid,componenttype,objectid,rootcomponentbehavior&$filter=_solutionid_value eq ${params.solutionId}&$top=5000`
+            );
+            result = (data.value || []).map(c => ({
+              id: c.solutioncomponentid,
+              type: c.componenttype,
+              objectId: c.objectid,
+              behavior: c.rootcomponentbehavior,
+            }));
+            break;
+          }
+
+          // ── Translations ──
+          case "getOrgLanguages": {
+            const data = await dvRequest("GET", "RetrieveAvailableLanguages");
+            const LANG_NAMES = {1033:"English",1036:"French",1031:"German",1034:"Spanish",1040:"Italian",1046:"Portuguese",1043:"Dutch",1041:"Japanese",1028:"Chinese (Traditional)",2052:"Chinese (Simplified)",1042:"Korean",1049:"Russian",1055:"Turkish",1045:"Polish",1029:"Czech",1030:"Danish",1035:"Finnish",1044:"Norwegian",1053:"Swedish",1025:"Arabic"};
+            const codes = data?.LocaleIds || [];
+            result = codes.map(c => ({ code: c, name: LANG_NAMES[c] || `LCID ${c}` }));
+            break;
+          }
+          case "getAttributeLabels": {
+            validateName(params.logicalName, 'logicalName');
+            const data = await dvRequest("GET",
+              `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes?$select=LogicalName,AttributeType,DisplayName,Description`
+            );
+            result = (data.value || []).map(a => ({
+              logical: a.LogicalName,
+              type: a.AttributeType,
+              labels: (a.DisplayName?.LocalizedLabels || []).map(l => ({ label: l.Label, languageCode: l.LanguageCode })),
+              descriptions: (a.Description?.LocalizedLabels || []).map(l => ({ label: l.Label, languageCode: l.LanguageCode })),
+            }));
+            break;
+          }
+          case "updateAttributeLabel": {
+            validateName(params.entityName, 'entityName');
+            validateName(params.attributeName, 'attributeName');
+            result = await dvRequest("PUT",
+              `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')/DisplayName`,
+              { LocalizedLabels: params.localizedLabels }
+            );
+            break;
+          }
+          case "publishEntity": {
+            validateName(params.logicalName, 'logicalName');
+            result = await dvRequest("POST", "PublishXml", {
+              ParameterXml: `<importexportxml><entities><entity>${params.logicalName}</entity></entities></importexportxml>`
+            });
+            break;
+          }
+
           default:
             throw new Error(`Unknown action: ${action}`);
         }
