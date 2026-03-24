@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Colvio for Dynamics 365",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Colvio \u2014 Data Explorer, Loader & Inspector for Microsoft Dynamics 365 / Dataverse.",
   "author": "zmissoum",
   "permissions": [

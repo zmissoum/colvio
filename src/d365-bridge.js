@@ -69,10 +69,32 @@ async function cacheClear() {
 
 function cacheKey(type, name) { return `d365_cache_${getOrgUrl()||"default"}_${type}_${name||"all"}`; }
 
+// ── Session expired handling ─────────────────────────────────
+let sessionExpired = false;
+const sessionListeners = new Set();
+export function onSessionExpired(cb) { sessionListeners.add(cb); return () => sessionListeners.delete(cb); }
+export function isSessionExpired() { return sessionExpired; }
+export function clearSessionExpired() { sessionExpired = false; }
+
+// ── Rate limiting ────────────────────────────────────────────
+const callTimestamps = [];
+const RATE_LIMIT = 10; // max calls per second
+const rateLimitListeners = new Set();
+export function onRateLimitWarning(cb) { rateLimitListeners.add(cb); return () => rateLimitListeners.delete(cb); }
+
 // ── Communication avec le background ─────────────────────────
 let reqId = 0;
 
-function callD365(action, params = {}) {
+async function callD365(action, params = {}) {
+  // Rate limiting
+  const now = Date.now();
+  callTimestamps.push(now);
+  while (callTimestamps.length && callTimestamps[0] < now - 1000) callTimestamps.shift();
+  if (callTimestamps.length >= RATE_LIMIT) {
+    await new Promise(r => setTimeout(r, 100 * (callTimestamps.length - RATE_LIMIT + 1)));
+    rateLimitListeners.forEach(cb => cb(callTimestamps.length));
+  }
+
   return new Promise((resolve, reject) => {
     if (!isExtension) { reject(new Error("Not in extension")); return; }
 
@@ -101,6 +123,10 @@ function callD365(action, params = {}) {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else if (response?.error) {
+          if (response.error.includes("SESSION_EXPIRED") || response.error.includes("401") || response.error.includes("403")) {
+            sessionExpired = true;
+            sessionListeners.forEach(cb => cb());
+          }
           reject(new Error(response.error));
         } else {
           resolve(response?.result);
@@ -185,6 +211,11 @@ export const bridge = {
       return callD365("batchDelete", { entitySet, ids });
     }
     return { deleted: ids.length, errors: [] };
+  },
+
+  async getEntityMetadata(logicalName) {
+    if (!isExtension) return { canBeDeleted: true, displayName: logicalName };
+    return callD365("getEntityMetadata", { logicalName });
   },
 
   async batchCreate(entitySet, records) {
@@ -369,5 +400,18 @@ export const bridge = {
   async publishEntity(logicalName) {
     if (!isExtension) return { ok: true };
     return callD365("publishEntity", { logicalName });
+  },
+
+  async getManyToManyRelationships(logicalName) {
+    if (!isExtension) return [
+      { schemaName: "accountleads_association", entity1: "account", entity2: "lead", intersectEntity: "accountleads" },
+      { schemaName: "listcontact_association", entity1: "list", entity2: "contact", intersectEntity: "listcontact" },
+    ];
+    const k = cacheKey("m2m", logicalName);
+    const cached = await cacheGet(k);
+    if (cached) return cached;
+    const data = await callD365("getManyToManyRelationships", { logicalName });
+    if (data) await cacheSet(k, data, CACHE_TTL.lookups);
+    return data;
   },
 };

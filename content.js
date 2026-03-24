@@ -33,6 +33,10 @@
     if (v && !SAFE_GUID.test(v)) throw new Error(`Invalid GUID format: "${v}"`);
     return v;
   }
+  function sanitizeSearchTerm(v) {
+    if (typeof v !== "string") return "";
+    return v.replace(/[\x00-\x1f]/g, "").substring(0, 100).replace(/'/g, "''");
+  }
 
   let d365Context = null;
 
@@ -490,7 +494,7 @@
 
           case "searchUsers": {
             // Search systemusers by name or email
-            const term = params.search.replace(/'/g, "''");
+            const term = sanitizeSearchTerm(params.search);
             const filter = `contains(fullname,'${term}') or contains(internalemailaddress,'${term}')`;
             const data = await dvRequest("GET",
               `systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,title&$filter=${filter}&$top=20&$orderby=fullname asc`
@@ -508,7 +512,7 @@
           case "getLoginHistory": {
             const userId = params.userId;
             validateGuid(userId);
-            const top = params.top || 200;
+            const top = Math.min(parseInt(params.top, 10) || 100, 5000);
 
             // Strategy 1: User Access Audit (action 64=Login, 65=Logout)
             let path = `audits?$select=createdon,action,_userid_value,_objectid_value,useradditionalinfo,operation,changedata&$filter=_objectid_value eq ${userId} and (action eq 64 or action eq 65)&$top=${top}&$orderby=createdon desc`;
@@ -623,6 +627,32 @@
             result = await dvRequest("POST", "PublishXml", {
               ParameterXml: `<importexportxml><entities><entity>${params.logicalName}</entity></entities></importexportxml>`
             });
+            break;
+          }
+
+          case "getManyToManyRelationships": {
+            validateName(params.logicalName, 'logicalName');
+            const data = await dvRequest("GET",
+              `EntityDefinitions(LogicalName='${params.logicalName}')/ManyToManyRelationships`
+            );
+            result = (data.value || []).map(r => ({
+              schemaName: r.SchemaName,
+              entity1: r.Entity1LogicalName,
+              entity2: r.Entity2LogicalName,
+              intersectEntity: r.IntersectEntityName,
+            }));
+            break;
+          }
+
+          case "getEntityMetadata": {
+            validateName(params.logicalName, 'logicalName');
+            const meta = await dvRequest("GET",
+              `EntityDefinitions(LogicalName='${params.logicalName}')?$select=CanBeDeleted,DisplayName`
+            );
+            result = {
+              canBeDeleted: meta?.CanBeDeleted?.Value ?? true,
+              displayName: meta?.DisplayName?.UserLocalizedLabel?.Label || params.logicalName,
+            };
             break;
           }
 

@@ -63,10 +63,12 @@ Colvio is a free Chrome extension that lets consultants, admins, and developers 
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | 4,290 |
-| API actions | 26 |
+| Lines of code | 4,607 |
+| API actions | 28 |
 | React components | 15 |
-| Build size | ~596 KB |
+| Source files | 19 |
+| Build size | ~610 KB |
+| Languages | EN / FR |
 
 ## Security
 
