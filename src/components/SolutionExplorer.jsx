@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd, ths } from "../shared.jsx";
+import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd } from "../shared.jsx";
+import Tooltip from "./Tooltip.jsx";
+import { t } from "../i18n.js";
 
 export default function SolutionExplorer({bp,orgInfo}){
   const isLive=orgInfo?.isExtension;
@@ -15,23 +17,46 @@ export default function SolutionExplorer({bp,orgInfo}){
 
   useEffect(()=>{bridge.getSolutions().then(d=>{setSolutions(d||[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
 
-  // Load component counts for all solutions
+  // Load component counts lazily (first 20 solutions only)
   useEffect(()=>{
     if(solutions.length===0)return;
+    let cancelled=false;
     const loadCounts=async()=>{
       const counts={};
-      for(const sol of solutions){
+      for(const sol of solutions.slice(0,20)){
+        if(cancelled)break;
         try{
           const comps=await bridge.getSolutionComponents(sol.id);
           counts[sol.id]=(comps||[]).length;
+          if(!cancelled)setCompCounts(prev=>({...prev,...counts}));
         }catch{
           counts[sol.id]=0;
         }
       }
-      setCompCounts(counts);
     };
     loadCounts();
+    return()=>{cancelled=true;};
   },[solutions]);
+
+  // Entity name lookup cache (objectId -> displayName)
+  const[nameCache,setNameCache]=useState({});
+
+  // Resolve entity names from the entities list
+  useEffect(()=>{
+    bridge.getEntities().then(data=>{
+      if(!data||!Array.isArray(data))return;
+      const map={};
+      data.forEach(e=>{if(e.metadataId)map[e.metadataId.toLowerCase()]=e.display||e.logical;});
+      setNameCache(prev=>({...prev,...map}));
+    }).catch(()=>{});
+  },[]);
+
+  const resolveName=(item)=>{
+    const id=item.objectId?.toLowerCase();
+    if(nameCache[id])return nameCache[id];
+    // Truncate GUID for display
+    return item.objectId?.substring(0,13)+"…";
+  };
 
   const handleSelect=async(sol)=>{
     setSelSol(sol);setLoadingComp(true);setCollapsed({});
@@ -56,7 +81,7 @@ export default function SolutionExplorer({bp,orgInfo}){
     <div style={{display:"flex",height:"100%"}}>
       <div style={{width:bp.mobile?"100%":280,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"12px 10px",borderBottom:`1px solid ${C.bd}`}}>
-          <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>Solutions</div>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>Solutions <Tooltip text={t("help.solution_explorer")}/></div>
           <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/>
         </div>
         <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
@@ -98,7 +123,10 @@ export default function SolutionExplorer({bp,orgInfo}){
                   {isOpen&&(
                     <div style={{padding:"4px 14px 8px"}}>
                       {group.items.map((item,i)=>(
-                        <div key={item.id||i} style={{padding:"3px 0",fontSize:12,color:C.txm,...mono,borderBottom:i<group.items.length-1?`1px solid ${C.bd}22`:""}}>{item.objectId}</div>
+                        <div key={item.id||i} style={{padding:"3px 0",fontSize:12,color:C.txm,...mono,borderBottom:i<group.items.length-1?`1px solid ${C.bd}22`:"",display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{color:nameCache[item.objectId?.toLowerCase()]?C.tx:C.txd}}>{resolveName(item)}</span>
+                          {nameCache[item.objectId?.toLowerCase()]&&<span style={{fontSize:10,color:C.txd}}>{item.objectId?.substring(0,8)}…</span>}
+                        </div>
                       ))}
                     </div>
                   )}

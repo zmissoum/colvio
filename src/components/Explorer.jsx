@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
+import Tooltip from "./Tooltip.jsx";
+import QueryTemplates from "./QueryTemplates.jsx";
+import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText } from "../shared.jsx";
 import FieldPicker from "./FieldPicker.jsx";
@@ -24,6 +27,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
   const[queryHistory,setQueryHistory]=useState([]);
   const[showHistory,setShowHistory]=useState(false);
   const[showSaved,setShowSaved]=useState(false);
+  const[showTemplates,setShowTemplates]=useState(false);
 
   useEffect(()=>{
     if(typeof chrome!=="undefined"&&chrome.storage?.local){
@@ -431,8 +435,10 @@ export default function Explorer({bp,addHistory,orgInfo}){
     if (!isLive || entities.length === 0) return;
     let cancelled = false;
     const loadCounts = async () => {
+      const loaded = new Set();
       for (const e of entities.slice(0, 50)) {
-        if (cancelled || entityCounts[e.l] !== undefined) continue;
+        if (cancelled || loaded.has(e.l)) continue;
+        loaded.add(e.l);
         try {
           const c = await bridge.getEntityCount(e.p);
           if (!cancelled && c >= 0) setEntityCounts(prev => ({...prev, [e.l]: c}));
@@ -478,7 +484,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
                 {!loadingFields&&fields.length>0&&<span style={{fontSize:12,color:C.txd}}>{fields.length} columns</span>}
                 {ent.c>0&&<span style={{fontSize:12,color:C.txd,background:C.bg,padding:"2px 6px",borderRadius:3}}>{ent.c.toLocaleString()} records</span>}
               </div>
-              <div style={{display:"flex",gap:3}}>{["builder","odata","fetchxml"].map(m=><button key={m} onClick={()=>setQm(m)} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:qm===m?C.vi:"transparent",color:qm===m?"white":C.txm}}>{m==="builder"?"Builder":m==="odata"?"OData":"FetchXML"}</button>)}</div>
+              <div style={{display:"flex",gap:3,alignItems:"center"}}>{["builder","odata","fetchxml"].map(m=><button key={m} onClick={()=>setQm(m)} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:qm===m?C.vi:"transparent",color:qm===m?"white":C.txm}}>{m==="builder"?"Builder":m==="odata"?"OData":"FetchXML"}</button>)}<Tooltip text={t("help.query_modes")}/></div>
             </div>
             {qm==="fetchxml"?<div>
               <textarea value={fxml} onChange={e=>setFxml(e.target.value)} placeholder={`<fetch top="50">\n  <entity name="${ent.l}">\n    <attribute name="name"/>\n    <link-entity name="opportunity" from="customerid" to="${ent.l}id" link-type="inner">\n      <attribute name="name" alias="opp_name"/>\n    </link-entity>\n  </entity>\n</fetch>`} style={inp({height:120,...mono,color:C.cy,resize:"vertical",fontSize:13,whiteSpace:"pre"})}/>
@@ -666,6 +672,10 @@ export default function Explorer({bp,addHistory,orgInfo}){
               <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
                 <button onClick={run} disabled={loading||loadingFields} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> Execute <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
                 <button onClick={saveCurrentQuery} disabled={!ent} title="Save this query" style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>{setShowTemplates(!showTemplates);setShowHistory(false);setShowSaved(false);}} style={{padding:"4px 8px",background:showTemplates?C.gn+"33":"transparent",border:`1px solid ${showTemplates?C.gn+"44":C.bd}`,borderRadius:4,color:showTemplates?C.gn:C.txm,cursor:"pointer",fontSize:12}} title="Query templates">📝 Templates</button>
+                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{selEnt(ent);setTimeout(()=>{setSf(fields);setFilterGroups(filters);},500);}} onClose={()=>setShowTemplates(false)}/>}
+                </div>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowHistory(!showHistory);setShowSaved(false);}} style={{padding:"4px 8px",background:showHistory?C.vi+"33":"transparent",border:`1px solid ${C.bd}`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12}} title="Query history">🕐{queryHistory.length>0?` ${queryHistory.length}`:""}</button>
                   {showHistory&&queryHistory.length>0&&(

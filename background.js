@@ -1,7 +1,7 @@
 /**
  * background.js — Service Worker (Manifest V3)
  *
- * Colvio — Click icon → open panel in new tab
+ * Colvio — Click icon to open panel in new tab
  * Relay API calls between Colvio (tab B) and D365 content script (tab A)
  */
 
@@ -16,7 +16,7 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// ── Click icon → ouvrir en nouvel onglet ─────────────────────
+// ── Click icon: open panel in new tab ────────────────────────
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.url?.includes(".dynamics.com")) return;
   d365TabId = tab.id;
@@ -36,7 +36,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 });
 
-// ── Relayer : Panel ↔ Content Script ─────────────────────────
+// ── Relay: Panel <-> Content Script ──────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.__d365InspectorRequest) {
     const targetTab = message.d365TabId || d365TabId;

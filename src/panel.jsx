@@ -1,11 +1,7 @@
 /**
  * src/panel.jsx — React panel entry point
- *
- * Ce fichier est le entry point pour Vite :
- *   - En mode dev    : `npm run dev`  → localhost:5173
- *   - En mode build  : `npm run build` → chrome-extension/panel.js
- *
- * Il importe l'app principale (D365Inspector) et la monte dans #root.
+ * Dev: `npm run dev` -> localhost:5173
+ * Build: `npm run build` -> chrome-extension/panel.js
  */
 
 import React from "react";

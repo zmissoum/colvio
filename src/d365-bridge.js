@@ -1,12 +1,12 @@
 /**
- * d365-bridge.js — Colvio Bridge API — panel React ↔ Dataverse
+ * d365-bridge.js — Colvio Bridge API — panel React <-> Dataverse
  *
- * Deux modes :
- *   1. Extension Chrome (panel.html ouvert en onglet)
- *      → chrome.runtime.sendMessage → background.js → content.js → fetch D365
+ * Two modes:
+ *   1. Chrome Extension (panel.html opened in a tab)
+ *      -> chrome.runtime.sendMessage -> background.js -> content.js -> fetch D365
  *
- *   2. Standalone (npm run dev / claude.ai artifact)
- *      → Mock data built into the app, no network calls
+ *   2. Standalone (npm run dev)
+ *      -> Mock data built into the app, no network calls
  */
 
 // ── Detection ────────────────────────────────────────────────
@@ -73,16 +73,13 @@ function cacheKey(type, name) { return `d365_cache_${getOrgUrl()||"default"}_${t
 let sessionExpired = false;
 const sessionListeners = new Set();
 export function onSessionExpired(cb) { sessionListeners.add(cb); return () => sessionListeners.delete(cb); }
-export function isSessionExpired() { return sessionExpired; }
 export function clearSessionExpired() { sessionExpired = false; }
 
 // ── Rate limiting ────────────────────────────────────────────
 const callTimestamps = [];
 const RATE_LIMIT = 10; // max calls per second
-const rateLimitListeners = new Set();
-export function onRateLimitWarning(cb) { rateLimitListeners.add(cb); return () => rateLimitListeners.delete(cb); }
 
-// ── Communication avec le background ─────────────────────────
+// ── Communication with background script ─────────────────────
 let reqId = 0;
 
 async function callD365(action, params = {}) {
@@ -92,7 +89,6 @@ async function callD365(action, params = {}) {
   while (callTimestamps.length && callTimestamps[0] < now - 1000) callTimestamps.shift();
   if (callTimestamps.length >= RATE_LIMIT) {
     await new Promise(r => setTimeout(r, 100 * (callTimestamps.length - RATE_LIMIT + 1)));
-    rateLimitListeners.forEach(cb => cb(callTimestamps.length));
   }
 
   return new Promise((resolve, reject) => {
@@ -136,7 +132,7 @@ async function callD365(action, params = {}) {
   });
 }
 
-// ── API publique ─────────────────────────────────────────────
+// ── Public API ───────────────────────────────────────────────
 export const bridge = {
   isExtension,
 

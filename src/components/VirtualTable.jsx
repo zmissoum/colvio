@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { C, I, mono } from "../shared.jsx";
 
-export default function VirtualTable({ res, fields, data, scrollRef, selected, toggleSel, toggleAll, getRecordId, copy, cp, bestGet, rawGet, flatVal, fmt, ths, tds, onSort, sortField, sortDir, onInlineEdit, orgInfo, entityName }) {
+export default function VirtualTable({ res, fields, data, selected, toggleSel, toggleAll, getRecordId, copy, cp, bestGet, rawGet, flatVal, fmt, ths, tds, onSort, sortField, sortDir, onInlineEdit, orgInfo, entityName }) {
   const ROW_H = 32;
   const [editing, setEditing] = useState(null);
   const [focusedRow, setFocusedRow] = useState(-1);

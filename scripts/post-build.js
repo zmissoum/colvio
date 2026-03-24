@@ -1,6 +1,6 @@
 /**
  * post-build.js — Copy static files to dist/ after Vite build
- * Fonctionne sur Windows, macOS, Linux
+ * Works on Windows, macOS, Linux
  */
 import { cpSync, existsSync, mkdirSync } from "fs";
 import { resolve, dirname } from "path";
@@ -15,7 +15,7 @@ const dirs = ["icons"];
 
 console.log("📦 Copy static files to dist/...");
 
-// Copy les fichiers individuels
+// Copy individual files
 for (const file of files) {
   const src = resolve(root, file);
   const dest = resolve(dist, file);
@@ -23,11 +23,11 @@ for (const file of files) {
     cpSync(src, dest);
     console.log(`  ✓ ${file}`);
   } else {
-    console.warn(`  ⚠ ${file} introuvable`);
+    console.warn(`  ⚠ ${file} not found`);
   }
 }
 
-// Copy les dossiers
+// Copy directories
 for (const dir of dirs) {
   const src = resolve(root, dir);
   const dest = resolve(dist, dir);

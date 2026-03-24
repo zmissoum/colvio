@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { bridge, onSessionExpired, clearSessionExpired, isSessionExpired } from "./d365-bridge.js";
-import { C, setThemeColors, I, DARK, LIGHT, useBP, Spin, detectExtension, mono } from "./shared.jsx";
+import { bridge, onSessionExpired, clearSessionExpired } from "./d365-bridge.js";
+import { C, setThemeColors, I, DARK, LIGHT, useBP, useKeyboard, Spin, detectExtension, mono } from "./shared.jsx";
 import { t, setLocale, getLocale } from "./i18n.js";
 
 // ── Components ──
@@ -14,6 +14,9 @@ import RelationshipGraph from "./components/RelationshipGraph.jsx";
 import SolutionExplorer from "./components/SolutionExplorer.jsx";
 import TranslationManager from "./components/TranslationManager.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
+import ShortcutsPanel from "./components/ShortcutsPanel.jsx";
+import OnboardingTour from "./components/OnboardingTour.jsx";
+import HelpTab from "./components/HelpTab.jsx";
 
 export default function App(){
   const[tab,setTab]=useState("explorer");
@@ -21,12 +24,12 @@ export default function App(){
   const[connecting,setConnecting]=useState(false);
   const[sideOpen,setSideOpen]=useState(false);
   const[theme,setTheme]=useState(()=>{
-    try{const t=localStorage.getItem("colvio_theme");if(t)return t;}catch{}
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? "dark" : "light";
+    try{const t=localStorage.getItem("colvio_theme");if(t){setThemeColors(t);return t;}}catch{}
+    const def=window.matchMedia?.('(prefers-color-scheme: dark)').matches ? "dark" : "light";
+    setThemeColors(def);return def;
   });
-  setThemeColors(theme);
   const toggleTheme=()=>{const t=theme==="dark"?"light":"dark";setTheme(t);try{localStorage.setItem("colvio_theme",t);}catch{}};
-  useEffect(()=>{document.body.style.background=C.bg;document.body.style.color=C.tx;},[theme]);
+  useEffect(()=>{setThemeColors(theme);document.body.style.background=C.bg;document.body.style.color=C.tx;},[theme]);
   useEffect(() => {
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
     if (!mq) return;
@@ -40,7 +43,9 @@ export default function App(){
   const[orgInfo,setOrgInfo]=useState(null);
   const[expired,setExpired]=useState(false);
   const[localeState,setLocaleState]=useState(getLocale());
+  const[showShortcuts,setShowShortcuts]=useState(false);
   const bp=useBP();
+  useKeyboard("/",()=>setShowShortcuts(s=>!s),[]);
 
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
 
@@ -83,6 +88,7 @@ export default function App(){
     {id:"graph",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
     {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>},
     {id:"translations",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>},
+    {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
 
   return(
@@ -152,9 +158,12 @@ export default function App(){
         <div style={{flex:1,overflow:"auto"}}>
           {tab==="explorer"&&<ErrorBoundary><Explorer bp={bp} addHistory={addHistory} orgInfo={orgInfo}/></ErrorBoundary>}
           <div style={{position:"fixed",bottom:12,right:12,zIndex:50,display:"flex",gap:6}}>
+            <button onClick={()=>setShowShortcuts(true)} style={{padding:"6px 10px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:8,color:C.txd,cursor:"pointer",fontSize:12,boxShadow:"0 2px 8px rgba(0,0,0,.3)",fontWeight:700}} title="Ctrl+/">?</button>
             <button onClick={()=>{const next=getLocale()==="en"?"fr":"en";setLocale(next);setLocaleState(next);}} style={{padding:"6px 12px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:8,color:C.txm,cursor:"pointer",fontSize:12,boxShadow:"0 2px 8px rgba(0,0,0,.3)",fontWeight:600}}>{getLocale()==="en"?"FR":"EN"}</button>
             <button onClick={toggleTheme} style={{padding:"6px 12px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:8,color:C.txm,cursor:"pointer",fontSize:12,boxShadow:"0 2px 8px rgba(0,0,0,.3)",display:"flex",alignItems:"center",gap:4}} title="Toggle theme">{theme==="dark"?"\u2600\uFE0F "+t("theme.light"):"\uD83C\uDF19 "+t("theme.dark")}</button>
           </div>
+          {showShortcuts&&<ShortcutsPanel onClose={()=>setShowShortcuts(false)}/>}
+          <OnboardingTour/>
           {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
@@ -162,6 +171,7 @@ export default function App(){
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
+          {tab==="help"&&<HelpTab bp={bp} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>
       <style>{`

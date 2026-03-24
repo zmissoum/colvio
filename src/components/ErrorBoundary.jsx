@@ -4,7 +4,7 @@ import { C, bt } from "../shared.jsx";
 export class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error) { return { hasError: true, error }; }
-  componentDidCatch(error, info) { console.error("Colvio tab crash:", error, info); }
+  componentDidCatch() {}
   render() {
     if (this.state.hasError) {
       return (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl } from "../shared.jsx";
@@ -57,7 +57,7 @@ export default function Loader({bp,orgInfo}){
     setLookups(lks);setStep(1);
   };
 
-  const handleFile=useCallback((e)=>{e.preventDefault();setDragOn(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;setCsvFile(f);const reader=new FileReader();reader.onload=(ev)=>parseData(ev.target.result);reader.readAsText(f);},[]);
+  const handleFile=(e)=>{e.preventDefault();setDragOn(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;setCsvFile(f);const reader=new FileReader();reader.onload=(ev)=>parseData(ev.target.result);reader.readAsText(f);};
 
   const handlePaste=()=>{if(pasteText.trim()){setCsvFile({name:"clipboard_data.csv"});parseData(pasteText,"auto");}};
 

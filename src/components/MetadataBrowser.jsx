@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, copyText } from "../shared.jsx";
+import Tooltip from "./Tooltip.jsx";
+import { t } from "../i18n.js";
 
 export default function MetadataBrowser({bp,orgInfo}){
   const isLive = orgInfo?.isExtension;
@@ -47,7 +49,7 @@ export default function MetadataBrowser({bp,orgInfo}){
       if(!cancelled) setOptionSetData(prev=>({...prev,[field.l]:[]}));
     });
     return ()=>{cancelled=true;};
-  },[showPicklist]);
+  },[showPicklist,selEnt?.l]);
   const[copied,setCopied]=useState("");
   const[entities,setEntities]=useState(ENTS);
   const[fields,setFields]=useState([]);
@@ -121,7 +123,7 @@ export default function MetadataBrowser({bp,orgInfo}){
               </div>
               <span style={{fontSize:12,color:C.txd,background:C.bg,padding:"3px 10px",borderRadius:4}}>{selEnt.cat}</span>
               {loadingFields?<Spin s={12}/>:<span style={{fontSize:13,color:C.txm}}>{fields.length} columns</span>}
-              {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<button onClick={exportAllOptionSets} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button>}
+              {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={exportAllOptionSets} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><Tooltip text={t("help.optionset_export")}/></>}
             </div>
 
             <div style={{marginBottom:10}}><input value={fieldSearch} onChange={e=>setFieldSearch(e.target.value)} placeholder="Filter columns..." style={inp({fontSize:13,maxWidth:300})}/></div>

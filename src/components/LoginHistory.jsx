@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, dl } from "../shared.jsx";
 
 export default function LoginHistory({bp,orgInfo}){
-  const isLive = orgInfo?.isExtension;
   const[search,setSearch]=useState("");
   const[users,setUsers]=useState([]);
   const[selectedUser,setSelectedUser]=useState(null);
@@ -12,12 +11,12 @@ export default function LoginHistory({bp,orgInfo}){
   const[loadingHistory,setLoadingHistory]=useState(false);
   const[error,setError]=useState("");
   const[limit,setLimit]=useState(100);
-  const searchTimeout=useRef(null);
+  const[searchTimer,setSearchTimer]=useState(null);
 
   const doSearch=(term)=>{
-    if(searchTimeout.current) clearTimeout(searchTimeout.current);
+    if(searchTimer) clearTimeout(searchTimer);
     if(!term||term.length<2){ setUsers([]); return; }
-    searchTimeout.current=setTimeout(async()=>{
+    const t=setTimeout(async()=>{
       setLoading(true);setError("");
       try{
         const results=await bridge.searchUsers(term);
@@ -25,7 +24,9 @@ export default function LoginHistory({bp,orgInfo}){
       }catch(e){setError(e.message);}
       finally{setLoading(false);}
     },400);
+    setSearchTimer(t);
   };
+  useEffect(()=>()=>{if(searchTimer)clearTimeout(searchTimer);},[searchTimer]);
 
   const selectUser=async(user)=>{
     setSelectedUser(user);
@@ -44,7 +45,7 @@ export default function LoginHistory({bp,orgInfo}){
       if(e.message?.includes("401")||e.message?.includes("SESSION_EXPIRED")){
         setError("Session expired — refresh D365 (F5)");
       } else if(e.message?.includes("404")||e.message?.includes("audits")){
-        setError("The audit entity is not accessible. Auditing must be enabled : Settings > Administration > System Settings > Auditing.");
+        setError("The audit entity is not accessible. Auditing must be enabled: Settings > Administration > System Settings > Auditing.");
       } else {
         setError(e.message);
       }

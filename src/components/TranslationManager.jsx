@@ -98,7 +98,7 @@ export default function TranslationManager({bp,orgInfo}){
       <div style={{width:bp.mobile?"100%":260,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:8}}><input placeholder="Search entity..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/></div>
         <div style={{flex:1,overflow:"auto",padding:"0 6px"}}>
-          {filtered.slice(0,50).map(e=>(
+          {filtered.map(e=>(
             <button key={e.l} onClick={()=>handleSelect(e)} style={{width:"100%",textAlign:"left",padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm,fontSize:13}}>
               <div style={{fontWeight:selEnt?.l===e.l?600:400}}>{e.d||e.l}</div>
               <div style={{fontSize:11,color:C.txd}}>{e.l}</div>

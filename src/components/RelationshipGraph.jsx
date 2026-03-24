@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, inp, bt } from "../shared.jsx";
+import Tooltip from "./Tooltip.jsx";
+import { t } from "../i18n.js";
 
 export default function RelationshipGraph({bp,orgInfo}){
   const isLive=orgInfo?.isExtension;
@@ -89,7 +91,7 @@ export default function RelationshipGraph({bp,orgInfo}){
       <div style={{width:bp.mobile?"100%":260,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:8}}><input placeholder="Search entity..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/></div>
         <div style={{flex:1,overflow:"auto",padding:"0 6px"}}>
-          {filtered.slice(0,50).map(e=>(
+          {filtered.map(e=>(
             <button key={e.l} onClick={()=>handleSelect(e)} style={{width:"100%",textAlign:"left",padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm,fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div><div style={{fontWeight:selEnt?.l===e.l?600:400}}>{e.d||e.l}</div><div style={{fontSize:11,color:C.txd}}>{e.l}</div></div>
             </button>
@@ -107,6 +109,7 @@ export default function RelationshipGraph({bp,orgInfo}){
               <button onClick={()=>{const next=depth===1?2:1;setDepth(next);handleSelect(selEnt);}} style={bt(depth===2?C.vi:null,{padding:"4px 10px",fontSize:12,borderRadius:4})}>
                 Depth {depth}
               </button>
+              <Tooltip text={t("help.relationship_depth")}/>
             </div>
             <div style={{overflowX:"auto"}}>
               <svg width={svgW} height={svgH} style={{display:"block",margin:"0 auto"}}>

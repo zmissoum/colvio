@@ -2,8 +2,8 @@
  * content.js — Content Script injected on *.dynamics.com
  *
  * No panel/iframe. Panel lives in a separate tab.
- * Ce script sert uniquement de proxy API :
- *   1. Extraire le context D365 (URL org, user)
+ * This script acts solely as an API proxy:
+ *   1. Extract D365 context (org URL, user)
  *   2. Execute fetch() to /api/data/v9.2/ (same origin = auto cookies)
  *   3. Respond to requests relayed by background.js
  */
@@ -154,6 +154,7 @@
               display: e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName,
               entitySet: e.EntitySetName || (e.LogicalName + "s"),
               isCustom: e.IsCustomEntity || false,
+              metadataId: e.MetadataId || null,
             }));
             break;
 

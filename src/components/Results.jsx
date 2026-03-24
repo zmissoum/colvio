@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
 import { C, I, Spin, mono, bt, dl, copyText, ths, tds } from "../shared.jsx";
@@ -41,8 +41,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
       else if(newValue==="false") val=false;
       else if(!isNaN(newValue)&&newValue.trim()!=="") val=Number(newValue);
       await bridge.update(res.entity.p, id, {[odataField]:val});
-      record[odataField]=val;
-      if(record[odataField+"__display"]) delete record[odataField+"__display"];
+      const idx=res.data.indexOf(record);
+      if(idx>=0){const updated={...record,[odataField]:val};delete updated[odataField+"__display"];res.data[idx]=updated;}
       showFeedback("\u2713 Saved");
     }catch(e){
       showFeedback("Edit failed: "+e.message);
@@ -64,7 +64,6 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
   const[copyFeedback,setCopyFeedback]=useState("");
   const[selected,setSelected]=useState(new Set());
   const[deleting,setDeleting]=useState(false);
-  const scrollRef=useRef(null);
 
   const getRecordId=(r)=>{
     const idKey=`${res.entity.l}id`;
@@ -161,10 +160,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
   const toJSON=()=>JSON.stringify(res.data.map(r=>{const o={};res.fields.forEach(f=>{o[f]=bestGet(r,f)??null;});return o;}),null,2);
 
   const showFeedback=(msg)=>{setCopyFeedback(msg);setTimeout(()=>setCopyFeedback(""),2000);};
-  const copyCSV=()=>{copyText(toCSV());showFeedback("CSV copied !");};
-  const copyExcel=()=>{copyText(toTSV());showFeedback("Copied! Paste in Excel");};
-  const copyJSON=()=>{copyText(toJSON());showFeedback("JSON copied !");};
-  const dlCSV=()=>dl(toCSV(),"text/csv;charset=utf-8",`${res.entity.l}_export.csv`);
+  const n=res.data.length;
+  const copyCSV=()=>{copyText(toCSV());showFeedback(`CSV copied (${n} rows)`);};
+  const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
+  const copyJSON=()=>{copyText(toJSON());showFeedback(`JSON copied (${n} rows)`);};
+  const dlCSV=()=>{dl(toCSV(),"text/csv;charset=utf-8",`${res.entity.l}_export.csv`);showFeedback(`CSV downloaded (${n} rows)`);};
   const dlXLSX=()=>{
     try{
       const wsData=[res.fields,...res.data.map(r=>res.fields.map(f=>bestGet(r,f)))];
@@ -173,10 +173,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,ws,res.entity.l.substring(0,31));
       XLSX.writeFile(wb,`${res.entity.l}_export.xlsx`);
-      showFeedback("XLSX downloaded!");
+      showFeedback(`XLSX downloaded (${n} rows)`);
     }catch(e){showFeedback("XLSX error: "+e.message);}
   };
-  const dlJSON=()=>dl(toJSON(),"application/json;charset=utf-8",`${res.entity.l}_export.json`);
+  const dlJSON=()=>{dl(toJSON(),"application/json;charset=utf-8",`${res.entity.l}_export.json`);showFeedback(`JSON downloaded (${n} rows)`);};
 
   const btnCopy=(label,icon,onClick,accent)=>(<button onClick={onClick} style={{
     padding:"4px 8px",fontSize:12,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:4,
@@ -247,7 +247,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
         </div>
       </div>
 
-      <VirtualTable res={res} fields={res.fields} data={sortedData} scrollRef={scrollRef}
+      <VirtualTable res={res} fields={res.fields} data={sortedData}
         selected={selected} toggleSel={toggleSel} toggleAll={toggleAll}
         getRecordId={getRecordId} copy={copy} cp={cp} bestGet={bestGet} rawGet={rawGet} flatVal={flatVal} fmt={fmt}
         ths={ths} tds={tds} onSort={toggleSort} sortField={sortField} sortDir={sortDir} onInlineEdit={inlineEdit} orgInfo={orgInfo} entityName={res.entity?.l} />
