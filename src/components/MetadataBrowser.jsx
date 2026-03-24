@@ -10,6 +10,31 @@ export default function MetadataBrowser({bp,orgInfo}){
   const[fieldSearch,setFieldSearch]=useState("");
   const[showPicklist,setShowPicklist]=useState(null);
   const[optionSetData,setOptionSetData]=useState({});
+  const[exportingOS,setExportingOS]=useState(false);
+
+  // Export ALL OptionSet values for the selected entity as a single CSV
+  const exportAllOptionSets=async()=>{
+    if(!selEnt||!fields.length||exportingOS)return;
+    setExportingOS(true);
+    try{
+      const osFields=fields.filter(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status");
+      if(!osFields.length){setExportingOS(false);return;}
+      const rows=["\uFEFFField Logical Name,Field Label,Field Type,Value,Label,Description"];
+      for(const f of osFields){
+        let vals=optionSetData[f.l];
+        if(!vals){
+          try{vals=await bridge.getOptionSet(selEnt.l,f.l,f.t);setOptionSetData(prev=>({...prev,[f.l]:vals||[]}));}catch{vals=[];}
+        }
+        if(vals&&vals.length){
+          for(const o of vals){
+            const esc=v=>`"${String(v||"").replace(/"/g,'""')}"`;
+            rows.push(`${esc(f.l)},${esc(f.d)},${esc(displayType(f.t))},${o.value},${esc(o.label)},${esc(o.description)}`);
+          }
+        }
+      }
+      if(rows.length>1) dl(rows.join("\n"),"text/csv;charset=utf-8",`${selEnt.l}_all_optionsets.csv`);
+    }catch{}finally{setExportingOS(false);}
+  };
   useEffect(()=>{if(!showPicklist)return;const h=e=>{if(e.key==="Escape")setShowPicklist(null);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[showPicklist]);
   useEffect(()=>{
     if(!showPicklist||!selEnt||optionSetData[showPicklist]) return;
@@ -96,6 +121,7 @@ export default function MetadataBrowser({bp,orgInfo}){
               </div>
               <span style={{fontSize:12,color:C.txd,background:C.bg,padding:"3px 10px",borderRadius:4}}>{selEnt.cat}</span>
               {loadingFields?<Spin s={12}/>:<span style={{fontSize:13,color:C.txm}}>{fields.length} columns</span>}
+              {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<button onClick={exportAllOptionSets} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button>}
             </div>
 
             <div style={{marginBottom:10}}><input value={fieldSearch} onChange={e=>setFieldSearch(e.target.value)} placeholder="Filter columns..." style={inp({fontSize:13,maxWidth:300})}/></div>
