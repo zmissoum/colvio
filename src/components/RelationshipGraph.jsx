@@ -71,9 +71,9 @@ export default function RelationshipGraph({bp,orgInfo}){
   const visC=children.slice(0,maxC);
   const visM=m2m.slice(0,maxM);
   const svgW=Math.max(600,Math.max(visP.length,visC.length,visM.length)*(NODE_W+GAP)+GAP*2);
-  const svgH=selEnt?(m2m.length>0?560:420):0;
+  const svgH=selEnt?(m2m.length>0?600:460):0;
   const centerX=svgW/2;
-  const parentY=40;
+  const parentY=54;
   const m2mY=m2m.length>0?parentY+NODE_H+80:0;
   const centerY=m2m.length>0?m2mY+NODE_H+80:190;
   const childY=centerY+NODE_H+80;
@@ -150,10 +150,10 @@ export default function RelationshipGraph({bp,orgInfo}){
                   const cx=centerX-((visC.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
                   return renderNode(cx,childY,c.targetEntity,c.lookupField+(c.count>1?` (\u00d7${c.count})`:"")+( c.depth2?" (d2)":""),false,()=>handleSelect({l:c.targetEntity,d:c.targetEntity}));
                 })}
-                {/* Labels */}
-                <text x={20} y={parentY+NODE_H/2} fill={C.or} fontSize={11} fontWeight={700}>N:1 Parents</text>
-                {m2m.length>0&&<text x={20} y={m2mY+NODE_H/2} fill={C.lv} fontSize={11} fontWeight={700}>N:N</text>}
-                <text x={20} y={childY+NODE_H/2} fill={C.cy} fontSize={11} fontWeight={700}>1:N Children</text>
+                {/* Section labels — positioned above each row */}
+                <text x={centerX} y={parentY-8} textAnchor="middle" fill={C.or} fontSize={11} fontWeight={700}>N:1 Parents ({visP.length})</text>
+                {m2m.length>0&&<text x={centerX} y={m2mY-8} textAnchor="middle" fill={C.lv} fontSize={11} fontWeight={700}>N:N ({visM.length})</text>}
+                <text x={centerX} y={childY-8} textAnchor="middle" fill={C.cy} fontSize={11} fontWeight={700}>1:N Children ({visC.length})</text>
               </svg>
             </div>
             {parents.length>12&&!showAllP&&<button onClick={()=>setShowAllP(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {parents.length} parents</button>}
