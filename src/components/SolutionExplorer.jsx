@@ -38,23 +38,8 @@ export default function SolutionExplorer({bp,orgInfo}){
     return()=>{cancelled=true;};
   },[solutions]);
 
-  // Entity name lookup cache (objectId -> displayName)
-  const[nameCache,setNameCache]=useState({});
-
-  // Resolve entity names from the entities list
-  useEffect(()=>{
-    bridge.getEntities().then(data=>{
-      if(!data||!Array.isArray(data))return;
-      const map={};
-      data.forEach(e=>{if(e.metadataId)map[e.metadataId.toLowerCase()]=e.display||e.logical;});
-      setNameCache(prev=>({...prev,...map}));
-    }).catch(()=>{});
-  },[]);
-
   const resolveName=(item)=>{
-    const id=item.objectId?.toLowerCase();
-    if(nameCache[id])return nameCache[id];
-    // Truncate GUID for display
+    if(item.name)return item.name;
     return item.objectId?.substring(0,13)+"…";
   };
 
@@ -124,8 +109,8 @@ export default function SolutionExplorer({bp,orgInfo}){
                     <div style={{padding:"4px 14px 8px"}}>
                       {group.items.map((item,i)=>(
                         <div key={item.id||i} style={{padding:"3px 0",fontSize:12,color:C.txm,...mono,borderBottom:i<group.items.length-1?`1px solid ${C.bd}22`:"",display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{color:nameCache[item.objectId?.toLowerCase()]?C.tx:C.txd}}>{resolveName(item)}</span>
-                          {nameCache[item.objectId?.toLowerCase()]&&<span style={{fontSize:10,color:C.txd}}>{item.objectId?.substring(0,8)}…</span>}
+                          <span style={{color:item.name?C.tx:C.txd}}>{resolveName(item)}</span>
+                          {item.name&&<span style={{fontSize:10,color:C.txd}}>{item.objectId?.substring(0,8)}…</span>}
                         </div>
                       ))}
                     </div>

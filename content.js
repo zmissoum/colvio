@@ -584,12 +584,78 @@
             const data = await dvRequest("GET",
               `solutioncomponents?$select=solutioncomponentid,componenttype,objectid,rootcomponentbehavior&$filter=_solutionid_value eq ${params.solutionId}&$top=5000`
             );
-            result = (data.value || []).map(c => ({
+            const comps = (data.value || []).map(c => ({
               id: c.solutioncomponentid,
               type: c.componenttype,
               objectId: c.objectid,
               behavior: c.rootcomponentbehavior,
+              name: null,
             }));
+
+            // Batch-resolve display names per component type
+            const resolvers = {
+              1:  ids => dvRequest("GET", `EntityDefinitions?$select=MetadataId,DisplayName,LogicalName&$filter=${ids.map(id=>`MetadataId eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.MetadataId.toLowerCase()] = e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName; }); return m;
+              }),
+              9:  ids => dvRequest("GET", `GlobalOptionSetDefinitions?$select=MetadataId,Name`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { if(ids.includes(e.MetadataId.toLowerCase())) m[e.MetadataId.toLowerCase()] = e.Name; }); return m;
+              }),
+              26: ids => dvRequest("GET", `savedqueries?$select=savedqueryid,name&$filter=${ids.map(id=>`savedqueryid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.savedqueryid.toLowerCase()] = e.name; }); return m;
+              }),
+              60: ids => dvRequest("GET", `webresourceset?$select=webresourceid,name&$filter=${ids.map(id=>`webresourceid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.webresourceid.toLowerCase()] = e.name; }); return m;
+              }),
+              91: ids => dvRequest("GET", `plugintypes?$select=plugintypeid,name&$filter=${ids.map(id=>`plugintypeid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.plugintypeid.toLowerCase()] = e.name; }); return m;
+              }),
+              92: ids => dvRequest("GET", `pluginassemblies?$select=pluginassemblyid,name&$filter=${ids.map(id=>`pluginassemblyid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.pluginassemblyid.toLowerCase()] = e.name; }); return m;
+              }),
+              95: ids => dvRequest("GET", `sdkmessageprocessingsteps?$select=sdkmessageprocessingstepid,name&$filter=${ids.map(id=>`sdkmessageprocessingstepid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.sdkmessageprocessingstepid.toLowerCase()] = e.name; }); return m;
+              }),
+              63: ids => dvRequest("GET", `roles?$select=roleid,name&$filter=${ids.map(id=>`roleid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.roleid.toLowerCase()] = e.name; }); return m;
+              }),
+              59: ids => dvRequest("GET", `savedqueryvisualizations?$select=savedqueryvisualizationid,name&$filter=${ids.map(id=>`savedqueryvisualizationid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.savedqueryvisualizationid.toLowerCase()] = e.name; }); return m;
+              }),
+              62: ids => dvRequest("GET", `connectionroles?$select=connectionroleid,name&$filter=${ids.map(id=>`connectionroleid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.connectionroleid.toLowerCase()] = e.name; }); return m;
+              }),
+              300: ids => dvRequest("GET", `canvasapps?$select=canvasappid,name&$filter=${ids.map(id=>`canvasappid eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { m[e.canvasappid.toLowerCase()] = e.name; }); return m;
+              }),
+            };
+
+            // Group objectIds by type and resolve in parallel
+            const byType = {};
+            comps.forEach(c => {
+              if (!resolvers[c.type] || !c.objectId) return;
+              if (!byType[c.type]) byType[c.type] = [];
+              byType[c.type].push(c.objectId.toLowerCase());
+            });
+
+            const nameMap = {};
+            await Promise.all(Object.entries(byType).map(async ([type, ids]) => {
+              try {
+                // Split into batches of 15 to avoid URL too long
+                for (let i = 0; i < ids.length; i += 15) {
+                  const batch = ids.slice(i, i + 15);
+                  const map = await resolvers[type](batch);
+                  Object.assign(nameMap, map);
+                }
+              } catch {}
+            }));
+
+            // Apply resolved names
+            comps.forEach(c => {
+              const key = c.objectId?.toLowerCase();
+              if (key && nameMap[key]) c.name = nameMap[key];
+            });
+
+            result = comps;
             break;
           }
 
