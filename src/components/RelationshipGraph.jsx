@@ -151,9 +151,9 @@ export default function RelationshipGraph({bp,orgInfo}){
                   return renderNode(cx,childY,c.targetEntity,c.lookupField+(c.count>1?` (\u00d7${c.count})`:"")+( c.depth2?" (d2)":""),false,()=>handleSelect({l:c.targetEntity,d:c.targetEntity}));
                 })}
                 {/* Labels */}
-                <text x={20} y={parentY+NODE_H/2} fill={C.or} fontSize={11} fontWeight={700}>N:1 Parents \u2191</text>
-                {m2m.length>0&&<text x={20} y={m2mY+NODE_H/2} fill={C.lv} fontSize={11} fontWeight={700}>N:N \u2194</text>}
-                <text x={20} y={childY+NODE_H/2} fill={C.cy} fontSize={11} fontWeight={700}>1:N Children \u2193</text>
+                <text x={20} y={parentY+NODE_H/2} fill={C.or} fontSize={11} fontWeight={700}>{"N:1 Parents \u2191"}</text>
+                {m2m.length>0&&<text x={20} y={m2mY+NODE_H/2} fill={C.lv} fontSize={11} fontWeight={700}>{"N:N \u2194"}</text>}
+                <text x={20} y={childY+NODE_H/2} fill={C.cy} fontSize={11} fontWeight={700}>{"1:N Children \u2193"}</text>
               </svg>
             </div>
             {parents.length>12&&!showAllP&&<button onClick={()=>setShowAllP(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {parents.length} parents</button>}
