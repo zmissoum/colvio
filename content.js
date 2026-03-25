@@ -627,6 +627,9 @@
               300: ids => dvRequest("GET", `canvasapps?$select=canvasappid,name&$filter=${ids.map(id=>`canvasappid eq ${id}`).join(" or ")}`).then(d => {
                 const m = {}; (d.value||[]).forEach(e => { m[e.canvasappid.toLowerCase()] = e.name; }); return m;
               }),
+              10: ids => dvRequest("GET", `RelationshipDefinitions?$select=MetadataId,SchemaName`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { if(ids.includes(e.MetadataId.toLowerCase())) m[e.MetadataId.toLowerCase()] = e.SchemaName; }); return m;
+              }),
             };
 
             // Group objectIds by type and resolve in parallel
@@ -641,6 +644,12 @@
             await Promise.all(Object.entries(byType).map(async ([type, ids]) => {
               try {
                 // Split into batches of 15 to avoid URL too long
+                // Type 10 (Relationship) fetches all and filters client-side, no batching needed
+                if (String(type) === "10") {
+                  const map = await resolvers[type](ids);
+                  Object.assign(nameMap, map);
+                  return;
+                }
                 for (let i = 0; i < ids.length; i += 15) {
                   const batch = ids.slice(i, i + 15);
                   const map = await resolvers[type](batch);
@@ -648,6 +657,25 @@
                 }
               } catch {}
             }));
+
+            // Resolve Attribute names (type 2) — needs entity context
+            const entityIds = comps.filter(c => c.type === 1 && c.objectId).map(c => c.objectId);
+            const attrIds = new Set(comps.filter(c => c.type === 2 && c.objectId).map(c => c.objectId.toLowerCase()));
+            if (attrIds.size > 0 && entityIds.length > 0) {
+              try {
+                await Promise.all(entityIds.map(async entId => {
+                  try {
+                    const d = await dvRequest("GET", `EntityDefinitions(${entId})/Attributes?$select=MetadataId,LogicalName,DisplayName`);
+                    (d.value || []).forEach(a => {
+                      const mid = a.MetadataId?.toLowerCase();
+                      if (mid && attrIds.has(mid)) {
+                        nameMap[mid] = a.DisplayName?.UserLocalizedLabel?.Label || a.LogicalName;
+                      }
+                    });
+                  } catch {}
+                }));
+              } catch {}
+            }
 
             // Apply resolved names
             comps.forEach(c => {

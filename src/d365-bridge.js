@@ -351,8 +351,8 @@ export const bridge = {
       { id: "c12", type: 26, objectId: "d1d2d3d4-0003", behavior: 0, name: "All Leads" },
       { id: "c13", type: 60, objectId: "e1e2e3e4-0001", behavior: 0, name: "new_custom_script.js" },
       { id: "c14", type: 60, objectId: "e1e2e3e4-0002", behavior: 0, name: "new_style.css" },
-      { id: "c15", type: 10, objectId: "f1f2f3f4-0001", behavior: 0, name: "account_parent_account" },
-      { id: "c16", type: 10, objectId: "f1f2f3f4-0002", behavior: 0, name: "contact_customer_accounts" },
+      { id: "c15", type: 10, objectId: "f1f2f3f4-0001", behavior: 0, name: "account_parent_account (1:N)" },
+      { id: "c16", type: 10, objectId: "f1f2f3f4-0002", behavior: 0, name: "contact_customer_accounts (N:1)" },
       { id: "c17", type: 59, objectId: "g1g2g3g4-0001", behavior: 0, name: "Accounts by Industry" },
       { id: "c18", type: 91, objectId: "h1h2h3h4-0001", behavior: 0, name: "ColvioDemo.Plugins.AccountPlugin" },
     ];
