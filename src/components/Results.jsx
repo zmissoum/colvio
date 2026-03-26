@@ -20,6 +20,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
   },[res?.query]);
   const doBulkUpdate=async()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;
+    if(!window.confirm(`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`)) return;
     const ids=[...selected];
     setBulkUpdating(true);
     let ok=0,fail=0;
@@ -162,8 +163,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
   };
 
   const expVal = (r, f) => { const d = dispGet(r, f); const raw = rawGet(r, f); return flatVal(d !== undefined && d !== null ? d : raw); };
-  const escCSV=(v)=>{return v.includes(",")||v.includes('"')||v.includes("\n")?`"${v.replace(/"/g,'""')}"`:v;};
-  const escTSV=(v)=>{return v.includes("\t")||v.includes("\n")?`"${v.replace(/"/g,'""')}"`:v;};
+  // Security: prefix formula-triggering characters to prevent CSV injection in spreadsheets
+  const safeVal=(v)=>/^[=+\-@\t\r]/.test(v)?"'"+v:v;
+  const escCSV=(v)=>{const s=safeVal(v);return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
+  const escTSV=(v)=>{const s=safeVal(v);return s.includes("\t")||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
   const toCSV=()=>"\uFEFF"+[res.fields.join(","),...res.data.map(r=>res.fields.map(f=>escCSV(expVal(r,f))).join(","))].join("\n");
   const toTSV=()=>[res.fields.join("\t"),...res.data.map(r=>res.fields.map(f=>escTSV(expVal(r,f))).join("\t"))].join("\n");
   const toJSON=()=>JSON.stringify(res.data.map(r=>{const o={};res.fields.forEach(f=>{o[f]=bestGet(r,f)??null;});return o;}),null,2);

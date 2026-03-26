@@ -10,8 +10,9 @@
 
 (function () {
   "use strict";
-  if (window.__d365InspectorLoaded) return;
-  window.__d365InspectorLoaded = true;
+  // Use non-enumerable property to avoid page-level fingerprinting
+  if (window.__colvioLoaded) return;
+  Object.defineProperty(window, "__colvioLoaded", { value: true, enumerable: false, configurable: false });
 
   // ── Security: input validation ──────────────────────────
   const SAFE_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -103,7 +104,14 @@
         if (resp.status === 401 || resp.status === 403) {
           throw new Error("SESSION_EXPIRED: Session expired — refresh D5 (F5)");
         }
-        throw new Error(`HTTP ${resp.status}: ${(await resp.text()).substring(0, 1000)}`);
+        // Parse D365 error — extract user-facing message, avoid leaking server internals
+        let errMsg = `HTTP ${resp.status}`;
+        try {
+          const errText = await resp.text();
+          const errJson = JSON.parse(errText);
+          errMsg = `HTTP ${resp.status}: ${errJson?.error?.message || errJson?.Message || errText.substring(0, 300)}`;
+        } catch { errMsg += " (no details)"; }
+        throw new Error(errMsg);
       }
 
       // 204 No Content (normal for POST/PATCH success)

@@ -39,7 +39,9 @@ export default function Explorer({bp,addHistory,orgInfo}){
     }
   },[]);
   const addToHistory=(entity,query,mode,fieldCount)=>{
-    const entry={entity:entity?.l||"?",query:query?.substring(0,200),mode,fields:fieldCount,ts:Date.now()};
+    // Strip $filter values from stored query to avoid persisting PII (emails, names, etc.)
+    const safeQuery=(query||"").replace(/\$filter=[^&]*/,"$filter=...").substring(0,200);
+    const entry={entity:entity?.l||"?",query:safeQuery,mode,fields:fieldCount,ts:Date.now()};
     setQueryHistory(prev=>{
       const updated=[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20);
       if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_query_history:updated});
@@ -256,9 +258,19 @@ export default function Explorer({bp,addHistory,orgInfo}){
       else { const fn = op.replace("not_",""); return `not ${fn}(${odataField},'${escaped}')`; }
     }
     const noQuoteTypes = new Set(["Integer","Picklist","State","Status","Boolean","Money","Decimal","Double","BigInt"]);
-    if (noQuoteTypes.has(fType)) return `${odataField} ${op} ${val}`;
+    if (noQuoteTypes.has(fType)) {
+      // Security: validate numeric value to prevent OData injection (e.g. "1 or 1 eq 1")
+      const sanitized = val.trim();
+      if (fType === "Boolean" && (sanitized === "true" || sanitized === "false")) return `${odataField} ${op} ${sanitized}`;
+      if (/^-?\d+(\.\d+)?$/.test(sanitized)) return `${odataField} ${op} ${sanitized}`;
+      return `${odataField} ${op} '${escaped}'`; // fallback to quoted string if not a valid number
+    }
 
-    if (fType === "Lookup" || fType === "Customer") return `${odataField} ${op} ${val}`;
+    if (fType === "Lookup" || fType === "Customer") {
+      // Security: validate GUID format to prevent OData injection
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())) return `${odataField} ${op} ${val.trim()}`;
+      return `${odataField} ${op} '${escaped}'`; // fallback
+    }
 
     return `${odataField} ${op} '${escaped}'`;
   };
