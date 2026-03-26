@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
 import { C, I, Spin, mono, bt, dl, copyText, ths, tds } from "../shared.jsx";
@@ -9,6 +9,15 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
   const[bulkUpdate,setBulkUpdate]=useState(null);
   const[bulkUpdating,setBulkUpdating]=useState(false);
   const[sortDir,setSortDir]=useState("asc");
+  // Reset sort/selection when query changes (different entity or query string)
+  const prevQuery=useRef(null);
+  useEffect(()=>{
+    const qKey=res?.query;
+    if(qKey!==prevQuery.current){
+      prevQuery.current=qKey;
+      setSortField(null);setSortDir("asc");setSelected(new Set());setBulkUpdate(null);
+    }
+  },[res?.query]);
   const doBulkUpdate=async()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;
     const ids=[...selected];

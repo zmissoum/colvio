@@ -28,6 +28,8 @@ export default function Explorer({bp,addHistory,orgInfo}){
   const[showHistory,setShowHistory]=useState(false);
   const[showSaved,setShowSaved]=useState(false);
   const[showTemplates,setShowTemplates]=useState(false);
+  const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
+  const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
 
   useEffect(()=>{
     if(typeof chrome!=="undefined"&&chrome.storage?.local){
@@ -65,15 +67,15 @@ export default function Explorer({bp,addHistory,orgInfo}){
   const loadSavedQuery=(q)=>{
     const match=entities.find(e=>e.l===q.entity);
     if(match){
-      selEnt(match);
-      setTimeout(()=>{
+      onFieldsReady.current=()=>{
         setSf(q.fields||[]);
         setFilterGroups(q.filterGroups||[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
         setGroupLogic(q.groupLogic||"and");
         setLim(q.limit||50);
-        if(q.qm){setQm(q.qm);}
+        if(q.qm){setQm(q.qm);if(q.qm==="odata"&&q.query)setRq(q.query);}
         if(q.fxml){setFxml(q.fxml);}
-      },500);
+      };
+      selEnt(match);
     }
     setShowSaved(false);
   };
@@ -123,6 +125,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
 
   const selEnt=(e)=>{
     fetchAbort.current = true;
+    const gen=++selGen.current; // capture generation for staleness check
     setEnt(e);setRes(null);setPicker(false);setError("");
     setFilterGroups([{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
     setExpands([]);setLookups([]);setShowExpandPicker(false);setChildRelsLoaded(false);
@@ -133,6 +136,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
         bridge.getFields(e.l),
         bridge.getLookups(e.l),
       ]).then(([fieldsData, lookupsData]) => {
+        if(selGen.current!==gen)return; // stale: user selected a different entity
         const childRelsData = null;
         if(fieldsData && Array.isArray(fieldsData) && fieldsData.length > 0){
           const mapped=fieldsData.map(f=>({
@@ -152,10 +156,12 @@ export default function Explorer({bp,addHistory,orgInfo}){
         const seen=new Set();
         const unique=allRels.filter(l=>{if(!l.navProperty||seen.has(l.navProperty))return false;seen.add(l.navProperty);return true;});
         setLookups(unique);
-      }).catch(err=>setError(`${e.l}: ${err.message}`)).finally(()=>setLoadingFields(false));
+        // Invoke onFieldsReady callback (for loadSavedQuery / templates)
+        if(onFieldsReady.current){const cb=onFieldsReady.current;onFieldsReady.current=null;cb();}
+      }).catch(err=>{if(selGen.current===gen)setError(`${e.l}: ${err.message}`);}).finally(()=>{if(selGen.current===gen)setLoadingFields(false);});
 
       bridge.getEntityCount(e.p).then(c=>{
-        if(c>=0) setEnt(prev=>prev?.l===e.l?{...prev,c}:prev);
+        if(selGen.current===gen&&c>=0) setEnt(prev=>prev?.l===e.l?{...prev,c}:prev);
       }).catch(()=>{});
     } else {
       setFields(FLDS);
@@ -305,6 +311,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
   const run=async()=>{
     setError("");
     fetchAbort.current = false;
+    const runGen=selGen.current; // capture to detect entity change mid-run
     const validFieldNames = new Set(fields.map(f => f.l));
     const validSf = sf.filter(f => validFieldNames.has(f));
     if(isLive && loadingFields){ setError("Wait for fields to load..."); return; }
@@ -327,7 +334,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
       return ps.length?q+"?"+ps.join("&"):q;
     };
     const q=qm==="odata"?rq:qm==="fetchxml"?fxml:buildQ();
-    addHistory(q);
+    addHistory(q,qm);
 
     if(!isLive){
       setRes({entity:ent,fields:sf.length?sf:FLDS.map(f=>f.l),data:ROWS,count:ROWS.length,total:ROWS.length,query:q,elapsed:"mock",nextLink:null,fetching:false});
@@ -743,7 +750,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
                 <button onClick={saveCurrentQuery} disabled={!ent} title="Save this query" style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowTemplates(!showTemplates);setShowHistory(false);setShowSaved(false);}} style={{padding:"4px 8px",background:showTemplates?C.gn+"33":"transparent",border:`1px solid ${showTemplates?C.gn+"44":C.bd}`,borderRadius:4,color:showTemplates?C.gn:C.txm,cursor:"pointer",fontSize:12}} title="Query templates">📝 Templates</button>
-                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{selEnt(ent);setTimeout(()=>{setSf(fields);setFilterGroups(filters);},500);}} onClose={()=>setShowTemplates(false)}/>}
+                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{onFieldsReady.current=()=>{setSf(fields);setFilterGroups(filters);};selEnt(ent);}} onClose={()=>setShowTemplates(false)}/>}
                 </div>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowHistory(!showHistory);setShowSaved(false);}} style={{padding:"4px 8px",background:showHistory?C.vi+"33":"transparent",border:`1px solid ${C.bd}`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12}} title="Query history">🕐{queryHistory.length>0?` ${queryHistory.length}`:""}</button>
@@ -751,7 +758,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
                     <div style={{position:"absolute",top:"100%",right:0,zIndex:20,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,marginTop:4,minWidth:260,maxHeight:250,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
                       <div style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:11,fontWeight:600,color:C.txm}}>Recent queries</span><button onClick={()=>{setQueryHistory([]);if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.remove("d365_query_history");}} style={{fontSize:10,color:C.txd,background:"none",border:"none",cursor:"pointer"}}>Clear</button></div>
                       {queryHistory.map((h,i)=>(
-                        <div key={i} style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",fontSize:12}} onClick={()=>{if(h.mode==="odata")setRq(h.query);setShowHistory(false);}}
+                        <div key={i} style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",fontSize:12}} onClick={()=>{if(h.mode)setQm(h.mode);if(h.mode==="odata"&&h.query)setRq(h.query);if(h.mode==="fetchxml"&&h.query)setFxml(h.query);setShowHistory(false);}}
                           onMouseEnter={e=>e.currentTarget.style.background=C.sfh} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                           <div style={{fontWeight:500,color:C.tx}}>{h.entity}</div>
                           <div style={{fontSize:11,color:C.txd,...mono,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.query?.substring(0,80)}</div>

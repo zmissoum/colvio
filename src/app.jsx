@@ -66,7 +66,7 @@ export default function App(){
     }
   }, []);
 
-  const addHistory=(q)=>setQueryHistory(h=>[{query:q,time:new Date().toLocaleTimeString(),id:Date.now()},...h.slice(0,19)]);
+  const addHistory=(q,mode)=>setQueryHistory(h=>[{query:q,mode:mode||"builder",time:new Date().toLocaleTimeString(),id:Date.now()},...h.slice(0,19)]);
 
   const handleManualConnect = () => {
     setConnecting(true);

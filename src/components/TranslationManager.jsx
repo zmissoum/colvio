@@ -23,6 +23,7 @@ export default function TranslationManager({bp,orgInfo}){
   },[]);
 
   const handleSelect=async(e)=>{
+    if(editCount>0&&!window.confirm(`You have ${editCount} unsaved edit(s). Switch entity and discard changes?`))return;
     setSelEnt(e);setLoading(true);setEdits({});setSaveMsg(null);
     try{const d=await bridge.getAttributeLabels(e.l);setAttributes(d||[]);}catch{setAttributes([]);}
     setLoading(false);

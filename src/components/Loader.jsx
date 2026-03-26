@@ -76,14 +76,19 @@ export default function Loader({bp,orgInfo}){
 
   const entityList = liveEntities.length > 0 ? liveEntities : ENTS;
   const[targetFields,setTargetFields]=useState(D365CF);
+  const[loadingFields,setLoadingFields]=useState(false);
+  const fieldGen=useRef(0); // generation counter to discard stale field fetches
 
   useEffect(()=>{
     if(!isLive||!target) return;
+    const gen=++fieldGen.current;
+    setLoadingFields(true);
     bridge.getFields(target).then(data=>{
+      if(fieldGen.current!==gen)return; // stale: user switched entity
       if(data&&Array.isArray(data)){
         setTargetFields(data.map(f=>f.logical||f.l).sort());
       }
-    }).catch(()=>{});
+    }).catch(()=>{}).finally(()=>{if(fieldGen.current===gen)setLoadingFields(false);});
   },[isLive,target]);
 
   const STATECODE_MAP={"active":0,"inactive":1,"actif":0,"inactif":1,"0":0,"1":1};

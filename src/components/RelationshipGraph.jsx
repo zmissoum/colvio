@@ -18,16 +18,18 @@ export default function RelationshipGraph({bp,orgInfo}){
   const[showAllC,setShowAllC]=useState(false);
   const[showAllM,setShowAllM]=useState(false);
   const containerRef=useRef(null);
+  const selectGen=useRef(0); // generation counter to cancel stale depth-2 fetches
 
   useEffect(()=>{if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p})))}).catch(()=>{});},[]);
 
   const handleSelect=async(e)=>{
+    const gen=++selectGen.current;
     setSelEnt(e);setLoading(true);setShowAllP(false);setShowAllC(false);setShowAllM(false);
     try{
       const[p,c,mm]=await Promise.all([bridge.getLookups(e.l),bridge.getChildRelationships(e.l),bridge.getManyToManyRelationships(e.l)]);
+      if(selectGen.current!==gen)return; // stale
       const pMap={};(p||[]).forEach(r=>{if(!pMap[r.targetEntity])pMap[r.targetEntity]={...r,count:1};else pMap[r.targetEntity].count++;});
       const cMap={};(c||[]).forEach(r=>{if(!cMap[r.targetEntity])cMap[r.targetEntity]={...r,count:1};else cMap[r.targetEntity].count++;});
-      // Deduplicate M2M by the "other" entity
       const mMap={};(mm||[]).forEach(r=>{
         const other=r.entity1===e.l?r.entity2:r.entity1;
         if(!mMap[other])mMap[other]={...r,otherEntity:other,count:1};else mMap[other].count++;
@@ -42,24 +44,27 @@ export default function RelationshipGraph({bp,orgInfo}){
         Object.values(pMap).forEach(r=>allRelated.add(r.targetEntity));
         Object.values(cMap).forEach(r=>allRelated.add(r.targetEntity));
         Object.values(mMap).forEach(r=>allRelated.add(r.otherEntity));
-        const relatedArr=[...allRelated].slice(0,10); // fetch max 10 to keep cap at ~30
+        const relatedArr=[...allRelated].slice(0,10);
         const extraP={...pMap};const extraC={...cMap};const extraM={...mMap};
         let totalEntities=Object.keys(pMap).length+Object.keys(cMap).length+Object.keys(mMap).length;
         for(const rel of relatedArr){
-          if(totalEntities>=30)break;
+          if(selectGen.current!==gen||totalEntities>=30)break; // stale or cap reached
           try{
             const[rp,rc,rm]=await Promise.all([bridge.getLookups(rel),bridge.getChildRelationships(rel),bridge.getManyToManyRelationships(rel)]);
+            if(selectGen.current!==gen)break; // stale
             (rp||[]).forEach(r=>{if(!extraP[r.targetEntity]&&r.targetEntity!==e.l&&totalEntities<30){extraP[r.targetEntity]={...r,count:1,depth2:true};totalEntities++;}});
             (rc||[]).forEach(r=>{if(!extraC[r.targetEntity]&&r.targetEntity!==e.l&&totalEntities<30){extraC[r.targetEntity]={...r,count:1,depth2:true};totalEntities++;}});
             (rm||[]).forEach(r=>{const other=r.entity1===rel?r.entity2:r.entity1;if(!extraM[other]&&other!==e.l&&totalEntities<30){extraM[other]={...r,otherEntity:other,count:1,depth2:true};totalEntities++;}});
           }catch{}
         }
-        setParents(Object.values(extraP));
-        setChildren(Object.values(extraC));
-        setM2m(Object.values(extraM));
+        if(selectGen.current===gen){
+          setParents(Object.values(extraP));
+          setChildren(Object.values(extraC));
+          setM2m(Object.values(extraM));
+        }
       }
     }catch{}
-    setLoading(false);
+    if(selectGen.current===gen)setLoading(false);
   };
 
   const filtered=entities.filter(e=>!search||e.l.includes(search.toLowerCase())||e.d?.toLowerCase().includes(search.toLowerCase()));

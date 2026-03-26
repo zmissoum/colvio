@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, dl } from "../shared.jsx";
 
@@ -11,12 +11,12 @@ export default function LoginHistory({bp,orgInfo}){
   const[loadingHistory,setLoadingHistory]=useState(false);
   const[error,setError]=useState("");
   const[limit,setLimit]=useState(100);
-  const[searchTimer,setSearchTimer]=useState(null);
+  const searchTimer=useRef(null);
 
   const doSearch=(term)=>{
-    if(searchTimer) clearTimeout(searchTimer);
+    if(searchTimer.current) clearTimeout(searchTimer.current);
     if(!term||term.length<2){ setUsers([]); return; }
-    const t=setTimeout(async()=>{
+    searchTimer.current=setTimeout(async()=>{
       setLoading(true);setError("");
       try{
         const results=await bridge.searchUsers(term);
@@ -24,9 +24,8 @@ export default function LoginHistory({bp,orgInfo}){
       }catch(e){setError(e.message);}
       finally{setLoading(false);}
     },400);
-    setSearchTimer(t);
   };
-  useEffect(()=>()=>{if(searchTimer)clearTimeout(searchTimer);},[searchTimer]);
+  useEffect(()=>()=>{if(searchTimer.current)clearTimeout(searchTimer.current);},[]);
 
   const selectUser=async(user)=>{
     setSelectedUser(user);
