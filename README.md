@@ -1,12 +1,24 @@
-# 🔍 Colvio for Dynamics 365
+# Colvio for Dynamics 365
 
-> Data Explorer, Loader & Inspector for Microsoft Dynamics 365 / Dataverse
+> The SF Inspector equivalent for Microsoft Dynamics 365 / Dataverse — free, open-source, in the browser.
 
 <div align="center">
   <img src="icons/icon128.png" alt="Colvio" width="80"/>
 </div>
 
-Colvio is a free Chrome extension that lets consultants, admins, and developers explore, query, and manage data from any Dynamics 365 / Dataverse environment — directly from the browser, with zero configuration.
+Colvio is a **free and open-source** Chrome extension that lets consultants, admins, and developers explore, query, and manage data from any Dynamics 365 / Dataverse environment — directly from the browser, with zero configuration.
+
+**No API keys. No app registration. No subscription.** Just click the icon on any D365 page and start working.
+
+## Why Colvio?
+
+If you're coming from Salesforce, you know SF Inspector. You know how essential it is to have a free, fast, in-browser tool for data exploration and debugging. **D365 didn't have one. Now it does.**
+
+Colvio brings the same philosophy to the Microsoft ecosystem:
+- **Free forever** — no freemium, no paywalls, no "Pro" tier
+- **Zero config** — uses your existing D365 browser session
+- **Privacy first** — no data leaves your browser, no telemetry, no accounts
+- **Open source** — audit the code, contribute, fork it
 
 ## Features
 
@@ -14,68 +26,91 @@ Colvio is a free Chrome extension that lets consultants, admins, and developers 
 - **Query Builder** — visual SELECT, WHERE (AND/OR groups, 14 operators), EXPAND (parent + child), LIMIT
 - **FetchXML mode** — textarea with 3 templates (simple, inner join, aggregation) + paging cookie pagination
 - **OData mode** — raw OData URL editing
-- **Column sorting** — click any header to sort ASC/DESC with ▲▼ indicators
+- **Column sorting** — click any header to sort ASC/DESC
 - **Inline edit** — double-click any cell to PATCH the value directly in D365
 - **Virtual scrolling** — 60fps on 10,000+ records (only ~35 rows rendered)
-- **Auto-pagination** with live timer, always-visible Stop button
-- **Saved queries** — persist across sessions
+- **Auto-pagination** with live timer and Stop button
+- **Saved queries** — persist across sessions (20 max)
+- **Query History** — auto-save last 20 queries, 1-click reload
+- **Query Templates** — 5 pre-built queries for common consultant tasks
+- **Bulk Update** — select records and PATCH a field on all
+- **Bulk Delete** — select and delete with typed confirmation + CanBeDeleted pre-check
+- **Clickable lookups** — opens target record in D365
 - **Copy OData URL** — one-click copy for Postman/browser
-- **Clickable lookups** — ↗ opens target record in D365 (zero extra API calls)
 
 ### Show All Data
 - Auto-detect current record from D365 tab
-- Card layout: Logical Name, label, type, value — no horizontal scroll
-- Clickable lookup links to target record in D365
+- Card layout: Logical Name, label, type, value
+- Clickable lookup links, copy individual fields or full JSON
 
 ### Metadata Browser
-- Browse entities, fields, OptionSets
-- **OptionSet modal viewer** — popup with Value, Label, Description, Color columns
-- On-demand fetch from D365 API (cached 1h)
-- Entity record counts in sidebar
+- Browse entities, fields, OptionSets by category
+- OptionSet modal viewer with Value, Label, Description, Color
+- **Export All OptionSets** — bulk CSV export of all Picklist/State/Status values for an entity
+- Entity record counts, field type badges, custom field indicators
 
 ### Data Loader
-- 5-step wizard: Source → Mapping → Lookups → Preview → Run
-- $batch OData (100/batch, ~10x faster), Direct GUID lookups, UPSERT primary key
-- Transforms: statecode, picklist, boolean, int, float, date_iso
+- 5-step wizard: Source > Mapping > Lookups > Preview > Run
+- CSV drag-drop or paste from Excel
+- Smart auto-mapping, lookup resolution (GUID + search), transforms
+- OData $batch (100/batch), CREATE or UPSERT with alternate key support
+- Progress tracking with error log
 
 ### Relationship Graph
-- Visual SVG graph of entity relationships (N:1 parents + 1:N children)
-- Click any node to re-center the graph on that entity
-- Deduplication and edge labels
+- Visual SVG graph: N:1 parents, 1:N children, N:N many-to-many
+- Depth control (1-2 levels), click nodes to drill down
+- Deduplication, edge labels, count badges
 
 ### Solution Explorer
-- Browse D365 solutions and their components
-- Components grouped by type (Entity, Attribute, View, Web Resource, Plugin, etc.)
-- Managed/Unmanaged badges, collapsible sections
+- Browse solutions and components grouped by type
+- **13 component types resolved to display names** (Entity, Attribute, OptionSet, Relationship, View, Chart, Web Resource, Plugin Type/Assembly, SDK Step, Security Role, Connection Role, Canvas App)
+- Managed/Unmanaged badges, component counts
 
 ### Translation Manager
-- View and edit field labels across multiple languages
+- View and edit field labels across multiple languages inline
 - Export/Import CSV for bulk translation workflows
 - Save changes + auto-publish entity
 
 ### Login History
-- Session duration, access type breakdown, CSV export
+- User search, login/logout audit timeline
+- Session duration calculation, access type breakdown, CSV export
 
-### Export
-- XLSX (native Excel), CSV, JSON — copy or download
+### Help & Onboarding
+- Built-in Help tab with feature guide
+- First-launch onboarding tour (5 steps)
+- Keyboard shortcuts panel (Ctrl+/)
+- Contextual tooltips on key features
+
+### Global
+- Dark/Light theme (+ system preference detection)
+- English/French toggle (i18n)
+- Export: XLSX, CSV, JSON — copy or download
+- Session expiration detection with Reconnect button
+- Error boundaries per tab (graceful crash recovery)
+- Rate limiting (10 req/sec)
+- Intelligent caching (memory + chrome.storage.local)
 
 ## Stats
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | 4,607 |
+| Lines of code | 5,112 |
 | API actions | 28 |
-| React components | 15 |
-| Source files | 19 |
-| Build size | ~610 KB |
+| React components | 19 |
+| Source files | 26 |
+| Build size | ~620 KB |
 | Languages | EN / FR |
+| Price | Free |
 
 ## Security
 
-No data leaves the browser. No external servers. No analytics. Manifest V3. Input validation on all API params. Open source.
+No data leaves the browser. No external servers. No analytics. No accounts. Manifest V3. Input validation on all API params. Open source.
+
+See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
 
 ## Install
 
+### From source
 ```bash
 git clone https://github.com/zmissoum/colvio.git
 cd colvio
@@ -83,7 +118,14 @@ npm install
 npm run build
 ```
 
-Chrome → `chrome://extensions` → Developer Mode → Load unpacked → `dist/`
+Chrome > `chrome://extensions` > Developer Mode > Load unpacked > `dist/`
+
+### From Chrome Web Store
+*Coming soon*
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
