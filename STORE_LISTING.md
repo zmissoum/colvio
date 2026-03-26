@@ -52,12 +52,17 @@ Session expiration detection with Reconnect button
 Query History (last 20 queries) + Saved Queries (20 max)
 5 pre-built query templates for common tasks
 
-SECURITY & PRIVACY
+SECURITY & PRIVACY — Full audit: 0 critical, 0 high findings
 
 Zero data collection — no analytics, no telemetry, no external servers
 All requests go directly from your browser to your D365 server
 Uses your existing Azure AD / Entra ID session — no credentials stored
-Input validation on all API parameters
+Input validation on all API parameters (entity names, GUIDs, search terms)
+OData injection protection — numeric and GUID values validated before query insertion
+CSV export formula injection protection — prevents spreadsheet formula execution
+Content Security Policy enforced on extension pages
+Bulk operation safeguards — confirmation dialogs on delete and update
+Only 3 runtime dependencies (React, React-DOM, xlsx export-only)
 Open source — audit the code yourself on GitHub
 
 SUPPORTED REGIONS

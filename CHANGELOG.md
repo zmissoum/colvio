@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.8.1] — 2026-03-26
+### Security
+- OData filter injection: validate numeric values (regex) and GUID format for Lookup/Customer types before unquoted insertion; invalid values fall back to quoted strings
+- Bulk Update now requires confirm() dialog showing field, value, and record count
+- CSV/TSV export: prefix formula-triggering characters (=, +, -, @) with single quote to prevent spreadsheet injection
+- Query history strips $filter values before persisting to avoid storing PII
+- D365 error messages parsed as JSON to extract user-facing message only (no server internals leaked)
+- Content script fingerprint changed to non-enumerable property (anti-fingerprinting)
+- Content Security Policy added to panel.html
+
+### Fixed
+- OData mode now executes the raw OData URL instead of silently using Builder parameters
+- FetchXML pagination: auto-fallback to page-number-only mode when D365 returns paging cookie mismatch error (0x80041129), fixing systemuser and other plugin-affected entities
+- 13 cross-feature state bugs fixed:
+  - Explorer: race condition on fast entity switch (generation counter)
+  - RelationshipGraph: depth-2 fetch loop not cancelled on re-selection
+  - History click now restores mode (builder/odata/fetchxml)
+  - loadSavedQuery/QueryTemplates: replaced setTimeout(500ms) with onFieldsReady callback
+  - Results: sort/selection reset on new query
+  - Loader: stale targetFields after entity change (generation counter)
+  - TranslationManager: confirm dialog on unsaved edits before entity switch
+  - LoginHistory: search timer moved from useState to useRef
+  - Sidebar history stores mode and switches tab correctly
+
 ## [1.8.0] — 2026-03-26
 ### Added
 - Help tab: built-in feature guide accessible from navigation
