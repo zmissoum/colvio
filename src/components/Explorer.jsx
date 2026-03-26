@@ -353,17 +353,32 @@ export default function Explorer({bp,addHistory,orgInfo}){
 
         let page=1;
         let cookie=data.pagingCookie;
-        while(cookie&&!fetchAbort.current){
+        let hasMore=!!cookie;
+        let useCookie=true;
+        while(hasMore&&!fetchAbort.current){
           page++;
-          let pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}" paging-cookie="${cookie.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"`);
-          if(!pagedXml.includes(`page="`))pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}"`);
+          let pagedXml;
+          if(useCookie){
+            pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}" paging-cookie="${cookie.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"`);
+            if(!pagedXml.includes(`page="`))pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}"`);
+          }else{
+            // Fallback: page number only (no cookie) — works for entities like systemuser where the paging cookie is broken
+            pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}"`);
+          }
           try{
             const pageData=await bridge.executeFetchXml(pagedXml);
             if(!pageData?.records?.length)break;
             allRecords=[...allRecords,...pageData.records];
-            cookie=pageData.pagingCookie;
-            setRes(prev=>({...prev,data:allRecords,count:allRecords.length,total:allRecords.length,fetching:!!cookie,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            cookie=pageData.pagingCookie||cookie;
+            hasMore=useCookie?!!pageData.pagingCookie:pageData.records.length>=5000;
+            setRes(prev=>({...prev,data:allRecords,count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e){
+            if(useCookie&&page===2&&e.message.includes("0x80041129")){
+              // Paging cookie mismatch (known D365 bug on systemuser etc.) — retry without cookie
+              useCookie=false;
+              page--;
+              continue;
+            }
             setError(`Page ${page}: ${e.message}`);break;
           }
         }
