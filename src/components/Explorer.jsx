@@ -389,6 +389,60 @@ export default function Explorer({bp,addHistory,orgInfo}){
       return;
     }
 
+    // ── OData raw mode: execute the user-typed OData URL directly ──
+    if(qm==="odata"){
+      if(!rq.trim()){setError("OData query is empty");return;}
+      setLoading(true);
+      const t0=Date.now();
+      try{
+        // Parse: "entitySet?$select=...&$filter=..." or just "entitySet"
+        const raw=rq.trim().replace(/^GET\s+\/api\/data\/v\d+\.\d+\//i,"");
+        const qIdx=raw.indexOf("?");
+        const entitySet=qIdx>-1?raw.substring(0,qIdx):raw;
+        const queryStr=qIdx>-1?raw.substring(qIdx+1):"";
+        const urlParams=new URLSearchParams(queryStr);
+        const opts={};
+        if(urlParams.get("$select"))opts.select=urlParams.get("$select");
+        if(urlParams.get("$filter"))opts.filter=urlParams.get("$filter");
+        if(urlParams.get("$top"))opts.top=urlParams.get("$top");
+        if(urlParams.get("$orderby"))opts.orderby=urlParams.get("$orderby");
+        if(urlParams.get("$expand"))opts.expand=urlParams.get("$expand");
+        const data=await bridge.query(entitySet,opts);
+        if(!data?.records){setError("No results");setLoading(false);return;}
+        const t1=((Date.now()-t0)/1000).toFixed(1);
+        const firstClean=data.records.map(cleanRecord);
+        // Derive columns from actual returned data, not builder selection
+        const headerFields=firstClean[0]?Object.keys(firstClean[0]).filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity")):[];
+        const odataFieldMap={};
+        headerFields.forEach(f=>{odataFieldMap[f]=f;});
+        let allRecords=[...firstClean];
+        let nextLink=data.nextLink||null;
+        setRes({entity:ent||{l:"?",p:entitySet},fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink,fetching:!!nextLink});
+        addToHistory(ent||{l:entitySet},q,qm,headerFields.length);
+        setLoading(false);
+        // Paginate
+        let pageNum=1;
+        while(nextLink&&!fetchAbort.current){
+          pageNum++;
+          try{
+            const pageData=await bridge.query(nextLink,{});
+            if(!pageData?.records?.length)break;
+            const pageClean=pageData.records.map(cleanRecord);
+            allRecords=[...allRecords,...pageClean];
+            nextLink=pageData.nextLink||null;
+            setRes(prev=>({...prev,data:allRecords,count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+          }catch(pageErr){
+            setError(`Page ${pageNum}: ${pageErr.message}`);break;
+          }
+        }
+        setRes(prev=>({...prev,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+      }catch(e){
+        setError(e.message);setLoading(false);
+      }
+      return;
+    }
+
+    // ── Builder mode ──
     setLoading(true);
     const t0 = Date.now();
     try {
