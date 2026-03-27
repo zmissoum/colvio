@@ -763,10 +763,7 @@
           case "getAllUsers": {
             const ACCESS_MODES = { 0: "Read-Write", 1: "Admin", 2: "Read", 3: "Support", 4: "Non-Interactive", 5: "Delegated Admin" };
             const CAL_TYPES = { 0: "Full", 1: "Admin", 2: "Basic", 3: "Device Full", 4: "Device Basic", 5: "Essential", 6: "Device Essential", 7: "Enterprise", 8: "Device Enterprise", 9: "Sales", 10: "Service", 11: "Field Service", 12: "Project Service" };
-            const data = await dvRequest("GET",
-              "systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value&$orderby=fullname asc&$top=5000"
-            );
-            result = (data.value || []).map(u => ({
+            const mapUser = (u) => ({
               id: u.systemuserid,
               fullname: u.fullname || "",
               email: u.internalemailaddress || "",
@@ -779,7 +776,23 @@
               buId: u._businessunitid_value || "",
               title: u.title || "",
               createdOn: u.createdon,
-            }));
+            });
+            // Paginate to fetch ALL users (systemuser requires orderby systemuserid for stable paging)
+            let allUsers = [];
+            let nextLink = "systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value&$orderby=systemuserid asc&$count=true";
+            while (nextLink) {
+              const data = await dvRequest("GET", nextLink);
+              allUsers = allUsers.concat((data.value || []).map(mapUser));
+              // Follow @odata.nextLink for pagination
+              nextLink = data["@odata.nextLink"] || null;
+              if (nextLink) {
+                // nextLink is a full URL — extract the relative path
+                try { nextLink = new URL(nextLink).pathname.replace(/^.*\/api\/data\/v\d+\.\d+\//, "") + "?" + new URL(nextLink).search.substring(1); } catch { nextLink = null; }
+              }
+            }
+            // Sort by fullname for display
+            allUsers.sort((a, b) => a.fullname.localeCompare(b.fullname));
+            result = allUsers;
             break;
           }
 
