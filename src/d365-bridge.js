@@ -431,6 +431,38 @@ export const bridge = {
     return callD365("getUserLastLogin", { userId });
   },
 
+  // ── Security Audit ──
+  async getAllRoles() {
+    if (!isExtension) return [
+      { id: "r1", rootId: "r1", name: "System Administrator", isManaged: true, isCustom: false, buName: "Contoso" },
+      { id: "r2", rootId: "r2", name: "Sales Manager", isManaged: true, isCustom: false, buName: "Contoso" },
+      { id: "r3", rootId: "r3", name: "Basic User", isManaged: true, isCustom: false, buName: "Contoso" },
+      { id: "r4", rootId: "r4", name: "Custom CRM Admin", isManaged: false, isCustom: true, buName: "Contoso" },
+      { id: "r5", rootId: "r5", name: "Custom Sales Rep", isManaged: false, isCustom: true, buName: "Contoso" },
+      { id: "r6", rootId: "r6", name: "Marketing User", isManaged: true, isCustom: false, buName: "Contoso" },
+    ];
+    return callD365("getAllRoles");
+  },
+
+  async getRolePrivileges(roleId) {
+    if (!isExtension) {
+      const SENSITIVE = ["prvDeleteAccount","prvDeleteContact","prvWriteSystemUser","prvDeleteSystemUser","prvAssignRole","prvReadAudit","prvDeleteAudit","prvExportToExcel","prvBulkDelete","prvWriteRole","prvDeleteRole","prvPublishAll","prvImportCustomization"];
+      return [
+        ...SENSITIVE.map((name, i) => ({ id: `p${i}`, name, accessRight: 2, depth: 8, depthLabel: "Organization", isOrg: true })),
+        { id: "p20", name: "prvReadAccount", accessRight: 1, depth: 8, depthLabel: "Organization", isOrg: true },
+        { id: "p21", name: "prvWriteAccount", accessRight: 2, depth: 4, depthLabel: "Parent: Child BU", isOrg: false },
+        { id: "p22", name: "prvCreateAccount", accessRight: 16, depth: 2, depthLabel: "Business Unit", isOrg: false },
+        { id: "p23", name: "prvReadContact", accessRight: 1, depth: 1, depthLabel: "User", isOrg: false },
+      ];
+    }
+    return callD365("getRolePrivileges", { roleId });
+  },
+
+  async getRoleUserCount(roleId) {
+    if (!isExtension) return { count: Math.floor(Math.random() * 50) + 1 };
+    return callD365("getRoleUserCount", { roleId });
+  },
+
   async getManyToManyRelationships(logicalName) {
     if (!isExtension) return [
       { schemaName: "accountleads_association", entity1: "account", entity2: "lead", intersectEntity: "accountleads" },

@@ -823,6 +823,83 @@
             break;
           }
 
+          // ── Security Audit ──
+          case "getAllRoles": {
+            const data = await dvRequest("GET",
+              "roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$orderby=name asc"
+            );
+            // Deduplicate: D365 duplicates roles per BU, keep root roles only
+            const seen = new Set();
+            const roles = [];
+            for (const r of (data.value || [])) {
+              const rootId = r._parentrootroleid_value || r.roleid;
+              if (seen.has(rootId)) continue;
+              seen.add(rootId);
+              roles.push({
+                id: r.roleid,
+                rootId,
+                name: r.name,
+                isManaged: r.ismanaged,
+                isCustom: !r.ismanaged,
+                buName: r["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+              });
+            }
+            result = roles;
+            break;
+          }
+
+          case "getRolePrivileges": {
+            validateGuid(params.roleId);
+            // Get privileges with depth for this role
+            const data = await dvRequest("GET",
+              `roles(${params.roleId})/roleprivileges_association?$select=privilegeid,depth`
+            );
+            const privs = data.value || [];
+            if (privs.length === 0) { result = []; break; }
+
+            // Batch resolve privilege names (fetch all privileges once, cached)
+            const allPrivs = await dvRequest("GET",
+              "privileges?$select=privilegeid,name,accessright&$top=5000"
+            );
+            // Paginate privileges (there are ~10,000+)
+            let allPrivList = allPrivs.value || [];
+            let privNext = allPrivs["@odata.nextLink"];
+            while (privNext) {
+              const more = await dvRequest("GET", privNext);
+              allPrivList = allPrivList.concat(more.value || []);
+              privNext = more["@odata.nextLink"] || null;
+            }
+            const privMap = {};
+            allPrivList.forEach(p => { privMap[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
+
+            const DEPTH_LABELS = { 1: "User", 2: "Business Unit", 4: "Parent: Child BU", 8: "Organization" };
+            result = privs.map(p => {
+              const info = privMap[p.privilegeid] || {};
+              return {
+                id: p.privilegeid,
+                name: info.name || p.privilegeid,
+                accessRight: info.accessRight,
+                depth: p.depth,
+                depthLabel: DEPTH_LABELS[p.depth] || `Depth ${p.depth}`,
+                isOrg: p.depth === 8,
+              };
+            }).sort((a, b) => {
+              // Org-level first, then by name
+              if (a.isOrg !== b.isOrg) return a.isOrg ? -1 : 1;
+              return a.name.localeCompare(b.name);
+            });
+            break;
+          }
+
+          case "getRoleUserCount": {
+            validateGuid(params.roleId);
+            const data = await dvRequest("GET",
+              `roles(${params.roleId})/systemuserroles_association?$select=systemuserid&$count=true`
+            );
+            result = { count: (data.value || []).length };
+            break;
+          }
+
           default:
             throw new Error(`Unknown action: ${action}`);
         }

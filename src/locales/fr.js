@@ -105,6 +105,12 @@ export default {
   "licenses.export_csv": "Exporter CSV",
   "licenses.select_user": "Sélectionner un utilisateur pour voir les détails",
   "licenses.bu": "Unité commerciale",
+  // Security Audit
+  "nav.security": "Audit Sécurité",
+  "nav.security.desc": "Rôles, privilèges, accès Org",
+  "security.tooltip": "Examiner les rôles de sécurité et leurs privilèges. Identifier les rôles avec un accès Organisation sur des opérations sensibles (suppression, export, publication, audit).",
+  "security.search": "Rechercher un rôle...",
+  "security.select_role": "Sélectionner un rôle pour examiner ses privilèges",
   // Help tab
   "nav.help": "Aide",
   "nav.help.desc": "Guide & raccourcis",
