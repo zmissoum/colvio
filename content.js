@@ -759,6 +759,52 @@
             break;
           }
 
+          // ── User & License Monitor ──
+          case "getAllUsers": {
+            const ACCESS_MODES = { 0: "Read-Write", 1: "Admin", 2: "Read", 3: "Support", 4: "Non-Interactive", 5: "Delegated Admin" };
+            const CAL_TYPES = { 0: "Full", 1: "Admin", 2: "Basic", 3: "Device Full", 4: "Device Basic", 5: "Essential", 6: "Device Essential", 7: "Enterprise", 8: "Device Enterprise", 9: "Sales", 10: "Service", 11: "Field Service", 12: "Project Service" };
+            const data = await dvRequest("GET",
+              "systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value&$orderby=fullname asc&$top=5000"
+            );
+            result = (data.value || []).map(u => ({
+              id: u.systemuserid,
+              fullname: u.fullname || "",
+              email: u.internalemailaddress || "",
+              disabled: u.isdisabled,
+              accessMode: u.accessmode,
+              accessModeLabel: ACCESS_MODES[u.accessmode] || `Mode ${u.accessmode}`,
+              calType: u.caltype,
+              calTypeLabel: CAL_TYPES[u.caltype] || `Type ${u.caltype}`,
+              buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+              buId: u._businessunitid_value || "",
+              title: u.title || "",
+              createdOn: u.createdon,
+            }));
+            break;
+          }
+
+          case "getUserRoles": {
+            validateGuid(params.userId);
+            const data = await dvRequest("GET",
+              `systemusers(${params.userId})/systemuserroles_association?$select=roleid,name`
+            );
+            result = (data.value || []).map(r => ({
+              id: r.roleid,
+              name: r.name,
+            }));
+            break;
+          }
+
+          case "getUserLastLogin": {
+            validateGuid(params.userId);
+            const data = await dvRequest("GET",
+              `audits?$select=createdon&$filter=_objectid_value eq ${params.userId} and action eq 64&$top=1&$orderby=createdon desc`
+            );
+            const rec = (data.value || [])[0];
+            result = rec ? { date: rec.createdon } : null;
+            break;
+          }
+
           default:
             throw new Error(`Unknown action: ${action}`);
         }

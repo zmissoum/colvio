@@ -398,6 +398,43 @@ export const bridge = {
     return callD365("publishEntity", { logicalName });
   },
 
+  // ── User & License Monitor ──
+  async getAllUsers() {
+    if (!isExtension) return [
+      { id: "u1", fullname: "Zakaria Missoum", email: "zakaria@contoso.com", disabled: false, accessMode: 0, accessModeLabel: "Read-Write", calType: 7, calTypeLabel: "Enterprise", buName: "Contoso", buId: "bu1", title: "CRM Admin", createdOn: "2022-03-15T10:00:00Z" },
+      { id: "u2", fullname: "Marie Martin", email: "marie@contoso.com", disabled: false, accessMode: 0, accessModeLabel: "Read-Write", calType: 9, calTypeLabel: "Sales", buName: "Contoso FR", buId: "bu2", title: "Sales Manager", createdOn: "2023-06-01T08:00:00Z" },
+      { id: "u3", fullname: "Alex Baker", email: "alex@contoso.com", disabled: false, accessMode: 0, accessModeLabel: "Read-Write", calType: 2, calTypeLabel: "Basic", buName: "Contoso UK", buId: "bu3", title: "Sales Rep", createdOn: "2024-01-10T14:30:00Z" },
+      { id: "u4", fullname: "Sophie Lefevre", email: "sophie@contoso.com", disabled: true, accessMode: 0, accessModeLabel: "Read-Write", calType: 7, calTypeLabel: "Enterprise", buName: "Contoso FR", buId: "bu2", title: "Consultant", createdOn: "2021-11-08T09:00:00Z" },
+      { id: "u5", fullname: "Lucas Moreau", email: "lucas@contoso.com", disabled: false, accessMode: 2, accessModeLabel: "Read", calType: 2, calTypeLabel: "Basic", buName: "Contoso", buId: "bu1", title: "Analyst", createdOn: "2025-02-20T11:00:00Z" },
+      { id: "u6", fullname: "Emma Petit", email: "emma@contoso.com", disabled: true, accessMode: 0, accessModeLabel: "Read-Write", calType: 9, calTypeLabel: "Sales", buName: "Contoso UK", buId: "bu3", title: "Account Exec", createdOn: "2023-09-15T16:00:00Z" },
+      { id: "u7", fullname: "# D365 Integration", email: "integration@contoso.com", disabled: false, accessMode: 4, accessModeLabel: "Non-Interactive", calType: 0, calTypeLabel: "Full", buName: "Contoso", buId: "bu1", title: "Service Account", createdOn: "2020-01-01T00:00:00Z" },
+      { id: "u8", fullname: "Pierre Bernard", email: "pierre@contoso.com", disabled: false, accessMode: 1, accessModeLabel: "Admin", calType: 0, calTypeLabel: "Full", buName: "Contoso", buId: "bu1", title: "System Admin", createdOn: "2020-06-01T08:00:00Z" },
+    ];
+    const k = cacheKey("allusers");
+    const cached = await cacheGet(k);
+    if (cached) return cached;
+    const data = await callD365("getAllUsers");
+    if (data) await cacheSet(k, data, CACHE_TTL.entities);
+    return data;
+  },
+
+  async getUserRoles(userId) {
+    if (!isExtension) return [
+      { id: "r1", name: "System Administrator" },
+      { id: "r2", name: "Sales Manager" },
+      { id: "r3", name: "Basic User" },
+    ];
+    return callD365("getUserRoles", { userId });
+  },
+
+  async getUserLastLogin(userId) {
+    if (!isExtension) {
+      const daysAgo = Math.floor(Math.random() * 90);
+      return daysAgo < 60 ? { date: new Date(Date.now() - daysAgo * 86400000).toISOString() } : null;
+    }
+    return callD365("getUserLastLogin", { userId });
+  },
+
   async getManyToManyRelationships(logicalName) {
     if (!isExtension) return [
       { schemaName: "accountleads_association", entity1: "account", entity2: "lead", intersectEntity: "accountleads" },

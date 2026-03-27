@@ -17,6 +17,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import ShortcutsPanel from "./components/ShortcutsPanel.jsx";
 import OnboardingTour from "./components/OnboardingTour.jsx";
 import HelpTab from "./components/HelpTab.jsx";
+import UserLicenseMonitor from "./components/UserLicenseMonitor.jsx";
 
 export default function App(){
   const[tab,setTab]=useState("explorer");
@@ -88,6 +89,7 @@ export default function App(){
     {id:"graph",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
     {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>},
     {id:"translations",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>},
+    {id:"licenses",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>},
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
 
@@ -171,6 +173,7 @@ export default function App(){
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
+          {tab==="licenses"&&<ErrorBoundary><UserLicenseMonitor bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="help"&&<HelpTab bp={bp} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>
