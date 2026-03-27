@@ -410,12 +410,8 @@ export const bridge = {
       { id: "u7", fullname: "# D365 Integration", email: "integration@contoso.com", disabled: false, accessMode: 4, accessModeLabel: "Non-Interactive", calType: 0, calTypeLabel: "Full", buName: "Contoso", buId: "bu1", title: "Service Account", createdOn: "2020-01-01T00:00:00Z" },
       { id: "u8", fullname: "Pierre Bernard", email: "pierre@contoso.com", disabled: false, accessMode: 1, accessModeLabel: "Admin", calType: 0, calTypeLabel: "Full", buName: "Contoso", buId: "bu1", title: "System Admin", createdOn: "2020-06-01T08:00:00Z" },
     ];
-    const k = cacheKey("allusers");
-    const cached = await cacheGet(k);
-    if (cached) return cached;
-    const data = await callD365("getAllUsers");
-    if (data) await cacheSet(k, data, CACHE_TTL.entities);
-    return data;
+    // No cache — monitoring tool should always fetch fresh data
+    return callD365("getAllUsers");
   },
 
   async getUserRoles(userId) {

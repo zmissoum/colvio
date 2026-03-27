@@ -763,34 +763,38 @@
           case "getAllUsers": {
             const ACCESS_MODES = { 0: "Read-Write", 1: "Admin", 2: "Read", 3: "Support", 4: "Non-Interactive", 5: "Delegated Admin" };
             const CAL_TYPES = { 0: "Full", 1: "Admin", 2: "Basic", 3: "Device Full", 4: "Device Basic", 5: "Essential", 6: "Device Essential", 7: "Enterprise", 8: "Device Enterprise", 9: "Sales", 10: "Service", 11: "Field Service", 12: "Project Service" };
+            const fields = "systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value";
             const mapUser = (u) => ({
               id: u.systemuserid,
               fullname: u.fullname || "",
               email: u.internalemailaddress || "",
               disabled: u.isdisabled,
-              accessMode: u.accessmode != null ? u.accessmode : (u["accessmode"] != null ? u["accessmode"] : 0),
+              accessMode: u.accessmode ?? 0,
               accessModeLabel: ACCESS_MODES[u.accessmode] || `Mode ${u.accessmode}`,
-              calType: u.caltype != null ? u.caltype : 0,
+              calType: u.caltype ?? 0,
               calTypeLabel: CAL_TYPES[u.caltype] || `Type ${u.caltype}`,
-              buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || u["_businessunitid_value@Microsoft.Dynamics.CRM.lookuplogicalname"] || "",
+              buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
               buId: u._businessunitid_value || "",
               title: u.title || "",
               createdOn: u.createdon,
             });
-            // Use FetchXML with page numbers — OData nextLink is unreliable on systemuser
-            const baseFetch = `<fetch count="5000"><entity name="systemuser"><attribute name="systemuserid"/><attribute name="fullname"/><attribute name="internalemailaddress"/><attribute name="isdisabled"/><attribute name="accessmode"/><attribute name="caltype"/><attribute name="title"/><attribute name="createdon"/><attribute name="businessunitid"/><order attribute="systemuserid"/></entity></fetch>`;
+            // Cursor-based pagination: fetch in batches ordered by systemuserid,
+            // each page filters systemuserid > lastId. This avoids paging cookie
+            // and nextLink issues on the systemuser entity.
             let allUsers = [];
-            let page = 1;
-            let hasMore = true;
-            while (hasMore) {
-              const xml = page === 1 ? baseFetch : baseFetch.replace("<fetch", `<fetch page="${page}"`);
-              const encoded = encodeURIComponent(xml);
-              const data = await dvRequest("GET", `systemusers?fetchXml=${encoded}`);
+            let lastId = "00000000-0000-0000-0000-000000000000";
+            let pageNum = 0;
+            while (pageNum < 50) { // safety cap: 50 pages * 5000 = 250k users
+              pageNum++;
+              const filterPart = `systemuserid gt ${lastId}`;
+              const data = await dvRequest("GET",
+                `systemusers?$select=${fields}&$filter=${filterPart}&$orderby=systemuserid asc&$top=5000`
+              );
               const records = data.value || [];
+              if (records.length === 0) break;
               allUsers = allUsers.concat(records.map(mapUser));
-              hasMore = records.length >= 5000;
-              page++;
-              if (page > 50) break; // safety cap: 250,000 users max
+              lastId = records[records.length - 1].systemuserid;
+              if (records.length < 5000) break; // last page
             }
             allUsers.sort((a, b) => a.fullname.localeCompare(b.fullname));
             result = allUsers;
