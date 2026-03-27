@@ -2,6 +2,10 @@
 
 ## [1.9.0] — 2026-03-27
 ### Added
+- SQL query mode: 4th mode in Explorer (Builder | OData | FetchXML | SQL), recursive descent SQL parser, translates to FetchXML for reliable pagination
+- Role-based tab access control: permission probes during connection phase, sensitive tabs hidden for non-admin users (zero flash)
+- Help tab updated with 5 new sections (Login History, Users & Licenses, Security Audit, SQL Mode, Tab Visibility)
+- Solution Explorer: resolve all 13 component types to display names
 - User & License Monitor tab: load all D365 users with full pagination (no limit), display Access Mode, CAL Type, Business Unit, security roles, last login date
 - Filter users by Active/Disabled/Non-Interactive, search by name/email/BU, sort by Name/Status/CAL/Access
 - User detail panel: security roles list, last login from audit logs with "X days ago" indicator, Access Mode + CAL Type breakdown stats

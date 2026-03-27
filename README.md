@@ -101,7 +101,16 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Keyboard shortcuts panel (Ctrl+/)
 - Contextual tooltips on key features
 
+### SQL Query Mode
+- Write familiar SQL: `SELECT`, `FROM`, `JOIN`, `WHERE`, `ORDER BY`, `TOP`, `DISTINCT`
+- Automatically translated to FetchXML (reliable pagination, no limits)
+- `JOIN` → `link-entity` (no `$expand` limitations)
+- Aggregates: `COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP BY`
+- "View FetchXML" toggle to see the generated XML
+- 3 template queries to get started
+
 ### Global
+- **Role-based tab access** — sensitive tabs auto-hidden for non-admin users (zero flash)
 - Dark/Light theme (+ system preference detection)
 - English/French toggle (i18n)
 - Export: XLSX, CSV, JSON — copy or download
@@ -114,11 +123,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | 5,589 |
-| API actions | 31 |
-| React components | 20 |
-| Source files | 27 |
-| Build size | ~640 KB |
+| Lines of code | ~6,200 |
+| API actions | 33 |
+| React components | 21 |
+| Source files | 28 |
+| Build size | ~674 KB |
 | Languages | EN / FR |
 | Price | Free |
 

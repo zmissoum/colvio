@@ -30,6 +30,11 @@ export default function HelpTab({bp,onShowShortcuts,onRestartTour}){
       <Section icon={<I.Link/>} titleKey="help.graph_title" bodyKey="help.graph_body"/>
       <Section icon={<I.Database/>} titleKey="help.solutions_title" bodyKey="help.solutions_body"/>
       <Section icon={<I.Clipboard/>} titleKey="help.translations_title" bodyKey="help.translations_body"/>
+      <Section icon={<I.Clock/>} titleKey="help.logins_title" bodyKey="help.logins_body"/>
+      <Section icon={<I.Users/>} titleKey="help.licenses_title" bodyKey="help.licenses_body"/>
+      <Section icon={<I.Shield/>} titleKey="help.security_title" bodyKey="help.security_body"/>
+      <Section icon={<I.Search/>} titleKey="help.sql_title" bodyKey="help.sql_body"/>
+      <Section icon={<I.Eye/>} titleKey="help.permissions_title" bodyKey="help.permissions_body"/>
 
       <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
         <button onClick={onShowShortcuts} style={{...bt(null,{fontSize:13})}}>{t("help.shortcuts_link")}</button>
