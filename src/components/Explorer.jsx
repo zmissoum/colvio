@@ -4,6 +4,7 @@ import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText } from "../shared.jsx";
+import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
 import Results from "./Results.jsx";
@@ -21,6 +22,9 @@ export default function Explorer({bp,addHistory,orgInfo}){
   const[qm,setQm]=useState("builder");
   const[rq,setRq]=useState("");
   const[fxml,setFxml]=useState("");
+  const[sqlQ,setSqlQ]=useState("");
+  const[sqlFx,setSqlFx]=useState("");
+  const[showSqlFx,setShowSqlFx]=useState(false);
   const[lim,setLim]=useState(50);
   const[showList,setShowList]=useState(true);
   const[savedQueries,setSavedQueries]=useState([]);
@@ -345,7 +349,15 @@ export default function Explorer({bp,addHistory,orgInfo}){
       if(lim>0)ps.push(`$top=${lim}`);
       return ps.length?q+"?"+ps.join("&"):q;
     };
-    const q=qm==="odata"?rq:qm==="fetchxml"?fxml:buildQ();
+    let sqlGenFxml="";
+    if(qm==="sql"){
+      if(!sqlQ.trim()){setError("SQL query is empty");return;}
+      const r=sqlToFetchXml(sqlQ);
+      if(r.error){setError(r.error);return;}
+      sqlGenFxml=r.fetchXml;
+      setSqlFx(sqlGenFxml);
+    }
+    const q=qm==="odata"?rq:qm==="fetchxml"?fxml:qm==="sql"?sqlQ:buildQ();
     addHistory(q,qm);
 
     if(!isLive){
@@ -353,12 +365,13 @@ export default function Explorer({bp,addHistory,orgInfo}){
       return;
     }
 
-    if(qm==="fetchxml"){
-      if(!fxml.trim()){setError("FetchXML is empty");return;}
+    if(qm==="fetchxml"||qm==="sql"){
+      const activeFxml=qm==="sql"?sqlGenFxml:fxml;
+      if(!activeFxml.trim()){setError("FetchXML is empty");return;}
       setLoading(true);
       const t0=Date.now();
       try{
-        const data=await bridge.executeFetchXml(fxml);
+        const data=await bridge.executeFetchXml(activeFxml);
         const t1=((Date.now()-t0)/1000).toFixed(1);
         if(!data?.records){setError("No results");setLoading(false);return;}
         const firstRec=data.records[0]||{};
@@ -378,11 +391,11 @@ export default function Explorer({bp,addHistory,orgInfo}){
           page++;
           let pagedXml;
           if(useCookie){
-            pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}" paging-cookie="${cookie.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"`);
-            if(!pagedXml.includes(`page="`))pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}"`);
+            pagedXml=activeFxml.replace(/<fetch/,`<fetch page="${page}" paging-cookie="${cookie.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"`);
+            if(!pagedXml.includes(`page="`))pagedXml=activeFxml.replace(/<fetch/,`<fetch page="${page}"`);
           }else{
             // Fallback: page number only (no cookie) — works for entities like systemuser where the paging cookie is broken
-            pagedXml=fxml.replace(/<fetch/,`<fetch page="${page}"`);
+            pagedXml=activeFxml.replace(/<fetch/,`<fetch page="${page}"`);
           }
           try{
             const pageData=await bridge.executeFetchXml(pagedXml);
@@ -539,7 +552,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
 
   const stopFetch = () => { fetchAbort.current = true; };
 
-  useKeyboard("Enter",()=>{if(ent&&!loading&&!loadingFields)run();},[ent,sf,filterGroups,groupLogic,lim,qm,rq,fxml,loading,loadingFields]);
+  useKeyboard("Enter",()=>{if(ent&&!loading&&!loadingFields)run();},[ent,sf,filterGroups,groupLogic,lim,qm,rq,fxml,sqlQ,loading,loadingFields]);
 
   return(
     <div style={{display:"flex",height:"100%",flexDirection:bp.mobile?"column":"row"}}>
@@ -572,7 +585,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
                 {!loadingFields&&fields.length>0&&<span style={{fontSize:12,color:C.txd}}>{fields.length} columns</span>}
                 {ent.c>0&&<span style={{fontSize:12,color:C.txd,background:C.bg,padding:"2px 6px",borderRadius:3}}>{ent.c.toLocaleString()} records</span>}
               </div>
-              <div style={{display:"flex",gap:3,alignItems:"center"}}>{["builder","odata","fetchxml"].map(m=><button key={m} onClick={()=>setQm(m)} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:qm===m?C.vi:"transparent",color:qm===m?"white":C.txm}}>{m==="builder"?"Builder":m==="odata"?"OData":"FetchXML"}</button>)}<Tooltip text={t("help.query_modes")}/></div>
+              <div style={{display:"flex",gap:3,alignItems:"center"}}>{["builder","odata","fetchxml","sql"].map(m=><button key={m} onClick={()=>setQm(m)} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:qm===m?C.vi:"transparent",color:qm===m?"white":C.txm}}>{m==="builder"?"Builder":m==="odata"?"OData":m==="fetchxml"?"FetchXML":"SQL"}</button>)}<Tooltip text={t("help.query_modes")}/></div>
             </div>
             {qm==="fetchxml"?<div>
               <textarea value={fxml} onChange={e=>setFxml(e.target.value)} placeholder={`<fetch top="50">\n  <entity name="${ent.l}">\n    <attribute name="name"/>\n    <link-entity name="opportunity" from="customerid" to="${ent.l}id" link-type="inner">\n      <attribute name="name" alias="opp_name"/>\n    </link-entity>\n  </entity>\n</fetch>`} style={inp({height:120,...mono,color:C.cy,resize:"vertical",fontSize:13,whiteSpace:"pre"})}/>
@@ -581,6 +594,16 @@ export default function Explorer({bp,addHistory,orgInfo}){
                 <button onClick={()=>setFxml(`<fetch top="50">\n  <entity name="${ent.l}">\n    <attribute name="name"/>\n    <link-entity name="opportunity" from="customerid" to="${ent.l}id" link-type="inner">\n      <attribute name="name" alias="opp_name"/>\n      <attribute name="estimatedvalue" alias="opp_value"/>\n    </link-entity>\n  </entity>\n</fetch>`)} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>🔗 Inner join template</button>
                 <button onClick={()=>setFxml(`<fetch aggregate="true">\n  <entity name="${ent.l}">\n    <attribute name="statecode" groupby="true" alias="status"/>\n    <attribute name="${ent.l}id" aggregate="count" alias="total"/>\n  </entity>\n</fetch>`)} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>📊 Aggregation template</button>
               </div>
+            </div>
+            :qm==="sql"?<div>
+              <textarea value={sqlQ} onChange={e=>{setSqlQ(e.target.value);setShowSqlFx(false);setSqlFx("");}} placeholder={t("sql_placeholder")||`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name TOP 100`} style={inp({height:120,...mono,color:C.cy,resize:"vertical",fontSize:13,whiteSpace:"pre"})}/>
+              <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
+                <button onClick={()=>{setSqlQ(`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name ASC TOP 100`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>📋 Simple</button>
+                <button onClick={()=>{setSqlQ(`SELECT c.fullname, c.emailaddress1, a.name\nFROM contact AS c\nJOIN account AS a ON c.parentcustomerid = a.accountid\nWHERE c.statecode = 0`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>🔗 Join</button>
+                <button onClick={()=>{setSqlQ(`SELECT statecode, COUNT(*) FROM ${ent.l} GROUP BY statecode`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>📊 Aggregate</button>
+                <button onClick={()=>{if(!sqlQ.trim())return;const r=sqlToFetchXml(sqlQ);if(r.error){setError(r.error);setSqlFx("");}else{setSqlFx(r.fetchXml);setShowSqlFx(true);setError("");}}} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.cy}66`,borderRadius:3,color:C.cy,cursor:"pointer",background:"transparent"}}>{showSqlFx?"Hide FetchXML":t("view_fetchxml")||"View FetchXML"}</button>
+              </div>
+              {showSqlFx&&sqlFx&&<pre style={{marginTop:6,padding:8,background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,fontSize:12,color:C.gn,overflow:"auto",maxHeight:160,...mono,whiteSpace:"pre-wrap"}}>{sqlFx}</pre>}
             </div>
             :qm==="odata"?<textarea value={rq} onChange={e=>setRq(e.target.value)} placeholder={`GET /api/data/v9.2/${ent.p}?$select=name&$top=50`} style={inp({height:50,...mono,color:C.cy,resize:"vertical",fontSize:13})}/>
             :<div style={{display:"flex",flexDirection:"column",gap:5}}>
@@ -757,6 +780,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8,gap:6,flexWrap:"wrap"}}>
               {qm==="builder"&&!bp.mobile&&<><code style={{fontSize:11,color:C.txd,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{oq()}</code><button onClick={()=>{copyText(oq());}} style={{padding:"2px 6px",background:"transparent",border:`1px solid ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:11,flexShrink:0}} title="Copy OData URL"><I.Copy/></button></>}
               {qm==="fetchxml"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fxml.replace(/\n/g," ").substring(0,100)}{fxml.length>100?"…":""}</code>}
+              {qm==="sql"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sqlQ.replace(/\n/g," ").substring(0,100)}{sqlQ.length>100?"…":""}</code>}
               <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
                 <button onClick={run} disabled={loading||loadingFields} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> Execute <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
                 <button onClick={saveCurrentQuery} disabled={!ent} title="Save this query" style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
