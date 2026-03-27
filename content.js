@@ -825,19 +825,24 @@
 
           // ── Security Audit ──
           case "getAllRoles": {
-            const data = await dvRequest("GET",
-              "roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$orderby=name asc"
-            );
-            // Deduplicate: D365 duplicates roles per BU, keep root roles only
+            // Paginate to get all roles
+            let allRaw = [];
+            let rolesUrl = "roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$orderby=name asc";
+            while (rolesUrl) {
+              const data = await dvRequest("GET", rolesUrl);
+              allRaw = allRaw.concat(data.value || []);
+              rolesUrl = data["@odata.nextLink"] || null;
+            }
+            // Deduplicate: D365 duplicates roles per BU — keep first occurrence per name
             const seen = new Set();
             const roles = [];
-            for (const r of (data.value || [])) {
-              const rootId = r._parentrootroleid_value || r.roleid;
-              if (seen.has(rootId)) continue;
-              seen.add(rootId);
+            for (const r of allRaw) {
+              const key = r.name?.toLowerCase();
+              if (!key || seen.has(key)) continue;
+              seen.add(key);
               roles.push({
                 id: r.roleid,
-                rootId,
+                rootId: r._parentrootroleid_value || r.roleid,
                 name: r.name,
                 isManaged: r.ismanaged,
                 isCustom: !r.ismanaged,
