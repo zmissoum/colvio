@@ -36,6 +36,9 @@ Browse D365 solutions and their components. 13 component types resolved to reada
 Translation Manager
 View and edit field labels in multiple languages. Export/import CSV for bulk translation workflows. Auto-publish after save.
 
+User & License Monitor
+Monitor ALL D365 users — Access Mode, CAL Type, Business Unit, security roles, last login date. Filter by Active/Disabled/Non-Interactive, identify unused licenses (never logged in, disabled but still allocated). Full CSV export. No limit on user count.
+
 Login History
 User login/logout audit timeline from D365 audit logs. Session duration, access type stats, CSV export.
 
@@ -85,7 +88,7 @@ Data migration teams loading/extracting data
 Salesforce consultants transitioning to D365
 Anyone who needs quick access to Dataverse data
 
-Keywords: Dynamics 365, Dataverse, CRM, Power Platform, Data Explorer, OData, Chrome Extension, D365, Microsoft Dynamics, Data Loader, SF Inspector, free, open source
+Keywords: Dynamics 365, Dataverse, CRM, Power Platform, Data Explorer, OData, Chrome Extension, D365, Microsoft Dynamics, Data Loader, SF Inspector, free, open source, license monitor, user management
 
 ## Category
 Developer Tools

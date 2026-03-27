@@ -33,6 +33,7 @@ src/
     SolutionExplorer.jsx  — Solution component browser
     TranslationManager.jsx — Multi-language label editor
     LoginHistory.jsx    — User audit timeline
+    UserLicenseMonitor.jsx — User & license monitoring
     HelpTab.jsx         — Feature guide
     OnboardingTour.jsx  — First-launch walkthrough
     QueryTemplates.jsx  — Pre-built query templates

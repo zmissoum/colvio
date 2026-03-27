@@ -71,6 +71,17 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Export/Import CSV for bulk translation workflows
 - Save changes + auto-publish entity
 
+### User & License Monitor
+- Load **all** D365 users with full pagination (no limit)
+- Filter: Active / Disabled / Non-Interactive, local search by name, email, BU
+- Sort by Name, Status, CAL Type, Access Mode
+- User detail: Access Mode, CAL Type, Business Unit, title, creation date
+- **Last login** date from audit logs (with "X days ago" indicator)
+- **Security Roles** list per user
+- Access Mode + CAL Type **breakdown stats** across all users
+- **CSV export** of full user list (formula injection protected)
+- Identify unused licenses: disabled users, users who never logged in
+
 ### Login History
 - User search, login/logout audit timeline
 - Session duration calculation, access type breakdown, CSV export
@@ -94,11 +105,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | 5,112 |
-| API actions | 28 |
-| React components | 19 |
-| Source files | 26 |
-| Build size | ~620 KB |
+| Lines of code | 5,589 |
+| API actions | 31 |
+| React components | 20 |
+| Source files | 27 |
+| Build size | ~640 KB |
 | Languages | EN / FR |
 | Price | Free |
 

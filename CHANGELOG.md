@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0] — 2026-03-27
+### Added
+- User & License Monitor tab: load all D365 users with full pagination (no limit), display Access Mode, CAL Type, Business Unit, security roles, last login date
+- Filter users by Active/Disabled/Non-Interactive, search by name/email/BU, sort by Name/Status/CAL/Access
+- User detail panel: security roles list, last login from audit logs with "X days ago" indicator, Access Mode + CAL Type breakdown stats
+- CSV export of full user list with formula injection protection
+- 3 new API actions: getAllUsers, getUserRoles, getUserLastLogin
+- I.Users icon, ~15 i18n keys (EN + FR)
+
+### Fixed
+- OData mode now executes the raw user-typed OData URL instead of silently using Builder parameters
+- FetchXML pagination: auto-fallback to page-number-only mode when paging cookie mismatch (0x80041129)
+- getAllUsers: full pagination via @odata.nextLink, orderby=systemuserid for stable paging, 5min timeout
+
 ## [1.8.1] — 2026-03-26
 ### Security
 - OData filter injection: validate numeric values (regex) and GUID format for Lookup/Customer types before unquoted insertion; invalid values fall back to quoted strings
