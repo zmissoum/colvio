@@ -876,17 +876,19 @@
             if (privs.length === 0) { result = []; break; }
 
             // Load ALL privileges once and cache in-memory (shared across role clicks)
+            // Uses FetchXML pagination (page numbers) which is more reliable than @odata.nextLink
             if (!window.__colvioPrivCache) {
               window.__colvioPrivCache = {};
               let allPrivList = [];
-              let privUrl = "privileges?$select=privilegeid,name,accessright&$top=5000";
-              while (privUrl) {
-                const pData = await dvRequest("GET", privUrl);
-                allPrivList = allPrivList.concat(pData.value || []);
-                const nextLink = pData["@odata.nextLink"];
-                if (nextLink) {
-                  try { privUrl = nextLink.replace(/^.*\/api\/data\/v[\d.]+\//, ""); } catch { privUrl = null; }
-                } else { privUrl = null; }
+              let page = 1;
+              let hasMore = true;
+              while (hasMore) {
+                const fetchXml = `<fetch page="${page}" count="5000"><entity name="privilege"><attribute name="privilegeid"/><attribute name="name"/><attribute name="accessright"/><order attribute="privilegeid"/></entity></fetch>`;
+                const pData = await dvRequest("GET", `privileges?fetchXml=${encodeURIComponent(fetchXml)}`);
+                const batch = pData.value || [];
+                allPrivList = allPrivList.concat(batch);
+                hasMore = batch.length === 5000;
+                page++;
               }
               allPrivList.forEach(p => { window.__colvioPrivCache[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
             }
