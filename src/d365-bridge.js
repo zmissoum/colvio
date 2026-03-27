@@ -98,7 +98,7 @@ async function callD365(action, params = {}) {
     let settled = false;
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
-    const isLongOp = action === "batchCreate" || action === "batchUpsert" || action === "getAllUsers";
+    const isLongOp = action === "batchCreate" || action === "batchUpsert" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges";
     const timeoutMs = isLongOp ? 300000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) { settled = true; reject(new Error(`Timeout after ${timeoutMs/1000}s — action: ${action}`)); }

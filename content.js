@@ -92,9 +92,9 @@
       headers["Prefer"] = 'odata.include-annotations="*"';
     }
 
-    // Timeout: 25s for writes, 20s for reads
+    // Timeout: 25s for writes, 60s for reads (roles/privileges can be large)
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), isWrite ? 25000 : 20000);
+    const timeout = setTimeout(() => controller.abort(), isWrite ? 25000 : 60000);
 
     try {
       const resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
