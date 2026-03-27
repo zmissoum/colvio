@@ -827,11 +827,14 @@
           case "getAllRoles": {
             // Paginate to get all roles
             let allRaw = [];
-            let rolesUrl = "roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$orderby=name asc";
+            let rolesUrl = "roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$orderby=name asc&$top=5000";
             while (rolesUrl) {
               const data = await dvRequest("GET", rolesUrl);
               allRaw = allRaw.concat(data.value || []);
-              rolesUrl = data["@odata.nextLink"] || null;
+              const rnl = data["@odata.nextLink"];
+              if (rnl) {
+                try { rolesUrl = rnl.replace(/^.*\/api\/data\/v[\d.]+\//, ""); } catch { rolesUrl = null; }
+              } else { rolesUrl = null; }
             }
             // Deduplicate: D365 duplicates roles per BU — keep first occurrence per name
             const seen = new Set();
@@ -862,24 +865,24 @@
             const privs = data.RolePrivileges || [];
             if (privs.length === 0) { result = []; break; }
 
-            // Collect unique privilege IDs to resolve names
-            const privIds = [...new Set(privs.map(p => p.PrivilegeId))];
-
-            // Resolve privilege names in batches of 50 using $filter
-            const privMap = {};
-            for (let i = 0; i < privIds.length; i += 50) {
-              const batch = privIds.slice(i, i + 50);
-              const filter = batch.map(id => `privilegeid eq ${id}`).join(" or ");
-              try {
-                const pData = await dvRequest("GET",
-                  `privileges?$select=privilegeid,name,accessright&$filter=${filter}`
-                );
-                (pData.value || []).forEach(p => { privMap[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
-              } catch {}
+            // Load ALL privileges once and cache in-memory (shared across role clicks)
+            if (!window.__colvioPrivCache) {
+              window.__colvioPrivCache = {};
+              let allPrivList = [];
+              let privUrl = "privileges?$select=privilegeid,name,accessright&$top=5000";
+              while (privUrl) {
+                const pData = await dvRequest("GET", privUrl);
+                allPrivList = allPrivList.concat(pData.value || []);
+                const nextLink = pData["@odata.nextLink"];
+                if (nextLink) {
+                  try { privUrl = nextLink.replace(/^.*\/api\/data\/v[\d.]+\//, ""); } catch { privUrl = null; }
+                } else { privUrl = null; }
+              }
+              allPrivList.forEach(p => { window.__colvioPrivCache[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
             }
+            const privMap = window.__colvioPrivCache;
 
             const DEPTH_LABELS = { 1: "User", 2: "Business Unit", 4: "Parent: Child BU", 8: "Organization" };
-            // D365 depth values: Basic=1, Local=2, Deep=4, Global=8
             const DEPTH_MAP = { "Basic": 1, "Local": 2, "Deep": 4, "Global": 8 };
             result = privs.map(p => {
               const info = privMap[p.PrivilegeId] || {};
