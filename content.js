@@ -779,16 +779,14 @@
             });
             // Paginate to fetch ALL users (systemuser requires orderby systemuserid for stable paging)
             let allUsers = [];
-            let nextLink = "systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value&$orderby=systemuserid asc&$count=true";
+            let nextLink = "systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value&$orderby=systemuserid asc";
+            let pageCount = 0;
             while (nextLink) {
+              pageCount++;
               const data = await dvRequest("GET", nextLink);
               allUsers = allUsers.concat((data.value || []).map(mapUser));
-              // Follow @odata.nextLink for pagination
+              // Follow @odata.nextLink for pagination — pass full URL directly (dvRequest supports it)
               nextLink = data["@odata.nextLink"] || null;
-              if (nextLink) {
-                // nextLink is a full URL — extract the relative path
-                try { nextLink = new URL(nextLink).pathname.replace(/^.*\/api\/data\/v\d+\.\d+\//, "") + "?" + new URL(nextLink).search.substring(1); } catch { nextLink = null; }
-              }
             }
             // Sort by fullname for display
             allUsers.sort((a, b) => a.fullname.localeCompare(b.fullname));
