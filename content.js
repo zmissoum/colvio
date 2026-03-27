@@ -825,9 +825,18 @@
 
           // ── Security Audit ──
           case "getAllRoles": {
-            // Paginate to get all roles
+            // Get the root business unit first (roles with this BU are the "root" copies)
+            let rootBuId = null;
+            try {
+              const buData = await dvRequest("GET", "businessunits?$select=businessunitid&$filter=parentbusinessunitid eq null&$top=1");
+              rootBuId = (buData.value || [])[0]?.businessunitid;
+            } catch {}
+
+            // Fetch roles — if we have root BU, filter to only root copies (no duplicates)
             let allRaw = [];
-            let rolesUrl = "roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$orderby=name asc&$top=5000";
+            let rolesUrl = rootBuId
+              ? `roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$filter=_businessunitid_value eq ${rootBuId}&$orderby=name asc`
+              : "roles?$select=roleid,name,ismanaged,iscustomizable,_businessunitid_value,_parentrootroleid_value&$orderby=name asc";
             while (rolesUrl) {
               const data = await dvRequest("GET", rolesUrl);
               allRaw = allRaw.concat(data.value || []);
@@ -836,16 +845,17 @@
                 try { rolesUrl = rnl.replace(/^.*\/api\/data\/v[\d.]+\//, ""); } catch { rolesUrl = null; }
               } else { rolesUrl = null; }
             }
-            // Deduplicate: D365 duplicates roles per BU — keep first occurrence per name
+
+            // Deduplicate by root role ID (in case filter didn't work perfectly)
             const seen = new Set();
             const roles = [];
             for (const r of allRaw) {
-              const key = r.name?.toLowerCase();
-              if (!key || seen.has(key)) continue;
-              seen.add(key);
+              const rootId = r._parentrootroleid_value || r.roleid;
+              if (seen.has(rootId)) continue;
+              seen.add(rootId);
               roles.push({
                 id: r.roleid,
-                rootId: r._parentrootroleid_value || r.roleid,
+                rootId,
                 name: r.name,
                 isManaged: r.ismanaged,
                 isCustom: !r.ismanaged,
