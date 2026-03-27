@@ -82,6 +82,15 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **CSV export** of full user list (formula injection protected)
 - Identify unused licenses: disabled users, users who never logged in
 
+### Security Audit
+- Browse all D365 security roles (filter: Custom / Managed)
+- **Privilege viewer** with readable labels (e.g. `prvDeleteAccount` → `Delete · Account`)
+- **Depth badges**: User, Business Unit, Parent: Child BU, Organization
+- **Org-level flags** — highlight privileges with Organization depth (red)
+- **Sensitive privilege detection** — 30+ critical privileges flagged (delete, assign role, export, audit, publish)
+- Filter by: All / Org-level only / Sensitive only
+- User count per role, CSV export
+
 ### Login History
 - User search, login/logout audit timeline
 - Session duration calculation, access type breakdown, CSV export

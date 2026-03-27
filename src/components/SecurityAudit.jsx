@@ -21,6 +21,31 @@ const SENSITIVE_PRIVS = new Set([
 
 const DEPTH_COLORS = { 1: C.gn, 2: C.cy, 4: C.yw, 8: C.rd };
 
+// Parse privilege name into readable label
+// prvAppendToCustomerGroup -> Append To · CustomerGroup
+// prvDeleteAccount -> Delete · Account
+// prvReadAudit -> Read · Audit
+function formatPrivName(name) {
+  if (!name || !name.startsWith("prv")) return name || "";
+  const raw = name.substring(3); // strip "prv"
+  // Split on camelCase boundaries: "AppendToCustomerGroup" -> ["Append", "To", "Customer", "Group"]
+  const parts = raw.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2").split(" ");
+  if (parts.length <= 1) return raw;
+  // Known action words
+  const actions = new Set(["Read","Write","Create","Delete","Append","Assign","Share","Import","Export","Publish","Bulk","Execute","Act"]);
+  // Find where the action ends and the entity begins
+  let actionEnd = 1;
+  for (let i = 1; i < parts.length; i++) {
+    if (actions.has(parts[i]) || parts[i] === "To" || parts[i] === "On" || parts[i] === "All") {
+      actionEnd = i + 1;
+    } else break;
+  }
+  const action = parts.slice(0, actionEnd).join(" ");
+  const entity = parts.slice(actionEnd).join("");
+  if (!entity) return action;
+  return action + " · " + entity;
+}
+
 export default function SecurityAudit({ bp, orgInfo }) {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +56,7 @@ export default function SecurityAudit({ bp, orgInfo }) {
   const [privileges, setPrivileges] = useState([]);
   const [userCount, setUserCount] = useState(null);
   const [loadingPriv, setLoadingPriv] = useState(false);
+  const [loadingCount, setLoadingCount] = useState(false);
   const [privFilter, setPrivFilter] = useState("all"); // all, org, sensitive
   const [feedback, setFeedback] = useState("");
   const selectGen = useRef(0);
@@ -46,27 +72,34 @@ export default function SecurityAudit({ bp, orgInfo }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Load privileges when role is selected
+  // Load privileges when role is selected — progressive (privileges first, user count in parallel)
   const handleSelect = async (role) => {
     const gen = ++selectGen.current;
     setSelRole(role);
     setLoadingPriv(true);
+    setLoadingCount(true);
     setPrivileges([]);
     setUserCount(null);
     setPrivFilter("all");
-    try {
-      const [privs, uc] = await Promise.all([
-        bridge.getRolePrivileges(role.id),
-        bridge.getRoleUserCount(role.id),
-      ]);
+    setError("");
+
+    // Load privileges (usually the slower one)
+    bridge.getRolePrivileges(role.id).then(privs => {
       if (selectGen.current !== gen) return;
       setPrivileges(privs || []);
+      setLoadingPriv(false);
+    }).catch(e => {
+      if (selectGen.current === gen) { setError(e.message); setLoadingPriv(false); }
+    });
+
+    // Load user count in parallel (independent)
+    bridge.getRoleUserCount(role.id).then(uc => {
+      if (selectGen.current !== gen) return;
       setUserCount(uc?.count ?? 0);
-    } catch (e) {
-      if (selectGen.current === gen) setError(e.message);
-    } finally {
-      if (selectGen.current === gen) setLoadingPriv(false);
-    }
+      setLoadingCount(false);
+    }).catch(() => {
+      if (selectGen.current === gen) { setUserCount(null); setLoadingCount(false); }
+    });
   };
 
   // Stats for selected role
@@ -103,8 +136,8 @@ export default function SecurityAudit({ bp, orgInfo }) {
     if (!selRole || !privileges.length) return;
     const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
     const esc = (v) => { const s = safe(String(v || "")); return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s; };
-    const headers = ["privilege", "depth", "depthLabel", "isOrg", "isSensitive"];
-    const rows = privileges.map(p => [p.name, p.depth, p.depthLabel, p.isOrg ? "Yes" : "No", isSensitive(p.name) ? "Yes" : "No"].map(esc).join(","));
+    const headers = ["privilege", "label", "depth", "depthLabel", "isOrg", "isSensitive"];
+    const rows = privileges.map(p => [p.name, formatPrivName(p.name), p.depth, p.depthLabel, p.isOrg ? "Yes" : "No", isSensitive(p.name) ? "Yes" : "No"].map(esc).join(","));
     const csv = "\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
     dl(csv, "text/csv;charset=utf-8", `security_role_${selRole.name.replace(/\s+/g, "_")}.csv`);
     setFeedback(`CSV downloaded (${privileges.length} privileges)`);
@@ -133,7 +166,7 @@ export default function SecurityAudit({ bp, orgInfo }) {
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
           {loading && <div style={{ textAlign: "center", padding: 20 }}><Spin /> Loading roles...</div>}
-          {error && !loading && <div style={{ padding: 10, color: C.rd, fontSize: 12 }}>{error}</div>}
+          {error && !loading && !selRole && <div style={{ padding: 10, color: C.rd, fontSize: 12 }}>{error}</div>}
           {filteredRoles.map(r => (
             <button key={r.id} onClick={() => handleSelect(r)} style={{ width: "100%", textAlign: "left", padding: "6px 8px", border: "none", borderRadius: 6, cursor: "pointer", marginBottom: 1, background: selRole?.id === r.id ? C.sfa : "transparent", color: selRole?.id === r.id ? C.tx : C.txm, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
@@ -155,21 +188,22 @@ export default function SecurityAudit({ bp, orgInfo }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{selRole.name}</div>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
                     <Badge label={selRole.isCustom ? "Custom" : "Managed"} color={selRole.isCustom ? C.or : C.txd} />
-                    {userCount != null && <Badge label={`${userCount} user${userCount !== 1 ? "s" : ""}`} color={C.vi} />}
+                    {loadingCount ? <Spin s={10} /> : userCount != null && <Badge label={`${userCount} user${userCount !== 1 ? "s" : ""}`} color={C.vi} />}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={exportCSV} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                  <button onClick={exportCSV} disabled={loadingPriv} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: loadingPriv ? 0.5 : 1 })}><I.Download /> CSV</button>
                 </div>
               </div>
               {feedback && <span style={{ fontSize: 11, color: C.gn }}>{feedback}</span>}
+              {error && selRole && <div style={{ fontSize: 11, color: C.rd, marginTop: 4 }}>{error}</div>}
 
-              {/* Stats */}
-              {!loadingPriv && (
-                <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 12 }}>
-                  <span style={{ color: C.txm }}>{privStats.total} privileges</span>
+              {/* Stats — show as soon as privileges arrive */}
+              {privileges.length > 0 && (
+                <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 12, flexWrap: "wrap" }}>
+                  <span style={{ color: C.txm }}>{privStats.total} privileges {loadingPriv && <Spin s={10} />}</span>
                   <span style={{ color: C.rd, fontWeight: 600 }}>{privStats.org} Org-level</span>
                   <span style={{ color: C.yw, fontWeight: 600 }}>{privStats.sensitive} sensitive</span>
                   {privStats.sensOrg > 0 && <span style={{ color: C.rd, fontWeight: 700, background: C.rd + "22", padding: "1px 8px", borderRadius: 4 }}>⚠ {privStats.sensOrg} sensitive at Org level</span>}
@@ -184,12 +218,13 @@ export default function SecurityAudit({ bp, orgInfo }) {
               ))}
             </div>
 
-            {/* Privileges list */}
-            {loadingPriv && <div style={{ textAlign: "center", marginTop: 20 }}><Spin s={16} /></div>}
-            {!loadingPriv && (
+            {/* Privileges list — progressive: show as data arrives */}
+            {loadingPriv && privileges.length === 0 && <div style={{ textAlign: "center", marginTop: 20 }}><Spin s={16} /> Loading privileges...</div>}
+            {privileges.length > 0 && (
               <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 80px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 130px 80px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
                   <span>Privilege</span>
+                  <span>Label</span>
                   <span>Depth</span>
                   <span>Flags</span>
                 </div>
@@ -198,8 +233,9 @@ export default function SecurityAudit({ bp, orgInfo }) {
                   {filteredPrivs.map((p, i) => {
                     const sens = isSensitive(p.name);
                     return (
-                      <div key={p.id || i} style={{ display: "grid", gridTemplateColumns: "1fr 130px 80px", padding: "5px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, background: sens && p.isOrg ? C.rd + "08" : "transparent", alignItems: "center" }}>
-                        <span style={{ ...mono, color: sens ? C.yw : C.txm, fontWeight: sens ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                      <div key={p.id || i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 130px 80px", padding: "5px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, background: sens && p.isOrg ? C.rd + "08" : "transparent", alignItems: "center" }}>
+                        <span style={{ ...mono, color: C.txd, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10 }}>{p.name}</span>
+                        <span style={{ color: sens ? C.yw : C.txm, fontWeight: sens ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{formatPrivName(p.name)}</span>
                         <span><Badge label={p.depthLabel} color={DEPTH_COLORS[p.depth]} /></span>
                         <div style={{ display: "flex", gap: 3 }}>
                           {p.isOrg && <span style={{ fontSize: 9, padding: "1px 4px", borderRadius: 3, background: C.rd + "33", color: C.rd, fontWeight: 700 }}>ORG</span>}

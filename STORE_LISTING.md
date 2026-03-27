@@ -39,6 +39,9 @@ View and edit field labels in multiple languages. Export/import CSV for bulk tra
 User & License Monitor
 Monitor ALL D365 users — Access Mode, CAL Type, Business Unit, security roles, last login date. Filter by Active/Disabled/Non-Interactive, identify unused licenses (never logged in, disabled but still allocated). Full CSV export. No limit on user count.
 
+Security Audit
+Review all security roles and their privileges. Readable labels (prvDeleteAccount becomes Delete · Account), depth badges (User/BU/Org), sensitive privilege flags (30+ critical privileges highlighted). Filter by Org-level or Sensitive. CSV export per role.
+
 Login History
 User login/logout audit timeline from D365 audit logs. Session duration, access type stats, CSV export.
 

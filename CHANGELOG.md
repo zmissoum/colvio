@@ -6,8 +6,14 @@
 - Filter users by Active/Disabled/Non-Interactive, search by name/email/BU, sort by Name/Status/CAL/Access
 - User detail panel: security roles list, last login from audit logs with "X days ago" indicator, Access Mode + CAL Type breakdown stats
 - CSV export of full user list with formula injection protection
-- 3 new API actions: getAllUsers, getUserRoles, getUserLastLogin
-- I.Users icon, ~15 i18n keys (EN + FR)
+- Security Audit tab: browse all security roles with privilege viewer
+- Readable privilege labels (prvDeleteAccount → Delete · Account)
+- Org-level and sensitive privilege flags (30+ critical privileges detected)
+- Privilege depth badges (User, BU, Parent:Child, Organization)
+- Global privilege cache (loaded once, instant on subsequent role clicks)
+- RetrieveRolePrivilegesRole OData function for accurate privilege retrieval
+- 5 new API actions: getAllUsers, getUserRoles, getUserLastLogin, getAllRoles, getRolePrivileges
+- ~25 i18n keys (EN + FR)
 
 ### Fixed
 - OData mode now executes the raw user-typed OData URL instead of silently using Builder parameters

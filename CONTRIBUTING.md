@@ -34,6 +34,7 @@ src/
     TranslationManager.jsx — Multi-language label editor
     LoginHistory.jsx    — User audit timeline
     UserLicenseMonitor.jsx — User & license monitoring
+    SecurityAudit.jsx   — Security role & privilege reviewer
     HelpTab.jsx         — Feature guide
     OnboardingTour.jsx  — First-launch walkthrough
     QueryTemplates.jsx  — Pre-built query templates
