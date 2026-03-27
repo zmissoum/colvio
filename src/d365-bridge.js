@@ -149,6 +149,19 @@ export const bridge = {
     };
   },
 
+  async checkPermissions() {
+    if (!isExtension) return { canReadAudit: true, canReadSolutions: true, canReadAllUsers: true };
+    const probe = async (url) => {
+      try { await callD365("probe", { url }); return true; } catch { return false; }
+    };
+    const [canReadAudit, canReadSolutions, canReadAllUsers] = await Promise.all([
+      probe("audits?$top=1&$select=createdon"),
+      probe("solutions?$top=1&$filter=isvisible eq true&$select=solutionid"),
+      probe("systemusers?$top=1&$select=systemuserid"),
+    ]);
+    return { canReadAudit, canReadSolutions, canReadAllUsers };
+  },
+
   async getEntities() {
     if (!isExtension) return null;
     const k = cacheKey("entities");

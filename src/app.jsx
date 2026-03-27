@@ -43,6 +43,7 @@ export default function App(){
   }, []);
   const[queryHistory,setQueryHistory]=useState([]);
   const[orgInfo,setOrgInfo]=useState(null);
+  const[permissions,setPermissions]=useState(null);
   const[expired,setExpired]=useState(false);
   const[localeState,setLocaleState]=useState(getLocale());
   const[showShortcuts,setShowShortcuts]=useState(false);
@@ -57,14 +58,23 @@ export default function App(){
     if (ext.isExtension && ext.orgUrl) {
       const orgName = new URL(ext.orgUrl).hostname.split(".")[0];
       const region = new URL(ext.orgUrl).hostname.split(".")[1] || "crm";
-      setOrgInfo({
+      const info = {
         orgUrl: ext.orgUrl,
         orgName,
         region,
         isProduction: !ext.orgUrl.includes("sandbox") && !ext.orgUrl.includes("dev"),
         isExtension: true,
+      };
+      setOrgInfo(info);
+      // Probe permissions BEFORE showing tabs — no flash of restricted content
+      bridge.checkPermissions().then(perms => {
+        setPermissions(perms);
+        setConnected(true);
+      }).catch(() => {
+        // If probes fail entirely, show all tabs (fail-open, D365 will still enforce server-side)
+        setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true });
+        setConnected(true);
       });
-      setConnected(true);
     }
   }, []);
 
@@ -75,25 +85,27 @@ export default function App(){
     setTimeout(() => {
       setConnecting(false);
       setOrgInfo({ orgUrl: "https://demo.crm4.dynamics.com", orgName: "demo", region: "crm4", isProduction: false, isExtension: false });
+      setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true });
       setConnected(true);
     }, 1500);
   };
 
   if(!connected) return (<ConnScreen onConnect={handleManualConnect} connecting={connecting} bp={bp}/>);
 
-  const tabs=[
+  const allTabs=[
     {id:"explorer",label:t("nav.explorer"),desc:t("nav.explorer.desc"),icon:<I.Search/>},
     {id:"show",label:t("nav.show"),desc:t("nav.show.desc"),icon:<I.Eye/>},
     {id:"metadata",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
-    {id:"logins",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>},
+    {id:"logins",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit"},
     {id:"loader",label:t("nav.loader"),desc:t("nav.loader.desc"),icon:<I.Upload/>},
     {id:"graph",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
-    {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>},
-    {id:"translations",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>},
-    {id:"licenses",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>},
-    {id:"security",label:t("nav.security"),desc:t("nav.security.desc"),icon:<I.Shield/>},
+    {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
+    {id:"translations",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
+    {id:"licenses",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
+    {id:"security",label:t("nav.security"),desc:t("nav.security.desc"),icon:<I.Shield/>,requires:"canReadAllUsers"},
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
+  const tabs=allTabs.filter(t=>!t.requires||permissions?.[t.requires]);
 
   return(
     <div style={{display:"flex",height:"100vh",background:C.bg,color:C.tx,fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",fontSize:15}}>

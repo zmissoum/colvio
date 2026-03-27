@@ -923,6 +923,13 @@
             break;
           }
 
+          case "probe": {
+            // Lightweight permission probe — returns true if endpoint is accessible
+            await dvRequest("GET", params.url);
+            result = true;
+            break;
+          }
+
           default:
             throw new Error(`Unknown action: ${action}`);
         }
