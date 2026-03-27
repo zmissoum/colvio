@@ -768,27 +768,30 @@
               fullname: u.fullname || "",
               email: u.internalemailaddress || "",
               disabled: u.isdisabled,
-              accessMode: u.accessmode,
+              accessMode: u.accessmode != null ? u.accessmode : (u["accessmode"] != null ? u["accessmode"] : 0),
               accessModeLabel: ACCESS_MODES[u.accessmode] || `Mode ${u.accessmode}`,
-              calType: u.caltype,
+              calType: u.caltype != null ? u.caltype : 0,
               calTypeLabel: CAL_TYPES[u.caltype] || `Type ${u.caltype}`,
-              buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+              buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || u["_businessunitid_value@Microsoft.Dynamics.CRM.lookuplogicalname"] || "",
               buId: u._businessunitid_value || "",
               title: u.title || "",
               createdOn: u.createdon,
             });
-            // Paginate to fetch ALL users (systemuser requires orderby systemuserid for stable paging)
+            // Use FetchXML with page numbers — OData nextLink is unreliable on systemuser
+            const baseFetch = `<fetch count="5000"><entity name="systemuser"><attribute name="systemuserid"/><attribute name="fullname"/><attribute name="internalemailaddress"/><attribute name="isdisabled"/><attribute name="accessmode"/><attribute name="caltype"/><attribute name="title"/><attribute name="createdon"/><attribute name="businessunitid"/><order attribute="systemuserid"/></entity></fetch>`;
             let allUsers = [];
-            let nextLink = "systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value&$orderby=systemuserid asc";
-            let pageCount = 0;
-            while (nextLink) {
-              pageCount++;
-              const data = await dvRequest("GET", nextLink);
-              allUsers = allUsers.concat((data.value || []).map(mapUser));
-              // Follow @odata.nextLink for pagination — pass full URL directly (dvRequest supports it)
-              nextLink = data["@odata.nextLink"] || null;
+            let page = 1;
+            let hasMore = true;
+            while (hasMore) {
+              const xml = page === 1 ? baseFetch : baseFetch.replace("<fetch", `<fetch page="${page}"`);
+              const encoded = encodeURIComponent(xml);
+              const data = await dvRequest("GET", `systemusers?fetchXml=${encoded}`);
+              const records = data.value || [];
+              allUsers = allUsers.concat(records.map(mapUser));
+              hasMore = records.length >= 5000;
+              page++;
+              if (page > 50) break; // safety cap: 250,000 users max
             }
-            // Sort by fullname for display
             allUsers.sort((a, b) => a.fullname.localeCompare(b.fullname));
             result = allUsers;
             break;
