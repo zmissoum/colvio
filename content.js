@@ -855,41 +855,44 @@
 
           case "getRolePrivileges": {
             validateGuid(params.roleId);
-            // Get privileges with depth for this role
+            // Use RetrieveRolePrivilegesRole function to get privileges with depth
             const data = await dvRequest("GET",
-              `roles(${params.roleId})/roleprivileges_association?$select=privilegeid,depth`
+              `RetrieveRolePrivilegesRole(RoleId=${params.roleId})`
             );
-            const privs = data.value || [];
+            const privs = data.RolePrivileges || [];
             if (privs.length === 0) { result = []; break; }
 
-            // Batch resolve privilege names (fetch all privileges once, cached)
-            const allPrivs = await dvRequest("GET",
-              "privileges?$select=privilegeid,name,accessright&$top=5000"
-            );
-            // Paginate privileges (there are ~10,000+)
-            let allPrivList = allPrivs.value || [];
-            let privNext = allPrivs["@odata.nextLink"];
-            while (privNext) {
-              const more = await dvRequest("GET", privNext);
-              allPrivList = allPrivList.concat(more.value || []);
-              privNext = more["@odata.nextLink"] || null;
-            }
+            // Collect unique privilege IDs to resolve names
+            const privIds = [...new Set(privs.map(p => p.PrivilegeId))];
+
+            // Resolve privilege names in batches of 50 using $filter
             const privMap = {};
-            allPrivList.forEach(p => { privMap[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
+            for (let i = 0; i < privIds.length; i += 50) {
+              const batch = privIds.slice(i, i + 50);
+              const filter = batch.map(id => `privilegeid eq ${id}`).join(" or ");
+              try {
+                const pData = await dvRequest("GET",
+                  `privileges?$select=privilegeid,name,accessright&$filter=${filter}`
+                );
+                (pData.value || []).forEach(p => { privMap[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
+              } catch {}
+            }
 
             const DEPTH_LABELS = { 1: "User", 2: "Business Unit", 4: "Parent: Child BU", 8: "Organization" };
+            // D365 depth values: Basic=1, Local=2, Deep=4, Global=8
+            const DEPTH_MAP = { "Basic": 1, "Local": 2, "Deep": 4, "Global": 8 };
             result = privs.map(p => {
-              const info = privMap[p.privilegeid] || {};
+              const info = privMap[p.PrivilegeId] || {};
+              const depth = typeof p.Depth === "string" ? (DEPTH_MAP[p.Depth] || 0) : (p.Depth || 0);
               return {
-                id: p.privilegeid,
-                name: info.name || p.privilegeid,
+                id: p.PrivilegeId,
+                name: info.name || p.PrivilegeId,
                 accessRight: info.accessRight,
-                depth: p.depth,
-                depthLabel: DEPTH_LABELS[p.depth] || `Depth ${p.depth}`,
-                isOrg: p.depth === 8,
+                depth,
+                depthLabel: DEPTH_LABELS[depth] || `Depth ${depth}`,
+                isOrg: depth === 8,
               };
             }).sort((a, b) => {
-              // Org-level first, then by name
               if (a.isOrg !== b.isOrg) return a.isOrg ? -1 : 1;
               return a.name.localeCompare(b.name);
             });
