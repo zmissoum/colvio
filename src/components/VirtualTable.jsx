@@ -81,7 +81,7 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
                 <td style={{...tds,color:C.txd,fontSize:12,position:"sticky",left:0,background:selected.has(getRecordId(r))?C.vid:isFocused?C.sfa:C.bg,zIndex:1,display:"flex",alignItems:"center",gap:4}}>
                   <input type="checkbox" checked={selected.has(getRecordId(r))} onChange={()=>toggleSel(getRecordId(r))} style={{accentColor:C.vi,cursor:"pointer"}}/>
                   <span>{i+1}</span>
-                  {orgInfo?.orgUrl&&entityName&&getRecordId(r)&&<a href={`${orgInfo.orgUrl}/main.aspx?etn=${entityName}&id=${getRecordId(r)}&pagetype=entityrecord`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:C.vi,textDecoration:"none",fontSize:10,lineHeight:1}} title="Open in D365">&nearr;</a>}
+                  {orgInfo?.orgUrl&&entityName&&getRecordId(r)&&<a href={`${orgInfo.orgUrl}/main.aspx?etn=${entityName}&id=${getRecordId(r)}&pagetype=entityrecord`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:C.vi,textDecoration:"none",fontSize:10,lineHeight:1}} title="Open in D365">{"\u2197"}</a>}
                 </td>
                 {fields.map(f => {
                   const k=`${i}-${f}`;
