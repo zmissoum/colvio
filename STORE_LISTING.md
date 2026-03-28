@@ -71,6 +71,13 @@ Bulk operation safeguards — confirmation dialogs on delete and update
 Only 3 runtime dependencies (React, React-DOM, xlsx export-only)
 Open source — audit the code yourself on GitHub
 
+ROLE-BASED ACCESS
+
+Some modules require elevated D365 permissions and are automatically hidden for non-admin users:
+Available to all users: Data Explorer, Show All Data, Metadata Browser, Data Loader, Relationship Graph, Help
+Requires System Administrator or System Customizer: Solution Explorer, Translation Manager, Login History, Users & Licenses, Security Audit
+Colvio detects your permissions at startup and only shows the tabs you can access. No error screens, no confusion.
+
 SUPPORTED REGIONS
 
 Works on all Dynamics 365 / Dataverse environments worldwide:
