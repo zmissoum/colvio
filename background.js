@@ -7,10 +7,14 @@
 
 let d365TabId = null;
 
+// All D365 domains: commercial, US Gov, China
+const D365_DOMAINS = [".dynamics.com", ".microsoftdynamics.us", ".dynamics.cn"];
+const isD365Url = (url) => url && D365_DOMAINS.some(d => url.includes(d));
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
     chrome.declarativeContent.onPageChanged.addRules([{
-      conditions: [new chrome.declarativeContent.PageStateMatcher({ pageUrl: { hostSuffix: ".dynamics.com" } })],
+      conditions: D365_DOMAINS.map(d => new chrome.declarativeContent.PageStateMatcher({ pageUrl: { hostSuffix: d } })),
       actions: [new chrome.declarativeContent.ShowAction()],
     }]);
   });
@@ -18,7 +22,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // ── Click icon: open panel in new tab ────────────────────────
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.url?.includes(".dynamics.com")) return;
+  if (!isD365Url(tab.url)) return;
   d365TabId = tab.id;
 
   // Inject content script

@@ -32,7 +32,9 @@
     "https://*.crm18.dynamics.com/*",
     "https://*.crm19.dynamics.com/*",
     "https://*.crm20.dynamics.com/*",
-    "https://*.crm21.dynamics.com/*"
+    "https://*.crm21.dynamics.com/*",
+    "https://*.microsoftdynamics.us/*",
+    "https://*.dynamics.cn/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -40,7 +42,9 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.dynamics.com/*"
+        "https://*.dynamics.com/*",
+        "https://*.microsoftdynamics.us/*",
+        "https://*.dynamics.cn/*"
       ],
       "js": [
         "content.js"
