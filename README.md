@@ -1,6 +1,6 @@
 # Colvio for Dynamics 365
 
-> The SF Inspector equivalent for Microsoft Dynamics 365 / Dataverse — free, open-source, in the browser.
+> Free, open-source data explorer for Microsoft Dynamics 365 / Dataverse — directly in the browser.
 
 <div align="center">
   <img src="icons/icon128.png" alt="Colvio" width="80"/>
@@ -12,7 +12,7 @@ Colvio is a **free and open-source** Chrome extension that lets consultants, adm
 
 ## Why Colvio?
 
-If you're coming from Salesforce, you know SF Inspector. You know how essential it is to have a free, fast, in-browser tool for data exploration and debugging. **D365 didn't have one. Now it does.**
+D365 has always lacked a free, fast, in-browser tool for data exploration and debugging. **Now it has one.**
 
 Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Free forever** — no freemium, no paywalls, no "Pro" tier

@@ -1,7 +1,7 @@
 # Chrome Web Store Listing — Colvio
 
 ## Short Description (132 chars max)
-Free data explorer for Dynamics 365 / Dataverse. Query, inspect, load, export — like SF Inspector but for D365.
+Free data explorer for Dynamics 365 / Dataverse. Query, inspect, load, audit, export — directly from the browser.
 
 ## Detailed Description
 
@@ -11,7 +11,7 @@ Colvio is a free, open-source Chrome extension that gives D365 consultants, admi
 
 No API keys. No app registration. No subscription. No account. Just click the icon on any D365 page and start exploring.
 
-If you come from Salesforce, think SF Inspector — but for Dynamics 365.
+The free, in-browser data toolkit that Dynamics 365 has been missing.
 
 KEY FEATURES
 
@@ -115,7 +115,7 @@ Data migration teams loading/extracting data
 Salesforce consultants transitioning to D365
 Anyone who needs quick access to Dataverse data
 
-Keywords: Dynamics 365, Dataverse, CRM, Power Platform, Data Explorer, OData, Chrome Extension, D365, Microsoft Dynamics, Data Loader, SF Inspector, free, open source, license monitor, user management
+Keywords: Dynamics 365, Dataverse, CRM, Power Platform, Data Explorer, OData, Chrome Extension, D365, Microsoft Dynamics, Data Loader, free, open source, license monitor, user management, security audit
 
 ## Category
 Developer Tools
