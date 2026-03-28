@@ -169,6 +169,6 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Copyright (c) 2026 Zakaria Missoum. All rights reserved.
+MIT License — see [LICENSE](LICENSE) for details.
 
 **[github.com/zmissoum/colvio](https://github.com/zmissoum/colvio)**
