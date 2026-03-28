@@ -11,7 +11,7 @@ export function useDebounce(value, delay = 150) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Colvio v1.6 — Data Explorer & Loader for Microsoft Dynamics 365
+   Colvio v1.9 — Data Explorer & Loader for Microsoft Dynamics 365
    ═══════════════════════════════════════════════════════════════ */
 
 // ── ICONS ──────────────────────────────────────────────────────

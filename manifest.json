@@ -24,10 +24,12 @@
     "https://*.crm10.dynamics.com/*",
     "https://*.crm11.dynamics.com/*",
     "https://*.crm12.dynamics.com/*",
+    "https://*.crm13.dynamics.com/*",
     "https://*.crm14.dynamics.com/*",
     "https://*.crm15.dynamics.com/*",
     "https://*.crm16.dynamics.com/*",
     "https://*.crm17.dynamics.com/*",
+    "https://*.crm18.dynamics.com/*",
     "https://*.crm19.dynamics.com/*",
     "https://*.crm20.dynamics.com/*",
     "https://*.crm21.dynamics.com/*"
