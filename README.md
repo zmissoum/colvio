@@ -135,14 +135,26 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 medium open findings**.
 
+### Data Protection
 - **Zero data exfiltration** — no external servers, no analytics, no telemetry
-- **Input validation** — all entity names, field names, and GUIDs validated with regex in the content script
-- **OData injection protection** — numeric filter values validated, Lookup GUIDs format-checked
-- **CSV formula injection protection** — exported cells prefixed to prevent spreadsheet formula execution
-- **Content Security Policy** — explicit CSP on panel.html
-- **Anti-fingerprinting** — content script marker is non-enumerable
 - **PII protection** — query history strips filter values before persisting
-- **Bulk operation safeguards** — confirm dialogs on delete and update, CanBeDeleted pre-check
+- **CSV formula injection protection** — exported cells prefixed to prevent spreadsheet formula execution
+- **Anti-fingerprinting** — content script marker is non-enumerable
+
+### Input Validation
+- **Entity/field name validation** — all names validated with regex in the content script
+- **OData injection protection** — numeric filter values validated, Lookup GUIDs format-checked
+- **Content Security Policy** — explicit CSP on panel.html
+
+### Write Operation Safeguards
+- **Typed confirmation on bulk delete** — you must type the entity name to confirm
+- **CanBeDeleted pre-check** — verifies entity metadata before allowing delete
+- **Confirm dialog on bulk update** — shows field name, value, and record count
+- **Client-side rate limiting** — max 10 requests/second to prevent API abuse
+- **Server-side enforcement** — all write operations respect your D365 security roles, Colvio cannot bypass RBAC
+
+### Access Control
+- **Role-based tab visibility** — sensitive modules auto-hidden for non-admin users (zero flash)
 - **Manifest V3** — minimal permissions (`activeTab`, `scripting`, `storage`, `declarativeContent`)
 - **3 runtime dependencies** — React, React-DOM, xlsx (export-only)
 

@@ -67,9 +67,26 @@ Input validation on all API parameters (entity names, GUIDs, search terms)
 OData injection protection — numeric and GUID values validated before query insertion
 CSV export formula injection protection — prevents spreadsheet formula execution
 Content Security Policy enforced on extension pages
-Bulk operation safeguards — confirmation dialogs on delete and update
+Bulk operation safeguards — typed confirmation on delete, confirm dialog on bulk update
+CanBeDeleted pre-check — verifies entity permissions before allowing delete operations
+Client-side rate limiting — max 10 requests/second to prevent API abuse
+Role-based tab visibility — sensitive modules auto-hidden for non-admin users
 Only 3 runtime dependencies (React, React-DOM, xlsx export-only)
 Open source — audit the code yourself on GitHub
+
+BUILT WITH SECURITY IN MIND
+
+Colvio goes beyond what similar tools offer in terms of safety:
+Typed confirmation required before any bulk delete (you must type the entity name)
+Entity CanBeDeleted metadata check before delete operations are allowed
+Confirm dialog on bulk update showing field name, value, and record count
+Rate limiting prevents accidental API flooding (10 req/sec cap)
+OData and GUID input validation prevents injection attacks
+CSV formula injection protection on all exports
+Role-based access control hides admin-only modules from standard users
+Content Security Policy blocks unauthorized script execution
+PII stripping in query history — filter values are not persisted
+All write operations respect your D365 security roles — Colvio cannot bypass server-side permissions
 
 ROLE-BASED ACCESS
 
