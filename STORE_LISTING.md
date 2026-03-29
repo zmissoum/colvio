@@ -115,8 +115,6 @@ Data migration teams loading/extracting data
 Salesforce consultants transitioning to D365
 Anyone who needs quick access to Dataverse data
 
-Keywords: Dynamics 365, Dataverse, CRM, Power Platform, Data Explorer, OData, Chrome Extension, D365, Microsoft Dynamics, Data Loader, free, open source, license monitor, user management, security audit
-
 ## Category
 Developer Tools
 
