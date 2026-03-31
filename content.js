@@ -85,7 +85,7 @@
     };
     if (body) headers["Content-Type"] = "application/json";
 
-    const isWrite = method === "POST" || method === "PATCH" || method === "DELETE";
+    const isWrite = method === "POST" || method === "PATCH" || method === "DELETE" || method === "PUT";
 
     // For reads: request formatted values. For writes: nothing special.
     if (!isWrite && !path.includes("EntityDefinitions")) {
@@ -719,20 +719,62 @@
           case "updateAttributeLabel": {
             validateName(params.entityName, 'entityName');
             validateName(params.attributeName, 'attributeName');
-            // Use PATCH on the attribute with DisplayName in body
-            result = await dvRequest("PATCH",
-              `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')`,
-              {
-                DisplayName: {
-                  "@odata.type": "Microsoft.Dynamics.CRM.Label",
-                  LocalizedLabels: params.localizedLabels.map(l => ({
-                    "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
-                    Label: l.Label,
-                    LanguageCode: l.LanguageCode
-                  }))
-                }
-              }
+            // Step 1: Get attribute type to determine the OData cast
+            const attrTypeMeta = await dvRequest("GET",
+              `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')?$select=AttributeType`
             );
+            const aType = attrTypeMeta?.AttributeType || "String";
+            const CAST_MAP = {
+              "String":"StringAttributeMetadata","Memo":"MemoAttributeMetadata",
+              "Integer":"IntegerAttributeMetadata","BigInt":"BigIntAttributeMetadata",
+              "Double":"DoubleAttributeMetadata","Decimal":"DecimalAttributeMetadata",
+              "Money":"MoneyAttributeMetadata","Boolean":"BooleanAttributeMetadata",
+              "DateTime":"DateTimeAttributeMetadata","Lookup":"LookupAttributeMetadata",
+              "Customer":"LookupAttributeMetadata","Owner":"LookupAttributeMetadata",
+              "Picklist":"PicklistAttributeMetadata","State":"StateAttributeMetadata",
+              "Status":"StatusAttributeMetadata","Uniqueidentifier":"UniqueIdentifierAttributeMetadata",
+              "EntityName":"EntityNameAttributeMetadata",
+              "MultiSelectPicklist":"MultiSelectPicklistAttributeMetadata",
+              "Image":"ImageAttributeMetadata","File":"FileAttributeMetadata",
+            };
+            const cast = CAST_MAP[aType] || null;
+            // Step 2: GET the full attribute metadata with typed cast
+            const castSegment = cast ? `/Microsoft.Dynamics.CRM.${cast}` : "";
+            const fullAttr = await dvRequest("GET",
+              `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')${castSegment}`
+            );
+            if (!fullAttr) throw new Error("Could not retrieve attribute metadata");
+            // Step 3: Update DisplayName.LocalizedLabels in the full object
+            if (!fullAttr.DisplayName) fullAttr.DisplayName = { LocalizedLabels: [] };
+            const existingLabels = fullAttr.DisplayName.LocalizedLabels || [];
+            params.localizedLabels.forEach(newL => {
+              const idx = existingLabels.findIndex(l => l.LanguageCode === newL.LanguageCode);
+              if (idx >= 0) existingLabels[idx].Label = newL.Label;
+              else existingLabels.push({ Label: newL.Label, LanguageCode: newL.LanguageCode });
+            });
+            fullAttr.DisplayName.LocalizedLabels = existingLabels;
+            // Step 4: PUT the entire attribute back with MSCRM.MergeLabels header
+            const ctx2 = d365Context || extractContext();
+            const putUrl = `${ctx2.clientUrl}/api/data/${ctx2.apiVersion}/EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')${castSegment}`;
+            const putResp = await fetch(putUrl, {
+              method: "PUT",
+              headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "OData-MaxVersion": "4.0",
+                "OData-Version": "4.0",
+                "MSCRM.MergeLabels": "true"
+              },
+              body: JSON.stringify(fullAttr),
+              credentials: "same-origin"
+            });
+            if (!putResp.ok) {
+              const errText = await putResp.text();
+              let msg = `HTTP ${putResp.status}`;
+              try { msg = `HTTP ${putResp.status}: ${JSON.parse(errText).error?.message || errText}`; } catch {}
+              throw new Error(msg);
+            }
+            result = { ok: true };
             break;
           }
           case "publishEntity": {
