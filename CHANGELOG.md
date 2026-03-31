@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.1] — 2026-03-31
+### Fixed
+- Translation Manager: fix label save — use GET+PUT pattern with typed cast and MSCRM.MergeLabels header (previous PATCH/SetLocLabels approaches returned HTTP 405/400)
+- Translation Manager: show error message in UI on save failure instead of silent fail
+- content.js: include PUT in isWrite check for correct timeout handling
+
 ## [1.9.0] — 2026-03-27
 ### Added
 - SQL query mode: 4th mode in Explorer (Builder | OData | FetchXML | SQL), recursive descent SQL parser, translates to FetchXML for reliable pagination
