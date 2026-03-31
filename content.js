@@ -719,9 +719,19 @@
           case "updateAttributeLabel": {
             validateName(params.entityName, 'entityName');
             validateName(params.attributeName, 'attributeName');
-            result = await dvRequest("PUT",
-              `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')/DisplayName`,
-              { LocalizedLabels: params.localizedLabels }
+            // Use PATCH on the attribute with DisplayName in body
+            result = await dvRequest("PATCH",
+              `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')`,
+              {
+                DisplayName: {
+                  "@odata.type": "Microsoft.Dynamics.CRM.Label",
+                  LocalizedLabels: params.localizedLabels.map(l => ({
+                    "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                    Label: l.Label,
+                    LanguageCode: l.LanguageCode
+                  }))
+                }
+              }
             );
             break;
           }

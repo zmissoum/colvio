@@ -45,7 +45,7 @@ export default function TranslationManager({bp,orgInfo}){
       const labelsMap={};
       attr.labels.forEach(l=>{labelsMap[l.languageCode]={Label:l.label,LanguageCode:l.languageCode};});
       Object.entries(langEdits).forEach(([code,val])=>{labelsMap[+code]={Label:val,LanguageCode:+code};});
-      try{await bridge.updateAttributeLabel(selEnt.l,attrName,Object.values(labelsMap));ok++;}catch{fail++;}
+      try{await bridge.updateAttributeLabel(selEnt.l,attrName,Object.values(labelsMap));ok++;}catch(err){fail++;setSaveMsg(`Error: ${err.message}`);}
     }
     if(ok>0){try{await bridge.publishEntity(selEnt.l);}catch{}}
     setSaveMsg(`${ok} updated${fail?`, ${fail} failed`:""}`);
