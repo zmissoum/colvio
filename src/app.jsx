@@ -34,8 +34,14 @@ export default function App(){
     document.body.style.color=t==="dark"?DARK.tx:LIGHT.tx;
     return t;
   });
-  const toggleTheme=()=>{const t=theme==="dark"?"light":"dark";setTheme(t);try{localStorage.setItem("colvio_theme",t);}catch{}};
-  useEffect(()=>{setThemeColors(theme);document.body.style.background=C.bg;document.body.style.color=C.tx;},[theme]);
+  const toggleTheme=()=>{
+    const t=theme==="dark"?"light":"dark";
+    setThemeColors(t);
+    document.body.style.background=C.bg;
+    document.body.style.color=C.tx;
+    setTheme(t);
+    try{localStorage.setItem("colvio_theme",t);}catch{}
+  };
   useEffect(() => {
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
     if (!mq) return;
@@ -176,7 +182,7 @@ export default function App(){
           <span style={{fontSize:12,color:C.txd,...mono}}>{t("explorer.execute_hint")}</span>
         </div>
         <div style={{flex:1,overflow:"auto"}}>
-          {tab==="explorer"&&<ErrorBoundary><Explorer bp={bp} addHistory={addHistory} orgInfo={orgInfo}/></ErrorBoundary>}
+          {tab==="explorer"&&<ErrorBoundary><Explorer bp={bp} addHistory={addHistory} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           <div style={{position:"fixed",bottom:12,right:12,zIndex:50,display:"flex",gap:6}}>
             <button onClick={()=>setShowShortcuts(true)} style={{padding:"6px 10px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:8,color:C.txd,cursor:"pointer",fontSize:12,boxShadow:"0 2px 8px rgba(0,0,0,.3)",fontWeight:700}} title="Ctrl+/">?</button>
             <button onClick={()=>{const next=getLocale()==="en"?"fr":"en";setLocale(next);setLocaleState(next);}} style={{padding:"6px 12px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:8,color:C.txm,cursor:"pointer",fontSize:12,boxShadow:"0 2px 8px rgba(0,0,0,.3)",fontWeight:600}}>{getLocale()==="en"?"FR":"EN"}</button>
@@ -184,16 +190,16 @@ export default function App(){
           </div>
           {showShortcuts&&<ShortcutsPanel onClose={()=>setShowShortcuts(false)}/>}
           <OnboardingTour/>
-          {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="licenses"&&<ErrorBoundary><UserLicenseMonitor bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="security"&&<ErrorBoundary><SecurityAudit bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
-          {tab==="help"&&<HelpTab bp={bp} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
+          {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="licenses"&&<ErrorBoundary><UserLicenseMonitor bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="security"&&<ErrorBoundary><SecurityAudit bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>
       <style>{`
