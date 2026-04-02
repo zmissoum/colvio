@@ -158,7 +158,7 @@ export default function TranslationManager({bp,orgInfo}){
                         const locked=attr.canRename===false;
                         return(
                           <td key={code} style={{padding:"2px 4px"}}>
-                            <input value={val} readOnly={locked} onChange={locked?undefined:e=>handleEdit(attr.logical,code,e.target.value)} style={inp({fontSize:12,padding:"3px 6px",borderColor:edited!==undefined?C.yw:C.bd,...mono,cursor:locked?"not-allowed":"text",background:locked?"transparent":undefined})}/>
+                            <input value={val} readOnly={locked} onChange={locked?undefined:e=>handleEdit(attr.logical,code,e.target.value)} style={inp({fontSize:12,padding:"3px 6px",borderColor:edited!==undefined?C.yw:C.bd,...mono,cursor:locked?"not-allowed":"text",background:locked?"transparent":C.sf})}/>
                           </td>
                         );
                       })}
