@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText } from "../shared.jsx";
+import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom } from "../shared.jsx";
 
 export default function ShowAllData({bp,orgInfo}){
   const isLive = orgInfo?.isExtension;
@@ -100,7 +100,7 @@ export default function ShowAllData({bp,orgInfo}){
     return record.fields.filter(f=>{
       if(fieldSearch&&!f.l.toLowerCase().includes(fieldSearch.toLowerCase())&&!f.d.toLowerCase().includes(fieldSearch.toLowerCase()))return false;
       if(!showEmpty&&(f.value===null||f.value===undefined||f.value===""))return false;
-      if(showCustomOnly&&!f.cust)return false;
+      if(showCustomOnly&&!(f.cust&&isTrulyCustom(f.l)))return false;
       return true;
     });
   },[record,fieldSearch,showEmpty,showCustomOnly]);

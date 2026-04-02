@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
-import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl } from "../shared.jsx";
+import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, isTrulyCustom } from "../shared.jsx";
 
 export default function Loader({bp,orgInfo}){
   const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
@@ -69,7 +69,7 @@ export default function Loader({bp,orgInfo}){
     if(!isLive) return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:e.isCustom?"⚙️":"📋"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋"})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, copyText } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, copyText, isTrulyCustom } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -59,7 +59,7 @@ export default function MetadataBrowser({bp,orgInfo}){
     if(!isLive)return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:e.isCustom?"⚙️":"📋",c:0,cat:e.isCustom?"Custom":"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical))?"Custom":"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);

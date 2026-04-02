@@ -3,7 +3,7 @@ import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
@@ -112,7 +112,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
       if(data && Array.isArray(data)){
         const mapped = data.map(e=>({
           l:e.logical, d:e.display, p:e.entitySet||e.logical+"s",
-          i:e.isCustom?"⚙️":"📋", c:0, cat:e.isCustom?"Custom":"Standard"
+          i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical))?"Custom":"Standard"
         })).sort((a,b)=>a.d.localeCompare(b.d));
         setEntities(mapped);
       }
@@ -147,7 +147,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
         if(fieldsData && Array.isArray(fieldsData) && fieldsData.length > 0){
           const mapped=fieldsData.map(f=>({
             l:f.logical, odata:f.odataName||f.logical, d:f.display||f.logical,
-            t:f.type||"String", req:!!f.required, cust:!!f.isCustom
+            t:f.type||"String", req:!!f.required, cust:!!(f.isCustom&&isTrulyCustom(f.logical))
           })).sort((a,b)=>a.l.localeCompare(b.l));
           setFields(mapped);
           const common=mapped.filter(f=>["name","fullname","emailaddress1","telephone1","statecode","subject","title"].includes(f.l)).map(f=>f.l);
@@ -185,7 +185,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
           l: f.logical || f.l,
           d: f.display || f.d || f.logical || f.l,
           t: f.type || f.t || "String",
-          cust: !!(f.isCustom || f.cust),
+          cust: !!((f.isCustom || f.cust) && isTrulyCustom(f.logical || f.l)),
           odata: f.odataName || f.logical || f.l,
         }))
         .sort((a, b) => a.l.localeCompare(b.l));

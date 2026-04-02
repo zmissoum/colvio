@@ -110,6 +110,11 @@ export function dl(c,t,n){const b=new Blob([c],{type:t});const u=URL.createObjec
 export function Spin({s=14}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid rgba(255,255,255,.3)`,borderTopColor:"white",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>;}
 export function copyText(t){navigator.clipboard?.writeText(String(t));}
 
+// Distinguish truly custom fields/entities (created by integrators) from Microsoft solution fields
+// msdyn_, mspp_, msfp_, msdynce_, msdynmkt_, adx_, cds_ etc. are Microsoft-created but IsCustom=true
+const MS_PREFIXES = /^(msdyn|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat|powerbots|virtualimage|componentlib|connectioninstance|datalake|fax|socialprofile|sla|importlog|rollup|annualfiscal|queue|calendar|asyncoperation|workflow|savedquery|userquery|systemuser|businessunit|organization|role|team|transactioncurrency)_/;
+export function isTrulyCustom(logicalName){ return !MS_PREFIXES.test(logicalName); }
+
 // ── Detect extension mode ──
 export function detectExtension() {
   try {

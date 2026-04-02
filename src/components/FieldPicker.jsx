@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { C, I, useDebounce, mono, displayType, inp } from "../shared.jsx";
+import { C, I, useDebounce, mono, displayType, inp, isTrulyCustom } from "../shared.jsx";
 
 export default function FieldPicker({ fields, selected, onToggle, onBulkAdd, onBulkRemove, onSelectAll, onSelectNone, bp, onClose }) {
   const [search, setSearch] = useState("");
@@ -24,7 +24,7 @@ export default function FieldPicker({ fields, selected, onToggle, onBulkAdd, onB
         if (!f.l.toLowerCase().includes(s) && !f.d.toLowerCase().includes(s)) return false;
       }
       if (typeFilter !== "all" && f.t !== typeFilter) return false;
-      if (customOnly && !f.cust) return false;
+      if (customOnly && !(f.cust && isTrulyCustom(f.l))) return false;
       return true;
     });
   }, [fields, debouncedSearch, typeFilter, customOnly]);
