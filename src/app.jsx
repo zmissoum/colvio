@@ -26,9 +26,13 @@ export default function App(){
   const[connecting,setConnecting]=useState(false);
   const[sideOpen,setSideOpen]=useState(false);
   const[theme,setTheme]=useState(()=>{
-    try{const t=localStorage.getItem("colvio_theme");if(t){setThemeColors(t);return t;}}catch{}
-    const def=window.matchMedia?.('(prefers-color-scheme: dark)').matches ? "dark" : "light";
-    setThemeColors(def);return def;
+    let t="dark";
+    try{const saved=localStorage.getItem("colvio_theme");if(saved)t=saved;}catch{}
+    setThemeColors(t);
+    // Set body styles immediately to prevent flash
+    document.body.style.background=t==="dark"?DARK.bg:LIGHT.bg;
+    document.body.style.color=t==="dark"?DARK.tx:LIGHT.tx;
+    return t;
   });
   const toggleTheme=()=>{const t=theme==="dark"?"light":"dark";setTheme(t);try{localStorage.setItem("colvio_theme",t);}catch{}};
   useEffect(()=>{setThemeColors(theme);document.body.style.background=C.bg;document.body.style.color=C.tx;},[theme]);
