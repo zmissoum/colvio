@@ -145,16 +145,20 @@ export default function TranslationManager({bp,orgInfo}){
                 </thead>
                 <tbody>
                   {filteredAttrs.map((attr,ri)=>(
-                    <tr key={attr.logical} style={{borderBottom:`1px solid ${C.bd}22`,background:ri%2===0?"transparent":C.sfh+"33"}}>
-                      <td style={{...tds,...mono,fontSize:12,color:C.vi}}>{attr.logical}</td>
+                    <tr key={attr.logical} style={{borderBottom:`1px solid ${C.bd}22`,background:ri%2===0?"transparent":C.sfh+"33",opacity:attr.canRename===false?.5:1}}>
+                      <td style={{...tds,...mono,fontSize:12,color:C.vi,display:"flex",alignItems:"center",gap:4}}>
+                        {attr.logical}
+                        {attr.canRename===false&&<span title="This field's label cannot be renamed (locked by Microsoft)" style={{fontSize:10,color:C.txd}}>🔒</span>}
+                      </td>
                       <td style={{...tds,fontSize:12,color:C.txd}}>{displayType(attr.type)}</td>
                       {selLangs.map(code=>{
                         const existing=attr.labels.find(l=>l.languageCode===code)?.label||"";
                         const edited=edits[attr.logical]?.[code];
                         const val=edited!==undefined?edited:existing;
+                        const locked=attr.canRename===false;
                         return(
                           <td key={code} style={{padding:"2px 4px"}}>
-                            <input value={val} onChange={e=>handleEdit(attr.logical,code,e.target.value)} style={inp({fontSize:12,padding:"3px 6px",borderColor:edited!==undefined?C.yw:C.bd,...mono})}/>
+                            <input value={val} readOnly={locked} onChange={locked?undefined:e=>handleEdit(attr.logical,code,e.target.value)} style={inp({fontSize:12,padding:"3px 6px",borderColor:edited!==undefined?C.yw:C.bd,...mono,cursor:locked?"not-allowed":"text",background:locked?"transparent":undefined})}/>
                           </td>
                         );
                       })}

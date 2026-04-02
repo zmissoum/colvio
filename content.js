@@ -706,13 +706,15 @@
           case "getAttributeLabels": {
             validateName(params.logicalName, 'logicalName');
             const data = await dvRequest("GET",
-              `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes?$select=LogicalName,AttributeType,DisplayName,Description`
+              `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes?$select=LogicalName,AttributeType,DisplayName,Description,IsRenameable,IsCustomizable`
             );
             result = (data.value || []).map(a => ({
               logical: a.LogicalName,
               type: a.AttributeType,
               labels: (a.DisplayName?.LocalizedLabels || []).map(l => ({ label: l.Label, languageCode: l.LanguageCode })),
               descriptions: (a.Description?.LocalizedLabels || []).map(l => ({ label: l.Label, languageCode: l.LanguageCode })),
+              canRename: a.IsRenameable?.Value !== false,
+              canCustomize: a.IsCustomizable?.Value !== false,
             }));
             break;
           }
