@@ -1,9 +1,16 @@
 # Changelog
 
-## [1.9.1] — 2026-03-31
+## [1.9.1] — 2026-04-02
 ### Fixed
 - Translation Manager: fix label save — use GET+PUT pattern with typed cast and MSCRM.MergeLabels header (previous PATCH/SetLocLabels approaches returned HTTP 405/400)
-- Translation Manager: show error message in UI on save failure instead of silent fail
+- Translation Manager: lock non-renameable fields as read-only (IsRenameable check + lock icon)
+- Translation Manager: show error message in UI on save failure
+- Theme system: fix toggle regression — setThemeColors called before render, theme prop passed to all 11 tabs for instant re-render
+- Theme system: dark mode by default on first launch (no flash)
+- Theme audit: 38 findings fixed — Spin component, bt() helper, option elements, error backgrounds, type badges all use C.xxx tokens
+- Custom field detection: exclude Microsoft solution prefixes (msdyn_, mspp_, msfp_, adx_, etc.) from "Custom only" filters
+- Sidebar logo: use magnifying glass icon instead of lightning emoji
+- Icons: all PNGs regenerated from SVG source
 - content.js: include PUT in isWrite check for correct timeout handling
 
 ## [1.9.0] — 2026-03-27

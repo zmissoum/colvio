@@ -123,11 +123,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | ~6,200 |
-| API actions | 33 |
+| Lines of code | ~6,700 |
+| API actions | 35 |
 | React components | 21 |
-| Source files | 28 |
-| Build size | ~674 KB |
+| Source files | 31 |
+| Build size | ~664 KB |
 | Languages | EN / FR |
 | Price | Free |
 
