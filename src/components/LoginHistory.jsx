@@ -144,7 +144,7 @@ export default function LoginHistory({bp,orgInfo}){
         )}
       </div>
 
-      {error&&<div style={{padding:"8px 12px",background:"#991B1B33",borderRadius:8,color:C.rd,fontSize:13,marginBottom:12}}>⚠ {error}</div>}
+      {error&&<div style={{padding:"8px 12px",background:C.rd+"22",borderRadius:8,color:C.rd,fontSize:13,marginBottom:12}}>⚠ {error}</div>}
 
       {selectedUser&&(
         <div style={{...crd({padding:14}),marginBottom:16}}>

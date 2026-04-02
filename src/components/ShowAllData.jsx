@@ -126,7 +126,7 @@ export default function ShowAllData({bp,orgInfo}){
         <button onClick={loadRecord} disabled={loading} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`,{flexShrink:0})}>{loading?<><Spin s={12}/> Loading...</>:<><I.Eye/> Inspect</>}</button>
       </div>
 
-      {error&&<div style={{padding:"8px 12px",background:"#991B1B33",borderRadius:8,color:C.rd,fontSize:13,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>⚠ {error}</div>}
+      {error&&<div style={{padding:"8px 12px",background:C.rd+"22",borderRadius:8,color:C.rd,fontSize:13,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>⚠ {error}</div>}
 
       {record&&(
         <div>

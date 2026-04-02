@@ -28,7 +28,7 @@ export function setThemeColors(t) { Object.assign(C, t === "light" ? LIGHT : DAR
 export const mono={fontFamily:"'DM Mono','Fira Code',monospace"};
 export const displayType=(t)=>t==="Picklist"?"OptionSet":t;
 export const inp=(x)=>({width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:14,outline:"none",boxSizing:"border-box",...x});
-export const bt=(bg,x)=>({padding:"7px 14px",background:bg||C.sfh,border:bg?"none":`1px solid ${C.bd}`,borderRadius:6,color:"white",cursor:"pointer",fontSize:13,fontWeight:600,display:"inline-flex",alignItems:"center",gap:5,transition:"all .15s",whiteSpace:"nowrap",...x});
+export const bt=(bg,x)=>({padding:"7px 14px",background:bg||C.sfh,border:bg?"none":`1px solid ${C.bd}`,borderRadius:6,color:bg?"white":C.tx,cursor:"pointer",fontSize:13,fontWeight:600,display:"inline-flex",alignItems:"center",gap:5,transition:"all .15s",whiteSpace:"nowrap",...x});
 export const crd=(x)=>({background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,...x});
 export const ths=()=>({padding:"6px 10px",textAlign:"left",borderBottom:`2px solid ${C.bd}`,color:C.txd,fontWeight:600,fontSize:12,position:"sticky",top:0,background:C.sf,whiteSpace:"nowrap"});
 export const tds={padding:"5px 10px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:14};
@@ -107,7 +107,7 @@ export const ROWS=[
 export const D365CF=["firstname","lastname","emailaddress1","telephone1","jobtitle","address1_line1","address1_city","address1_postalcode","address1_country","new_externalid"];
 
 export function dl(c,t,n){const b=new Blob([c],{type:t});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=n;a.click();URL.revokeObjectURL(u);}
-export function Spin({s=14}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid rgba(255,255,255,.3)`,borderTopColor:"white",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>;}
+export function Spin({s=14}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid ${C.txd}44`,borderTopColor:C.tx,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>;}
 export function copyText(t){navigator.clipboard?.writeText(String(t));}
 
 // Distinguish truly custom fields/entities (created by integrators) from Microsoft solution fields

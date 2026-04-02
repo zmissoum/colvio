@@ -572,7 +572,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
         </div>
       )}
       <div style={{flex:1,overflow:"auto",minWidth:0}}>
-        {error&&<div style={{padding:"8px 12px",background:"#991B1B33",borderBottom:`1px solid ${C.rd}33`,color:C.rd,fontSize:13,display:"flex",alignItems:"center",gap:6,position:"sticky",top:0,zIndex:3}}>⚠ {error}<button onClick={()=>setError("")} style={{background:"none",border:"none",color:C.rd,cursor:"pointer",marginLeft:"auto"}}><I.X/></button></div>}
+        {error&&<div style={{padding:"8px 12px",background:C.rd+"22",borderBottom:`1px solid ${C.rd}33`,color:C.rd,fontSize:13,display:"flex",alignItems:"center",gap:6,position:"sticky",top:0,zIndex:3}}>⚠ {error}<button onClick={()=>setError("")} style={{background:"none",border:"none",color:C.rd,cursor:"pointer",marginLeft:"auto"}}><I.X/></button></div>}
         {!ent&&!bp.mobile?<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:C.txd}}><I.Database/><span style={{marginLeft:8}}>Select an entity</span></div>
         :ent?<>
           <div style={{borderBottom:`1px solid ${C.bd}`,padding:bp.mobile?10:12,background:C.sf}}>

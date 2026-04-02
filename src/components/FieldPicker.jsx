@@ -48,9 +48,9 @@ export default function FieldPicker({ fields, selected, onToggle, onBulkAdd, onB
   const typeColor = (t) => {
     if (t === "Lookup") return { bg: C.vid, fg: C.lv };
     if (t === "Picklist" || t === "State" || t === "Status") return { bg: C.gnd, fg: C.gn };
-    if (t === "Money" || t === "Integer" || t === "Decimal") return { bg: "#92400E33", fg: C.yw };
-    if (t === "DateTime") return { bg: "#0E749033", fg: C.cy };
-    if (t === "Uniqueidentifier") return { bg: "#5C638033", fg: C.txm };
+    if (t === "Money" || t === "Integer" || t === "Decimal") return { bg: C.yw+"22", fg: C.yw };
+    if (t === "DateTime") return { bg: C.cy+"22", fg: C.cy };
+    if (t === "Uniqueidentifier") return { bg: C.txd+"22", fg: C.txm };
     return { bg: C.sfh, fg: C.txm };
   };
 

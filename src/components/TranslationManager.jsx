@@ -128,7 +128,7 @@ export default function TranslationManager({bp,orgInfo}){
             <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
               {languages.map(lang=>(
                 <label key={lang.code} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:selLangs.includes(lang.code)?C.tx:C.txd,cursor:"pointer"}}>
-                  <input type="checkbox" checked={selLangs.includes(lang.code)} onChange={e=>{if(e.target.checked)setSelLangs(p=>[...p,lang.code]);else setSelLangs(p=>p.filter(c=>c!==lang.code));}}/>
+                  <input type="checkbox" checked={selLangs.includes(lang.code)} onChange={e=>{if(e.target.checked)setSelLangs(p=>[...p,lang.code]);else setSelLangs(p=>p.filter(c=>c!==lang.code));}} style={{accentColor:C.vi}}/>
                   {lang.name} ({lang.code})
                 </label>
               ))}

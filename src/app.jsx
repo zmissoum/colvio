@@ -116,7 +116,7 @@ export default function App(){
       {expired && (
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:200,background:C.rd,color:"white",padding:"10px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14}}>
           <span>{t("session.expired")}</span>
-          <button onClick={()=>{window.open(orgInfo?.orgUrl||"https://dynamics.com","_blank");clearSessionExpired();setExpired(false);}} style={{background:"white",color:C.rd,border:"none",borderRadius:4,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>{t("session.reconnect")}</button>
+          <button onClick={()=>{window.open(orgInfo?.orgUrl||"https://dynamics.com","_blank");clearSessionExpired();setExpired(false);}} style={{background:C.sf,color:C.rd,border:"none",borderRadius:4,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>{t("session.reconnect")}</button>
         </div>
       )}
       {bp.mobile&&sideOpen&&<div onClick={()=>setSideOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:99}}/>}
@@ -151,8 +151,8 @@ export default function App(){
               <span style={{color:C.txm}}>{orgInfo?.isExtension ? t("sidebar.extension") : t("sidebar.standalone")}</span>
             </div>
             {orgInfo?.isProduction
-              ? <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:"#991B1B44",color:C.rd,border:`1px solid ${C.rd}55`,letterSpacing:1}}>⚠ PROD</span>
-              : <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:"#065F4644",color:C.gn,border:`1px solid ${C.gn}55`,letterSpacing:1}}>SANDBOX</span>
+              ? <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.rd+"22",color:C.rd,border:`1px solid ${C.rd}55`,letterSpacing:1}}>⚠ PROD</span>
+              : <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.gn+"22",color:C.gn,border:`1px solid ${C.gn}55`,letterSpacing:1}}>SANDBOX</span>
             }
           </div>
           <div style={{color:C.txd,marginBottom:3,...mono,fontSize:11}}>{orgInfo?.orgName || "demo"}.{orgInfo?.region || "crm4"}.dynamics.com</div>
