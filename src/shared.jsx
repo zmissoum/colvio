@@ -27,7 +27,7 @@ export function setThemeColors(t) { Object.assign(C, t === "light" ? LIGHT : DAR
 
 export const mono={fontFamily:"'DM Mono','Fira Code',monospace"};
 export const displayType=(t)=>t==="Picklist"?"OptionSet":t;
-export const inp=(x)=>({width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:14,outline:"none",boxSizing:"border-box",...x});
+export const inp=(x)=>({width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:14,outline:"none",boxSizing:"border-box",colorScheme:"dark light",...x});
 export const bt=(bg,x)=>({padding:"7px 14px",background:bg||C.sfh,border:bg?"none":`1px solid ${C.bd}`,borderRadius:6,color:"white",cursor:"pointer",fontSize:13,fontWeight:600,display:"inline-flex",alignItems:"center",gap:5,transition:"all .15s",whiteSpace:"nowrap",...x});
 export const crd=(x)=>({background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,...x});
 export const ths=()=>({padding:"6px 10px",textAlign:"left",borderBottom:`2px solid ${C.bd}`,color:C.txd,fontWeight:600,fontSize:12,position:"sticky",top:0,background:C.sf,whiteSpace:"nowrap"});
