@@ -36,7 +36,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const[confirmModal,setConfirmModal]=useState(null);
 
   useEffect(()=>{
-    if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l)})))}).catch(()=>{});
+    if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l,e.isManaged)})))}).catch(()=>{});
   },[]);
 
   const filtered=useMemo(()=>{

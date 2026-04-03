@@ -69,7 +69,7 @@ export default function Loader({bp,orgInfo,theme}){
     if(!isLive) return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋"})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);

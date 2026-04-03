@@ -117,7 +117,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
       if(data && Array.isArray(data)){
         const mapped = data.map(e=>({
           l:e.logical, d:e.display, p:e.entitySet||e.logical+"s",
-          i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical))?"Custom":"Standard"
+          i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard"
         })).sort((a,b)=>a.d.localeCompare(b.d));
         setEntities(mapped);
       }

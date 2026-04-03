@@ -156,12 +156,13 @@
             break;
 
           case "getEntities":
-            result = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false");
+            result = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsManaged,MetadataId");
             result = (result.value || []).map(e => ({
               logical: e.LogicalName,
               display: e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName,
               entitySet: e.EntitySetName || (e.LogicalName + "s"),
               isCustom: e.IsCustomEntity || false,
+              isManaged: e.IsManaged || false,
               metadataId: e.MetadataId || null,
             }));
             break;

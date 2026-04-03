@@ -59,7 +59,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     if(!isLive)return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical))?"Custom":"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);
