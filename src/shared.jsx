@@ -113,7 +113,8 @@ export function copyText(t){navigator.clipboard?.writeText(String(t));}
 // Distinguish truly custom fields/entities (created by integrators) from Microsoft solution fields
 // msdyn_, mspp_, msfp_, msdynce_, msdynmkt_, adx_, cds_ etc. are Microsoft-created but IsCustom=true
 const MS_PREFIXES = /^(msdyn|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat|powerbots|virtualimage|componentlib|connectioninstance|datalake|fax|socialprofile|sla|importlog|rollup|annualfiscal|queue|calendar|asyncoperation|workflow|savedquery|userquery|systemuser|businessunit|organization|role|team|transactioncurrency)_/;
-export function isTrulyCustom(logicalName){ return !MS_PREFIXES.test(logicalName); }
+const MS_ENTITIES = /^(agent|agentic|aicopilot|aiplugin|aiskill|allowedmcpclient|botcomponent|card|catalog|chatbot|connectionrole|conversationtranscript|customapi|desktopflow|email|environmentvariable|expiredprocess|feedback|flowmachine|goal|import|interactionfor|keyvaultreference|knowledgearticle|managedidentity|mobileofflineprofile|newprocess|organizationdatasyncstate|package|plugin|powerbimashup|powerpages|privilege|processsession|publisher|retaineddataexcel|revokeinheritedaccess|searchrelationshipsettings|serviceplan|sharedlinksetting|solution|stagesolutionupload|synapsedatabase|synapselinkexternaltable|territory|translationprocess|usermobileofflineprofile|workflowbinary|workqueue)/;
+export function isTrulyCustom(logicalName){ return !MS_PREFIXES.test(logicalName) && !MS_ENTITIES.test(logicalName); }
 
 // ── Detect extension mode ──
 export function detectExtension() {
