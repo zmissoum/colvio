@@ -1,6 +1,11 @@
 # Changelog
 
-## [1.9.1] — 2026-04-02
+## [1.9.1] — 2026-04-03
+### Added
+- Schema (ERD) tab: interactive Entity Relationship Diagram with multi-entity canvas, drag/zoom/pan, bezier relationship lines, expand/collapse cards, Tables/Fields toggle, Add Related button
+- Schema export: PNG (2x retina), SVG (vector), Mermaid (.mmd) with auto-bounding box
+- Translation Manager: non-renameable fields shown as read-only with lock icon (IsRenameable check)
+
 ### Fixed
 - Translation Manager: fix label save — use GET+PUT pattern with typed cast and MSCRM.MergeLabels header (previous PATCH/SetLocLabels approaches returned HTTP 405/400)
 - Translation Manager: lock non-renameable fields as read-only (IsRenameable check + lock icon)

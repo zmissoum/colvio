@@ -61,6 +61,16 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Depth control (1-2 levels), click nodes to drill down
 - Deduplication, edge labels, count badges
 
+### Schema (ERD)
+- Interactive Entity Relationship Diagram — multi-entity canvas
+- Entity cards with fields, type indicators, FK badges on lookups
+- Bezier curves connecting lookup fields to target entity cards
+- **Drag** cards to rearrange, **scroll** to zoom, **drag canvas** to pan
+- **Expand/collapse** individual cards or all at once (Tables/Fields toggle)
+- **"Add Related"** button (+) to auto-add connected entities
+- **Export**: PNG (2x retina), SVG (vector), Mermaid (.mmd)
+- Toolbar: zoom +/-, Fit All, Auto Layout, Clear
+
 ### Solution Explorer
 - Browse solutions and components grouped by type
 - **13 component types resolved to display names** (Entity, Attribute, OptionSet, Relationship, View, Chart, Web Resource, Plugin Type/Assembly, SDK Step, Security Role, Connection Role, Canvas App)
@@ -68,6 +78,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Translation Manager
 - View and edit field labels across multiple languages inline
+- Non-renameable fields locked as read-only (🔒 icon)
 - Export/Import CSV for bulk translation workflows
 - Save changes + auto-publish entity
 
@@ -123,11 +134,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | ~6,700 |
+| Lines of code | ~7,100 |
 | API actions | 35 |
-| React components | 21 |
-| Source files | 31 |
-| Build size | ~664 KB |
+| React components | 22 |
+| Source files | 32 |
+| Build size | ~680 KB |
 | Languages | EN / FR |
 | Price | Free |
 

@@ -30,6 +30,9 @@ Import CSV or paste from Excel. Smart auto-mapping, lookup resolution, transform
 Relationship Graph
 Visual SVG graph of entity relationships: N:1 parents, 1:N children, N:N many-to-many. Depth 1-2, click nodes to drill down.
 
+Schema (ERD)
+Interactive Entity Relationship Diagram. Add entities to a canvas, see field details with FK badges, bezier curves between lookups and target entities. Drag cards, zoom, pan. Expand/collapse fields or view tables only. Export as PNG, SVG, or Mermaid.
+
 Solution Explorer
 Browse D365 solutions and their components. 13 component types resolved to readable names (Entity, Attribute, View, Plugin, Web Resource, etc.).
 

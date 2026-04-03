@@ -30,6 +30,7 @@ src/
     Loader.jsx          — Data Loader (CSV import wizard)
     MetadataBrowser.jsx — Entity/field/OptionSet browser
     RelationshipGraph.jsx — SVG entity relationship viewer
+    SchemaViewer.jsx    — Interactive ERD diagram (drag, zoom, export)
     SolutionExplorer.jsx  — Solution component browser
     TranslationManager.jsx — Multi-language label editor
     LoginHistory.jsx    — User audit timeline
