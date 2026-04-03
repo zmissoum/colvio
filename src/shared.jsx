@@ -118,7 +118,7 @@ export function copyText(t){navigator.clipboard?.writeText(String(t));}
 // IsManaged=true is also always Standard regardless of name.
 const CUSTOM_PREFIX = /^[a-z]{2,10}_/; // matches new_, cr123_, foe_, colvio_, etc.
 const MS_PREFIX = /^(msdyn|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat)_/;
-export function isTrulyCustom(logicalName, isManaged){ if(isManaged===true)return false; if(!CUSTOM_PREFIX.test(logicalName))return false; if(MS_PREFIX.test(logicalName))return false; return true; }
+export function isTrulyCustom(logicalName){ if(!CUSTOM_PREFIX.test(logicalName))return false; if(MS_PREFIX.test(logicalName))return false; return true; }
 
 // ── Detect extension mode ──
 export function detectExtension() {
