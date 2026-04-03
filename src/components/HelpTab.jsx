@@ -28,6 +28,7 @@ export default function HelpTab({bp,onShowShortcuts,onRestartTour}){
       <Section icon={<I.Grid/>} titleKey="help.metadata_title" bodyKey="help.metadata_body"/>
       <Section icon={<I.Upload/>} titleKey="help.loader_title" bodyKey="help.loader_body"/>
       <Section icon={<I.Link/>} titleKey="help.graph_title" bodyKey="help.graph_body"/>
+      <Section icon={<I.Grid/>} titleKey="help.schema_title" bodyKey="help.schema_body"/>
       <Section icon={<I.Database/>} titleKey="help.solutions_title" bodyKey="help.solutions_body"/>
       <Section icon={<I.Clipboard/>} titleKey="help.translations_title" bodyKey="help.translations_body"/>
       <Section icon={<I.Clock/>} titleKey="help.logins_title" bodyKey="help.logins_body"/>

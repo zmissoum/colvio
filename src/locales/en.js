@@ -16,6 +16,8 @@ export default {
   "nav.solutions.desc": "Browse solutions",
   "nav.translations": "Translations",
   "nav.translations.desc": "Import/export labels",
+  "nav.schema": "Schema",
+  "nav.schema.desc": "ERD diagram",
   // Common
   "common.search": "Search...",
   "common.loading": "Loading...",
@@ -141,6 +143,8 @@ export default {
   "help.loader_body": "Import CSV/Excel files into D365. Map columns, configure lookups, and choose between create or upsert mode.",
   "help.graph_title": "Relationships",
   "help.graph_body": "Visualize entity relationships: N:1 parents, 1:N children, and N:N many-to-many. Toggle depth to see 2 levels.",
+  "help.schema_title": "Schema (ERD)",
+  "help.schema_body": "Interactive Entity Relationship Diagram. Click entities to add them to the canvas. Cards show fields with type indicators and FK badges for lookups. Bezier lines connect lookup fields to their target entities. Drag cards to rearrange, scroll to zoom, drag empty space to pan. Use '+' to auto-add related entities.",
   "help.solutions_title": "Solutions",
   "help.solutions_body": "Browse installed solutions and their components (entities, attributes, views, plugins, web resources, etc.).",
   "help.translations_title": "Translations",
