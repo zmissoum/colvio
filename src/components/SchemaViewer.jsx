@@ -182,37 +182,66 @@ export default function SchemaViewer({bp,orgInfo,theme}){
 
   const clearAll=useCallback(()=>{setSelected({});setPositions({});},[]);
 
-  // ── Export functions ──
-  const exportSVG=useCallback(()=>{
-    if(!svgRef.current||!entityCount)return;
+  // ── Export helpers ──
+  const getExportBounds=useCallback(()=>{
+    const keys=Object.keys(positions);
+    if(!keys.length)return{x:0,y:0,w:800,h:600};
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
+    const pad=80;
+    return{x:minX-pad,y:minY-pad,w:maxX-minX+pad*2,h:maxY-minY+pad*2};
+  },[positions,selected]);
+
+  const buildExportSvg=useCallback(()=>{
+    if(!svgRef.current)return null;
+    const bounds=getExportBounds();
     const clone=svgRef.current.cloneNode(true);
-    // Inline computed styles for standalone SVG
     clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
-    clone.style.background=C.bg;
-    const blob=new Blob([new XMLSerializer().serializeToString(clone)],{type:"image/svg+xml;charset=utf-8"});
+    clone.setAttribute("viewBox",`${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}`);
+    clone.setAttribute("width",String(bounds.w));
+    clone.setAttribute("height",String(bounds.h));
+    // Add background rect inside SVG for proper export
+    const bgRect=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    bgRect.setAttribute("x",String(bounds.x));bgRect.setAttribute("y",String(bounds.y));
+    bgRect.setAttribute("width",String(bounds.w));bgRect.setAttribute("height",String(bounds.h));
+    bgRect.setAttribute("fill",C.bg);
+    clone.insertBefore(bgRect,clone.firstChild);
+    // Add font style for text rendering
+    const style=document.createElementNS("http://www.w3.org/2000/svg","style");
+    style.textContent=`text{font-family:'DM Mono','Fira Code','Segoe UI',system-ui,monospace}`;
+    clone.insertBefore(style,clone.firstChild);
+    return{clone,bounds};
+  },[getExportBounds]);
+
+  const exportSVG=useCallback(()=>{
+    if(!entityCount)return;
+    const result=buildExportSvg();
+    if(!result)return;
+    const svgStr=new XMLSerializer().serializeToString(result.clone);
+    const blob=new Blob([svgStr],{type:"image/svg+xml;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="colvio-schema.svg";a.click();
     URL.revokeObjectURL(url);
-  },[entityCount]);
+  },[entityCount,buildExportSvg]);
 
   const exportPNG=useCallback(()=>{
-    if(!svgRef.current||!entityCount)return;
-    const clone=svgRef.current.cloneNode(true);
-    clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
-    const svgStr=new XMLSerializer().serializeToString(clone);
-    const scale=2;// 2x for retina
+    if(!entityCount)return;
+    const result=buildExportSvg();
+    if(!result)return;
+    const{bounds}=result;
+    const svgStr=new XMLSerializer().serializeToString(result.clone);
+    const scale=2;
     const canvas=document.createElement("canvas");
-    canvas.width=vb.w*scale;canvas.height=vb.h*scale;
+    canvas.width=Math.round(bounds.w*scale);canvas.height=Math.round(bounds.h*scale);
     const ctx=canvas.getContext("2d");
     const img=new Image();
     img.onload=()=>{
-      ctx.fillStyle=C.bg;ctx.fillRect(0,0,canvas.width,canvas.height);
       ctx.drawImage(img,0,0,canvas.width,canvas.height);
       const a=document.createElement("a");
       a.href=canvas.toDataURL("image/png");a.download="colvio-schema.png";a.click();
     };
     img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svgStr);
-  },[entityCount,vb]);
+  },[entityCount,buildExportSvg]);
 
   const exportMermaid=useCallback(()=>{
     if(!entityCount)return;
