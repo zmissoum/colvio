@@ -182,6 +182,62 @@ export default function SchemaViewer({bp,orgInfo,theme}){
 
   const clearAll=useCallback(()=>{setSelected({});setPositions({});},[]);
 
+  // ── Export functions ──
+  const exportSVG=useCallback(()=>{
+    if(!svgRef.current||!entityCount)return;
+    const clone=svgRef.current.cloneNode(true);
+    // Inline computed styles for standalone SVG
+    clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+    clone.style.background=C.bg;
+    const blob=new Blob([new XMLSerializer().serializeToString(clone)],{type:"image/svg+xml;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download="colvio-schema.svg";a.click();
+    URL.revokeObjectURL(url);
+  },[entityCount]);
+
+  const exportPNG=useCallback(()=>{
+    if(!svgRef.current||!entityCount)return;
+    const clone=svgRef.current.cloneNode(true);
+    clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+    const svgStr=new XMLSerializer().serializeToString(clone);
+    const scale=2;// 2x for retina
+    const canvas=document.createElement("canvas");
+    canvas.width=vb.w*scale;canvas.height=vb.h*scale;
+    const ctx=canvas.getContext("2d");
+    const img=new Image();
+    img.onload=()=>{
+      ctx.fillStyle=C.bg;ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      const a=document.createElement("a");
+      a.href=canvas.toDataURL("image/png");a.download="colvio-schema.png";a.click();
+    };
+    img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svgStr);
+  },[entityCount,vb]);
+
+  const exportMermaid=useCallback(()=>{
+    if(!entityCount)return;
+    let md="erDiagram\n";
+    Object.entries(selected).forEach(([name,data])=>{
+      md+=`    ${name} {\n`;
+      data.fields.slice(0,30).forEach(f=>{
+        md+=`        ${f.t} ${f.l}\n`;
+      });
+      md+=`    }\n`;
+    });
+    // Relationships
+    Object.entries(selected).forEach(([name,data])=>{
+      data.lookups.forEach(lk=>{
+        if(selected[lk.target]){
+          md+=`    ${lk.target} ||--o{ ${name} : "${lk.field}"\n`;
+        }
+      });
+    });
+    const blob=new Blob([md],{type:"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download="colvio-schema.mmd";a.click();
+    URL.revokeObjectURL(url);
+  },[selected,entityCount]);
+
   // Render card
   const renderCard=(logicalName)=>{
     const data=selected[logicalName];
@@ -285,7 +341,14 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           <button onClick={()=>setVb(prev=>({...prev,w:prev.w*1.2,h:prev.h*1.2}))} style={bt(null,{padding:"4px 8px",fontSize:12})}>-</button>
           <button onClick={fitAll} style={bt(null,{padding:"4px 8px",fontSize:12})}>Fit</button>
           <button onClick={autoLayout} style={bt(null,{padding:"4px 8px",fontSize:12})}>Layout</button>
-          {entityCount>0&&<button onClick={clearAll} style={bt(null,{padding:"4px 8px",fontSize:12,color:C.rd})}>Clear</button>}
+          {entityCount>0&&<>
+            <span style={{width:1,height:20,background:C.bd,margin:"0 2px"}}/>
+            <button onClick={exportPNG} style={bt(null,{padding:"4px 8px",fontSize:12})}>PNG</button>
+            <button onClick={exportSVG} style={bt(null,{padding:"4px 8px",fontSize:12})}>SVG</button>
+            <button onClick={exportMermaid} style={bt(null,{padding:"4px 8px",fontSize:12})}>Mermaid</button>
+            <span style={{width:1,height:20,background:C.bd,margin:"0 2px"}}/>
+            <button onClick={clearAll} style={bt(null,{padding:"4px 8px",fontSize:12,color:C.rd})}>Clear</button>
+          </>}
         </div>
 
         {entityCount===0&&(
