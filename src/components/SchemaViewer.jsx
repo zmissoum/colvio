@@ -107,13 +107,21 @@ export default function SchemaViewer({bp,orgInfo,theme}){
         if(!selected[lk.target]||!positions[srcName]||!positions[lk.target])return;
         const srcPos=positions[srcName];
         const tgtPos=positions[lk.target];
-        // Find field index in visible fields
-        const visFields=srcData.fields.slice(0,MAX_FIELDS);
-        const fIdx=visFields.findIndex(f=>f.l===lk.field||f.l==="_"+lk.field+"_value"||lk.field==="_"+f.l+"_value");
-        if(fIdx===-1)return;
-        const sy=srcPos.y+HEADER_H+fIdx*ROW_H+ROW_H/2;
-        const tgtH=cardH(selected[lk.target].fields.length,!!expanded[lk.target],collapseAll);
-        const ty=tgtPos.y+tgtH/2;
+        let sy,ty;
+        if(collapseAll){
+          // When collapsed, connect from center of headers
+          sy=srcPos.y+HEADER_H/2;
+          ty=tgtPos.y+HEADER_H/2;
+        }else{
+          // Find field index in visible fields
+          const isExp=!!expanded[srcName];
+          const visFields=isExp?srcData.fields:srcData.fields.slice(0,MAX_FIELDS);
+          const fIdx=visFields.findIndex(f=>f.l===lk.field||f.l==="_"+lk.field+"_value"||lk.field==="_"+f.l+"_value");
+          if(fIdx===-1)return;
+          sy=srcPos.y+HEADER_H+fIdx*ROW_H+ROW_H/2;
+          const tgtH=cardH(selected[lk.target].fields.length,!!expanded[lk.target],false);
+          ty=tgtPos.y+tgtH/2;
+        }
         // Smart side: connect from closest sides
         const srcCx=srcPos.x+CARD_W/2,tgtCx=tgtPos.x+CARD_W/2;
         let sx,tx,dir;
