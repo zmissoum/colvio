@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ── Performance: debounced value hook ──
 export function useDebounce(value, delay = 150) {
@@ -36,7 +36,7 @@ export const tds={padding:"5px 10px",overflow:"hidden",textOverflow:"ellipsis",w
 // ── HOOKS ─────────────────────────────────────────────────────
 export function useBP(){const[w,setW]=useState(typeof window!=="undefined"?window.innerWidth:1200);useEffect(()=>{const h=()=>setW(window.innerWidth);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);return{mobile:w<640,tablet:w>=640&&w<1024,w};}
 
-export function useKeyboard(key, handler, deps=[]){useEffect(()=>{const h=(e)=>{if(e.key===key&&(e.ctrlKey||e.metaKey))handler(e);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[key,...deps]);}
+export function useKeyboard(key, handler, deps=[]){const ref=useRef(handler);ref.current=handler;useEffect(()=>{const h=(e)=>{if(e.key===key&&(e.ctrlKey||e.metaKey))ref.current(e);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[key,...deps]);}
 
 // ── DATA ──────────────────────────────────────────────────────
 export const ENTS=[

@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import { C, I, Spin, mono, bt, dl, copyText, ths, tds } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
 
-export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
+export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord}){
   const[sortField,setSortField]=useState(null);
   const[bulkUpdate,setBulkUpdate]=useState(null);
   const[bulkUpdating,setBulkUpdating]=useState(false);
@@ -51,8 +51,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone}){
       else if(newValue==="false") val=false;
       else if(!isNaN(newValue)&&newValue.trim()!=="") val=Number(newValue);
       await bridge.update(res.entity.p, id, {[odataField]:val});
-      const idx=res.data.indexOf(record);
-      if(idx>=0){const updated={...record,[odataField]:val};delete updated[odataField+"__display"];res.data[idx]=updated;}
+      if(onUpdateRecord){const updated={...record,[odataField]:val};delete updated[odataField+"__display"];onUpdateRecord(updated,record);}
       showFeedback("\u2713 Saved");
     }catch(e){
       showFeedback("Edit failed: "+e.message);

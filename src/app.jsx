@@ -56,7 +56,7 @@ export default function App(){
   const[orgInfo,setOrgInfo]=useState(null);
   const[permissions,setPermissions]=useState(null);
   const[expired,setExpired]=useState(false);
-  const[localeState,setLocaleState]=useState(getLocale());
+  const[,setLocaleState]=useState(getLocale());// value unused, setter triggers re-render on locale change
   const[showShortcuts,setShowShortcuts]=useState(false);
   const bp=useBP();
   useKeyboard("/",()=>setShowShortcuts(s=>!s),[]);
