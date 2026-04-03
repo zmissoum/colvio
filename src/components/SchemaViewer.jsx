@@ -16,7 +16,7 @@ const typeColor=(t)=>{
   return C.txm;
 };
 
-const cardH=(fLen,isExpanded)=>{const shown=isExpanded?fLen:Math.min(fLen,MAX_FIELDS);return HEADER_H+shown*ROW_H+(!isExpanded&&fLen>MAX_FIELDS?ROW_H:0)+8;};
+const cardH=(fLen,isExpanded,isCollapsed)=>{if(isCollapsed)return HEADER_H+8;const shown=isExpanded?fLen:Math.min(fLen,MAX_FIELDS);return HEADER_H+shown*ROW_H+(!isExpanded&&fLen>MAX_FIELDS?ROW_H:0)+8;};
 
 export default function SchemaViewer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
@@ -31,6 +31,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const[panning,setPanning]=useState(null);
   const[hoveredLine,setHoveredLine]=useState(null);
   const[expanded,setExpanded]=useState({});// {logicalName: true} for cards showing all fields
+  const[collapseAll,setCollapseAll]=useState(false);// true = headers only (no fields)
   const[loadingEntity,setLoadingEntity]=useState(null);
 
   useEffect(()=>{
@@ -103,7 +104,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
         const fIdx=visFields.findIndex(f=>f.l===lk.field||f.l==="_"+lk.field+"_value"||lk.field==="_"+f.l+"_value");
         if(fIdx===-1)return;
         const sy=srcPos.y+HEADER_H+fIdx*ROW_H+ROW_H/2;
-        const tgtH=cardH(selected[lk.target].fields.length,!!expanded[lk.target]);
+        const tgtH=cardH(selected[lk.target].fields.length,!!expanded[lk.target],collapseAll);
         const ty=tgtPos.y+tgtH/2;
         // Smart side: connect from closest sides
         const srcCx=srcPos.x+CARD_W/2,tgtCx=tgtPos.x+CARD_W/2;
@@ -114,7 +115,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
       });
     });
     return result;
-  },[selected,positions,expanded]);
+  },[selected,positions,expanded,collapseAll]);
 
   // Mouse handlers
   const getScale=useCallback(()=>{
@@ -169,7 +170,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     const keys=Object.keys(positions);
     if(!keys.length)return;
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k]);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
+    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k],collapseAll);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
     setVb({x:minX-60,y:minY-60,w:maxX-minX+120,h:maxY-minY+120});
   },[positions,selected]);
 
@@ -188,7 +189,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     const keys=Object.keys(positions);
     if(!keys.length)return{x:0,y:0,w:800,h:600};
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k]);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
+    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k],collapseAll);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
     const pad=80;
     return{x:minX-pad,y:minY-pad,w:maxX-minX+pad*2,h:maxY-minY+pad*2};
   },[positions,selected]);
@@ -277,7 +278,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     const isExp=!!expanded[logicalName];
     const visFields=isExp?fields:fields.slice(0,MAX_FIELDS);
     const overflow=fields.length-MAX_FIELDS;
-    const h=cardH(fields.length,isExp);
+    const h=cardH(fields.length,isExp,collapseAll);
     const lkFields=new Set(lookups.map(lk=>lk.field));
     const isLookup=(fl)=>lkFields.has(fl)||lkFields.has("_"+fl+"_value");
 
@@ -303,8 +304,8 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           <circle cx={CARD_W-8} cy={8} r={8} fill="rgba(0,0,0,0.3)"/>
           <text x={CARD_W-8} y={12} textAnchor="middle" fill="white" fontSize={10} style={{pointerEvents:"none"}}>x</text>
         </g>
-        {/* Field rows */}
-        {visFields.map((f,i)=>{
+        {/* Field rows — hidden when collapseAll */}
+        {!collapseAll&&visFields.map((f,i)=>{
           const fy=HEADER_H+i*ROW_H;
           const isLk=isLookup(f.l);
           const isHov=hoveredLine&&((hoveredLine.src===logicalName&&hoveredLine.field===f.l)||(hoveredLine.tgt===logicalName));
@@ -323,7 +324,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
             </g>
           );
         })}
-        {overflow>0&&(
+        {!collapseAll&&overflow>0&&(
           <g onClick={(e)=>{e.stopPropagation();setExpanded(prev=>({...prev,[logicalName]:!isExp}));}} style={{cursor:"pointer"}}>
             <rect x={0} y={HEADER_H+visFields.length*ROW_H} width={CARD_W} height={ROW_H} fill="transparent"/>
             <text x={CARD_W/2} y={HEADER_H+visFields.length*ROW_H+ROW_H/2+3} textAnchor="middle" fill={C.vi} fontSize={11} fontWeight="600">
@@ -375,6 +376,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           <button onClick={()=>setVb(prev=>({...prev,w:prev.w*1.2,h:prev.h*1.2}))} style={bt(null,{padding:"4px 8px",fontSize:12})}>-</button>
           <button onClick={fitAll} style={bt(null,{padding:"4px 8px",fontSize:12})}>Fit</button>
           <button onClick={autoLayout} style={bt(null,{padding:"4px 8px",fontSize:12})}>Layout</button>
+          <button onClick={()=>setCollapseAll(prev=>!prev)} style={bt(collapseAll?C.vi:null,{padding:"4px 8px",fontSize:12})}>{collapseAll?"Fields":"Tables"}</button>
           {entityCount>0&&<>
             <span style={{width:1,height:20,background:C.bd,margin:"0 2px"}}/>
             <button onClick={exportPNG} style={bt(null,{padding:"4px 8px",fontSize:12})}>PNG</button>
