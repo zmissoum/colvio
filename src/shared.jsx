@@ -112,12 +112,13 @@ export function copyText(t){navigator.clipboard?.writeText(String(t));}
 
 // Distinguish truly custom fields/entities (created by integrators) from Microsoft solution fields
 // msdyn_, mspp_, msfp_, msdynce_, msdynmkt_, adx_, cds_ etc. are Microsoft-created but IsCustom=true
-// A field/entity is truly custom if it looks like it was created by an integrator/consultant
-// Strategy: IsManaged=true → always Standard. Then check name patterns for MS entities.
-// Only entities with a publisher prefix (new_, cr_, colvio_, etc.) that are unmanaged are truly custom.
-const MS_NAME = /^(msdyn|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat|powerbots|virtualimage|componentlib|connectioninstance|datalake)_/;
-const MS_SYSTEM = /^(account|activity|agent|agentic|aicopilot|aiplugin|aiskill|annotation|appmodule|asyncoperation|attachment|audit|bot|businessunit|calendar|campaign|card|catalog|channel|chat|connection|contact|contract|currency|customer|dashboard|email|entitlement|environment|fax|feedback|field|flow|goal|import|incident|invoice|knowledge|lead|letter|list|mailbox|metric|note|opportunity|order|organization|owner|phone|plugin|position|post|powerbi|privilege|process|product|publisher|queue|quote|relationship|report|resource|role|rollup|salesorder|savedquery|sdkmessage|search|service|session|sharepoint|sitemap|sla|socialactivity|socialprofile|solution|subject|syncerror|systemuser|task|team|template|territory|theme|transactioncurrency|translationprocess|uom|user|workflow|workqueue)/;
-export function isTrulyCustom(logicalName, isManaged){ if(isManaged===true)return false; if(MS_NAME.test(logicalName))return false; if(MS_SYSTEM.test(logicalName))return false; return true; }
+// A truly custom entity/field has a publisher prefix with underscore (new_xxx, cr123_xxx, foe_xxx)
+// Microsoft entities NEVER have a publisher underscore prefix — they use plain names (account, contact)
+// or Microsoft prefixes (msdyn_, adx_). Both are NOT custom.
+// IsManaged=true is also always Standard regardless of name.
+const CUSTOM_PREFIX = /^[a-z]{2,10}_/; // matches new_, cr123_, foe_, colvio_, etc.
+const MS_PREFIX = /^(msdyn|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat)_/;
+export function isTrulyCustom(logicalName, isManaged){ if(isManaged===true)return false; if(!CUSTOM_PREFIX.test(logicalName))return false; if(MS_PREFIX.test(logicalName))return false; return true; }
 
 // ── Detect extension mode ──
 export function detectExtension() {
