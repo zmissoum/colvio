@@ -16,7 +16,7 @@ const typeColor=(t)=>{
   return C.txm;
 };
 
-const cardH=(fLen)=>HEADER_H+Math.min(fLen,MAX_FIELDS)*ROW_H+(fLen>MAX_FIELDS?ROW_H:0)+8;
+const cardH=(fLen,isExpanded)=>{const shown=isExpanded?fLen:Math.min(fLen,MAX_FIELDS);return HEADER_H+shown*ROW_H+(!isExpanded&&fLen>MAX_FIELDS?ROW_H:0)+8;};
 
 export default function SchemaViewer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
@@ -30,6 +30,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const[dragging,setDragging]=useState(null);
   const[panning,setPanning]=useState(null);
   const[hoveredLine,setHoveredLine]=useState(null);
+  const[expanded,setExpanded]=useState({});// {logicalName: true} for cards showing all fields
   const[loadingEntity,setLoadingEntity]=useState(null);
 
   useEffect(()=>{
@@ -102,7 +103,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
         const fIdx=visFields.findIndex(f=>f.l===lk.field||f.l==="_"+lk.field+"_value"||lk.field==="_"+f.l+"_value");
         if(fIdx===-1)return;
         const sy=srcPos.y+HEADER_H+fIdx*ROW_H+ROW_H/2;
-        const tgtH=cardH(selected[lk.target].fields.length);
+        const tgtH=cardH(selected[lk.target].fields.length,!!expanded[lk.target]);
         const ty=tgtPos.y+tgtH/2;
         // Smart side: connect from closest sides
         const srcCx=srcPos.x+CARD_W/2,tgtCx=tgtPos.x+CARD_W/2;
@@ -113,7 +114,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
       });
     });
     return result;
-  },[selected,positions]);
+  },[selected,positions,expanded]);
 
   // Mouse handlers
   const getScale=useCallback(()=>{
@@ -168,7 +169,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     const keys=Object.keys(positions);
     if(!keys.length)return;
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
+    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k]);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
     setVb({x:minX-60,y:minY-60,w:maxX-minX+120,h:maxY-minY+120});
   },[positions,selected]);
 
@@ -187,7 +188,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     const keys=Object.keys(positions);
     if(!keys.length)return{x:0,y:0,w:800,h:600};
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
+    keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k]);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
     const pad=80;
     return{x:minX-pad,y:minY-pad,w:maxX-minX+pad*2,h:maxY-minY+pad*2};
   },[positions,selected]);
@@ -273,9 +274,10 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     if(!data||!positions[logicalName])return null;
     const{x,y}=positions[logicalName];
     const{entity,fields,lookups}=data;
-    const visFields=fields.slice(0,MAX_FIELDS);
+    const isExp=!!expanded[logicalName];
+    const visFields=isExp?fields:fields.slice(0,MAX_FIELDS);
     const overflow=fields.length-MAX_FIELDS;
-    const h=cardH(fields.length);
+    const h=cardH(fields.length,isExp);
     const lkFields=new Set(lookups.map(lk=>lk.field));
     const isLookup=(fl)=>lkFields.has(fl)||lkFields.has("_"+fl+"_value");
 
@@ -322,9 +324,12 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           );
         })}
         {overflow>0&&(
-          <text x={CARD_W/2} y={HEADER_H+MAX_FIELDS*ROW_H+ROW_H/2+3} textAnchor="middle" fill={C.txd} fontSize={11} style={{pointerEvents:"none"}}>
-            + {overflow} more
-          </text>
+          <g onClick={(e)=>{e.stopPropagation();setExpanded(prev=>({...prev,[logicalName]:!isExp}));}} style={{cursor:"pointer"}}>
+            <rect x={0} y={HEADER_H+visFields.length*ROW_H} width={CARD_W} height={ROW_H} fill="transparent"/>
+            <text x={CARD_W/2} y={HEADER_H+visFields.length*ROW_H+ROW_H/2+3} textAnchor="middle" fill={C.vi} fontSize={11} fontWeight="600">
+              {isExp?`▴ Show less`:`▾ + ${overflow} more`}
+            </text>
+          </g>
         )}
       </g>
     );
