@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom } from "../shared.jsx";
 
-export default function ShowAllData({bp,orgInfo}){
+export default function ShowAllData({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
   const[recordUrl,setRecordUrl]=useState("");
   const[record,setRecord]=useState(null);

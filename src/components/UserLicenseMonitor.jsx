@@ -6,7 +6,7 @@ import { t } from "../i18n.js";
 
 const ACCESS_COLORS = { 0: C.gn, 1: C.vi, 2: C.cy, 3: C.yw, 4: C.txd, 5: C.or };
 
-export default function UserLicenseMonitor({ bp, orgInfo }) {
+export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
   const isLive = orgInfo?.isExtension;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);

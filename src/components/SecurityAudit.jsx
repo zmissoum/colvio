@@ -46,7 +46,7 @@ function formatPrivName(name) {
   return action + " · " + entity;
 }
 
-export default function SecurityAudit({ bp, orgInfo }) {
+export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

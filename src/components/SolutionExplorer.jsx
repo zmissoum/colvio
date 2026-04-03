@@ -4,7 +4,7 @@ import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
-export default function SolutionExplorer({bp,orgInfo}){
+export default function SolutionExplorer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
   const[solutions,setSolutions]=useState([]);
   const[search,setSearch]=useState("");

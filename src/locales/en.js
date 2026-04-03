@@ -204,4 +204,27 @@ export default {
   "help.optionset_export": "Download all OptionSet/Picklist values for this entity as a single CSV file.",
   "help.relationship_depth": "Depth 1: direct relationships only.\nDepth 2: also shows relationships of related entities (slower).",
   "help.solution_explorer": "Browse components (entities, fields, views, plugins, etc.) inside each installed solution.",
+  // Confirm
+  "common.confirm": "Confirm",
+  // Explorer extras
+  "explorer.add_condition": "+ condition",
+  "explorer.add_group": "+ group",
+  "explorer.deselect_all": "Deselect all",
+  "explorer.select_all": "Select all",
+  "explorer.query_name": "Query name:",
+  "explorer.query_name_placeholder": "My query...",
+  "explorer.ctrl_enter": "Ctrl+Enter to execute",
+  // Results extras
+  "results.csv_copied": "CSV copied",
+  "results.json_copied": "JSON copied",
+  "results.bulk_update": "Bulk update:",
+  "results.records": "records",
+  "results.updated": "updated",
+  "results.failed": "failed",
+  "results.no_results": "No results",
+  // ConnScreen
+  "conn.title": "Colvio",
+  "conn.subtitle": "Data Explorer for Dynamics 365",
+  "conn.connecting": "Connecting to Dataverse...",
+  "conn.demo": "Demo Mode",
 };

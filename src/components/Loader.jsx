@@ -3,7 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, isTrulyCustom } from "../shared.jsx";
 
-export default function Loader({bp,orgInfo}){
+export default function Loader({bp,orgInfo,theme}){
   const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
 
   const parseData=(text,delimiter=",")=>{

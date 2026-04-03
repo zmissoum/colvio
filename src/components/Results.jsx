@@ -3,11 +3,13 @@ import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
 import { C, I, Spin, mono, bt, dl, copyText, ths, tds } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
+import { t } from "../i18n.js";
 
 export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord}){
   const[sortField,setSortField]=useState(null);
   const[bulkUpdate,setBulkUpdate]=useState(null);
   const[bulkUpdating,setBulkUpdating]=useState(false);
+  const[confirmModal,setConfirmModal]=useState(null); // {msg,onOk}
   const[sortDir,setSortDir]=useState("asc");
   // Reset sort/selection when query changes (different entity or query string)
   const prevQuery=useRef(null);
@@ -18,9 +20,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       setSortField(null);setSortDir("asc");setSelected(new Set());setBulkUpdate(null);
     }
   },[res?.query]);
-  const doBulkUpdate=async()=>{
+  const doBulkUpdate=()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;
-    if(!window.confirm(`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`)) return;
+    setConfirmModal({msg:`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`,onOk:()=>{setConfirmModal(null);executeBulkUpdate();}});
+  };
+  const executeBulkUpdate=async()=>{
     const ids=[...selected];
     setBulkUpdating(true);
     let ok=0,fail=0;
@@ -38,7 +42,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     }
     setBulkUpdating(false);
     setBulkUpdate(null);
-    showFeedback(`Bulk update: ${ok} updated${fail?`, ${fail} failed`:""}`);
+    showFeedback(`${t("results.bulk_update")} ${ok} ${t("results.updated")}${fail?`, ${fail} ${t("results.failed")}`:""}`);
   };
   const inlineEdit=async(record,field,newValue)=>{
     const id=getRecordId(record);
@@ -87,20 +91,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     if(selected.size===res.data.length){setSelected(new Set());}
     else{setSelected(new Set(res.data.map(r=>getRecordId(r)).filter(Boolean)));}
   };
-  const doDelete=async()=>{
-    if(!selected.size) return;
-    const count=selected.size;
-    const entityName=res.entity?.l;
-    try{
-      const meta=await bridge.getEntityMetadata(entityName);
-      if(!meta.canBeDeleted){
-        alert(`Entity "${meta.displayName}" does not allow deletion. The CanBeDeleted property is set to false.`);
-        return;
-      }
-      if(!confirm(`You are about to permanently delete ${count} record(s) from "${meta.displayName}" (${entityName}).\n\nThis action is irreversible and cannot be undone.\n\nProceed?`)) return;
-    }catch{
-      if(!confirm(`Delete ${count} record(s) from ${entityName}? This action is irreversible.`)) return;
-    }
+  const executeDelete=async()=>{
     setDeleting(true);
     try{
       const result=await bridge.batchDelete(res.entity.p,Array.from(selected));
@@ -111,6 +102,21 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       showFeedback(`Error: ${e.message}`);
     }
     setDeleting(false);
+  };
+  const doDelete=async()=>{
+    if(!selected.size) return;
+    const count=selected.size;
+    const entityName=res.entity?.l;
+    try{
+      const meta=await bridge.getEntityMetadata(entityName);
+      if(!meta.canBeDeleted){
+        alert(`Entity "${meta.displayName}" does not allow deletion. The CanBeDeleted property is set to false.`);
+        return;
+      }
+      setConfirmModal({msg:`You are about to permanently delete ${count} record(s) from "${meta.displayName}" (${entityName}).\n\nThis action is irreversible and cannot be undone.\n\nProceed?`,onOk:()=>{setConfirmModal(null);executeDelete();}});
+    }catch{
+      setConfirmModal({msg:`Delete ${count} record(s) from ${entityName}? This action is irreversible.`,onOk:()=>{setConfirmModal(null);executeDelete();}});
+    }
   };
 
   const dk = (f) => res.odataFieldMap?.[f] || f;
@@ -172,9 +178,9 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
 
   const showFeedback=(msg)=>{setCopyFeedback(msg);setTimeout(()=>setCopyFeedback(""),2000);};
   const n=res.data.length;
-  const copyCSV=()=>{copyText(toCSV());showFeedback(`CSV copied (${n} rows)`);};
+  const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows)`);};
   const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
-  const copyJSON=()=>{copyText(toJSON());showFeedback(`JSON copied (${n} rows)`);};
+  const copyJSON=()=>{copyText(toJSON());showFeedback(`${t("results.json_copied")} (${n} rows)`);};
   const dlCSV=()=>{dl(toCSV(),"text/csv;charset=utf-8",`${res.entity.l}_export.csv`);showFeedback(`CSV downloaded (${n} rows)`);};
   const dlXLSX=()=>{
     try{
@@ -276,6 +282,15 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
         </div>
       )}
 
+      {confirmModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setConfirmModal(null)}>
+        <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,minWidth:320,maxWidth:420,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:14,color:C.tx,whiteSpace:"pre-line",marginBottom:16,lineHeight:1.5}}>{confirmModal.msg}</div>
+          <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+            <button onClick={()=>setConfirmModal(null)} style={bt(null,{fontSize:12})}>Cancel</button>
+            <button onClick={confirmModal.onOk} style={bt(C.rd,{fontSize:12})}>Confirm</button>
+          </div>
+        </div>
+      </div>}
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
     </div>
   );

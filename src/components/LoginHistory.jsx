@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, dl } from "../shared.jsx";
 
-export default function LoginHistory({bp,orgInfo}){
+export default function LoginHistory({bp,orgInfo,theme}){
   const[search,setSearch]=useState("");
   const[users,setUsers]=useState([]);
   const[selectedUser,setSelectedUser]=useState(null);

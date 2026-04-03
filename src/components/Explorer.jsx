@@ -9,7 +9,7 @@ import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
 import Results from "./Results.jsx";
 
-export default function Explorer({bp,addHistory,orgInfo}){
+export default function Explorer({bp,addHistory,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
   const[ent,setEnt]=useState(null);
   const[es,setEs]=useState("");
@@ -32,6 +32,8 @@ export default function Explorer({bp,addHistory,orgInfo}){
   const[showHistory,setShowHistory]=useState(false);
   const[showSaved,setShowSaved]=useState(false);
   const[showTemplates,setShowTemplates]=useState(false);
+  const[saveModal,setSaveModal]=useState(false);
+  const[saveName,setSaveName]=useState("");
   const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
   const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
 
@@ -62,12 +64,15 @@ export default function Explorer({bp,addHistory,orgInfo}){
 
   const saveCurrentQuery=()=>{
     if(!ent) return;
-    const name=prompt("Query name:");
-    if(!name) return;
+    setSaveName("");setSaveModal(true);
+  };
+  const doSaveQuery=(name)=>{
+    if(!name||!ent) return;
     const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields})),limit:lim,qm,fxml,savedAt:new Date().toISOString()};
     const updated=[q,...savedQueries.filter(s=>s.name!==name)].slice(0,20);
     setSavedQueries(updated);
     if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_saved_queries:updated});
+    setSaveModal(false);
   };
 
   const loadSavedQuery=(q)=>{
@@ -629,8 +634,8 @@ export default function Explorer({bp,addHistory,orgInfo}){
                       <button onClick={(e)=>{e.stopPropagation();setPicker(!picker);}} disabled={loadingFields} style={{padding:"3px 10px",background:picker?C.vi:"transparent",border:`1px ${picker?"solid":"dashed"} ${picker?C.vi:C.bd}`,borderRadius:3,color:picker?"white":C.txd,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:3}}>
                         {loadingFields?<Spin s={10}/>:picker?<I.X/>:<I.Plus/>}{picker?"Close":`Columns (${sf.length}/${fields.length})`}
                       </button>
-                      {sf.length>0&&<button onClick={(e)=>{e.stopPropagation();setSf([]);}} style={{padding:"4px 10px",background:"transparent",border:"none",color:C.txd,cursor:"pointer",fontSize:11,textDecoration:"underline"}}>Deselect all</button>}
-                      {sf.length<fields.length&&<button onClick={(e)=>{e.stopPropagation();setSf(fields.map(f=>f.l));}} style={{padding:"4px 10px",background:"transparent",border:"none",color:C.cy,cursor:"pointer",fontSize:11,textDecoration:"underline"}}>Select all ({fields.length})</button>}
+                      {sf.length>0&&<button onClick={(e)=>{e.stopPropagation();setSf([]);}} style={{padding:"4px 10px",background:"transparent",border:"none",color:C.txd,cursor:"pointer",fontSize:11,textDecoration:"underline"}}>{t("explorer.deselect_all")}</button>}
+                      {sf.length<fields.length&&<button onClick={(e)=>{e.stopPropagation();setSf(fields.map(f=>f.l));}} style={{padding:"4px 10px",background:"transparent",border:"none",color:C.cy,cursor:"pointer",fontSize:11,textDecoration:"underline"}}>{t("explorer.select_all")} ({fields.length})</button>}
                       {sf.length>5&&<button onClick={(e)=>{e.stopPropagation();setQueryCollapsed(true);}} style={{padding:"4px 10px",background:"transparent",border:`1px solid ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:11,flexShrink:0}}>Collapse ▲</button>}
                     </div>
                   )}
@@ -642,7 +647,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
                   <span style={{fontSize:12,color:C.vi,fontWeight:700,minWidth:44,...mono}}>WHERE</span>
                   {filterGroups.length>1&&<select value={groupLogic} onChange={e=>setGroupLogic(e.target.value)} style={inp({width:"auto",fontSize:11,padding:"2px 5px",color:C.yw})}><option value="and">AND</option><option value="or">OR</option></select>}
-                  <button onClick={()=>setFilterGroups([...filterGroups,{logic:"and",conditions:[{field:"",op:"eq",value:""}]}])} style={{padding:"2px 8px",background:"transparent",border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:11}}>+ group</button>
+                  <button onClick={()=>setFilterGroups([...filterGroups,{logic:"and",conditions:[{field:"",op:"eq",value:""}]}])} style={{padding:"2px 8px",background:"transparent",border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:11}}>{t("explorer.add_group")}</button>
                 </div>
                 {filterGroups.map((grp,gi)=>{
                   const updateGrp=(newGrp)=>{const u=[...filterGroups];u[gi]=newGrp;setFilterGroups(u);};
@@ -675,7 +680,7 @@ export default function Explorer({bp,addHistory,orgInfo}){
                         {(grp.conditions.length>1||filterGroups.length>1)&&<button onClick={()=>rmCond(ci)} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:1,fontSize:11}}>✕</button>}
                       </div>);
                     })}
-                    {filterGroups.length===1&&<button onClick={addCond} style={{padding:"2px 8px",background:"transparent",border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:11,marginTop:2}}>+ condition</button>}
+                    {filterGroups.length===1&&<button onClick={addCond} style={{padding:"2px 8px",background:"transparent",border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:11,marginTop:2}}>{t("explorer.add_condition")}</button>}
                     {filterGroups.length===1&&grp.conditions.length>1&&<select value={grp.logic} onChange={e=>updateGrp({...grp,logic:e.target.value})} style={inp({width:"auto",fontSize:10,padding:"2px 6px",color:C.yw,marginTop:2,marginLeft:4})}><option value="and">AND</option><option value="or">OR</option></select>}
                   </div>);
                 })}
@@ -825,9 +830,19 @@ export default function Explorer({bp,addHistory,orgInfo}){
               </div>
             </div>
           </div>
-          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>{const id=Object.values(r).find(v=>typeof v==="string"&&/^[0-9a-f]{8}-/.test(v));return !ids.has(id);})}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>Ctrl+Enter to execute</div>}</div>
+          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>{const id=Object.values(r).find(v=>typeof v==="string"&&/^[0-9a-f]{8}-/.test(v));return !ids.has(id);})}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
         </>:null}
       </div>
+      {saveModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setSaveModal(false)}>
+        <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,minWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:15,fontWeight:700,marginBottom:12,color:C.tx}}>{t("explorer.query_name")}</div>
+          <input value={saveName} onChange={e=>setSaveName(e.target.value)} placeholder={t("explorer.query_name_placeholder")} autoFocus style={inp({fontSize:13,marginBottom:12,width:"100%",boxSizing:"border-box"})} onKeyDown={e=>{if(e.key==="Enter"&&saveName.trim())doSaveQuery(saveName.trim());if(e.key==="Escape")setSaveModal(false);}}/>
+          <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+            <button onClick={()=>setSaveModal(false)} style={bt(null,{fontSize:12})}>{t("common.cancel")}</button>
+            <button onClick={()=>doSaveQuery(saveName.trim())} disabled={!saveName.trim()} style={bt(saveName.trim()?C.vi:C.sfh,{fontSize:12,opacity:saveName.trim()?1:.5})}>{t("common.save")}</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }

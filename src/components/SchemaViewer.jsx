@@ -33,6 +33,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const[expanded,setExpanded]=useState({});// {logicalName: true} for cards showing all fields
   const[collapseAll,setCollapseAll]=useState(false);// true = headers only (no fields)
   const[loadingEntity,setLoadingEntity]=useState(null);
+  const[confirmModal,setConfirmModal]=useState(null);
 
   useEffect(()=>{
     if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l)})))}).catch(()=>{});
@@ -46,13 +47,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
 
   const entityCount=Object.keys(selected).length;
 
-  const addEntity=useCallback(async(e)=>{
-    if(selected[e.l]){// toggle off
-      setSelected(prev=>{const n={...prev};delete n[e.l];return n;});
-      setPositions(prev=>{const n={...prev};delete n[e.l];return n;});
-      return;
-    }
-    if(entityCount>=30&&!window.confirm(`You already have ${entityCount} entities on canvas. Adding more may slow down the viewer. Continue?`))return;
+  const doAddEntity=useCallback(async(e)=>{
     setLoadingEntity(e.l);
     try{
       const[fieldsData,lookupsData]=await Promise.all([
@@ -73,7 +68,20 @@ export default function SchemaViewer({bp,orgInfo,theme}){
       setPositions(prev=>({...prev,[e.l]:{x:col*GAP_X,y:row*GAP_Y}}));
     }catch{}
     setLoadingEntity(null);
-  },[selected,entityCount]);
+  },[selected]);
+
+  const addEntity=useCallback(async(e)=>{
+    if(selected[e.l]){// toggle off
+      setSelected(prev=>{const n={...prev};delete n[e.l];return n;});
+      setPositions(prev=>{const n={...prev};delete n[e.l];return n;});
+      return;
+    }
+    if(entityCount>=30){
+      setConfirmModal({msg:`You already have ${entityCount} entities on canvas. Adding more may slow down the viewer. Continue?`,onOk:()=>{setConfirmModal(null);doAddEntity(e);}});
+      return;
+    }
+    doAddEntity(e);
+  },[selected,entityCount,doAddEntity]);
 
   const addRelated=useCallback((entityLogical)=>{
     const ent=selected[entityLogical];
@@ -418,6 +426,15 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           {Object.keys(selected).map(renderCard)}
         </svg>
       </div>
+      {confirmModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setConfirmModal(null)}>
+        <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,minWidth:320,maxWidth:420,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:14,color:C.tx,whiteSpace:"pre-line",marginBottom:16,lineHeight:1.5}}>{confirmModal.msg}</div>
+          <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+            <button onClick={()=>setConfirmModal(null)} style={bt(null,{fontSize:12})}>{t("common.cancel")}</button>
+            <button onClick={confirmModal.onOk} style={bt(C.vi,{fontSize:12})}>{t("common.confirm")||"Confirm"}</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }

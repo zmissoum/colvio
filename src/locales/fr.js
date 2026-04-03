@@ -191,4 +191,27 @@ export default {
   "help.optionset_export": "T\u00e9l\u00e9chargez toutes les valeurs OptionSet/Picklist de cette entit\u00e9 dans un seul fichier CSV.",
   "help.relationship_depth": "Profondeur 1 : relations directes.\nProfondeur 2 : inclut aussi les relations des entit\u00e9s li\u00e9es (plus lent).",
   "help.solution_explorer": "Parcourez les composants (entit\u00e9s, champs, vues, plugins, etc.) de chaque solution install\u00e9e.",
+  // Confirm
+  "common.confirm": "Confirmer",
+  // Explorer extras
+  "explorer.add_condition": "+ condition",
+  "explorer.add_group": "+ groupe",
+  "explorer.deselect_all": "Tout d\u00e9s\u00e9lectionner",
+  "explorer.select_all": "Tout s\u00e9lectionner",
+  "explorer.query_name": "Nom de la requ\u00eate :",
+  "explorer.query_name_placeholder": "Ma requ\u00eate...",
+  "explorer.ctrl_enter": "Ctrl+Entr\u00e9e pour ex\u00e9cuter",
+  // Results extras
+  "results.csv_copied": "CSV copi\u00e9",
+  "results.json_copied": "JSON copi\u00e9",
+  "results.bulk_update": "Mise \u00e0 jour en masse :",
+  "results.records": "enregistrements",
+  "results.updated": "mis \u00e0 jour",
+  "results.failed": "\u00e9chou\u00e9(s)",
+  "results.no_results": "Aucun r\u00e9sultat",
+  // ConnScreen
+  "conn.title": "Colvio",
+  "conn.subtitle": "Explorateur de donn\u00e9es pour Dynamics 365",
+  "conn.connecting": "Connexion \u00e0 Dataverse...",
+  "conn.demo": "Mode d\u00e9mo",
 };

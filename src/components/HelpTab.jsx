@@ -11,7 +11,7 @@ const Section=({icon,titleKey,bodyKey})=>(
   </div>
 );
 
-export default function HelpTab({bp,onShowShortcuts,onRestartTour}){
+export default function HelpTab({bp,onShowShortcuts,onRestartTour,theme}){
   return(
     <div style={{padding:bp.mobile?12:24,maxWidth:700,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>

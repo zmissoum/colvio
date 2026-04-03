@@ -4,7 +4,7 @@ import { C, I, Spin, ENTS, inp, bt } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
-export default function RelationshipGraph({bp,orgInfo}){
+export default function RelationshipGraph({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
   const[entities,setEntities]=useState(ENTS);
   const[search,setSearch]=useState("");

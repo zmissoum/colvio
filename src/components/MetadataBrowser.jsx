@@ -4,7 +4,7 @@ import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, 
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
-export default function MetadataBrowser({bp,orgInfo}){
+export default function MetadataBrowser({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
   const[selEnt,setSelEnt]=useState(null);
   const[search,setSearch]=useState("");

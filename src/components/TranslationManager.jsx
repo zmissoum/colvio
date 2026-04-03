@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, dl } from "../shared.jsx";
+import { t } from "../i18n.js";
 
-export default function TranslationManager({bp,orgInfo}){
+export default function TranslationManager({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
   const[entities,setEntities]=useState(ENTS);
   const[search,setSearch]=useState("");
@@ -15,6 +16,7 @@ export default function TranslationManager({bp,orgInfo}){
   const[saving,setSaving]=useState(false);
   const[saveMsg,setSaveMsg]=useState(null);
   const[attrSearch,setAttrSearch]=useState("");
+  const[confirmModal,setConfirmModal]=useState(null);
   const fRef=useRef(null);
 
   useEffect(()=>{
@@ -22,11 +24,17 @@ export default function TranslationManager({bp,orgInfo}){
     if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d})))}).catch(()=>{});
   },[]);
 
-  const handleSelect=async(e)=>{
-    if(editCount>0&&!window.confirm(`You have ${editCount} unsaved edit(s). Switch entity and discard changes?`))return;
+  const doSelectEntity=async(e)=>{
     setSelEnt(e);setLoading(true);setEdits({});setSaveMsg(null);
     try{const d=await bridge.getAttributeLabels(e.l);setAttributes(d||[]);}catch{setAttributes([]);}
     setLoading(false);
+  };
+  const handleSelect=async(e)=>{
+    if(editCount>0){
+      setConfirmModal({msg:`You have ${editCount} unsaved edit(s). Switch entity and discard changes?`,onOk:()=>{setConfirmModal(null);doSelectEntity(e);}});
+      return;
+    }
+    doSelectEntity(e);
   };
 
   const handleEdit=(attrLogical,langCode,value)=>{
@@ -170,6 +178,15 @@ export default function TranslationManager({bp,orgInfo}){
           </div>
         )}
       </div>
+      {confirmModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setConfirmModal(null)}>
+        <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,minWidth:320,maxWidth:420,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:14,color:C.tx,whiteSpace:"pre-line",marginBottom:16,lineHeight:1.5}}>{confirmModal.msg}</div>
+          <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+            <button onClick={()=>setConfirmModal(null)} style={bt(null,{fontSize:12})}>{t("common.cancel")||"Cancel"}</button>
+            <button onClick={confirmModal.onOk} style={bt(C.rd,{fontSize:12})}>{t("common.confirm")||"Confirm"}</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }
