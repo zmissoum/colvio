@@ -4,16 +4,18 @@ import { C, I, Spin, ENTS, useDebounce, isTrulyCustom, mono, inp, bt, crd } from
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
-const CARD_W=280, HEADER_H=36, ROW_H=22, MAX_FIELDS=15, GAP_X=340, GAP_Y=420;
+const CARD_W=300, HEADER_H=50, ROW_H=24, MAX_FIELDS=15, GAP_X=380, GAP_Y=450;
 
-const typeColor=(t)=>{
-  if(t==="Lookup"||t==="Customer"||t==="Owner")return C.vi;
-  if(t==="Picklist"||t==="State"||t==="Status")return C.gn;
-  if(t==="Money"||t==="Integer"||t==="Decimal"||t==="Double"||t==="BigInt")return C.yw;
-  if(t==="DateTime")return C.cy;
-  if(t==="Boolean")return C.or;
-  if(t==="Uniqueidentifier")return C.txd;
-  return C.txm;
+const typeIcon=(t)=>{
+  if(t==="Uniqueidentifier")return{icon:"🔑",color:C.yw,label:"id"};
+  if(t==="Lookup"||t==="Customer"||t==="Owner")return{icon:"🔗",color:C.vi,label:"reference"};
+  if(t==="Picklist"||t==="State"||t==="Status")return{icon:"■",color:C.gn,label:"picklist"};
+  if(t==="Money"||t==="Decimal"||t==="Double")return{icon:"●",color:C.yw,label:"decimal"};
+  if(t==="Integer"||t==="BigInt")return{icon:"●",color:C.yw,label:"integer"};
+  if(t==="DateTime")return{icon:"●",color:C.cy,label:"datetime"};
+  if(t==="Boolean")return{icon:"●",color:C.or,label:"boolean"};
+  if(t==="Memo")return{icon:"●",color:C.txm,label:"memo"};
+  return{icon:"●",color:C.txm,label:"string"};
 };
 
 const cardH=(fLen,isExpanded,isCollapsed)=>{if(isCollapsed)return HEADER_H+8;const shown=isExpanded?fLen:Math.min(fLen,MAX_FIELDS);return HEADER_H+shown*ROW_H+(!isExpanded&&fLen>MAX_FIELDS?ROW_H:0)+8;};
@@ -297,46 +299,62 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     const h=cardH(fields.length,isExp,collapseAll);
     const lkFields=new Set(lookups.map(lk=>lk.field));
     const isLookup=(fl)=>lkFields.has(fl)||lkFields.has("_"+fl+"_value");
+    const rtCount=lookups.length;
+    const displayName=(entity.d||logicalName);
+    const truncName=displayName.length>24?displayName.substring(0,24)+"…":displayName;
 
     return(
       <g key={logicalName} transform={`translate(${x},${y})`}>
+        {/* Card shadow */}
+        <rect x={2} y={2} width={CARD_W} height={h} rx={10} fill="rgba(0,0,0,0.15)"/>
         {/* Card background */}
-        <rect width={CARD_W} height={h} rx={8} fill={C.sf} stroke={C.bd} strokeWidth={1.5}/>
-        {/* Header */}
-        <rect width={CARD_W} height={HEADER_H} rx={8} fill={C.vi}/>
-        <rect y={HEADER_H-8} width={CARD_W} height={8} fill={C.vi}/>
-        <text x={12} y={23} fill="white" fontWeight="700" fontSize={13} style={{pointerEvents:"none"}}>{(entity.d||logicalName).length>22?(entity.d||logicalName).substring(0,22)+"…":(entity.d||logicalName)}</text>
-        <text x={CARD_W-36} y={23} fill="rgba(255,255,255,0.7)" textAnchor="end" fontSize={10} style={{pointerEvents:"none"}}>{fields.length}</text>
-        {/* Drag handle */}
-        <rect width={CARD_W-50} height={HEADER_H} fill="transparent" style={{cursor:"grab"}}
+        <rect width={CARD_W} height={h} rx={10} fill={C.sf} stroke={C.bd} strokeWidth={1}/>
+        {/* Header gradient bar */}
+        <rect width={CARD_W} height={HEADER_H} rx={10} fill={C.vi}/>
+        <rect y={HEADER_H-10} width={CARD_W} height={10} fill={C.vi}/>
+        {/* Header: entity display name */}
+        <text x={14} y={24} fill="white" fontWeight="700" fontSize={14} style={{pointerEvents:"none"}}>{truncName}</text>
+        {/* Header: entity logical name (subtitle) */}
+        <text x={14} y={40} fill="rgba(255,255,255,0.5)" fontSize={10} {...mono} style={{pointerEvents:"none"}}>{logicalName}</text>
+        {/* RT badge */}
+        <rect x={CARD_W-56} y={8} width={42} height={20} rx={6} fill="rgba(255,255,255,0.2)"/>
+        <text x={CARD_W-35} y={22} textAnchor="middle" fill="white" fontSize={10} fontWeight="700" style={{pointerEvents:"none"}}>{rtCount} RT</text>
+        {/* Drag handle — full header area */}
+        <rect width={CARD_W-60} height={HEADER_H} fill="transparent" style={{cursor:"grab"}}
           onMouseDown={(e)=>{e.stopPropagation();setDragging({entity:logicalName,startX:e.clientX,startY:e.clientY,origX:x,origY:y});}}/>
         {/* Add related button */}
         <g onClick={(e)=>{e.stopPropagation();addRelated(logicalName);}} style={{cursor:"pointer"}}>
-          <circle cx={CARD_W-24} cy={HEADER_H/2} r={10} fill="rgba(255,255,255,0.2)"/>
-          <text x={CARD_W-24} y={HEADER_H/2+4} textAnchor="middle" fill="white" fontSize={14} fontWeight="700" style={{pointerEvents:"none"}}>+</text>
+          <circle cx={CARD_W-12} cy={HEADER_H/2} r={10} fill="rgba(255,255,255,0.15)"/>
+          <text x={CARD_W-12} y={HEADER_H/2+4} textAnchor="middle" fill="white" fontSize={14} fontWeight="700" style={{pointerEvents:"none"}}>+</text>
         </g>
         {/* Close button */}
         <g onClick={(e)=>{e.stopPropagation();removeEntity(logicalName);}} style={{cursor:"pointer"}}>
-          <circle cx={CARD_W-8} cy={8} r={8} fill="rgba(0,0,0,0.3)"/>
-          <text x={CARD_W-8} y={12} textAnchor="middle" fill="white" fontSize={10} style={{pointerEvents:"none"}}>x</text>
+          <circle cx={CARD_W-8} cy={6} r={7} fill="rgba(0,0,0,0.25)"/>
+          <text x={CARD_W-8} y={10} textAnchor="middle" fill="white" fontSize={9} style={{pointerEvents:"none"}}>✕</text>
         </g>
         {/* Field rows — hidden when collapseAll */}
         {!collapseAll&&visFields.map((f,i)=>{
           const fy=HEADER_H+i*ROW_H;
           const isLk=isLookup(f.l);
+          const ti=typeIcon(f.t);
           const isHov=hoveredLine&&((hoveredLine.src===logicalName&&hoveredLine.field===f.l)||(hoveredLine.tgt===logicalName));
+          const isPK=f.t==="Uniqueidentifier"&&f.l.endsWith("id")&&f.l===logicalName+"id";
           return(
             <g key={f.l} transform={`translate(0,${fy})`}
               onMouseEnter={()=>{if(isLk)setHoveredLine({src:logicalName,field:f.l,tgt:lookups.find(lk=>lk.field===f.l||lk.field==="_"+f.l+"_value")?.target});}}
               onMouseLeave={()=>setHoveredLine(null)}>
-              <rect width={CARD_W} height={ROW_H} fill={isHov?C.vi+"11":"transparent"}/>
-              <circle cx={14} cy={ROW_H/2} r={3.5} fill={typeColor(f.t)}/>
-              <text x={26} y={ROW_H/2+4} fill={C.tx} fontSize={11} {...mono} style={{pointerEvents:"none"}}>
-                {f.l.length>26?f.l.substring(0,26)+"…":f.l}
+              <rect width={CARD_W} height={ROW_H} fill={isHov?C.vi+"15":"transparent"}/>
+              {/* Type icon */}
+              <text x={10} y={ROW_H/2+4} fontSize={isPK?11:9} fill={ti.color} style={{pointerEvents:"none"}}>{isPK?"🔑":ti.icon}</text>
+              {/* Field display name */}
+              <text x={26} y={ROW_H/2+4} fill={C.tx} fontSize={11} style={{pointerEvents:"none"}}>
+                {(f.d||f.l).length>22?(f.d||f.l).substring(0,22)+"…":(f.d||f.l)}
               </text>
-              {isLk&&<text x={CARD_W-10} y={ROW_H/2+3} textAnchor="end" fill={C.vi} fontSize={9} fontWeight="700" style={{pointerEvents:"none"}}>FK</text>}
-              {f.t!=="Lookup"&&f.t!=="Customer"&&f.t!=="Owner"&&<text x={CARD_W-10} y={ROW_H/2+3} textAnchor="end" fill={C.txd} fontSize={9} style={{pointerEvents:"none"}}>{f.t.toLowerCase()}</text>}
-              <line x1={8} y1={ROW_H} x2={CARD_W-8} y2={ROW_H} stroke={C.bd} strokeWidth={0.3}/>
+              {/* Type label badge */}
+              <text x={CARD_W-12} y={ROW_H/2+3} textAnchor="end" fill={isLk?C.vi:C.txd} fontSize={9} fontWeight={isLk?"700":"400"} {...mono} style={{pointerEvents:"none"}}>
+                {isLk?"reference":ti.label}
+              </text>
+              <line x1={8} y1={ROW_H} x2={CARD_W-8} y2={ROW_H} stroke={C.bd} strokeWidth={0.3} strokeOpacity={0.5}/>
             </g>
           );
         })}
@@ -416,18 +434,32 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
           <defs>
             <marker id="erd-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-              <polygon points="0 0, 8 3, 0 6" fill={C.vi}/>
+              <polygon points="0 0, 8 3, 0 6" fill={C.cy}/>
             </marker>
           </defs>
           {/* Lines first (behind cards) */}
           {lines.map(l=>{
             const isHov=hoveredLine&&hoveredLine.src===l.src&&hoveredLine.field===l.field;
-            const cp=Math.min(80,Math.abs(l.tx-l.sx)*0.4);
+            const cp=Math.min(100,Math.abs(l.tx-l.sx)*0.35);
+            const midX=(l.sx+l.tx)/2;
+            const midY=(l.sy+l.ty)/2;
+            // Clean field name for label
+            const label=l.field.replace(/^_/,"").replace(/_value$/,"");
             return(
-              <path key={l.key}
-                d={`M ${l.sx} ${l.sy} C ${l.sx+cp*l.dir} ${l.sy}, ${l.tx-cp*l.dir} ${l.ty}, ${l.tx} ${l.ty}`}
-                stroke={isHov?C.vi:C.txd+"55"} strokeWidth={isHov?2.5:1.2} fill="none"
-                markerEnd="url(#erd-arrow)" style={{transition:"stroke .15s, stroke-width .15s"}}/>
+              <g key={l.key}>
+                <path
+                  d={`M ${l.sx} ${l.sy} C ${l.sx+cp*l.dir} ${l.sy}, ${l.tx-cp*l.dir} ${l.ty}, ${l.tx} ${l.ty}`}
+                  stroke={isHov?C.cy:C.cy+"44"} strokeWidth={isHov?2.5:1.2} fill="none"
+                  markerEnd="url(#erd-arrow)" style={{transition:"stroke .15s, stroke-width .15s"}}/>
+                {/* Relationship label on line */}
+                {isHov&&<text x={midX} y={midY-6} textAnchor="middle" fill={C.cy} fontSize={9} {...mono} style={{pointerEvents:"none"}}>
+                  {label.length>20?label.substring(0,20)+"…":label}
+                </text>}
+                {/* Subtle label when not hovered for lines that are not too short */}
+                {!isHov&&Math.abs(l.tx-l.sx)>200&&<text x={midX} y={midY-5} textAnchor="middle" fill={C.txd+"66"} fontSize={8} {...mono} style={{pointerEvents:"none"}}>
+                  {label.length>18?label.substring(0,18)+"…":label}
+                </text>}
+              </g>
             );
           })}
           {/* Cards on top */}
