@@ -15,8 +15,8 @@ The free, in-browser data toolkit that Dynamics 365 has been missing.
 
 KEY FEATURES
 
-Data Explorer
-Query any entity with a visual query builder. Smart field picker with type filtering. Multi-filter WHERE with AND/OR groups. Expand parent AND child relationships. FetchXML and raw OData modes. Auto-pagination, virtual scrolling (60fps on 10k+ records), inline cell editing, bulk update and delete.
+Data Explorer — 4 Query Modes
+Query any entity with a visual query builder (Builder), raw OData URLs, FetchXML, or SQL. Yes, SQL — Colvio includes a built-in SQL-to-FetchXML translator. Smart field picker with type filtering. Multi-filter WHERE with AND/OR groups. Expand parent AND child relationships. Auto-pagination with no limits, virtual scrolling (60fps on 10k+ records), inline cell editing, bulk update and delete.
 
 Show All Data
 Auto-detects the record open in your D365 tab. One click to inspect every field with logical name, type, and value. Copy individual fields or full JSON.
@@ -37,7 +37,7 @@ Solution Explorer
 Browse D365 solutions and their components. 13 component types resolved to readable names (Entity, Attribute, View, Plugin, Web Resource, etc.).
 
 Translation Manager
-View and edit field labels in multiple languages. Export/import CSV for bulk translation workflows. Auto-publish after save.
+View and edit field labels in multiple languages. Non-renameable fields automatically locked as read-only. Export/import CSV for bulk translation workflows. Auto-publish after save.
 
 User & License Monitor
 Monitor ALL D365 users — Access Mode, CAL Type, Business Unit, security roles, last login date. Filter by Active/Disabled/Non-Interactive, identify unused licenses (never logged in, disabled but still allocated). Full CSV export. No limit on user count.
@@ -94,7 +94,7 @@ All write operations respect your D365 security roles — Colvio cannot bypass s
 ROLE-BASED ACCESS
 
 Some modules require elevated D365 permissions and are automatically hidden for non-admin users:
-Available to all users: Data Explorer, Show All Data, Metadata Browser, Data Loader, Relationship Graph, Help
+Available to all users: Data Explorer, Show All Data, Metadata Browser, Data Loader, Relationship Graph, Schema, Help
 Requires System Administrator or System Customizer: Solution Explorer, Translation Manager, Login History, Users & Licenses, Security Audit
 Colvio detects your permissions at startup and only shows the tabs you can access. No error screens, no confusion.
 
@@ -128,6 +128,6 @@ English
 1. Data Explorer — query builder with results table (dark theme)
 2. Show All Data — record inspector with field details
 3. Data Loader — CSV mapping wizard with preview
-4. Relationship Graph — SVG entity relationship diagram
-5. Solution Explorer — solution components with resolved names
+4. Schema — interactive ERD with entity cards and bezier lines
+5. Security Audit — roles and privileges viewer
 6. Metadata Browser — entity fields with OptionSet viewer
