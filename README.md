@@ -184,7 +184,7 @@ npm run build
 Chrome > `chrome://extensions` > Developer Mode > Load unpacked > `dist/`
 
 ### From Chrome Web Store
-*Coming soon*
+[Install Colvio](https://chromewebstore.google.com/detail/colvio-for-dynamics-365/edieednbdaclheikneelkjfbckibhdgl)
 
 ## Contributing
 
