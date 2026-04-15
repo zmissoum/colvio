@@ -184,7 +184,8 @@ export default function App(){
           <span style={{fontSize:12,color:C.txd,...mono}}>{t("explorer.execute_hint")}</span>
         </div>
         <div style={{flex:1,overflow:"auto"}}>
-          {tab==="explorer"&&<ErrorBoundary><Explorer bp={bp} addHistory={addHistory} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {/* Explorer stays mounted (never unmounts) so queries persist across tab switches */}
+          <div style={{display:tab==="explorer"?"block":"none",height:"100%"}}><ErrorBoundary><Explorer bp={bp} addHistory={addHistory} orgInfo={orgInfo} theme={theme}/></ErrorBoundary></div>
           <div style={{position:"fixed",bottom:12,right:12,zIndex:50,display:"flex",gap:6}}>
             <button onClick={()=>setShowShortcuts(true)} style={{padding:"6px 10px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:8,color:C.txd,cursor:"pointer",fontSize:12,boxShadow:"0 2px 8px rgba(0,0,0,.3)",fontWeight:700}} title="Ctrl+/">?</button>
             <button onClick={()=>{const next=getLocale()==="en"?"fr":"en";setLocale(next);setLocaleState(next);}} style={{padding:"6px 12px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:8,color:C.txm,cursor:"pointer",fontSize:12,boxShadow:"0 2px 8px rgba(0,0,0,.3)",fontWeight:600}}>{getLocale()==="en"?"FR":"EN"}</button>

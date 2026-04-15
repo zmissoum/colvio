@@ -36,14 +36,24 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
   const[saveName,setSaveName]=useState("");
   const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
   const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
+  const[bookmarks,setBookmarks]=useState([]);
 
   useEffect(()=>{
     if(typeof chrome!=="undefined"&&chrome.storage?.local){
-      chrome.storage.local.get(["d365_query_history"],r=>{
+      chrome.storage.local.get(["d365_query_history","d365_bookmarks"],r=>{
         if(r.d365_query_history) setQueryHistory(r.d365_query_history);
+        if(r.d365_bookmarks) setBookmarks(r.d365_bookmarks);
       });
     }
   },[]);
+
+  const toggleBookmark=(entityLogical)=>{
+    setBookmarks(prev=>{
+      const next=prev.includes(entityLogical)?prev.filter(b=>b!==entityLogical):[...prev,entityLogical];
+      if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.set({d365_bookmarks:next});
+      return next;
+    });
+  };
   const addToHistory=(entity,query,mode,fieldCount)=>{
     // Strip $filter values from stored query to avoid persisting PII (emails, names, etc.)
     const safeQuery=(query||"").replace(/\$filter=[^&]*/,"$filter=...").substring(0,200);
@@ -223,7 +233,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
   };
 
   const debouncedEs = useDebounce(es, 150);
-  const filtered=entities.filter(e=>e.d.toLowerCase().includes(debouncedEs.toLowerCase())||e.l.includes(debouncedEs.toLowerCase()));
+  const filtered=entities.filter(e=>e.d.toLowerCase().includes(debouncedEs.toLowerCase())||e.l.includes(debouncedEs.toLowerCase())).sort((a,b)=>{const aB=bookmarks.includes(a.l)?0:1;const bB=bookmarks.includes(b.l)?0:1;return aB-bB||a.d.localeCompare(b.d);});
 
   const oq=()=>{
     if(!ent)return"";
@@ -705,9 +715,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
           <div style={{flex:1,overflow:"auto",padding:"0 6px 6px"}}>
             {loading&&!ent ? <div style={{textAlign:"center",padding:20}}><Spin/><p style={{color:C.txd,fontSize:13,marginTop:8}}>Loading entities...</p></div>
             : filtered.map(e=>(
-            <button key={e.l} onClick={()=>selEnt(e)} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:ent?.l===e.l?C.sfa:"transparent",color:ent?.l===e.l?C.tx:C.txm}}>
-              <span style={{fontSize:15}}>{e.i}</span><div style={{flex:1,textAlign:"left",minWidth:0}}><div style={{fontSize:13,fontWeight:ent?.l===e.l?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.d}</div><div style={{fontSize:11,color:C.txd,...mono}}>{e.l}</div></div>{(e.c>0||entityCounts[e.l]>0)&&<span style={{fontSize:10,color:C.txd,background:C.bg,padding:"1px 5px",borderRadius:3,...mono}}>{(e.c||entityCounts[e.l]||0).toLocaleString()}</span>}
-            </button>
+            <div key={e.l} style={{display:"flex",alignItems:"center",marginBottom:1}}>
+              <button onClick={()=>selEnt(e)} style={{flex:1,display:"flex",alignItems:"center",gap:7,padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",background:ent?.l===e.l?C.sfa:"transparent",color:ent?.l===e.l?C.tx:C.txm}}>
+                <span style={{fontSize:15}}>{e.i}</span><div style={{flex:1,textAlign:"left",minWidth:0}}><div style={{fontSize:13,fontWeight:ent?.l===e.l?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.d}</div><div style={{fontSize:11,color:C.txd,...mono}}>{e.l}</div></div>{(e.c>0||entityCounts[e.l]>0)&&<span style={{fontSize:10,color:C.txd,background:C.bg,padding:"1px 5px",borderRadius:3,...mono}}>{(e.c||entityCounts[e.l]||0).toLocaleString()}</span>}
+              </button>
+              <span onClick={(ev)=>{ev.stopPropagation();toggleBookmark(e.l);}} style={{cursor:"pointer",fontSize:13,padding:"2px 4px",color:bookmarks.includes(e.l)?C.yw:C.txd+"44",flexShrink:0}} title={bookmarks.includes(e.l)?"Remove bookmark":"Bookmark"}>★</span>
+            </div>
           ))}</div>
         </div>
       )}

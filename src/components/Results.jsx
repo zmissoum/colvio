@@ -206,11 +206,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       <div style={{borderBottom:`1px solid ${C.bd}`,background:C.sf,padding:"6px 12px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:13,color:C.gn,fontWeight:600}}>{res.data.length} records</span>
-            {res.fetching&&<span style={{fontSize:11,color:C.cy,background:C.cy+"22",padding:"2px 8px",borderRadius:3,display:"inline-flex",alignItems:"center",gap:4}}><Spin s={8}/> loading…</span>}
+            <span style={{fontSize:13,color:C.gn,fontWeight:600}}>{res.data.length.toLocaleString()} records</span>
+            {res.fetching&&<span style={{fontSize:11,color:C.cy,background:C.cy+"22",padding:"2px 8px",borderRadius:3,display:"inline-flex",alignItems:"center",gap:4}}><Spin s={8}/> {res.data.length>=5000?`page ${Math.ceil(res.data.length/5000)+1}...`:"loading..."}</span>}
             {res.fetching&&<button onClick={onStop} style={{padding:"1px 8px",fontSize:11,border:`1px solid ${C.rd}44`,borderRadius:3,cursor:"pointer",background:C.rd+"22",color:C.rd,fontWeight:600}}>■ Stop</button>}
-            <span style={{fontSize:11,color:C.txd}}>/ {res.total.toLocaleString()}</span>
-            <span style={{fontSize:11,color:C.txd,background:C.bg,padding:"2px 6px",borderRadius:3}}>{res.elapsed}</span>
+            {!res.fetching&&<span style={{fontSize:11,color:C.txd}}>· {res.elapsed}</span>}
+            {res.fetching&&<span style={{fontSize:11,color:C.txd}}>{res.elapsed}</span>}
           </div>
           {copyFeedback && (
             <span style={{fontSize:13,color:C.gn,fontWeight:600,display:"flex",alignItems:"center",gap:4,animation:"fadeIn .2s"}}>
