@@ -502,20 +502,26 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
             setRes({entity:ent,fields:[],data:[],count:0,total:0,query:q,elapsed:"loading...",fetching:true});
             setLoading(false);
 
+            // Use count="5000" in fetch for smaller pages = faster transfer
+            const pagedFlatXml=cleanFlatXml.replace("<fetch",`<fetch count="5000"`);
+
             // Paginate all records
             let allRaw=[];
             let pg=1;
             let more=true;
             const t0b=Date.now();
             while(more&&!fetchAbort.current){
-              const pgXml=pg===1?cleanFlatXml:cleanFlatXml.replace("<fetch",`<fetch page="${pg}"`);
+              const pgXml=pg===1?pagedFlatXml:pagedFlatXml.replace(`count="5000"`,`count="5000" page="${pg}"`);
               try{
                 const pgData=await bridge.executeFetchXml(pgXml);
                 if(!pgData?.records?.length)break;
                 allRaw=[...allRaw,...pgData.records];
                 more=pgData.records.length>=5000;
                 pg++;
-                setRes(prev=>({...prev,count:allRaw.length,total:allRaw.length,elapsed:`${((Date.now()-t0b)/1000).toFixed(1)}s — loading ${allRaw.length} records...`}));
+                const elapsed=((Date.now()-t0b)/1000).toFixed(1);
+                const speed=allRaw.length/((Date.now()-t0b)/1000);
+                const estRemain=more&&speed>0?` · ~${Math.ceil((allRaw.length*0.5)/speed)}s remaining`:"";
+                setRes(prev=>({...prev,count:allRaw.length,total:allRaw.length,elapsed:`${elapsed}s — loading ${allRaw.length.toLocaleString()} records (page ${pg-1})${estRemain}`}));
               }catch(pgErr){
                 if(pg===2&&pgErr.message.includes("0x80041129")){pg--;more=true;continue;}
                 break;
