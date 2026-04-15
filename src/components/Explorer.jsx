@@ -373,10 +373,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
     if(qm==="fetchxml"||qm==="sql"){
       const activeFxml=qm==="sql"?sqlGenFxml:fxml;
       if(!activeFxml.trim()){setError("FetchXML is empty");return;}
+      // Strip <having> before sending to server — always apply client-side
+      const havingBlock=activeFxml.match(/<having>([\s\S]*?)<\/having>/i);
+      const serverFxml=activeFxml.replace(/<having>[\s\S]*?<\/having>/gi,"");
       setLoading(true);
       const t0=Date.now();
       try{
-        const data=await bridge.executeFetchXml(activeFxml);
+        const data=await bridge.executeFetchXml(serverFxml);
         const t1=((Date.now()-t0)/1000).toFixed(1);
         if(!data?.records){setError("No results");setLoading(false);return;}
         const firstRec=data.records[0]||{};
@@ -384,6 +387,18 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
         const odataFieldMap={};
         headerFields.forEach(f=>{odataFieldMap[f]=f;});
         let allRecords=[...data.records];
+
+        // Apply HAVING client-side if present
+        if(havingBlock){
+          const havingRegex=/<condition\s+attribute\s*=\s*"([^"]*)"\s+operator\s*=\s*"([^"]*)"\s+value\s*=\s*"([^"]*)"/gi;
+          let hm;
+          while((hm=havingRegex.exec(havingBlock[1]))!==null){
+            const[,alias,op,val]=hm;const nv=Number(val);
+            allRecords=allRecords.filter(r=>{const v=Number(r[alias])||0;
+              if(op==="ge")return v>=nv;if(op==="gt")return v>nv;if(op==="le")return v<=nv;if(op==="lt")return v<nv;if(op==="eq")return v===nv;if(op==="ne")return v!==nv;return true;
+            });
+          }
+        }
 
         setRes({entity:ent,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink:null,fetching:!!data.moreRecords});
         setLoading(false);
@@ -422,7 +437,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
         setRes(prev=>({...prev,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
         // ── Client-side aggregation fallback (50k limit) ──
-        if(e.message&&e.message.includes("50000")&&activeFxml.includes("aggregate")){
+        if(e.message&&(e.message.includes("50000")||e.message.includes("having")||e.message.includes("Having"))&&activeFxml.includes("aggregate")){
           try{
             setError("");
             setLoading(true);
