@@ -421,7 +421,127 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
         }
         setRes(prev=>({...prev,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
-        setError(e.message);setLoading(false);
+        // ── Client-side aggregation fallback (50k limit) ──
+        if(e.message&&e.message.includes("50000")&&activeFxml.includes("aggregate")){
+          try{
+            setError("");
+            setLoading(true);
+            // Strip aggregate attributes and rebuild as a flat query
+            let flatXml=activeFxml
+              .replace(/\s*aggregate\s*=\s*"true"/gi,"")
+              .replace(/\s*groupby\s*=\s*"true"/gi,"")
+              .replace(/\s*aggregate\s*=\s*"count"/gi,"")
+              .replace(/\s*aggregate\s*=\s*"sum"/gi,"")
+              .replace(/\s*aggregate\s*=\s*"avg"/gi,"")
+              .replace(/\s*aggregate\s*=\s*"min"/gi,"")
+              .replace(/\s*aggregate\s*=\s*"max"/gi,"")
+              .replace(/\s*alias\s*=\s*"[^"]*"/gi,"");
+            // Remove <having> block entirely
+            flatXml=flatXml.replace(/<having>[\s\S]*?<\/having>/gi,"");
+            // Extract groupby fields and aggregate fields from original XML
+            const groupByFields=[];
+            const aggFields=[];
+            const attrRegex=/<attribute\s+([^/>]*)\/?>/gi;
+            let attrMatch;
+            while((attrMatch=attrRegex.exec(activeFxml))!==null){
+              const attrStr=attrMatch[1];
+              const nameMatch=attrStr.match(/name\s*=\s*"([^"]*)"/);
+              const aliasMatch=attrStr.match(/alias\s*=\s*"([^"]*)"/);
+              const aggMatch=attrStr.match(/aggregate\s*=\s*"([^"]*)"/);
+              const gbMatch=attrStr.match(/groupby\s*=\s*"true"/i);
+              if(nameMatch){
+                if(gbMatch)groupByFields.push({name:nameMatch[1],alias:aliasMatch?aliasMatch[1]:nameMatch[1]});
+                else if(aggMatch)aggFields.push({name:nameMatch[1],alias:aliasMatch?aliasMatch[1]:nameMatch[1],fn:aggMatch[1].toLowerCase()});
+              }
+            }
+            // Parse having conditions
+            const havingConditions=[];
+            const havingRegex=/<condition\s+attribute\s*=\s*"([^"]*)"\s+operator\s*=\s*"([^"]*)"\s+value\s*=\s*"([^"]*)"/gi;
+            const havingBlock=activeFxml.match(/<having>([\s\S]*?)<\/having>/i);
+            if(havingBlock){
+              let hm;
+              while((hm=havingRegex.exec(havingBlock[1]))!==null){
+                havingConditions.push({alias:hm[1],op:hm[2],value:Number(hm[3])});
+              }
+            }
+            // Ensure flat XML only selects the fields we need
+            const neededFields=[...groupByFields.map(f=>f.name),...aggFields.map(f=>f.name)];
+            const entityMatch=flatXml.match(/<entity\s+name\s*=\s*"([^"]*)"/);
+            const entName=entityMatch?entityMatch[1]:"";
+            // Rebuild clean flat XML
+            const filterMatch=flatXml.match(/<filter>[\s\S]*?<\/filter>/i);
+            const filterBlock=filterMatch?filterMatch[0]:"";
+            const orderField=groupByFields.length?groupByFields[0].name:neededFields[0];
+            const cleanFlatXml=`<fetch><entity name="${entName}">${neededFields.map(f=>`<attribute name="${f}"/>`).join("")}${filterBlock}<order attribute="${orderField}"/></entity></fetch>`;
+
+            setRes({entity:ent,fields:[],data:[],count:0,total:0,query:q,elapsed:"loading...",fetching:true});
+            setLoading(false);
+
+            // Paginate all records
+            let allRaw=[];
+            let pg=1;
+            let more=true;
+            const t0b=Date.now();
+            while(more&&!fetchAbort.current){
+              const pgXml=pg===1?cleanFlatXml:cleanFlatXml.replace("<fetch",`<fetch page="${pg}"`);
+              try{
+                const pgData=await bridge.executeFetchXml(pgXml);
+                if(!pgData?.records?.length)break;
+                allRaw=[...allRaw,...pgData.records];
+                more=pgData.records.length>=5000;
+                pg++;
+                setRes(prev=>({...prev,count:allRaw.length,total:allRaw.length,elapsed:`${((Date.now()-t0b)/1000).toFixed(1)}s — loading ${allRaw.length} records...`}));
+              }catch(pgErr){
+                if(pg===2&&pgErr.message.includes("0x80041129")){pg--;more=true;continue;}
+                break;
+              }
+            }
+
+            // Client-side aggregation
+            const groups={};
+            allRaw.forEach(r=>{
+              const key=groupByFields.map(f=>r[f.name]??r[f.name+"@OData.Community.Display.V1.FormattedValue"]??"(null)").join("|||");
+              if(!groups[key])groups[key]={_key:key,_records:[],...Object.fromEntries(groupByFields.map(f=>[f.alias,r[f.name+"@OData.Community.Display.V1.FormattedValue"]||r[f.name]]))};
+              groups[key]._records.push(r);
+            });
+            // Compute aggregates
+            let results=Object.values(groups).map(g=>{
+              const row={...g};
+              aggFields.forEach(af=>{
+                const vals=g._records.map(r=>r[af.name]).filter(v=>v!=null);
+                if(af.fn==="count")row[af.alias]=g._records.length;
+                else if(af.fn==="sum")row[af.alias]=vals.reduce((a,b)=>a+(Number(b)||0),0);
+                else if(af.fn==="avg")row[af.alias]=vals.length?vals.reduce((a,b)=>a+(Number(b)||0),0)/vals.length:0;
+                else if(af.fn==="min")row[af.alias]=vals.length?Math.min(...vals.map(Number)):null;
+                else if(af.fn==="max")row[af.alias]=vals.length?Math.max(...vals.map(Number)):null;
+              });
+              delete row._key;delete row._records;
+              return row;
+            });
+            // Apply HAVING
+            havingConditions.forEach(h=>{
+              results=results.filter(r=>{
+                const v=r[h.alias];
+                if(h.op==="ge")return v>=h.value;
+                if(h.op==="gt")return v>h.value;
+                if(h.op==="le")return v<=h.value;
+                if(h.op==="lt")return v<h.value;
+                if(h.op==="eq")return v===h.value;
+                if(h.op==="ne")return v!==h.value;
+                return true;
+              });
+            });
+            results.sort((a,b)=>{const ak=aggFields[0]?.alias;return ak?(b[ak]||0)-(a[ak]||0):0;});
+            const headerFields=Object.keys(results[0]||{});
+            const odataFieldMap={};headerFields.forEach(f=>{odataFieldMap[f]=f;});
+            const elapsed=`${((Date.now()-t0b)/1000).toFixed(1)}s`;
+            setRes({entity:ent,fields:headerFields,odataFieldMap,data:results,count:results.length,total:results.length,query:q,elapsed:`${elapsed} (client-side aggregation on ${allRaw.length} records)`,fetching:false});
+          }catch(fallbackErr){
+            setError(`Client-side aggregation failed: ${fallbackErr.message}`);setLoading(false);
+          }
+        }else{
+          setError(e.message);setLoading(false);
+        }
       }
       return;
     }
