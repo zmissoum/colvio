@@ -308,35 +308,114 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
 
   const fetchAbort = useRef(false);
 
-  const cleanRecord = (r) => {
-    const clean = {};
-    for (const [k, v] of Object.entries(r)) {
-      if (k.startsWith("@odata") || k === "@odata.etag") continue;
-      const fvMatch = k.match(/^(.+)@OData\.Community\.Display\.V1\.FormattedValue$/);
-      if (fvMatch) { clean[fvMatch[1] + "__display"] = v; continue; }
-      const lkMatch = k.match(/^(.+)@Microsoft\.Dynamics\.CRM\.lookuplogicalname$/);
-      if (lkMatch) { clean[lkMatch[1] + "__entity"] = v; continue; }
-      if (k.includes("@")) continue;
-      const matchingExpand = expands.find(ex => ex.navProperty === k);
-      if (matchingExpand && v && typeof v === "object") {
-        if (Array.isArray(v)) {
-          for (const f of matchingExpand.fields) {
-            const vals = v.map(item => {
-              const fv = item[f + "@OData.Community.Display.V1.FormattedValue"] || item[f];
-              return fv != null ? String(fv) : "";
-            }).filter(Boolean);
-            clean[`${matchingExpand.targetEntity}.${f}`] = vals.join(", ");
-          }
-          clean[`${matchingExpand.targetEntity}.__count`] = v.length;
-        } else {
-          for (const [ek, ev] of Object.entries(v)) {
-            if (ek.startsWith("@") || ek.includes("@")) continue;
-            clean[`${matchingExpand.targetEntity}.${ek}`] = ev;
-          }
-        }
-      } else { clean[k] = v; }
+  // Flatten a single object's properties into a clean record, resolving formatted values
+  const flattenObj=(obj,prefix)=>{
+    const clean={};
+    if(!obj||typeof obj!=="object")return clean;
+    for(const[k,v] of Object.entries(obj)){
+      if(k.startsWith("@odata")||k==="@odata.etag")continue;
+      const fvMatch=k.match(/^(.+)@OData\.Community\.Display\.V1\.FormattedValue$/);
+      if(fvMatch){const key=prefix?`${prefix}.${fvMatch[1]}`:fvMatch[1];clean[key+"__display"]=v;continue;}
+      const lkMatch=k.match(/^(.+)@Microsoft\.Dynamics\.CRM\.lookuplogicalname$/);
+      if(lkMatch){const key=prefix?`${prefix}.${lkMatch[1]}`:lkMatch[1];clean[key+"__entity"]=v;continue;}
+      if(k.includes("@"))continue;
+      const key=prefix?`${prefix}.${k}`:k;
+      if(v&&typeof v==="object"&&!Array.isArray(v)){
+        // Single nested object (1:1 expand or single record) — flatten recursively
+        Object.assign(clean,flattenObj(v,key));
+      }else if(!Array.isArray(v)){
+        clean[key]=v;
+      }
+      // Arrays are handled by flattenRecord
     }
     return clean;
+  };
+
+  // Flatten a record: for each collection expand (array), create multiple rows
+  const flattenRecord=(r)=>{
+    const base=flattenObj(r,"");
+    // Find all array properties (collection expands)
+    const arrays=[];
+    for(const[k,v] of Object.entries(r)){
+      if(k.startsWith("@")||k.includes("@"))continue;
+      if(Array.isArray(v)&&v.length>0&&typeof v[0]==="object")arrays.push({key:k,items:v});
+    }
+    if(arrays.length===0)return[base];
+    // Flatten: cartesian product of all arrays (usually just 1)
+    let rows=[base];
+    for(const arr of arrays){
+      const newRows=[];
+      for(const row of rows){
+        if(arr.items.length===0){
+          newRows.push(row);
+        }else{
+          for(const item of arr.items){
+            const flatItem=flattenObj(item,arr.key);
+            // Check for nested arrays inside the expand item
+            const subArrays=[];
+            for(const[sk,sv] of Object.entries(item)){
+              if(sk.startsWith("@")||sk.includes("@"))continue;
+              if(Array.isArray(sv)&&sv.length>0&&typeof sv[0]==="object")subArrays.push({key:`${arr.key}.${sk}`,items:sv});
+            }
+            if(subArrays.length===0){
+              newRows.push({...row,...flatItem});
+            }else{
+              // Nested collection expand (2 levels deep)
+              for(const subArr of subArrays){
+                for(const subItem of subArr.items){
+                  newRows.push({...row,...flatItem,...flattenObj(subItem,subArr.key)});
+                }
+              }
+            }
+          }
+        }
+      }
+      rows=newRows;
+    }
+    return rows;
+  };
+
+  const cleanRecord=(r)=>{
+    // For builder mode with expands, use the old logic for field mapping
+    const matchingExpands=expands.filter(ex=>r[ex.navProperty]&&typeof r[ex.navProperty]==="object");
+    if(matchingExpands.length>0&&qm==="builder"){
+      // Builder mode: use expand field names
+      const clean={};
+      for(const[k,v] of Object.entries(r)){
+        if(k.startsWith("@odata")||k==="@odata.etag")continue;
+        const fvMatch=k.match(/^(.+)@OData\.Community\.Display\.V1\.FormattedValue$/);
+        if(fvMatch){clean[fvMatch[1]+"__display"]=v;continue;}
+        const lkMatch=k.match(/^(.+)@Microsoft\.Dynamics\.CRM\.lookuplogicalname$/);
+        if(lkMatch){clean[lkMatch[1]+"__entity"]=v;continue;}
+        if(k.includes("@"))continue;
+        const me=expands.find(ex=>ex.navProperty===k);
+        if(me&&v&&typeof v==="object"){
+          if(Array.isArray(v)){
+            for(const f of me.fields){
+              const vals=v.map(item=>{const fv=item[f+"@OData.Community.Display.V1.FormattedValue"]||item[f];return fv!=null?String(fv):"";}).filter(Boolean);
+              clean[`${me.targetEntity}.${f}`]=vals.join(", ");
+            }
+            clean[`${me.targetEntity}.__count`]=v.length;
+          }else{
+            for(const[ek,ev] of Object.entries(v)){if(ek.startsWith("@")||ek.includes("@"))continue;clean[`${me.targetEntity}.${ek}`]=ev;}
+          }
+        }else{clean[k]=v;}
+      }
+      return clean;
+    }
+    // OData/FetchXML/SQL mode: auto-flatten all nested objects and arrays
+    return flattenObj(r,"");
+  };
+
+  // For OData mode with nested expands, flatten records into multiple rows
+  const cleanAndFlatten=(records)=>{
+    // Check if any record has array properties (collection expands)
+    const hasArrays=records.some(r=>Object.values(r).some(v=>Array.isArray(v)&&v.length>0&&typeof v[0]==="object"));
+    if(!hasArrays)return records.map(cleanRecord);
+    // Flatten: each record may produce multiple rows
+    const flat=[];
+    for(const r of records){flat.push(...flattenRecord(r));}
+    return flat;
   };
 
   const run=async()=>{
@@ -598,7 +677,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
         const data=await bridge.query(entitySet,opts);
         if(!data?.records){setError("No results");setLoading(false);return;}
         const t1=((Date.now()-t0)/1000).toFixed(1);
-        const firstClean=data.records.map(cleanRecord);
+        const firstClean=cleanAndFlatten(data.records);
         // Derive columns from actual returned data, not builder selection
         const headerFields=firstClean[0]?Object.keys(firstClean[0]).filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity")):[];
         const odataFieldMap={};
@@ -615,7 +694,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
           try{
             const pageData=await bridge.query(nextLink,{});
             if(!pageData?.records?.length)break;
-            const pageClean=pageData.records.map(cleanRecord);
+            const pageClean=cleanAndFlatten(pageData.records);
             allRecords=[...allRecords,...pageClean];
             nextLink=pageData.nextLink||null;
             setRes(prev=>({...prev,data:allRecords,count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
