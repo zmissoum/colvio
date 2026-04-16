@@ -662,24 +662,18 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
       setLoading(true);
       const t0=Date.now();
       try{
-        // Parse: "entitySet?$select=...&$filter=..." or just "entitySet"
-        const raw=rq.trim().replace(/^GET\s+\/api\/data\/v\d+\.\d+\//i,"");
+        // Send the raw OData path directly — no parsing/reconstruction needed
+        const raw=rq.trim().replace(/^GET\s+\/api\/data\/v\d+\.\d+\//i,"").replace(/[\r\n]+/g,"");
         const qIdx=raw.indexOf("?");
         const entitySet=qIdx>-1?raw.substring(0,qIdx):raw;
-        const queryStr=qIdx>-1?raw.substring(qIdx+1):"";
-        const urlParams=new URLSearchParams(queryStr);
-        const opts={};
-        if(urlParams.get("$select"))opts.select=urlParams.get("$select");
-        if(urlParams.get("$filter"))opts.filter=urlParams.get("$filter");
-        if(urlParams.get("$top"))opts.top=urlParams.get("$top");
-        if(urlParams.get("$orderby"))opts.orderby=urlParams.get("$orderby");
-        if(urlParams.get("$expand"))opts.expand=urlParams.get("$expand");
-        const data=await bridge.query(entitySet,opts);
+        const data=await bridge.queryRaw(raw);
         if(!data?.records){setError("No results");setLoading(false);return;}
         const t1=((Date.now()-t0)/1000).toFixed(1);
         const firstClean=cleanAndFlatten(data.records);
-        // Derive columns from actual returned data, not builder selection
-        const headerFields=firstClean[0]?Object.keys(firstClean[0]).filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity")):[];
+        // Derive columns from ALL returned rows (not just first — first row may lack expand data)
+        const colSet=new Set();
+        for(const row of firstClean)for(const k of Object.keys(row))colSet.add(k);
+        const headerFields=[...colSet].filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity"));
         const odataFieldMap={};
         headerFields.forEach(f=>{odataFieldMap[f]=f;});
         let allRecords=[...firstClean];
@@ -696,8 +690,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
             if(!pageData?.records?.length)break;
             const pageClean=cleanAndFlatten(pageData.records);
             allRecords=[...allRecords,...pageClean];
+            // Discover new columns from this page (expand data may appear in later pages)
+            let newCols=false;
+            for(const row of pageClean)for(const k of Object.keys(row)){if(!colSet.has(k)){colSet.add(k);newCols=true;}}
+            if(newCols){const updatedFields=[...colSet].filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity"));headerFields.length=0;headerFields.push(...updatedFields);updatedFields.forEach(f=>{odataFieldMap[f]=f;});}
             nextLink=pageData.nextLink||null;
-            setRes(prev=>({...prev,data:allRecords,count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            setRes(prev=>({...prev,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(pageErr){
             setError(`Page ${pageNum}: ${pageErr.message}`);break;
           }
@@ -724,7 +722,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
       const t1 = ((Date.now()-t0)/1000).toFixed(1);
 
       const firstClean = data.records.map(cleanRecord);
-      const headerFields = [...(validSf.length > 0 && !allSelected ? validSf : (firstClean[0] ? Object.keys(firstClean[0]).filter(k=>!k.endsWith("__display")&&!k.endsWith("__entity")&&!k.includes(".")) : validSf))];
+      // When falling back to record keys (allSelected), scan ALL records not just the first
+      const builderColSet = new Set();
+      if (!(validSf.length > 0 && !allSelected)) {
+        for (const row of firstClean) for (const k of Object.keys(row)) builderColSet.add(k);
+      }
+      const headerFields = [...(validSf.length > 0 && !allSelected ? validSf : (builderColSet.size > 0 ? [...builderColSet].filter(k=>!k.endsWith("__display")&&!k.endsWith("__entity")&&!k.includes(".")) : validSf))];
       for (const ex of expands) { for (const f of ex.fields) { headerFields.push(`${ex.targetEntity}.${f}`); } }
       const odataFieldMap = {};
       headerFields.forEach(f => { odataFieldMap[f] = f.includes(".") ? f : getOdataName(f); });
@@ -744,8 +747,21 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
           if (!pageData?.records?.length) break;
           const pageClean = pageData.records.map(cleanRecord);
           allRecords = [...allRecords, ...pageClean];
+          // Discover new columns when using auto-detect (allSelected fallback path)
+          if (!(validSf.length > 0 && !allSelected)) {
+            let newCols = false;
+            for (const row of pageClean) for (const k of Object.keys(row)) { if (!builderColSet.has(k)) { builderColSet.add(k); newCols = true; } }
+            if (newCols) {
+              const updated = [...builderColSet].filter(k=>!k.endsWith("__display")&&!k.endsWith("__entity")&&!k.includes("."));
+              const expandCols = [];
+              for (const ex of expands) for (const f of ex.fields) expandCols.push(`${ex.targetEntity}.${f}`);
+              headerFields.length = 0;
+              headerFields.push(...updated, ...expandCols);
+              headerFields.forEach(f => { odataFieldMap[f] = f.includes(".") ? f : getOdataName(f); });
+            }
+          }
           nextLink = pageData.nextLink || null;
-          setRes(prev => ({...prev, data: allRecords, count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+          setRes(prev => ({...prev, fields: headerFields, odataFieldMap, data: allRecords, count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         } catch (pageErr) {
           if (pageErr.message?.includes("401") || pageErr.message?.includes("SESSION_EXPIRED")) {
             setError("Session expired — refresh D365 (F5) then click ⚡ again");

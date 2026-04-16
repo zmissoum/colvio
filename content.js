@@ -265,6 +265,8 @@
                 if (!isDirectFetch) {
                   if (params.options?.filter) fps.push(`$filter=${params.options.filter}`);
                   if (params.options?.top) fps.push(`$top=${params.options.top}`);
+                  if (params.options?.orderby) fps.push(`$orderby=${params.options.orderby}`);
+                  if (params.options?.expand) fps.push(`$expand=${params.options.expand}`);
                 }
                 if (fps.length) fallbackPath += "?" + fps.join("&");
                 data = await dvRequest("GET", fallbackPath);
@@ -281,6 +283,24 @@
             break;
           }
 
+
+          case "queryRaw": {
+            // Send the OData path exactly as-is — no parsing/reconstruction
+            let rawPath = params.path;
+            if (!rawPath) throw new Error("Missing path");
+            // Validate the entity set name (part before ? or ()
+            const baseName = rawPath.split(/[(?/$]/)[0];
+            if (!baseName || !SAFE_NAME.test(baseName)) throw new Error(`Invalid path: "${rawPath}"`);
+            const data = await dvRequest("GET", rawPath);
+            // Detect single-record fetch (path contains GUID in parentheses before query string)
+            const isDirectFetch = /^[^?]*\(/.test(rawPath);
+            if (isDirectFetch) {
+              result = { records: [data], count: 1 };
+            } else {
+              result = { records: data.value || [], count: data.value?.length || 0, nextLink: data["@odata.nextLink"] };
+            }
+            break;
+          }
 
           case "getEntityCount": {
             try {

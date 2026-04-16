@@ -202,6 +202,11 @@ export const bridge = {
     return null;
   },
 
+  async queryRaw(path) {
+    if (isExtension) return callD365("queryRaw", { path });
+    return null;
+  },
+
   async executeFetchXml(fetchXml) {
     if (isExtension) return callD365("fetchXml", { fetchXml });
     return { records: [], count: 0, moreRecords: false };
