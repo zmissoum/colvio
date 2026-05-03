@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
+import Tooltip from "./Tooltip.jsx";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, isTrulyCustom } from "../shared.jsx";
 
 export default function Loader({bp,orgInfo,theme}){
@@ -31,19 +32,34 @@ export default function Loader({bp,orgInfo,theme}){
         const sample=rows[0]?.[h];
         if(sample && GUID_RE.test(sample)){
           lookupCols.add(h);
-          const entName=low.replace(/id$/,"").replace(/^_/,"").replace(/_value$/,"");
-          const knownLookups={"parentaccountid":"account","parentcontactid":"contact","ownerid":"systemuser","owningbusinessunit":"businessunit","transactioncurrencyid":"transactioncurrency","primarycontactid":"contact"};
-          const targetEnt=knownLookups[low]||entName;
-          autoLookups.push({src:"",csv:h,entity:targetEnt,nav:low,d365f:"",fb:"skip",mode:"direct"});
+          const meta=findLookupMeta(h);
+          if(meta){
+            autoLookups.push({src:"",csv:h,entity:meta.targetEntity,nav:meta.navProperty,d365f:"",fb:"skip",mode:"direct"});
+          }else{
+            const entName=low.replace(/id$/,"").replace(/^_/,"").replace(/_value$/,"");
+            const knownLookups={"parentaccountid":"account","parentcontactid":"contact","ownerid":"systemuser","owningbusinessunit":"businessunit","transactioncurrencyid":"transactioncurrency","primarycontactid":"contact"};
+            const targetEnt=knownLookups[low]||entName;
+            autoLookups.push({src:"",csv:h,entity:targetEnt,nav:low,d365f:"",fb:"skip",mode:"direct"});
+          }
         }
       }
     });
+
+    // Lookup-type field logical names (can only be set via @odata.bind, never direct).
+    // We capture this here so parseData stays a single source of truth, even though the
+    // retroactive useEffect will also catch fields that load asynchronously after parsing.
+    const lookupTypeFields = new Set(
+      targetFieldsMeta
+        .filter(f => { const t = f.type || f.t; return t === "Lookup" || t === "Customer" || t === "Owner"; })
+        .map(f => (f.logical || f.l || "").toLowerCase())
+    );
 
     setMaps(headers.filter(h=>!h.includes(".")).map(h=>{
       const low=h.toLowerCase();
       if(SKIP_FIELDS.has(low)) return {csv:h,d365:"",transform:"",skip:true};
       if(low===primaryKey) return {csv:h,d365:"",transform:"",skip:true,isPK:true};
       if(lookupCols.has(h)) return {csv:h,d365:"",transform:"",skip:true,isLookup:true};
+      if(lookupTypeFields.has(low)) return {csv:h,d365:"",transform:"",skip:true,isLookup:true};
       if(low==="statecode") return {csv:h,d365:"statecode",transform:"statecode"};
       if(low==="statuscode") return {csv:h,d365:"statuscode",transform:"int"};
       if(d365Set.has(low)) return {csv:h,d365:low,transform:""};
@@ -53,16 +69,34 @@ export default function Loader({bp,orgInfo,theme}){
     }));
 
     const parents=new Set();const lks=[...autoLookups];
-    headers.filter(h=>h.includes(".")).forEach(col=>{const p=col.split(".")[0];if(!parents.has(p)){parents.add(p);lks.push({src:p+"Id",csv:col,entity:p.toLowerCase(),nav:`parentcustomerid_${p.toLowerCase()}`,d365f:"",fb:"skip",mode:"resolve"});}});
+    headers.filter(h=>h.includes(".")).forEach(col=>{
+      const p=col.split(".")[0];
+      if(parents.has(p)) return;
+      parents.add(p);
+      const meta=findLookupMeta(col);
+      if(meta){
+        lks.push({src:p+"Id",csv:col,entity:meta.targetEntity,nav:meta.navProperty,d365f:"",fb:"skip",mode:"resolve"});
+      }else{
+        lks.push({src:p+"Id",csv:col,entity:p.toLowerCase(),nav:`parentcustomerid_${p.toLowerCase()}`,d365f:"",fb:"skip",mode:"resolve"});
+      }
+    });
     setLookups(lks);setStep(1);
   };
 
-  const handleFile=(e)=>{e.preventDefault();setDragOn(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;setCsvFile(f);const reader=new FileReader();reader.onload=(ev)=>parseData(ev.target.result);reader.readAsText(f);};
+  const handleFile=(e)=>{e.preventDefault();setDragOn(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;setCsvFile(f);const reader=new FileReader();const isExcel=/\.(xlsx|xls)$/i.test(f.name);reader.onload=(ev)=>{if(isExcel){const wb=XLSX.read(ev.target.result,{type:"array"});const csv=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);parseData(csv);}else parseData(ev.target.result);};isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);};
 
   const handlePaste=()=>{if(pasteText.trim()){setCsvFile({name:"clipboard_data.csv"});parseData(pasteText,"auto");}};
 
   const isLive = orgInfo?.isExtension;
   const[loadProgress,setLoadProgress]=useState({done:0,total:0,current:""});
+  // Live per-row log during import: entries holds the last 200 rows processed (newest first),
+  // counts tracks running totals across all processed rows.
+  const[liveLog,setLiveLog]=useState({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
+  const[cancelling,setCancelling]=useState(false);
+  // Tunable performance knobs (à la Salesforce Inspector). Defaults match Inspector's UX.
+  const[batchSize,setBatchSize]=useState(200);
+  const[threads,setThreads]=useState(6);
+  const loadAbort=useRef(false);
   const[liveEntities,setLiveEntities]=useState([]);
 
   useEffect(()=>{
@@ -76,20 +110,123 @@ export default function Loader({bp,orgInfo,theme}){
 
   const entityList = liveEntities.length > 0 ? liveEntities : ENTS;
   const[targetFields,setTargetFields]=useState(D365CF);
+  const[targetFieldsMeta,setTargetFieldsMeta]=useState([]); // full field objects with type info
+  const[targetLookups,setTargetLookups]=useState([]);
+  const[targetAltKeys,setTargetAltKeys]=useState([]); // alt-keys on the load target entity (single-attribute keys only)
   const[loadingFields,setLoadingFields]=useState(false);
   const fieldGen=useRef(0); // generation counter to discard stale field fetches
 
   useEffect(()=>{
-    if(!isLive||!target) return;
+    if(!isLive||!target){setTargetLookups([]);setTargetAltKeys([]);setTargetFieldsMeta([]);return;}
     const gen=++fieldGen.current;
     setLoadingFields(true);
-    bridge.getFields(target).then(data=>{
+    Promise.all([
+      bridge.getFields(target).catch(()=>null),
+      bridge.getLookups(target).catch(()=>null),
+      bridge.getEntityKeys(target).catch(()=>null),
+    ]).then(([fieldsData,lookupsData,keysData])=>{
       if(fieldGen.current!==gen)return; // stale: user switched entity
-      if(data&&Array.isArray(data)){
-        setTargetFields(data.map(f=>f.logical||f.l).sort());
+      if(fieldsData&&Array.isArray(fieldsData)){
+        setTargetFields(fieldsData.map(f=>f.logical||f.l).sort());
+        setTargetFieldsMeta(fieldsData);
       }
-    }).catch(()=>{}).finally(()=>{if(fieldGen.current===gen)setLoadingFields(false);});
+      setTargetLookups(Array.isArray(lookupsData)?lookupsData:[]);
+      setTargetAltKeys(Array.isArray(keysData)?keysData.filter(k=>k.keyAttributes?.length===1).map(k=>k.keyAttributes[0]):[]);
+    }).finally(()=>{if(fieldGen.current===gen)setLoadingFields(false);});
   },[isLive,target]);
+
+  // Lookup-type field logical names — these can ONLY be set via @odata.bind, not direct mapping.
+  // Auto-skipping them prevents Dataverse 400 errors when CSV columns happen to match lookup field names.
+  const lookupFieldSet = (() => {
+    const s = new Set();
+    for (const f of targetFieldsMeta) {
+      const t = f.type || f.t;
+      if (t === "Lookup" || t === "Customer" || t === "Owner") {
+        s.add((f.logical || f.l || "").toLowerCase());
+      }
+    }
+    return s;
+  })();
+
+  // Retroactive: when metadata arrives after the CSV was parsed, demote any auto-mapped
+  // entries that point to a lookup-type field. Their value belongs in the Parent Lookups
+  // section via @odata.bind, not in the body.
+  useEffect(() => {
+    if (!lookupFieldSet.size) return;
+    setMaps(prev => {
+      let changed = false;
+      const updated = prev.map(m => {
+        if (m.skip) return m;
+        const d365Low = (m.d365 || "").toLowerCase();
+        if (d365Low && lookupFieldSet.has(d365Low)) {
+          changed = true;
+          return { ...m, d365: "", skip: true, isLookup: true };
+        }
+        return m;
+      });
+      return changed ? updated : prev;
+    });
+  }, [targetFieldsMeta]);
+
+  // Find lookup metadata matching a CSV column. Handles dot-notation (e.g.
+  // "fou_accountextension.fou_sapcustomernumber") and OData _logicalname_value
+  // columns. Returns null if no match — caller falls back to heuristic.
+  const findLookupMeta = (csvCol, meta=targetLookups) => {
+    if (!csvCol || !meta.length) return null;
+    const candidate = csvCol.includes(".")
+      ? csvCol.split(".")[0].toLowerCase()
+      : csvCol.toLowerCase().replace(/^_/,"").replace(/_value$/,"");
+    return meta.find(m =>
+      m.lookupField?.toLowerCase() === candidate ||
+      m.navProperty?.toLowerCase() === candidate
+    ) || null;
+  };
+
+  // Retroactive enrichment: when target lookup metadata arrives after a CSV
+  // was already parsed (heuristic applied), upgrade lookups to use real
+  // entity + nav property names from D365 metadata.
+  useEffect(()=>{
+    if(!targetLookups.length) return;
+    setLookups(prev => prev.map(lk => {
+      const meta = findLookupMeta(lk.csv, targetLookups);
+      if (!meta) return lk;
+      if (lk.entity === meta.targetEntity && lk.nav === meta.navProperty) return lk;
+      return { ...lk, entity: meta.targetEntity, nav: meta.navProperty };
+    }));
+  },[targetLookups]);
+
+  // Per-lookup-entity metadata cache: fields list + alt-keys.
+  // Shape: { [entityLogicalName]: { fields: ["name", ...], altKeys: ["fou_sapcustomernumber", ...] } }
+  const[lookupEntityMeta,setLookupEntityMeta]=useState({});
+
+  useEffect(()=>{
+    if(!isLive) return;
+    const toFetch = [...new Set(lookups.map(lk=>lk.entity).filter(e=>e&&!lookupEntityMeta[e]))];
+    if(!toFetch.length) return;
+    Promise.all(toFetch.map(async (ent)=>{
+      const [fields,keys] = await Promise.all([
+        bridge.getFields(ent).catch(()=>[]),
+        bridge.getEntityKeys(ent).catch(()=>[]),
+      ]);
+      return [ent, {
+        fields: (fields||[]).map(f=>f.logical||f.l).sort(),
+        altKeys: (keys||[]).filter(k=>k.keyAttributes?.length===1).map(k=>k.keyAttributes[0]),
+      }];
+    })).then(results=>{
+      setLookupEntityMeta(prev=>{
+        const updated={...prev};
+        for(const[ent,meta] of results) updated[ent]=meta;
+        return updated;
+      });
+    });
+  },[isLive,lookups,lookupEntityMeta]);
+
+  // Helper: is this lookup configured to use direct alt-key binding (skip resolve)?
+  const isAltKeyBind = (lk) => {
+    if (lk.mode !== "resolve" || !lk.d365f) return false;
+    const meta = lookupEntityMeta[lk.entity];
+    return !!(meta?.altKeys?.includes(lk.d365f));
+  };
 
   const STATECODE_MAP={"active":0,"inactive":1,"actif":0,"inactif":1,"0":0,"1":1};
   const BOOLEAN_YESNO={"yes":true,"no":false,"oui":true,"non":false,"true":true,"false":false,"1":true,"0":false,"vrai":true,"faux":false};
@@ -137,6 +274,8 @@ export default function Loader({bp,orgInfo,theme}){
 
   const doLoad=async()=>{
     setStep(4);setResult(null);
+    loadAbort.current=false;setCancelling(false);
+    setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
     const rows=csvData.r;
     const SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
     const activeMaps=maps.filter(m=>m.d365 && !m.skip && !SYSTEM_FIELDS.has(m.d365.toLowerCase()));
@@ -153,6 +292,7 @@ export default function Loader({bp,orgInfo,theme}){
     const lookupCache={};
     for(const lk of lookups){
       if(lk.mode==="direct") continue;
+      if(isAltKeyBind(lk)) continue; // alt-key path: bind directly via /entity(field='value'), skip pre-resolve
       if(!lk.csv||!lk.entity||!lk.d365f) continue;
       const uniqueVals=[...new Set(rows.map(r=>r[lk.csv]).filter(Boolean))];
       setLoadProgress({done:0,total,current:`Resolving lookups ${lk.entity} (${uniqueVals.length} values)...`});
@@ -167,6 +307,10 @@ export default function Loader({bp,orgInfo,theme}){
     const startTime=Date.now();
     const createRecords=[];
     const upsertItems=[];
+    // Parallel index maps: createRecords[k] / upsertItems[k] correspond to rows[createRowMap[k]] / rows[upsertRowMap[k]].
+    // Used to look up the original CSV row when displaying the live log.
+    const createRowMap=[];
+    const upsertRowMap=[];
 
     setLoadProgress({done:0,total,current:"Preparing records..."});
 
@@ -193,6 +337,11 @@ export default function Loader({bp,orgInfo,theme}){
           }
           if(lk.mode==="direct"){
             rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${val})`;
+          } else if(isAltKeyBind(lk)){
+            // Alt-key direct binding — Dataverse resolves server-side. Empty fb=skip/null already
+            // short-circuited above; missing record on the server returns a per-row PATCH error.
+            const escaped=String(val).replace(/'/g,"''");
+            rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${lk.d365f}='${escaped}')`;
           } else {
             const guid=lookupCache[`${lk.entity}.${lk.d365f}.${val}`];
             if(guid){
@@ -208,8 +357,10 @@ export default function Loader({bp,orgInfo,theme}){
         if(uKey.d && uKey.c && row[uKey.c]){
           rec[uKey.d]=row[uKey.c];
           upsertItems.push({keyValue:row[uKey.c],record:rec});
+          upsertRowMap.push(i);
         } else {
           createRecords.push(rec);
+          createRowMap.push(i);
         }
       }catch(e){
         errors.push({row:i+1,msg:e.message?.substring(0,500)||"Error",payload:JSON.stringify(rec).substring(0,200)});
@@ -221,31 +372,56 @@ export default function Loader({bp,orgInfo,theme}){
     if(createRecords.length>0){
       setLoadProgress({done:0,total:createRecords.length,current:`Sending ${createRecords.length} records (CREATE)...`});
       try{
-        const res=await bridge.batchCreate(entitySet,createRecords);
+        const res=await bridge.batchCreate(entitySet,createRecords,p=>{
+          setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (CREATE) ${p.done}/${p.total}...`});
+          if(p.newLog?.length){
+            // Enrich each log entry with the original CSV row data (lookup via parallel index map)
+            const enriched=p.newLog.map(e=>{const csvIdx=createRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
+            setLiveLog(prev=>{
+              const newCounts={...prev.counts};
+              for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
+              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
+            });
+          }
+        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads});
         created=res.created||0;
         for(let j=0;j<created;j++) logEntries.push({row:j+1,status:"CREATED",detail:"OK",d365Id:""});
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
+        if(res.aborted){const remaining=createRecords.length-created;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch CREATE failed: ${e.message}`,payload:""});
       }
     }
 
-    if(upsertItems.length>0){
+    if(upsertItems.length>0 && !loadAbort.current){
       setLoadProgress({done:createRecords.length,total:total,current:`Sending ${upsertItems.length} records (UPSERT)...`});
       try{
         const isPK = uKey.d.toLowerCase() === target + "id";
-        const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK);
+        const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
+          setLoadProgress({done:createRecords.length+p.done,total:total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (UPSERT) ${p.done}/${p.total}...`});
+          if(p.newLog?.length){
+            const enriched=p.newLog.map(e=>{const csvIdx=upsertRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
+            setLiveLog(prev=>{
+              const newCounts={...prev.counts};
+              for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
+              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
+            });
+          }
+        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads});
         updated=res.updated||0;
         for(let j=0;j<updated;j++) logEntries.push({row:createRecords.length+j+1,status:"UPSERTED",detail:"OK",d365Id:""});
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
+        if(res.aborted){const remaining=upsertItems.length-updated;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch UPSERT failed: ${e.message}`,payload:""});
       }
     }
 
     const elapsed=((Date.now()-startTime)/1000).toFixed(1);
-    setResult({created,updated,errors,skipped,elapsed,log:logEntries,entity:target,totalRows:total});
-    setLoadProgress({done:total,total,current:"Done"});
+    const wasCancelled=loadAbort.current;
+    setResult({created,updated,errors,skipped,elapsed,log:logEntries,entity:target,totalRows:total,cancelled:wasCancelled});
+    setLoadProgress({done:total,total,current:wasCancelled?"Cancelled":"Done"});
+    setCancelling(false);
   };
   const steps=[{l:"Source",i:"📄"},{l:"Mapping",i:"🔗"},{l:"Lookups",i:"🔍"},{l:"Preview",i:"👁"},{l:"Run",i:"🚀"}];
 
@@ -268,10 +444,10 @@ export default function Loader({bp,orgInfo,theme}){
 
           {!pasteMode?(
             <div onDragOver={e=>{e.preventDefault();setDragOn(true);}} onDragLeave={()=>setDragOn(false)} onDrop={handleFile} onClick={()=>fRef.current?.click()} style={{border:`2px dashed ${dragOn?C.vi:C.bd}`,borderRadius:12,padding:bp.mobile?"32px 16px":"48px 40px",textAlign:"center",cursor:"pointer",background:dragOn?C.sfa:C.sf}}>
-              <input ref={fRef} type="file" accept=".csv,.tsv,.txt" onChange={handleFile} style={{display:"none"}}/>
+              <input ref={fRef} type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={handleFile} style={{display:"none"}}/>
               <div style={{fontSize:36,marginBottom:10}}>📂</div>
               <h3 style={{color:C.tx,fontWeight:600,marginBottom:4,fontSize:15}}>Drop your file here</h3>
-              <p style={{color:C.txm,fontSize:14}}>CSV, TSV, or TXT</p>
+              <p style={{color:C.txm,fontSize:14}}>CSV, TSV, TXT, or Excel (XLSX/XLS)</p>
               <p style={{color:C.txd,fontSize:13,marginTop:8}}>Dot-notation supported: <code style={{color:C.cy}}>account.new_externalid</code></p>
             </div>
           ):(
@@ -297,15 +473,46 @@ export default function Loader({bp,orgInfo,theme}){
                   <input type="radio" checked={!uKey.d} onChange={()=>setUKey({d:"",c:""})} style={{accentColor:C.gn}}/> CREATE (new records)
                 </label>
                 <label style={{fontSize:12,color:uKey.d?C.cy:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                  <input type="radio" checked={!!uKey.d} onChange={()=>{const pk=target+"id";const pkCol=csvData.h.find(h=>h.toLowerCase()===pk);setUKey({d:pk,c:pkCol||csvData.h[0]||""});}} style={{accentColor:C.cy}}/> UPSERT (update or create)
+                  <input type="radio" checked={!!uKey.d} onChange={()=>{
+                    // Prefer an alt-key over the PK as the default upsert key (PK only works if CSV has GUIDs)
+                    const pk=target+"id";
+                    const defaultKey=targetAltKeys[0]||pk;
+                    const matchingCol=csvData.h.find(h=>h.toLowerCase()===defaultKey.toLowerCase());
+                    setUKey({d:defaultKey,c:matchingCol||csvData.h[0]||""});
+                  }} style={{accentColor:C.cy}}/> UPSERT (update or create)
                 </label>
               </div>
-              {uKey.d&&<div style={{display:"flex",gap:6,alignItems:"center"}}>
-                <input value={uKey.d} onChange={e=>setUKey({...uKey,d:e.target.value})} placeholder="D365 column (alternate key)" list="dl_ukey" style={inp({flex:1,fontSize:13,...mono})}/>
-                <datalist id="dl_ukey">{targetFields.map(f=><option key={f} value={f}/>)}</datalist>
-                <span style={{color:C.txd}}>←</span>
-                <select value={uKey.c} onChange={e=>setUKey({...uKey,c:e.target.value})} style={inp({flex:1,fontSize:13})}><option value="">—</option>{csvData.h.map(h=><option key={h}>{h}</option>)}</select>
-              </div>}
+              {uKey.d&&(()=>{
+                const pk=target+"id";
+                const isPK=uKey.d.toLowerCase()===pk;
+                const isUsingAltKey=targetAltKeys.includes(uKey.d);
+                // Warn if PK is selected but the CSV value doesn't look like a GUID — most likely a misconfig
+                const sampleVal=uKey.c?csvData.r[0]?.[uKey.c]:"";
+                const looksGuid=sampleVal&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sampleVal);
+                const pkMisconfig=isPK&&sampleVal&&!looksGuid;
+                return (<div>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    {targetFields.length>0
+                      ?<select value={uKey.d} onChange={e=>{const newKey=e.target.value;const matchingCol=csvData.h.find(h=>h.toLowerCase()===newKey.toLowerCase());setUKey({d:newKey,c:matchingCol||uKey.c});}} style={inp({flex:1,fontSize:13,...mono,color:isUsingAltKey?C.gn:isPK?C.cy:C.tx})}>
+                        {targetAltKeys.length>0&&<optgroup label="🔑 Alternate keys (recommended for upsert)">
+                          {targetAltKeys.map(f=><option key={f} value={f}>{f}</option>)}
+                        </optgroup>}
+                        <optgroup label="Primary key (only if CSV contains GUIDs)">
+                          <option value={pk}>{pk}</option>
+                        </optgroup>
+                        <optgroup label="Other fields (must be unique to upsert reliably)">
+                          {targetFields.filter(f=>!targetAltKeys.includes(f)&&f!==pk).map(f=><option key={f} value={f}>{f}</option>)}
+                        </optgroup>
+                      </select>
+                      :<input value={uKey.d} onChange={e=>setUKey({...uKey,d:e.target.value})} placeholder="loading fields..." style={inp({flex:1,fontSize:13,...mono})}/>
+                    }
+                    <span style={{color:C.txd}}>←</span>
+                    <select value={uKey.c} onChange={e=>setUKey({...uKey,c:e.target.value})} style={inp({flex:1,fontSize:13})}><option value="">—</option>{csvData.h.map(h=><option key={h}>{h}</option>)}</select>
+                  </div>
+                  {isUsingAltKey&&<div style={{fontSize:11,color:C.gn,marginTop:3,fontWeight:600}}>🔑 alt-key — direct upsert (no GUID resolve)</div>}
+                  {pkMisconfig&&<div style={{fontSize:11,color:C.rd,marginTop:3,fontWeight:600}}>⚠ Primary key selected but CSV value &quot;{String(sampleVal).substring(0,30)}&quot; is not a GUID — pick an alt-key instead</div>}
+                </div>);
+              })()}
             </div>
           </div>
           <div style={{...crd({overflow:"hidden"})}}>
@@ -364,14 +571,39 @@ export default function Loader({bp,orgInfo,theme}){
                     <div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>CSV Column</label>
                       <select value={lk.csv} onChange={e=>{const u=[...lookups];u[i]={...lk,csv:e.target.value};const sample=csvData.r[0]?.[e.target.value];if(sample&&/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(sample)){u[i].mode="direct";}setLookups(u);}} style={inp({fontSize:13,...mono})}><option value="">—</option>{csvData.h.map(o=><option key={o}>{o}</option>)}</select>
                     </div>
-                    {lk.mode==="resolve"&&<div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>D365 Column (lookup key)</label>
-                      <input value={lk.d365f} onChange={e=>{const u=[...lookups];u[i]={...lk,d365f:e.target.value};setLookups(u);}} placeholder="accountnumber, new_externalid..." style={inp({fontSize:13,...mono})}/>
-                    </div>}
+                    {lk.mode==="resolve"&&(()=>{
+                      const meta=lookupEntityMeta[lk.entity];
+                      const fields=meta?.fields||[];
+                      const altKeys=meta?.altKeys||[];
+                      const isAK=isAltKeyBind(lk);
+                      return (<div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>
+                        D365 Column (lookup key)
+                        {isAK&&<span style={{color:C.gn,marginLeft:6,fontWeight:600}}>🔑 alt-key — direct bind (no resolve)</span>}
+                      </label>
+                      {fields.length>0
+                        ?<select value={lk.d365f} onChange={e=>{const u=[...lookups];u[i]={...lk,d365f:e.target.value};setLookups(u);}} style={inp({fontSize:13,...mono,color:isAK?C.gn:C.tx})}>
+                          <option value="">— pick a field —</option>
+                          {altKeys.length>0&&<optgroup label="🔑 Alternate keys (recommended — skips resolve query)">
+                            {altKeys.map(f=><option key={f} value={f}>{f}</option>)}
+                          </optgroup>}
+                          <optgroup label={altKeys.length>0?"Other queryable fields":"Fields"}>
+                            {fields.filter(f=>!altKeys.includes(f)).map(f=><option key={f} value={f}>{f}</option>)}
+                          </optgroup>
+                        </select>
+                        :<input value={lk.d365f} onChange={e=>{const u=[...lookups];u[i]={...lk,d365f:e.target.value};setLookups(u);}} placeholder={lk.entity?"loading fields...":"set Target entity first"} style={inp({fontSize:13,...mono})}/>
+                      }
+                    </div>);})()}
                     <div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>Target entity</label>
                       <input value={lk.entity} onChange={e=>{const u=[...lookups];u[i]={...lk,entity:e.target.value};setLookups(u);}} placeholder="account" style={inp({fontSize:13,...mono})}/>
                     </div>
                     <div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>Nav. property</label>
-                      <input value={lk.nav} onChange={e=>{const u=[...lookups];u[i]={...lk,nav:e.target.value};setLookups(u);}} placeholder="parentcustomerid" style={inp({fontSize:13,...mono})}/>
+                      {targetLookups.length>0
+                        ?<select value={lk.nav} onChange={e=>{const u=[...lookups];const picked=targetLookups.find(m=>m.navProperty===e.target.value);u[i]={...lk,nav:e.target.value,...(picked?{entity:picked.targetEntity}:{})};setLookups(u);}} style={inp({fontSize:13,...mono})}>
+                          <option value="">— pick a lookup field —</option>
+                          {targetLookups.map(m=><option key={m.navProperty} value={m.navProperty}>{m.navProperty} → {m.targetEntity}</option>)}
+                        </select>
+                        :<input value={lk.nav} onChange={e=>{const u=[...lookups];u[i]={...lk,nav:e.target.value};setLookups(u);}} placeholder="parentcustomerid" style={inp({fontSize:13,...mono})}/>
+                      }
                     </div>
                   </div>
                   <div style={{marginTop:6,display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
@@ -381,6 +613,8 @@ export default function Loader({bp,orgInfo,theme}){
                   <div style={{marginTop:6,padding:"4px 8px",background:C.sfh,borderRadius:3,fontSize:11,color:C.txd,...mono,overflowX:"auto",whiteSpace:"nowrap"}}>
                     {lk.mode==="direct"
                       ?<><span style={{color:C.cy}}>{lk.csv||"?"}</span> <span style={{color:C.gn}}>(Direct GUID)</span> → <span style={{color:C.yw}}>/{lk.entity||"?"}s(GUID)</span> → <span style={{color:C.yw}}>{lk.nav||"?"}@odata.bind</span></>
+                      :isAltKeyBind(lk)
+                      ?<><span style={{color:C.cy}}>{lk.csv||"?"}</span> → <span style={{color:C.gn}}>🔑</span> → <span style={{color:C.yw}}>/{lk.entity||"?"}s({lk.d365f||"?"}=&apos;value&apos;)</span> → <span style={{color:C.yw}}>{lk.nav||"?"}@odata.bind</span></>
                       :<><span style={{color:C.cy}}>{lk.csv||"?"}</span> → <span style={{color:C.lv}}>{lk.entity||"?"}s</span>.{lk.d365f||"?"} → <span style={{color:C.gn}}>GUID</span> → <span style={{color:C.yw}}>{lk.nav||"?"}@odata.bind</span></>
                     }
                   </div>
@@ -401,8 +635,29 @@ export default function Loader({bp,orgInfo,theme}){
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
-{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{rec[m.d365]=row[m.csv]||"";});const isPK=uKey.d&&uKey.d.toLowerCase()===target+"id";if(uKey.d&&uKey.c&&!isPK)rec[uKey.d]=row[uKey.c]||"";lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];rec[`${lk.nav}@odata.bind`]=lk.mode==="direct"&&val?`/${lk.entity||"?"}s(${val})`:`/${lk.entity||"?"}s(<GUID>)`;}});return rec;})(),null,2)}
+{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{rec[m.d365]=row[m.csv]||"";});const isPK=uKey.d&&uKey.d.toLowerCase()===target+"id";if(uKey.d&&uKey.c&&!isPK)rec[uKey.d]=row[uKey.c]||"";lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const ent=lk.entity||"?";if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${ent}s(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${ent}s(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${ent}s(<GUID>)`;}}});return rec;})(),null,2)}
             </pre>
+          </div>
+          <div style={{...crd({padding:12}),marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+              <span>⚡ Performance</span>
+              <span style={{fontSize:10,color:C.txd,fontWeight:400}}>(advanced — defaults work for most imports)</span>
+            </div>
+            <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <label style={{fontSize:12,color:C.txm,fontWeight:500}}>Batch size</label>
+                <Tooltip text="Records per multipart $batch sent to Dataverse. Larger = fewer roundtrips & faster, but: longer cancel latency, higher memory per request, and a slow record blocks the whole batch. Sweet spot 100-300. Drop to 50 if you see HTTP 504 timeouts."/>
+                <input type="number" min="1" max="1000" value={batchSize} onChange={e=>setBatchSize(Math.max(1,Math.min(1000,parseInt(e.target.value,10)||100)))} style={inp({width:80,fontSize:13,...mono,padding:"5px 8px"})}/>
+                <span style={{fontSize:11,color:C.txd}}>records / HTTP $batch (1-1000)</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <label style={{fontSize:12,color:C.txm,fontWeight:500}}>Threads</label>
+                <Tooltip text="Number of concurrent $batch requests in flight. Linear speedup until Dataverse Service Protection throttles you (~10 concurrent calls per session). Drop to 3 if you see HTTP 429 errors in the live log."/>
+                <input type="number" min="1" max="10" value={threads} onChange={e=>setThreads(Math.max(1,Math.min(10,parseInt(e.target.value,10)||5)))} style={inp({width:60,fontSize:13,...mono,padding:"5px 8px"})}/>
+                <span style={{fontSize:11,color:C.txd}}>parallel batches (1-10)</span>
+              </div>
+              <div style={{fontSize:11,color:C.txd,fontStyle:"italic"}}>Theoretical throughput: ~{(batchSize*threads*3).toLocaleString()} rec/sec</div>
+            </div>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(2)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button><button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button></div>
         </div>
@@ -417,17 +672,66 @@ export default function Loader({bp,orgInfo,theme}){
                 <div style={{flex:1}}>
                   <div style={{fontSize:15,fontWeight:600,color:C.tx,marginBottom:4}}>{loadProgress.current}</div>
                   <div style={{height:6,background:C.bd,borderRadius:3,overflow:"hidden"}}>
-                    <div style={{width:`${loadProgress.total?Math.round(loadProgress.done/loadProgress.total*100):0}%`,height:"100%",background:`linear-gradient(90deg,${C.vi},${C.cy})`,borderRadius:3,transition:"width .3s"}}/>
+                    <div style={{width:`${loadProgress.total?Math.round(loadProgress.done/loadProgress.total*100):0}%`,height:"100%",background:`linear-gradient(90deg,${cancelling?C.rd:C.vi},${cancelling?C.or:C.cy})`,borderRadius:3,transition:"width .3s"}}/>
                   </div>
-                  <div style={{fontSize:12,color:C.txd,marginTop:3}}>{loadProgress.done} / {loadProgress.total} records</div>
+                  <div style={{fontSize:12,color:C.txd,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
+                    <span>{loadProgress.done.toLocaleString()} / {loadProgress.total.toLocaleString()} records</span>
+                    {liveLog.counts.CREATED>0&&<span style={{color:C.gn,fontWeight:600}}>● {liveLog.counts.CREATED.toLocaleString()} created</span>}
+                    {liveLog.counts.UPSERTED>0&&<span style={{color:C.cy,fontWeight:600}}>● {liveLog.counts.UPSERTED.toLocaleString()} upserted</span>}
+                    {liveLog.counts.ERROR>0&&<span style={{color:C.rd,fontWeight:600}}>● {liveLog.counts.ERROR.toLocaleString()} errors</span>}
+                  </div>
                 </div>
+                <button
+                  onClick={()=>{loadAbort.current=true;setCancelling(true);}}
+                  disabled={cancelling}
+                  style={{padding:"6px 14px",background:cancelling?C.bd:"transparent",border:`1px solid ${cancelling?C.bd:C.rd}`,borderRadius:5,color:cancelling?C.txd:C.rd,fontSize:13,fontWeight:600,cursor:cancelling?"default":"pointer"}}
+                >
+                  {cancelling?"Cancelling...":"✕ Cancel"}
+                </button>
               </div>
+              {cancelling&&<div style={{fontSize:11,color:C.txd,fontStyle:"italic",marginBottom:10}}>Waiting for the current batch (100 records) to complete before stopping. Records already sent will be kept.</div>}
+              {liveLog.entries.length>0&&(
+                <div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
+                  <div style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12,fontWeight:600,flexWrap:"wrap",gap:6}}>
+                    <span>Live import log — last {liveLog.entries.length} of {(liveLog.counts.CREATED+liveLog.counts.UPSERTED+liveLog.counts.ERROR).toLocaleString()} processed</span>
+                    <span style={{fontSize:11,color:C.txd,fontWeight:400}}>(newest first · scroll horizontally for all columns)</span>
+                  </div>
+                  <div style={{maxHeight:320,overflow:"auto"}}>
+                    <table style={{borderCollapse:"collapse",fontSize:12,tableLayout:"auto"}}>
+                      <thead><tr style={{background:C.bg,position:"sticky",top:0,zIndex:1}}>
+                        <th style={ths()}>Line</th>
+                        {csvData.h.map(h=><th key={h} style={ths()}>{h}</th>)}
+                        <th style={{...ths(),textAlign:"center"}}>Status</th>
+                        <th style={ths()}>Error detail</th>
+                      </tr></thead>
+                      <tbody>{liveLog.entries.map((e,i)=>{
+                        const isError=e.status==="ERROR";
+                        const okColor=e.status==="CREATED"?C.gn:e.status==="UPSERTED"?C.cy:C.gn;
+                        const sc=isError?C.rd:okColor;
+                        const label=isError?"Failed":"Success";
+                        return (
+                          <tr key={`${e.row}-${i}`} style={{borderBottom:`1px solid ${C.bd}`,background:isError?C.rd+"08":"transparent"}}>
+                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{(e.csvRowNumber||0).toLocaleString()}</td>
+                            {csvData.h.map(h=>{
+                              const val=e.csvRow?.[h]??"";
+                              return <td key={h} style={{...tds,color:C.txd,fontSize:11,...mono}} title={String(val)}>{String(val)}</td>;
+                            })}
+                            <td style={{...tds,textAlign:"center"}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:3,background:sc+"22",color:sc,fontWeight:700}}>{label}</span></td>
+                            <td style={{...tds,color:C.rd,fontSize:11,...mono,whiteSpace:"normal",wordBreak:"break-word"}}>{isError?(e.msg||"").substring(0,300):""}</td>
+                          </tr>
+                        );
+                      })}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           ):(
             <div>
               <div style={{textAlign:"center",marginBottom:16}}>
-                <div style={{fontSize:38,marginBottom:8}}>{result.errors.length===0?"✅":"⚠️"}</div>
-                <h2 style={{color:C.tx,fontWeight:700,fontSize:18,marginBottom:4}}>Done in {result.elapsed}s</h2>
+                <div style={{fontSize:38,marginBottom:8}}>{result.cancelled?"⏹":result.errors.length===0?"✅":"⚠️"}</div>
+                <h2 style={{color:C.tx,fontWeight:700,fontSize:18,marginBottom:4}}>{result.cancelled?`Cancelled after ${result.elapsed}s`:`Done in ${result.elapsed}s`}</h2>
+                {result.cancelled&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{(result.created+result.updated)} records sent · {result.totalRows-(result.created+result.updated)} not processed</div>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:8,maxWidth:500,margin:"0 auto 14px"}}>
                 {[{l:"Created",v:result.created,c:C.gn},{l:"Updated",v:result.updated,c:C.cy},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}].map((m,i)=><div key={i} style={{...crd({padding:"8px 10px",textAlign:"center"})}}><div style={{fontSize:20,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd}}>{m.l}</div></div>)}

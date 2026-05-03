@@ -78,7 +78,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
   };
   const doSaveQuery=(name)=>{
     if(!name||!ent) return;
-    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields})),limit:lim,qm,fxml,savedAt:new Date().toISOString()};
+    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),limit:lim,qm,fxml,savedAt:new Date().toISOString()};
     const updated=[q,...savedQueries.filter(s=>s.name!==name)].slice(0,20);
     setSavedQueries(updated);
     if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_saved_queries:updated});
@@ -213,6 +213,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
         type: lookup.type || "single",
         allFields: mapped,
         fields: auto.length > 0 ? auto.slice(0, 5) : mapped.slice(0, 5).map(f => f.l),
+        conditions: [],
+        conditionLogic: "and",
       }]);
     } catch (e) {
       setError(`Expand ${lookup.targetEntity}: ${e.message}`);
@@ -232,6 +234,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
     }));
   };
 
+  const setExpandConditions = (navProperty, conditions) => {
+    setExpands(prev => prev.map(ex => ex.navProperty === navProperty ? { ...ex, conditions } : ex));
+  };
+
+  const setExpandLogic = (navProperty, conditionLogic) => {
+    setExpands(prev => prev.map(ex => ex.navProperty === navProperty ? { ...ex, conditionLogic } : ex));
+  };
+
   const debouncedEs = useDebounce(es, 150);
   const filtered=entities.filter(e=>e.d.toLowerCase().includes(debouncedEs.toLowerCase())||e.l.includes(debouncedEs.toLowerCase())).sort((a,b)=>{const aB=bookmarks.includes(a.l)?0:1;const bB=bookmarks.includes(b.l)?0:1;return aB-bB||a.d.localeCompare(b.d);});
 
@@ -240,7 +250,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
     let q=`GET /api/data/v9.2/${ent.p}`;
     const ps=[];
     if(sf.length)ps.push(`$select=${sf.map(f=>getOdataName(f)).join(",")}`);
-    const exClauses=expands.filter(ex=>ex.fields.length>0).map(ex=>`${ex.navProperty}($select=${ex.fields.join(",")})`);
+    const exClauses=buildExpandClauses(false);
     if(exClauses.length)ps.push(`$expand=${exClauses.join(",")}`);
     const gf=buildGroupFilter();
     if(gf) ps.push(`$filter=${gf}`);
@@ -248,23 +258,23 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
     return ps.length?q+"?"+ps.join("&"):q;
   };
 
-  const getOdataName = (logicalName) => {
-    const f = fields.find(x => x.l === logicalName);
+  const getOdataName = (logicalName, fl=fields) => {
+    const f = fl.find(x => x.l === logicalName);
     return f?.odata || logicalName;
   };
 
-  const getFieldType = (logicalName) => {
-    const f = fields.find(x => x.l === logicalName);
+  const getFieldType = (logicalName, fl=fields) => {
+    const f = fl.find(x => x.l === logicalName);
     return f?.t || "String";
   };
 
-  const buildFilter = (fieldName, op, val) => {
+  const buildFilter = (fieldName, op, val, fl=fields) => {
     if (!fieldName) return "";
-    if (op === "is_null") return `${getOdataName(fieldName)} eq null`;
-    if (op === "is_not_null") return `${getOdataName(fieldName)} ne null`;
+    if (op === "is_null") return `${getOdataName(fieldName, fl)} eq null`;
+    if (op === "is_not_null") return `${getOdataName(fieldName, fl)} ne null`;
     if (!val) return "";
-    const odataField = getOdataName(fieldName);
-    const fType = getFieldType(fieldName);
+    const odataField = getOdataName(fieldName, fl);
+    const fType = getFieldType(fieldName, fl);
     const escaped = val.replace(/'/g, "''");
     const isStringType = fType === "String" || fType === "Memo";
 
@@ -292,6 +302,24 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
     }
 
     return `${odataField} ${op} '${escaped}'`;
+  };
+
+  // Build $expand clauses including optional per-expand $filter (collection-typed expands only)
+  const buildExpandClauses = (useOdataNames=false) => {
+    return expands.filter(ex=>ex.fields.length>0).map(ex=>{
+      const selectFields = useOdataNames
+        ? ex.fields.map(f=>{const meta=ex.allFields.find(x=>x.l===f);return meta?.odata||f;}).join(",")
+        : ex.fields.join(",");
+      const segs = [`$select=${selectFields}`];
+      if (ex.type === "collection" && ex.conditions?.length) {
+        const active = ex.conditions.filter(c=>c.field && (c.value || c.op==="is_null" || c.op==="is_not_null"));
+        if (active.length) {
+          const parts = active.map(c=>buildFilter(c.field, c.op, c.value, ex.allFields));
+          segs.push(`$filter=${parts.join(` ${ex.conditionLogic||"and"} `)}`);
+        }
+      }
+      return `${ex.navProperty}(${segs.join(";")})`;
+    });
   };
 
   const buildGroupFilter = () => {
@@ -428,11 +456,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
 
     const allSelected = validSf.length >= fields.length;
     const odataSelect = allSelected ? [] : validSf.map(f => getOdataName(f));
-    const expandClauses = expands.filter(ex => ex.fields.length > 0).map(ex => {
-      const exFields = ex.allFields.filter(f => ex.fields.includes(f.l));
-      const exSelect = exFields.map(f => f.odata || f.l).join(",");
-      return exSelect ? `${ex.navProperty}($select=${exSelect})` : ex.navProperty;
-    });
+    const expandClauses = buildExpandClauses(true);
     const buildQ=()=>{
       if(!ent)return"";
       let q=`GET /api/data/v9.2/${ent.p}`;const ps=[];
@@ -1019,7 +1043,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
                       </div>
                     )}
 
-                    {expands.map(ex=>(<ExpandCard key={ex.navProperty} ex={ex} onToggle={toggleExpandField} onRemove={removeExpand} bp={bp}/>))}
+                    {expands.map(ex=>(<ExpandCard key={ex.navProperty} ex={ex} onToggle={toggleExpandField} onRemove={removeExpand} onSetConditions={setExpandConditions} onSetLogic={setExpandLogic} bp={bp}/>))}
                   </div>
                 )}
               </div>
