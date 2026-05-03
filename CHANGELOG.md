@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.9.3] — 2026-05-03
+## [1.9.4] — 2026-05-03
 ### Added
 - **Data Loader: massive overhaul**
   - Excel (XLSX/XLS) file support — drag-drop or paste, parsed via SheetJS to first sheet → CSV pipeline
