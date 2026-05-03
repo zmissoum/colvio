@@ -77,7 +77,10 @@ export function clearSessionExpired() { sessionExpired = false; }
 
 // ── Rate limiting ────────────────────────────────────────────
 const callTimestamps = [];
-const RATE_LIMIT = 10; // max calls per second
+// 30 calls/sec covers normal browsing AND parallel batch operations.
+// Dataverse tolerates ~6000 requests / 5 min per user (~20 req/sec sustained),
+// so 30/sec is OK for short bursts and Dataverse will 429-throttle if exceeded.
+const RATE_LIMIT = 30; // max calls per second
 
 // ── Communication with background script ─────────────────────
 let reqId = 0;
@@ -232,18 +235,75 @@ export const bridge = {
     return callD365("getEntityMetadata", { logicalName });
   },
 
-  async batchCreate(entitySet, records) {
-    if (isExtension) {
-      return callD365("batchCreate", { entitySet, records });
-    }
-    return { created: records.length, errors: [] };
+  // CHUNK = 100 matches content.js's HTTP $batch size, giving one progress update
+  // per Dataverse roundtrip (~100-300ms). Each chunk brings back any errors from
+  // its 100 records, so error counts surface in real-time during the run.
+  // Chrome's 64 MB IPC limit: 100 records × ~50 KB ≈ 5 MB, well under the cap.
+  // shouldAbort is checked between chunks; the in-flight HTTP batch completes
+  // before the loop exits (no way to cancel content.js mid-roundtrip).
+  // Worker-pool parallelism: CONCURRENCY chunks fly to Dataverse in parallel,
+  // each chunk is a single multipart $batch request of 100 records.
+  // Throughput improves ~CONCURRENCY× for typical Dataverse latencies (~200-400ms/roundtrip).
+  // Dataverse Service Protection allows up to 52 concurrent calls per session,
+  // so CONCURRENCY=5 is well within bounds and keeps headroom for other operations.
+  async batchCreate(entitySet, records, onProgress, shouldAbort, opts = {}) {
+    if (!isExtension) return { created: records.length, errors: [], log: [] };
+    const CHUNK = Math.max(1, Math.min(1000, opts.chunk || 100));
+    const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
+    const agg = { created: 0, errors: [], log: [], aborted: false };
+    const chunks = [];
+    for (let i = 0; i < records.length; i += CHUNK) chunks.push({ start: i, slice: records.slice(i, i + CHUNK) });
+
+    let nextIdx = 0;
+    let processedRecords = 0;
+    const worker = async () => {
+      while (true) {
+        if (shouldAbort?.()) { agg.aborted = true; return; }
+        const idx = nextIdx++;
+        if (idx >= chunks.length) return;
+        const { start, slice } = chunks[idx];
+        const r = await callD365("batchCreate", { entitySet, records: slice });
+        agg.created += r?.created || 0;
+        const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        if (chunkErrors.length) agg.errors.push(...chunkErrors);
+        if (chunkLog.length) agg.log.push(...chunkLog);
+        processedRecords += slice.length;
+        onProgress?.({ done: Math.min(processedRecords, records.length), total: records.length, errorCount: agg.errors.length, newErrors: chunkErrors, newLog: chunkLog });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
+    return agg;
   },
 
-  async batchUpsert(entitySet, keyField, items, isPrimaryKey = false) {
-    if (isExtension) {
-      return callD365("batchUpsert", { entitySet, keyField, items, isPrimaryKey });
-    }
-    return { updated: items.length, errors: [] };
+  async batchUpsert(entitySet, keyField, items, isPrimaryKey = false, onProgress, shouldAbort, opts = {}) {
+    if (!isExtension) return { updated: items.length, errors: [], log: [] };
+    const CHUNK = Math.max(1, Math.min(1000, opts.chunk || 100));
+    const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
+    const agg = { updated: 0, errors: [], log: [], aborted: false };
+    const chunks = [];
+    for (let i = 0; i < items.length; i += CHUNK) chunks.push({ start: i, slice: items.slice(i, i + CHUNK) });
+
+    let nextIdx = 0;
+    let processedRecords = 0;
+    const worker = async () => {
+      while (true) {
+        if (shouldAbort?.()) { agg.aborted = true; return; }
+        const idx = nextIdx++;
+        if (idx >= chunks.length) return;
+        const { start, slice } = chunks[idx];
+        const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey });
+        agg.updated += r?.updated || 0;
+        const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        if (chunkErrors.length) agg.errors.push(...chunkErrors);
+        if (chunkLog.length) agg.log.push(...chunkLog);
+        processedRecords += slice.length;
+        onProgress?.({ done: Math.min(processedRecords, items.length), total: items.length, errorCount: agg.errors.length, newErrors: chunkErrors, newLog: chunkLog });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
+    return agg;
   },
 
   async upsert(entitySet, keyField, keyValue, data) {
@@ -268,6 +328,16 @@ export const bridge = {
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getLookups", { logicalName });
+    if (data) await cacheSet(k, data, CACHE_TTL.lookups);
+    return data;
+  },
+
+  async getEntityKeys(logicalName) {
+    if (!isExtension) return [{ logicalName: "key_accountnumber", keyAttributes: ["accountnumber"] }];
+    const k = cacheKey("keys", logicalName);
+    const cached = await cacheGet(k);
+    if (cached) return cached;
+    const data = await callD365("getEntityKeys", { logicalName });
     if (data) await cacheSet(k, data, CACHE_TTL.lookups);
     return data;
   },

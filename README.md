@@ -51,10 +51,14 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Data Loader
 - 5-step wizard: Source > Mapping > Lookups > Preview > Run
-- CSV drag-drop or paste from Excel
-- Smart auto-mapping, lookup resolution (GUID + search), transforms
-- OData $batch (100/batch), CREATE or UPSERT with alternate key support
-- Progress tracking with error log
+- CSV / TSV / TXT drag-drop, **Excel (XLSX/XLS)** support, or paste from clipboard
+- Smart auto-mapping with metadata-driven lookup detection (auto-skips Lookup-type fields, picks alt-keys over PKs for upsert)
+- **Tunable performance**: batch size (1-1000) × threads (1-10) — default 200×6 for ~3-4k rec/sec
+- Multipart **OData $batch** with **per-record changesets** — errors don't cascade across the chunk
+- **Alt-key direct bind**: when the lookup target field is a registered alternate key, skips the resolve query (no `?$filter=...` per unique value) and binds via `entity(field='value')` syntax
+- CREATE or UPSERT modes, alternate key supported as upsert key
+- **Live per-row import log** during the run: every line shown with its CSV columns + `Success`/`Failed` status + Dataverse error detail
+- **Cancel mid-import** with graceful in-flight batch completion
 
 ### Relationship Graph
 - Visual SVG graph: N:1 parents, 1:N children, N:N many-to-many

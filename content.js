@@ -243,7 +243,7 @@
 
           case "query": {
             let path = validateEntitySet(params.entitySet);
-            const isDirectFetch = path.includes("("); // e.g. accounts(GUID)
+            const isDirectFetch = /^[^?]*\(/.test(path); // e.g. accounts(GUID) — must be before ? to avoid matching parens in $filter
             const ps = [];
             if (params.options?.select) ps.push(`$select=${params.options.select}`);
             if (!isDirectFetch) {
@@ -346,7 +346,7 @@
           case "batchCreate": {
             const records = params.records || [];
             const entitySet = params.entitySet;
-            const results = { created: 0, errors: [] };
+            const results = { created: 0, errors: [], log: [] };
             const STRIP = new Set(["createdon","modifiedon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
             validateEntitySet(entitySet);
             const BATCH_SIZE = 100;
@@ -354,24 +354,50 @@
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
 
+            const buildClean = (rec) => {
+              const c = {};
+              for (const [k, v] of Object.entries(rec)) { if (!STRIP.has(k)) c[k] = v; }
+              return c;
+            };
+
+            const parseBatchResponse = (text, batchOffset, chunkLen) => {
+              const log = [];
+              const blocks = text.split(/Content-Type:\s*application\/http/i);
+              for (let i = 1; i < blocks.length && i <= chunkLen; i++) {
+                const block = blocks[i];
+                const statusMatch = block.match(/HTTP\/1\.1\s+(\d{3})/);
+                if (!statusMatch) continue;
+                const status = parseInt(statusMatch[1], 10);
+                const rowIdx = batchOffset + i;
+                if (status === 204 || status === 201) {
+                  log.push({ row: rowIdx, status: "CREATED" });
+                } else {
+                  const msgMatch = block.match(/"message":"([^"]{0,300})"/);
+                  log.push({ row: rowIdx, status: "ERROR", msg: msgMatch ? msgMatch[1] : `HTTP ${status}` });
+                }
+              }
+              return log;
+            };
+
             for (let batch = 0; batch < records.length; batch += BATCH_SIZE) {
               const chunk = records.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
-              const changeset = "cs_" + Date.now() + "_" + batch;
 
-              let body = "--" + boundary + "\r\n";
-              body += "Content-Type: multipart/mixed; boundary=" + changeset + "\r\n\r\n";
+              // One changeset per record → per-record granularity
+              let body = "";
               for (let i = 0; i < chunk.length; i++) {
-                const clean = {};
-                for (const [k, v] of Object.entries(chunk[i])) { if (!STRIP.has(k)) clean[k] = v; }
-                body += "--" + changeset + "\r\n";
+                const csName = "cs_" + Date.now() + "_" + (batch + i);
+                const clean = buildClean(chunk[i]);
+                body += "--" + boundary + "\r\n";
+                body += "Content-Type: multipart/mixed; boundary=" + csName + "\r\n\r\n";
+                body += "--" + csName + "\r\n";
                 body += "Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n";
                 body += "Content-ID: " + (batch + i + 1) + "\r\n\r\n";
                 body += "POST " + baseUrl + "/" + entitySet + " HTTP/1.1\r\n";
                 body += "Content-Type: application/json\r\n\r\n";
                 body += JSON.stringify(clean) + "\r\n";
+                body += "--" + csName + "--\r\n";
               }
-              body += "--" + changeset + "--\r\n";
               body += "--" + boundary + "--\r\n";
 
               try {
@@ -383,32 +409,47 @@
                 });
                 if (resp.ok) {
                   const respText = await resp.text();
-                  const ok = (respText.match(/HTTP\/1\.1 (204|201)/g) || []).length;
-                  results.created += ok;
-                  const fails = (respText.match(/HTTP\/1\.1 [45]\d{2}/g) || []).length;
-                  if (fails > 0) {
-                    const parts = respText.split(/--cs_/);
-                    parts.forEach((part, idx) => {
-                      if (part.match(/HTTP\/1\.1 [45]\d{2}/)) {
-                        const m = part.match(/"message":"([^"]{0,300})"/);
-                        results.errors.push({ row: batch + idx, msg: m ? m[1] : "Batch error", payload: "" });
-                      }
-                    });
+                  const chunkLog = parseBatchResponse(respText, batch, chunk.length);
+                  for (const entry of chunkLog) {
+                    if (entry.status === "ERROR") {
+                      results.errors.push({ row: entry.row, msg: entry.msg || "Batch error", payload: "" });
+                    } else {
+                      results.created++;
+                    }
+                    results.log.push(entry);
+                  }
+                  if (chunkLog.length < chunk.length) {
+                    for (let i = chunkLog.length; i < chunk.length; i++) {
+                      results.log.push({ row: batch + i + 1, status: "ERROR", msg: "No response received from batch" });
+                      results.errors.push({ row: batch + i + 1, msg: "No response received from batch", payload: "" });
+                    }
                   }
                 } else {
                   for (let i = 0; i < chunk.length; i++) {
+                    const rowIdx = batch + i + 1;
                     try {
-                      const clean = {}; for (const [k, v] of Object.entries(chunk[i])) { if (!STRIP.has(k)) clean[k] = v; }
-                      await dvRequest("POST", entitySet, clean); results.created++;
-                    } catch (e) { results.errors.push({ row: batch+i+1, msg: e.message?.substring(0,500)||"Error", payload: JSON.stringify(chunk[i]).substring(0,200) }); }
+                      await dvRequest("POST", entitySet, buildClean(chunk[i]));
+                      results.created++;
+                      results.log.push({ row: rowIdx, status: "CREATED" });
+                    } catch (e) {
+                      const msg = e.message?.substring(0, 500) || "Error";
+                      results.errors.push({ row: rowIdx, msg, payload: JSON.stringify(chunk[i]).substring(0, 200) });
+                      results.log.push({ row: rowIdx, status: "ERROR", msg });
+                    }
                   }
                 }
               } catch (batchErr) {
                 for (let i = 0; i < chunk.length; i++) {
+                  const rowIdx = batch + i + 1;
                   try {
-                    const clean = {}; for (const [k, v] of Object.entries(chunk[i])) { if (!STRIP.has(k)) clean[k] = v; }
-                    await dvRequest("POST", entitySet, clean); results.created++;
-                  } catch (e) { results.errors.push({ row: batch+i+1, msg: e.message?.substring(0,500)||"Error", payload: JSON.stringify(chunk[i]).substring(0,200) }); }
+                    await dvRequest("POST", entitySet, buildClean(chunk[i]));
+                    results.created++;
+                    results.log.push({ row: rowIdx, status: "CREATED" });
+                  } catch (e) {
+                    const msg = e.message?.substring(0, 500) || "Error";
+                    results.errors.push({ row: rowIdx, msg, payload: JSON.stringify(chunk[i]).substring(0, 200) });
+                    results.log.push({ row: rowIdx, status: "ERROR", msg });
+                  }
                 }
               }
             }
@@ -421,28 +462,128 @@
             const entitySet = params.entitySet;
             const keyField = params.keyField;
             const isPrimaryKey = params.isPrimaryKey || false;
-            const results = { updated: 0, errors: [] };
+            const results = { updated: 0, errors: [], log: [] };
             const STRIP = new Set(["createdon","modifiedon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
             validateEntitySet(entitySet);
             validateName(keyField, 'keyField');
-            for (let i = 0; i < items.length; i++) {
-              try {
-                const clean = {};
-                for (const [k, v] of Object.entries(items[i].record)) {
-                  if (STRIP.has(k) && k !== keyField) continue;
-                  // Strip primary key from payload (D365 rejects it in body)
-                  if (isPrimaryKey && k === keyField) continue;
-                  clean[k] = v;
+            const BATCH_SIZE = 100;
+            const ctx = d365Context || extractContext();
+            if (!ctx) throw new Error("D365 context not found");
+            const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
+
+            const buildPath = (item) => isPrimaryKey
+              ? `${entitySet}(${item.keyValue})`
+              : `${entitySet}(${keyField}='${String(item.keyValue).replace(/'/g, "''")}')`;
+            const buildClean = (item) => {
+              const c = {};
+              for (const [k, v] of Object.entries(item.record)) {
+                if (STRIP.has(k) && k !== keyField) continue;
+                if (isPrimaryKey && k === keyField) continue;
+                c[k] = v;
+              }
+              return c;
+            };
+
+            // Parse a $batch response with one changeset per record (positional mapping).
+            // Returns per-row log entries: {row, status, msg?}.
+            const parseBatchResponse = (text, batchOffset, chunkLen) => {
+              const log = [];
+              // Each individual response within the batch starts with "Content-Type: application/http"
+              const blocks = text.split(/Content-Type:\s*application\/http/i);
+              // First block is the multipart preamble, skip it
+              for (let i = 1; i < blocks.length && i <= chunkLen; i++) {
+                const block = blocks[i];
+                const statusMatch = block.match(/HTTP\/1\.1\s+(\d{3})/);
+                if (!statusMatch) continue;
+                const status = parseInt(statusMatch[1], 10);
+                const rowIdx = batchOffset + i; // 1-based row index within the full items array
+                if (status === 204 || status === 201) {
+                  log.push({ row: rowIdx, status: status === 201 ? "CREATED" : "UPSERTED" });
+                } else {
+                  const msgMatch = block.match(/"message":"([^"]{0,300})"/);
+                  log.push({ row: rowIdx, status: "ERROR", msg: msgMatch ? msgMatch[1] : `HTTP ${status}` });
                 }
-                // Primary key: PATCH /accounts(GUID)
-                // Alternate key: PATCH /accounts(keyField='keyValue')
-                const path = isPrimaryKey
-                  ? `${entitySet}(${items[i].keyValue})`
-                  : `${entitySet}(${keyField}='${items[i].keyValue.replace(/'/g, "''")}')`;
-                await dvRequest("PATCH", path, clean);
-                results.updated++;
-              } catch (e) {
-                results.errors.push({ row: i + 1, msg: e.message?.substring(0, 500) || "Unknown error", payload: JSON.stringify(items[i].record).substring(0, 200) });
+              }
+              return log;
+            };
+
+            for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
+              const chunk = items.slice(batch, batch + BATCH_SIZE);
+              const boundary = "batch_d365_" + Date.now() + "_" + batch;
+
+              // One changeset per record → per-record atomicity, errors don't cascade.
+              // Still a single HTTP roundtrip for the whole chunk.
+              let body = "";
+              for (let i = 0; i < chunk.length; i++) {
+                const csName = "cs_" + Date.now() + "_" + (batch + i);
+                const clean = buildClean(chunk[i]);
+                const path = buildPath(chunk[i]);
+                body += "--" + boundary + "\r\n";
+                body += "Content-Type: multipart/mixed; boundary=" + csName + "\r\n\r\n";
+                body += "--" + csName + "\r\n";
+                body += "Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n";
+                body += "Content-ID: " + (batch + i + 1) + "\r\n\r\n";
+                body += "PATCH " + baseUrl + "/" + path + " HTTP/1.1\r\n";
+                body += "Content-Type: application/json\r\n\r\n";
+                body += JSON.stringify(clean) + "\r\n";
+                body += "--" + csName + "--\r\n";
+              }
+              body += "--" + boundary + "--\r\n";
+
+              try {
+                const resp = await fetch(baseUrl + "/$batch", {
+                  method: "POST",
+                  headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
+                  body,
+                  credentials: "same-origin",
+                });
+                if (resp.ok) {
+                  const respText = await resp.text();
+                  const chunkLog = parseBatchResponse(respText, batch, chunk.length);
+                  for (const entry of chunkLog) {
+                    if (entry.status === "ERROR") {
+                      results.errors.push({ row: entry.row, msg: entry.msg || "Batch error", payload: "" });
+                    } else {
+                      results.updated++;
+                    }
+                    results.log.push(entry);
+                  }
+                  // Pad missing entries (parser couldn't extract — mark as unknown)
+                  if (chunkLog.length < chunk.length) {
+                    for (let i = chunkLog.length; i < chunk.length; i++) {
+                      results.log.push({ row: batch + i + 1, status: "ERROR", msg: "No response received from batch" });
+                      results.errors.push({ row: batch + i + 1, msg: "No response received from batch", payload: "" });
+                    }
+                  }
+                } else {
+                  // Batch endpoint failed entirely — fall back to serial PATCH for this chunk
+                  for (let i = 0; i < chunk.length; i++) {
+                    const rowIdx = batch + i + 1;
+                    try {
+                      await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]));
+                      results.updated++;
+                      results.log.push({ row: rowIdx, status: "UPSERTED" });
+                    } catch (e) {
+                      const msg = e.message?.substring(0, 500) || "Error";
+                      results.errors.push({ row: rowIdx, msg, payload: JSON.stringify(chunk[i].record).substring(0, 200) });
+                      results.log.push({ row: rowIdx, status: "ERROR", msg });
+                    }
+                  }
+                }
+              } catch (batchErr) {
+                // Network/transport failure — same fallback
+                for (let i = 0; i < chunk.length; i++) {
+                  const rowIdx = batch + i + 1;
+                  try {
+                    await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]));
+                    results.updated++;
+                    results.log.push({ row: rowIdx, status: "UPSERTED" });
+                  } catch (e) {
+                    const msg = e.message?.substring(0, 500) || "Error";
+                    results.errors.push({ row: rowIdx, msg, payload: JSON.stringify(chunk[i].record).substring(0, 200) });
+                    results.log.push({ row: rowIdx, status: "ERROR", msg });
+                  }
+                }
               }
             }
             result = results;
@@ -504,6 +645,22 @@
               schemaName: r.SchemaName,
               type: "single",
             }));
+            break;
+          }
+
+          case "getEntityKeys": {
+            validateName(params.logicalName, 'logicalName');
+            try {
+              const data = await dvRequest("GET",
+                `EntityDefinitions(LogicalName='${params.logicalName}')/Keys?$select=KeyAttributes,LogicalName`
+              );
+              result = (data.value || []).map(k => ({
+                logicalName: k.LogicalName,
+                keyAttributes: k.KeyAttributes || [],
+              }));
+            } catch {
+              result = [];
+            }
             break;
           }
 
