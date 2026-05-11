@@ -215,6 +215,7 @@ export default {
   "help.query_modes": "Builder: visual query builder with fields and filters.\nOData: write raw OData query strings.\nFetchXML: write XML queries (like XrmToolBox).\nSQL: write SQL SELECT statements (auto-translated to FetchXML).",
   "help.bulk_update": "Select records in the results table, then update a column value for all selected records at once.",
   "help.optionset_export": "Download all OptionSet/Picklist values for this entity as a single CSV file.",
+  "help.fields_export": "Export all fields of this entity as a CSV: logical name, display label, OData column name, type, required flag, custom flag. Useful for documentation, data dictionaries, or building $select clauses.",
   "help.relationship_depth": "Depth 1: direct relationships only.\nDepth 2: also shows relationships of related entities (slower).",
   "help.solution_explorer": "Browse components (entities, fields, views, plugins, etc.) inside each installed solution.",
   // Confirm

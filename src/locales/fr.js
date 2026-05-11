@@ -202,6 +202,7 @@ export default {
   "help.query_modes": "Builder : constructeur visuel avec champs et filtres.\nOData : requ\u00eates OData brutes.\nFetchXML : requ\u00eates XML (comme XrmToolBox).\nSQL : requ\u00eates SQL SELECT (traduction automatique en FetchXML).",
   "help.bulk_update": "S\u00e9lectionnez des records dans le tableau puis mettez \u00e0 jour une colonne pour tous les records s\u00e9lectionn\u00e9s.",
   "help.optionset_export": "T\u00e9l\u00e9chargez toutes les valeurs OptionSet/Picklist de cette entit\u00e9 dans un seul fichier CSV.",
+  "help.fields_export": "Exporte tous les champs de cette entit\u00e9 en CSV : nom logique, libell\u00e9 d'affichage, nom OData, type, requis, custom. Utile pour la documentation, les dictionnaires de donn\u00e9es, ou construire des clauses $select.",
   "help.relationship_depth": "Profondeur 1 : relations directes.\nProfondeur 2 : inclut aussi les relations des entit\u00e9s li\u00e9es (plus lent).",
   "help.solution_explorer": "Parcourez les composants (entit\u00e9s, champs, vues, plugins, etc.) de chaque solution install\u00e9e.",
   // Confirm
