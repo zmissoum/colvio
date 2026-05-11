@@ -14,6 +14,18 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const[optionSetData,setOptionSetData]=useState({});
   const[exportingOS,setExportingOS]=useState(false);
 
+  // Export ALL field metadata for the selected entity as a single CSV.
+  // Includes logical/display names, OData column name (for $select), type, required/custom flags.
+  const exportAllFields=()=>{
+    if(!selEnt||!fields.length)return;
+    const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+    const rows=["﻿Logical Name,Display Name,OData Name,Type,Required,Custom"];
+    for(const f of fields){
+      rows.push([esc(f.l),esc(f.d),esc(f.o||f.l),esc(displayType(f.t)),f.req?"Yes":"No",f.cust?"Yes":"No"].join(","));
+    }
+    dl(rows.join("\n"),"text/csv;charset=utf-8",`${selEnt.l}_fields.csv`);
+  };
+
   // Export ALL OptionSet values for the selected entity as a single CSV
   const exportAllOptionSets=async()=>{
     if(!selEnt||!fields.length||exportingOS)return;
@@ -70,7 +82,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
       setLoadingFields(true);
       bridge.getFields(e.l).then(data=>{
         if(data&&Array.isArray(data)){
-          setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,t:f.type||"String",req:f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false})).sort((a,b)=>a.l.localeCompare(b.l)));
+          setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,o:f.odataName||f.logical,t:f.type||"String",req:f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false})).sort((a,b)=>a.l.localeCompare(b.l)));
         }
       }).catch(()=>{}).finally(()=>setLoadingFields(false));
     } else {
@@ -123,6 +135,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
               </div>
               <span style={{fontSize:12,color:C.txd,background:C.bg,padding:"3px 10px",borderRadius:4}}>{selEnt.cat}</span>
               {loadingFields?<Spin s={12}/>:<span style={{fontSize:13,color:C.txm}}>{fields.length} columns</span>}
+              {!loadingFields&&fields.length>0&&<><button onClick={exportAllFields} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Export All Fields</button><Tooltip text={t("help.fields_export")}/></>}
               {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={exportAllOptionSets} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><Tooltip text={t("help.optionset_export")}/></>}
             </div>
 

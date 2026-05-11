@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.5] — 2026-05-06
+### Added
+- **Metadata Browser: Export All Fields**
+  - New CSV export button next to the existing OptionSets export
+  - Columns: Logical Name, Display Name, OData Name (for $select), Type, Required, Custom
+  - Available for any selected entity (not just those with picklists)
+  - OData Name correctly reflects the `_logicalname_value` convention for Lookup/Customer types — paste directly into a `$select` clause
+  - Useful for data dictionaries, documentation, custom field audits, and query-building
+
 ## [1.9.4] — 2026-05-03
 ### Added
 - **Data Loader: massive overhaul**
