@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.6] — 2026-05-06
+### Fixed
+- **Data Explorer: stale FieldPicker state across entity changes**
+  - When switching from one entity to another in Builder mode, the FieldPicker (popup that lists columns) kept its local search text, type filter, and "Custom only" toggle from the previous entity. The new entity's fields loaded correctly but appeared filtered/empty because the previous criteria still applied.
+  - Fix: keyed the FieldPicker by entity logical name so React re-mounts a fresh instance with cleared filters whenever the user switches entity. Also applied the same pattern to ExpandCard's FieldPicker for safety.
+
 ## [1.9.5] — 2026-05-06
 ### Added
 - **Metadata Browser: Export All Fields**
