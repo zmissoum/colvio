@@ -34,6 +34,7 @@ export default function ExpandCard({ex, onToggle, onRemove, onSetConditions, onS
       {open && (
         <>
           <FieldPicker
+            key={ex.navProperty}
             fields={ex.allFields}
             selected={ex.fields}
             onToggle={(f) => onToggle(ex.navProperty, f)}
