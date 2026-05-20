@@ -2,6 +2,8 @@ export default {
   // Nav
   "nav.explorer": "Data Explorer",
   "nav.explorer.desc": "Query & export",
+  "nav.apitester": "API Tester",
+  "nav.apitester.desc": "Run ad-hoc requests",
   "nav.show": "Show All Data",
   "nav.show.desc": "Inspect a record",
   "nav.metadata": "Metadata",

@@ -1,6 +1,8 @@
 export default {
   "nav.explorer": "Explorateur",
   "nav.explorer.desc": "Requ\u00eater & exporter",
+  "nav.apitester": "API Tester",
+  "nav.apitester.desc": "Requ\u00eates ad-hoc",
   "nav.show": "Toutes les donn\u00e9es",
   "nav.show.desc": "Inspecter un record",
   "nav.metadata": "M\u00e9tadonn\u00e9es",
