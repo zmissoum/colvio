@@ -22,6 +22,40 @@ import UserLicenseMonitor from "./components/UserLicenseMonitor.jsx";
 import SecurityAudit from "./components/SecurityAudit.jsx";
 import SchemaViewer from "./components/SchemaViewer.jsx";
 
+// Detect the environment type from the D365 URL hostname.
+// Matches common non-prod indicators (dev/uat/qa/staging/recette/etc.) when they
+// appear as word-boundaries surrounded by - or . — the standard MS naming
+// convention for non-prod orgs (e.g. "salsadynamics-uat.crm4.dynamics.com").
+// Returns { isProduction, label } so the footer badge can display the actual env.
+function detectEnv(url) {
+  if (!url) return { isProduction: true, label: "PROD" };
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    const patterns = [
+      { re: /(?:^|[-.])(sandbox)(?:[-.]|$)/, label: "SANDBOX" },
+      { re: /(?:^|[-.])(dev|develop|development)(?:[-.]|$)/, label: "DEV" },
+      { re: /(?:^|[-.])(test|tst)(?:[-.]|$)/, label: "TEST" },
+      { re: /(?:^|[-.])(uat)(?:[-.]|$)/, label: "UAT" },
+      { re: /(?:^|[-.])(qa|qual|quality)(?:[-.]|$)/, label: "QA" },
+      { re: /(?:^|[-.])(staging|stg|stage)(?:[-.]|$)/, label: "STAGING" },
+      { re: /(?:^|[-.])(preprod|pre-prod|preproduction)(?:[-.]|$)/, label: "PREPROD" },
+      { re: /(?:^|[-.])(recette|rec)(?:[-.]|$)/, label: "RECETTE" },
+      { re: /(?:^|[-.])(demo)(?:[-.]|$)/, label: "DEMO" },
+      { re: /(?:^|[-.])(training|train|formation)(?:[-.]|$)/, label: "TRAINING" },
+      { re: /(?:^|[-.])(sit)(?:[-.]|$)/, label: "SIT" },
+      { re: /(?:^|[-.])(trial)(?:[-.]|$)/, label: "TRIAL" },
+      { re: /(?:^|[-.])(preview)(?:[-.]|$)/, label: "PREVIEW" },
+      { re: /(?:^|[-.])(hotfix|patch)(?:[-.]|$)/, label: "HOTFIX" },
+    ];
+    for (const p of patterns) {
+      if (p.re.test(hostname)) return { isProduction: false, label: p.label };
+    }
+    return { isProduction: true, label: "PROD" };
+  } catch {
+    return { isProduction: true, label: "PROD" };
+  }
+}
+
 export default function App(){
   const[tab,setTab]=useState("explorer");
   const[connected,setConnected]=useState(false);
@@ -70,11 +104,13 @@ export default function App(){
     if (ext.isExtension && ext.orgUrl) {
       const orgName = new URL(ext.orgUrl).hostname.split(".")[0];
       const region = new URL(ext.orgUrl).hostname.split(".")[1] || "crm";
+      const env = detectEnv(ext.orgUrl);
       const info = {
         orgUrl: ext.orgUrl,
         orgName,
         region,
-        isProduction: !ext.orgUrl.includes("sandbox") && !ext.orgUrl.includes("dev"),
+        isProduction: env.isProduction,
+        envLabel: env.label,
         isExtension: true,
       };
       setOrgInfo(info);
@@ -161,8 +197,8 @@ export default function App(){
               <span style={{color:C.txm}}>{orgInfo?.isExtension ? t("sidebar.extension") : t("sidebar.standalone")}</span>
             </div>
             {orgInfo?.isProduction
-              ? <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.rd+"22",color:C.rd,border:`1px solid ${C.rd}55`,letterSpacing:1}}>⚠ PROD</span>
-              : <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.gn+"22",color:C.gn,border:`1px solid ${C.gn}55`,letterSpacing:1}}>SANDBOX</span>
+              ? <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.rd+"22",color:C.rd,border:`1px solid ${C.rd}55`,letterSpacing:1}}>⚠ {orgInfo?.envLabel||"PROD"}</span>
+              : <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.gn+"22",color:C.gn,border:`1px solid ${C.gn}55`,letterSpacing:1}}>{orgInfo?.envLabel||"SANDBOX"}</span>
             }
           </div>
           <div style={{color:C.txd,marginBottom:3,...mono,fontSize:11}}>{orgInfo?.orgName || "demo"}.{orgInfo?.region || "crm4"}.dynamics.com</div>
