@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.10.3] — 2026-05-20
+### Changed
+- **Environment detection: now uses Microsoft's authoritative `OrganizationType`** instead of URL guessing
+  - On connect, Colvio calls the `RetrieveCurrentOrganization` Web API bound function and reads `Detail.OrganizationType` (an enum returned by Dataverse itself)
+  - Recognized values: `Production`, `Sandbox`, `CustomerTest` (→ UAT), `Trial`, `Preview`, `Support`, `Developer`, `Default`, `BCS`
+  - Falls back to the URL heuristic only if the API call fails (older D365 versions, restricted permissions)
+  - The badge tooltip now indicates the detection source: "Detected via Microsoft API (OrganizationType=CustomerTest)" or "Detected via URL pattern matching"
+  - The connect call also captures `EnvironmentId`, `TenantId`, `Geo`, friendly name, and version for use across modules
+- **`getContext` bridge call** now returns enriched org info — includes the Dataverse-authoritative env metadata in addition to the basic URL/orgName
+
 ## [1.10.2] — 2026-05-20
 ### Fixed
 - **PROD/Sandbox detection: stop crying wolf on UAT, TEST, RECETTE, etc.**
