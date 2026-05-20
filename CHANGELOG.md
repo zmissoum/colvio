@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2] — 2026-05-20
+### Fixed
+- **PROD/Sandbox detection: stop crying wolf on UAT, TEST, RECETTE, etc.**
+  - Previously, the badge logic only checked `sandbox` and `dev` substrings in the URL — any URL like `org-uat.crm4.dynamics.com` was flagged as PROD (false positive).
+  - New `detectEnv()` recognizes 14 non-prod indicators (sandbox, dev, test, uat, qa, staging, preprod, recette, demo, training, sit, trial, preview, hotfix) with word-boundary matching (surrounded by `-` or `.` so legit prod names like `interface.org.com` don't false-positive on `int`).
+  - **Badge now shows the actual env type**: "UAT", "TEST", "RECETTE", "STAGING" instead of a generic "SANDBOX". Still red+⚠ for true PROD, green for everything else.
+
 ## [1.10.1] — 2026-05-20
 ### Added
 - **API Tester: line numbers in the JSON body editor** — left gutter with synced scrolling, font-matched line-height for vertical alignment
