@@ -22,12 +22,25 @@ import UserLicenseMonitor from "./components/UserLicenseMonitor.jsx";
 import SecurityAudit from "./components/SecurityAudit.jsx";
 import SchemaViewer from "./components/SchemaViewer.jsx";
 
-// Detect the environment type from the D365 URL hostname.
-// Matches common non-prod indicators (dev/uat/qa/staging/recette/etc.) when they
-// appear as word-boundaries surrounded by - or . — the standard MS naming
-// convention for non-prod orgs (e.g. "salsadynamics-uat.crm4.dynamics.com").
-// Returns { isProduction, label } so the footer badge can display the actual env.
-function detectEnv(url) {
+// Microsoft's authoritative OrganizationType enum (returned by RetrieveCurrentOrganization).
+// We map it to user-facing labels + an isProduction flag. This is the SOURCE OF TRUTH
+// when available — far more reliable than URL guessing.
+const ORG_TYPE_MAP = {
+  "Production":   { label: "PROD",     isProduction: true  },
+  "Sandbox":      { label: "SANDBOX",  isProduction: false },
+  "CustomerTest": { label: "UAT",      isProduction: false },
+  "Trial":        { label: "TRIAL",    isProduction: false },
+  "Preview":      { label: "PREVIEW",  isProduction: false },
+  "Support":      { label: "SUPPORT",  isProduction: false },
+  "Developer":    { label: "DEV",      isProduction: false },
+  "Default":      { label: "DEFAULT",  isProduction: false },
+  "BCS":          { label: "BCS",      isProduction: false },
+};
+
+// Fallback: detect the environment type from the D365 URL hostname.
+// Used only when RetrieveCurrentOrganization isn't available (older versions, restricted perms).
+// Matches common non-prod indicators surrounded by - or . word-boundaries.
+function detectEnvFromUrl(url) {
   if (!url) return { isProduction: true, label: "PROD" };
   try {
     const hostname = new URL(url).hostname.toLowerCase();
@@ -54,6 +67,21 @@ function detectEnv(url) {
   } catch {
     return { isProduction: true, label: "PROD" };
   }
+}
+
+// Resolve env using the most reliable signal available:
+// 1. Microsoft's OrganizationType (authoritative, from RetrieveCurrentOrganization)
+// 2. URL heuristic (fallback for older D365 / restricted perms)
+function detectEnv(orgUrl, organizationType) {
+  if (organizationType && ORG_TYPE_MAP[organizationType]) {
+    const m = ORG_TYPE_MAP[organizationType];
+    return { ...m, source: "api", rawType: organizationType };
+  }
+  if (organizationType) {
+    // Unknown enum value — surface it so we know about new MS env types
+    return { label: organizationType.toUpperCase(), isProduction: organizationType === "Production", source: "api", rawType: organizationType };
+  }
+  return { ...detectEnvFromUrl(orgUrl), source: "url-heuristic" };
 }
 
 export default function App(){
@@ -104,13 +132,18 @@ export default function App(){
     if (ext.isExtension && ext.orgUrl) {
       const orgName = new URL(ext.orgUrl).hostname.split(".")[0];
       const region = new URL(ext.orgUrl).hostname.split(".")[1] || "crm";
-      const env = detectEnv(ext.orgUrl);
+      const env = detectEnv(ext.orgUrl, ext.organizationType);
       const info = {
         orgUrl: ext.orgUrl,
         orgName,
         region,
         isProduction: env.isProduction,
         envLabel: env.label,
+        envSource: env.source,
+        organizationType: ext.organizationType,
+        environmentId: ext.environmentId,
+        organizationFriendlyName: ext.organizationFriendlyName,
+        organizationVersion: ext.organizationVersion,
         isExtension: true,
       };
       setOrgInfo(info);
@@ -197,8 +230,8 @@ export default function App(){
               <span style={{color:C.txm}}>{orgInfo?.isExtension ? t("sidebar.extension") : t("sidebar.standalone")}</span>
             </div>
             {orgInfo?.isProduction
-              ? <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.rd+"22",color:C.rd,border:`1px solid ${C.rd}55`,letterSpacing:1}}>⚠ {orgInfo?.envLabel||"PROD"}</span>
-              : <span style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.gn+"22",color:C.gn,border:`1px solid ${C.gn}55`,letterSpacing:1}}>{orgInfo?.envLabel||"SANDBOX"}</span>
+              ? <span title={`Detected via ${orgInfo?.envSource==="api"?"Microsoft API (OrganizationType="+orgInfo?.organizationType+")":"URL pattern matching"}`} style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.rd+"22",color:C.rd,border:`1px solid ${C.rd}55`,letterSpacing:1,cursor:"help"}}>⚠ {orgInfo?.envLabel||"PROD"}</span>
+              : <span title={`Detected via ${orgInfo?.envSource==="api"?"Microsoft API (OrganizationType="+orgInfo?.organizationType+")":"URL pattern matching"}`} style={{padding:"3px 10px",borderRadius:4,fontSize:13,fontWeight:700,background:C.gn+"22",color:C.gn,border:`1px solid ${C.gn}55`,letterSpacing:1,cursor:"help"}}>{orgInfo?.envLabel||"SANDBOX"}</span>
             }
           </div>
           <div style={{color:C.txd,marginBottom:3,...mono,fontSize:11}}>{orgInfo?.orgName || "demo"}.{orgInfo?.region || "crm4"}.dynamics.com</div>

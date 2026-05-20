@@ -150,10 +150,36 @@
       try {
         let result;
         switch (action) {
-          case "getContext":
+          case "getContext": {
             d365Context = extractContext();
+            // Enrich with authoritative OrganizationType from the Web API.
+            // The bound function returns enum values like "Production", "Sandbox",
+            // "CustomerTest" (= UAT), "Trial", "Preview", "Support", "Developer".
+            // Falls back gracefully if the function isn't available or the call fails.
+            try {
+              const detail = await dvRequest(
+                "GET",
+                "RetrieveCurrentOrganization(AccessType=Microsoft.Dynamics.CRM.EndpointAccessType'Default')"
+              );
+              if (detail?.Detail) {
+                d365Context = {
+                  ...d365Context,
+                  organizationType: detail.Detail.OrganizationType || null,
+                  organizationId: detail.Detail.OrganizationId || null,
+                  environmentId: detail.Detail.EnvironmentId || null,
+                  tenantId: detail.Detail.TenantId || null,
+                  geo: detail.Detail.Geo || null,
+                  organizationFriendlyName: detail.Detail.FriendlyName || null,
+                  organizationVersion: detail.Detail.OrganizationVersion || null,
+                  organizationState: detail.Detail.State || null,
+                };
+              }
+            } catch {
+              // Older D365 versions or restricted permissions — heuristic fallback in panel
+            }
             result = d365Context;
             break;
+          }
 
           case "getEntities":
             result = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsManaged,MetadataId");
