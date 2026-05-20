@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.1] — 2026-05-20
+### Added
+- **API Tester: line numbers in the JSON body editor** — left gutter with synced scrolling, font-matched line-height for vertical alignment
+- **API Tester: JSON error messages now include line numbers** — `"Unexpected token } at position 47"` becomes `"... (line 5)"`, so the user can jump straight to the issue using the gutter
+- **API Tester: line count badge** — "✓ Valid JSON · 14 lines" when the body parses correctly
+
 ## [1.10.0] — 2026-05-20
 ### Added
 - **New module: API Tester** — Postman-equivalent for Dataverse, built right into Colvio

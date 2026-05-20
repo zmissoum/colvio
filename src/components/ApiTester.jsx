@@ -41,6 +41,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   const [bodyError, setBodyError] = useState("");
   const [copied, setCopied] = useState("");
   const abortRef = useRef(null);
+  const gutterRef = useRef(null);
 
   // Load history from storage on mount
   useEffect(() => {
@@ -50,14 +51,27 @@ export default function ApiTester({ bp, orgInfo, theme }) {
     });
   }, []);
 
-  // Live JSON body validation
+  // Convert a 0-based character position into a 1-based line number.
+  // The native JSON parser reports errors as "at position N" — translating to a
+  // line number lets the user jump straight to the issue using the gutter.
+  const positionToLine = (s, pos) => {
+    if (typeof pos !== "number" || pos < 0) return null;
+    return s.substring(0, pos).split("\n").length;
+  };
+
+  // Live JSON body validation — augment error message with line number when available.
   useEffect(() => {
     if (!body.trim() || method === "GET" || method === "DELETE" || method === "HEAD") {
       setBodyError("");
       return;
     }
     try { JSON.parse(body); setBodyError(""); }
-    catch (e) { setBodyError(e.message); }
+    catch (e) {
+      const msg = e.message || String(e);
+      const m = msg.match(/position (\d+)/i);
+      const line = m ? positionToLine(body, parseInt(m[1], 10)) : null;
+      setBodyError(line ? `${msg} (line ${line})` : msg);
+    }
   }, [body, method]);
 
   const hasBody = method !== "GET" && method !== "DELETE" && method !== "HEAD";
@@ -275,18 +289,56 @@ export default function ApiTester({ bp, orgInfo, theme }) {
               {bodyError ? (
                 <span style={{ fontSize: 11, color: C.rd, ...mono }}>⚠ {bodyError}</span>
               ) : body.trim() ? (
-                <span style={{ fontSize: 11, color: C.gn }}>✓ Valid JSON</span>
+                <span style={{ fontSize: 11, color: C.gn }}>✓ Valid JSON · {body.split("\n").length} lines</span>
               ) : null}
               <button onClick={formatBody} disabled={!body.trim() || !!bodyError} style={{ padding: "2px 8px", fontSize: 11, background: "transparent", color: bodyError || !body.trim() ? C.txd : C.cy, border: `1px solid ${C.bd}`, borderRadius: 3, cursor: bodyError || !body.trim() ? "default" : "pointer" }}>Format</button>
             </div>
           </div>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder='{\n  "name": "Test"\n}'
-            spellCheck={false}
-            style={{ width: "100%", minHeight: 140, padding: 10, background: C.bg, border: `1px solid ${bodyError ? C.rd : C.bd}`, borderRadius: 5, color: C.tx, fontSize: 13, ...mono, outline: "none", resize: "vertical", boxSizing: "border-box" }}
-          />
+          {/* Editor with line numbers gutter. Wrapper is the resizable element; both gutter and textarea share line-height/font-size for vertical alignment. */}
+          <div style={{ display: "flex", border: `1px solid ${bodyError ? C.rd : C.bd}`, borderRadius: 5, overflow: "hidden", background: C.bg, height: 180, minHeight: 140, resize: "vertical" }}>
+            <pre
+              ref={gutterRef}
+              aria-hidden="true"
+              style={{
+                margin: 0,
+                padding: "10px 8px 10px 10px",
+                background: C.sfh,
+                color: C.txd,
+                fontSize: 13,
+                ...mono,
+                textAlign: "right",
+                userSelect: "none",
+                lineHeight: "1.5",
+                borderRight: `1px solid ${C.bd}`,
+                overflow: "hidden",
+                flexShrink: 0,
+                minWidth: 32,
+                whiteSpace: "pre",
+              }}
+            >
+              {Array.from({ length: Math.max(1, body.split("\n").length) }, (_, i) => i + 1).join("\n")}
+            </pre>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onScroll={(e) => { if (gutterRef.current) gutterRef.current.scrollTop = e.target.scrollTop; }}
+              placeholder='{\n  "name": "Test"\n}'
+              spellCheck={false}
+              style={{
+                flex: 1,
+                padding: 10,
+                background: "transparent",
+                border: "none",
+                color: C.tx,
+                fontSize: 13,
+                ...mono,
+                lineHeight: "1.5",
+                outline: "none",
+                resize: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
         </div>
       )}
 
