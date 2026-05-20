@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.10.0] — 2026-05-20
+### Added
+- **New module: API Tester** — Postman-equivalent for Dataverse, built right into Colvio
+  - Method picker (GET / POST / PATCH / PUT / DELETE) with color-coded indicator
+  - URL field with the `/api/data/v9.2/` prefix shown as a fixed label (less typing, less typos)
+  - Headers builder with autocomplete for common Dataverse headers (`Prefer`, `MSCRM.SuppressDuplicateDetection`, `MSCRM.BypassCustomPluginExecution`, `If-Match`, etc.)
+  - JSON body editor with live validation + Format button (auto-indent)
+  - Response panel: status code badge (colored by 2xx/3xx/4xx/5xx), elapsed time, body size, JSON-pretty-printed body, response headers table
+  - **No auth setup needed** — uses your active D365 session cookies (same as the rest of Colvio); requests are scoped to your current org
+  - **Templates** — 7 ready-to-go examples (WhoAmI, sample GET, CREATE, PATCH, UPSERT by alt-key, DELETE, etc.)
+  - **History** — last 50 requests stored locally (chrome.storage.local), click any past request to reload it as the current draft
+  - **Copy as cURL** for sharing in tickets / Slack / docs
+  - Keyboard shortcut: Ctrl/Cmd+Enter in the URL field sends the request
+  - **Same-origin guard** in content.js: requests are blocked if the target URL is not your active D365 host (no exfiltration risk)
+
 ## [1.9.6] — 2026-05-06
 ### Fixed
 - **Data Explorer: stale FieldPicker state across entity changes**

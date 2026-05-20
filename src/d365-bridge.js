@@ -210,6 +210,23 @@ export const bridge = {
     return null;
   },
 
+  // Ad-hoc request runner used by the API Tester module.
+  // Returns { ok, status, statusText, headers, body, bodyParsed, elapsed, url, clientError? }
+  // — does NOT throw on 4xx/5xx; caller renders the raw response so the user
+  // can inspect Dataverse error messages directly.
+  async customRequest({ method, path, headers, body }) {
+    if (!isExtension) {
+      return {
+        ok: true, status: 200, statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mock: true, method, path }, null, 2),
+        bodyParsed: { mock: true, method, path },
+        elapsed: 42, url: path,
+      };
+    }
+    return callD365("customRequest", { method, path, headers, body });
+  },
+
   async executeFetchXml(fetchXml) {
     if (isExtension) return callD365("fetchXml", { fetchXml });
     return { records: [], count: 0, moreRecords: false };
