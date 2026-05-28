@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.10.4] — 2026-05-21
+### Added
+- **Data Loader: Speed boosters — server-side bypass headers**
+  - New section in the Preview step with three opt-in toggles, each mapping to a Microsoft-documented `MSCRM.*` header injected on every individual request inside the multipart `$batch`:
+    - **Bypass custom plugins** → `MSCRM.BypassCustomPluginExecution: true` — skips all custom plugins (sync + async). Typical gain: 100-500ms per record on orgs with active plugins.
+    - **Suppress duplicate detection** → `MSCRM.SuppressDuplicateDetection: true` — skips duplicate-detection rules. Typical gain: 50-200ms per record.
+    - **Bypass synchronous workflows** → `MSCRM.BypassSynchronousLogic: true` — broader scope, also covers sync workflows.
+  - Warning banner appears when any booster is enabled (skipped business logic, requires `prvBypassCustomPlugins` privilege — typically System Administrator).
+  - All boosters are off by default for safety.
+
 ## [1.10.3] — 2026-05-20
 ### Changed
 - **Environment detection: now uses Microsoft's authoritative `OrganizationType`** instead of URL guessing

@@ -267,6 +267,13 @@ export const bridge = {
     if (!isExtension) return { created: records.length, errors: [], log: [] };
     const CHUNK = Math.max(1, Math.min(1000, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
+    // MSCRM bypass headers — forwarded per-chunk; content.js injects them on each
+    // individual operation inside the multipart $batch body.
+    const bypass = {
+      bypassPlugins: !!opts.bypassPlugins,
+      suppressDuplicates: !!opts.suppressDuplicates,
+      bypassSyncLogic: !!opts.bypassSyncLogic,
+    };
     const agg = { created: 0, errors: [], log: [], aborted: false };
     const chunks = [];
     for (let i = 0; i < records.length; i += CHUNK) chunks.push({ start: i, slice: records.slice(i, i + CHUNK) });
@@ -279,7 +286,7 @@ export const bridge = {
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
-        const r = await callD365("batchCreate", { entitySet, records: slice });
+        const r = await callD365("batchCreate", { entitySet, records: slice, ...bypass });
         agg.created += r?.created || 0;
         const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
         const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
@@ -297,6 +304,12 @@ export const bridge = {
     if (!isExtension) return { updated: items.length, errors: [], log: [] };
     const CHUNK = Math.max(1, Math.min(1000, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
+    // MSCRM bypass headers — see batchCreate for details.
+    const bypass = {
+      bypassPlugins: !!opts.bypassPlugins,
+      suppressDuplicates: !!opts.suppressDuplicates,
+      bypassSyncLogic: !!opts.bypassSyncLogic,
+    };
     const agg = { updated: 0, errors: [], log: [], aborted: false };
     const chunks = [];
     for (let i = 0; i < items.length; i += CHUNK) chunks.push({ start: i, slice: items.slice(i, i + CHUNK) });
@@ -309,7 +322,7 @@ export const bridge = {
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
-        const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey });
+        const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, ...bypass });
         agg.updated += r?.updated || 0;
         const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
         const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
