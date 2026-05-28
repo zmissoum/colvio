@@ -1290,6 +1290,25 @@
             break;
           }
 
+          case "isSystemAdmin": {
+            // Check if the current user has the System Administrator role.
+            // The System Administrator role grants prvBypassCustomPlugins (among many others),
+            // which is required to use MSCRM.BypassCustomPluginExecution + related bypass headers.
+            // Returns false on any error (defensive — never block UI on permission check failure).
+            try {
+              const who = await dvRequest("GET", "WhoAmI");
+              if (!who?.UserId) { result = false; break; }
+              const roles = await dvRequest(
+                "GET",
+                `systemusers(${who.UserId})/systemuserroles_association?$select=name&$filter=name eq 'System Administrator'`
+              );
+              result = (roles?.value || []).length > 0;
+            } catch {
+              result = false;
+            }
+            break;
+          }
+
           default:
             throw new Error(`Unknown action: ${action}`);
         }

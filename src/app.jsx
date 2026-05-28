@@ -268,7 +268,7 @@ export default function App(){
           {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary>}
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="schema"&&<ErrorBoundary><SchemaViewer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}

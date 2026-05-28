@@ -4,7 +4,12 @@ import * as XLSX from "xlsx";
 import Tooltip from "./Tooltip.jsx";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, isTrulyCustom } from "../shared.jsx";
 
-export default function Loader({bp,orgInfo,theme}){
+export default function Loader({bp,orgInfo,theme,permissions}){
+  // Speed boosters require prvBypassCustomPlugins — granted by the System Administrator
+  // role. Hidden entirely for non-admin users so they don't see a feature they can't use.
+  // `permissions` may be null briefly during connect — boosters stay hidden until the
+  // probe completes (safer than flashing them then hiding).
+  const canShowSpeedBoosters = permissions?.canBypassPlugins === true;
   const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
 
   const parseData=(text,delimiter=",")=>{
@@ -388,7 +393,7 @@ export default function Loader({bp,orgInfo,theme}){
               return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
             });
           }
-        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins,suppressDuplicates,bypassSyncLogic});
+        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
         created=res.created||0;
         for(let j=0;j<created;j++) logEntries.push({row:j+1,status:"CREATED",detail:"OK",d365Id:""});
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
@@ -412,7 +417,7 @@ export default function Loader({bp,orgInfo,theme}){
               return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
             });
           }
-        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins,suppressDuplicates,bypassSyncLogic});
+        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
         updated=res.updated||0;
         for(let j=0;j<updated;j++) logEntries.push({row:createRecords.length+j+1,status:"UPSERTED",detail:"OK",d365Id:""});
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
@@ -665,7 +670,8 @@ export default function Loader({bp,orgInfo,theme}){
             </div>
           </div>
 
-          {/* Speed boosters — server-side bypass via MSCRM headers */}
+          {/* Speed boosters — server-side bypass via MSCRM headers. Hidden for non-admin users. */}
+          {canShowSpeedBoosters && (
           <div style={{...crd({padding:12,borderColor:(bypassPlugins||suppressDuplicates||bypassSyncLogic)?C.or+"55":C.bd}),marginBottom:12}}>
             <div style={{fontSize:13,fontWeight:600,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
               <span>🚀 Speed boosters</span>
@@ -697,6 +703,7 @@ export default function Loader({bp,orgInfo,theme}){
               </label>
             </div>
           </div>
+          )}
 
           <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(2)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button><button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button></div>
         </div>

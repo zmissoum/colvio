@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.5] — 2026-05-28
+### Changed
+- **Speed boosters: hidden for non-admin users**
+  - The MSCRM bypass headers (`BypassCustomPluginExecution`, `SuppressDuplicateDetection`, `BypassSynchronousLogic`) require the `prvBypassCustomPlugins` privilege, granted by the System Administrator role.
+  - Colvio now probes the current user's roles at connect time (new `isSystemAdmin` bridge action: `WhoAmI` → `systemusers(<id>)/systemuserroles_association` filtered by `name eq 'System Administrator'`) and sets `permissions.canBypassPlugins`.
+  - The Speed boosters block in the Data Loader Preview step is hidden entirely for users without the role — no feature visibility they can't use, no need for Dataverse to return 403 mid-import.
+  - Defense in depth: even if the toggles were somehow flipped on, the `doLoad` flow forces them to `false` for non-admin users before sending to the bridge.
+
 ## [1.10.4] — 2026-05-21
 ### Added
 - **Data Loader: Speed boosters — server-side bypass headers**
