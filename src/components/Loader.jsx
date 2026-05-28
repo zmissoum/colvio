@@ -96,6 +96,11 @@ export default function Loader({bp,orgInfo,theme}){
   // Tunable performance knobs (à la Salesforce Inspector). Defaults match Inspector's UX.
   const[batchSize,setBatchSize]=useState(200);
   const[threads,setThreads]=useState(6);
+  // MSCRM bypass headers — off by default. Require prvBypassCustomPlugins privilege (typically System Admin).
+  // Trade speed for skipped server-side logic — use only when input data is already validated externally.
+  const[bypassPlugins,setBypassPlugins]=useState(false);
+  const[suppressDuplicates,setSuppressDuplicates]=useState(false);
+  const[bypassSyncLogic,setBypassSyncLogic]=useState(false);
   const loadAbort=useRef(false);
   const[liveEntities,setLiveEntities]=useState([]);
 
@@ -383,7 +388,7 @@ export default function Loader({bp,orgInfo,theme}){
               return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
             });
           }
-        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads});
+        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins,suppressDuplicates,bypassSyncLogic});
         created=res.created||0;
         for(let j=0;j<created;j++) logEntries.push({row:j+1,status:"CREATED",detail:"OK",d365Id:""});
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
@@ -407,7 +412,7 @@ export default function Loader({bp,orgInfo,theme}){
               return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
             });
           }
-        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads});
+        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins,suppressDuplicates,bypassSyncLogic});
         updated=res.updated||0;
         for(let j=0;j<updated;j++) logEntries.push({row:createRecords.length+j+1,status:"UPSERTED",detail:"OK",d365Id:""});
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
@@ -659,6 +664,40 @@ export default function Loader({bp,orgInfo,theme}){
               <div style={{fontSize:11,color:C.txd,fontStyle:"italic"}}>Theoretical throughput: ~{(batchSize*threads*3).toLocaleString()} rec/sec</div>
             </div>
           </div>
+
+          {/* Speed boosters — server-side bypass via MSCRM headers */}
+          <div style={{...crd({padding:12,borderColor:(bypassPlugins||suppressDuplicates||bypassSyncLogic)?C.or+"55":C.bd}),marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+              <span>🚀 Speed boosters</span>
+              <span style={{fontSize:10,color:C.txd,fontWeight:400}}>(advanced — bypass server-side processes per record)</span>
+            </div>
+            {(bypassPlugins||suppressDuplicates||bypassSyncLogic) && (
+              <div style={{fontSize:11,color:C.or,marginBottom:8,padding:"6px 8px",background:C.or+"11",borderRadius:4,border:`1px solid ${C.or}33`}}>
+                ⚠ One or more boosters enabled — server-side business logic will be skipped. Requires <code style={{...mono,fontSize:11}}>prvBypassCustomPlugins</code> privilege (typically System Administrator). Records with invalid data may bypass validation. Use only when input data is already validated externally.
+              </div>
+            )}
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.tx,cursor:"pointer"}}>
+                <input type="checkbox" checked={bypassPlugins} onChange={e=>setBypassPlugins(e.target.checked)} style={{accentColor:C.or}}/>
+                <span style={{fontWeight:600}}>Bypass custom plugins</span>
+                <Tooltip text="Sets MSCRM.BypassCustomPluginExecution: true on each request. Skips ALL custom plugins (sync + async) for the duration of the import. Typical gain: 100-500ms per record on orgs with active plugins. Warning: skips business logic that may include validation, defaulting, calculated fields, audit overrides."/>
+                <code style={{...mono,fontSize:11,color:C.txd}}>MSCRM.BypassCustomPluginExecution</code>
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.tx,cursor:"pointer"}}>
+                <input type="checkbox" checked={suppressDuplicates} onChange={e=>setSuppressDuplicates(e.target.checked)} style={{accentColor:C.or}}/>
+                <span style={{fontWeight:600}}>Suppress duplicate detection</span>
+                <Tooltip text="Sets MSCRM.SuppressDuplicateDetection: true on each request. Skips duplicate detection rules for the entity. Typical gain: 50-200ms per record if rules are active. Warning: may create true duplicates if your CSV has them."/>
+                <code style={{...mono,fontSize:11,color:C.txd}}>MSCRM.SuppressDuplicateDetection</code>
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.tx,cursor:"pointer"}}>
+                <input type="checkbox" checked={bypassSyncLogic} onChange={e=>setBypassSyncLogic(e.target.checked)} style={{accentColor:C.or}}/>
+                <span style={{fontWeight:600}}>Bypass synchronous workflows</span>
+                <Tooltip text="Sets MSCRM.BypassSynchronousLogic: true on each request. Broader than BypassCustomPluginExecution — also skips synchronous workflows. Use this when your org has heavy sync workflow chains."/>
+                <code style={{...mono,fontSize:11,color:C.txd}}>MSCRM.BypassSynchronousLogic</code>
+              </label>
+            </div>
+          </div>
+
           <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(2)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button><button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button></div>
         </div>
       )}

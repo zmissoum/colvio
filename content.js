@@ -462,6 +462,15 @@
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
 
+            // Microsoft-documented bypass headers — go on each individual request
+            // inside the multipart body, NOT on the outer $batch envelope.
+            // Requires prvBypassCustomPlugins privilege (typically System Administrator).
+            const bypassHeaderLines = [
+              params.bypassPlugins ? "MSCRM.BypassCustomPluginExecution: true" : null,
+              params.suppressDuplicates ? "MSCRM.SuppressDuplicateDetection: true" : null,
+              params.bypassSyncLogic ? "MSCRM.BypassSynchronousLogic: true" : null,
+            ].filter(Boolean).map(l => l + "\r\n").join("");
+
             const buildClean = (rec) => {
               const c = {};
               for (const [k, v] of Object.entries(rec)) { if (!STRIP.has(k)) c[k] = v; }
@@ -502,7 +511,9 @@
                 body += "Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n";
                 body += "Content-ID: " + (batch + i + 1) + "\r\n\r\n";
                 body += "POST " + baseUrl + "/" + entitySet + " HTTP/1.1\r\n";
-                body += "Content-Type: application/json\r\n\r\n";
+                body += "Content-Type: application/json\r\n";
+                body += bypassHeaderLines;
+                body += "\r\n";
                 body += JSON.stringify(clean) + "\r\n";
                 body += "--" + csName + "--\r\n";
               }
@@ -579,6 +590,13 @@
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
 
+            // Microsoft bypass headers — see batchCreate above for details.
+            const bypassHeaderLines = [
+              params.bypassPlugins ? "MSCRM.BypassCustomPluginExecution: true" : null,
+              params.suppressDuplicates ? "MSCRM.SuppressDuplicateDetection: true" : null,
+              params.bypassSyncLogic ? "MSCRM.BypassSynchronousLogic: true" : null,
+            ].filter(Boolean).map(l => l + "\r\n").join("");
+
             const buildPath = (item) => isPrimaryKey
               ? `${entitySet}(${item.keyValue})`
               : `${entitySet}(${keyField}='${String(item.keyValue).replace(/'/g, "''")}')`;
@@ -632,7 +650,9 @@
                 body += "Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n";
                 body += "Content-ID: " + (batch + i + 1) + "\r\n\r\n";
                 body += "PATCH " + baseUrl + "/" + path + " HTTP/1.1\r\n";
-                body += "Content-Type: application/json\r\n\r\n";
+                body += "Content-Type: application/json\r\n";
+                body += bypassHeaderLines;
+                body += "\r\n";
                 body += JSON.stringify(clean) + "\r\n";
                 body += "--" + csName + "--\r\n";
               }
