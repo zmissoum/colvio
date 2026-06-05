@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.6] — 2026-05-28
+### Fixed
+- **API Tester: History entries didn't visibly pre-fill the form**
+  - Clicking a history (or template) entry now triggers a brief cyan border highlight on the request form for 700ms, so the user sees that the click took effect.
+  - Defensive guards added on `loadHistory` and `loadTemplate`: missing or non-string fields in stored entries default to safe values (no more potential `undefined` reaching `setState`).
+  - Headers values coerced to strings via `String(value ?? "")`.
+
 ## [1.10.5] — 2026-05-28
 ### Changed
 - **Speed boosters: hidden for non-admin users**

@@ -40,6 +40,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [bodyError, setBodyError] = useState("");
   const [copied, setCopied] = useState("");
+  const [loadFlash, setLoadFlash] = useState(false); // brief highlight when a template/history entry is loaded into the form
   const abortRef = useRef(null);
   const gutterRef = useRef(null);
 
@@ -125,16 +126,31 @@ export default function ApiTester({ bp, orgInfo, theme }) {
     setCopied("curl"); setTimeout(() => setCopied(""), 1500);
   };
 
+  // Brief visual confirmation that a template/history entry was loaded into the form.
+  // Without it, on small viewports the user can miss that the form scrolled or that fields updated.
+  const flashFormLoaded = () => {
+    setLoadFlash(true);
+    setTimeout(() => setLoadFlash(false), 700);
+  };
+
   const loadTemplate = (tpl) => {
-    setMethod(tpl.method); setPath(tpl.path); setBody(tpl.body);
+    setMethod(tpl.method || "GET");
+    setPath(tpl.path || "");
+    setBody(tpl.body || "");
     setShowTemplates(false); setResp(null); setError("");
+    flashFormLoaded();
   };
 
   const loadHistory = (entry) => {
-    setMethod(entry.method); setPath(entry.path); setBody(entry.body || "");
-    const hArr = Object.entries(entry.headers || {}).map(([key, value]) => ({ key, value }));
+    if (!entry) return;
+    // Defensive: guarantee strings even if entry has missing fields from older storage
+    setMethod(typeof entry.method === "string" ? entry.method : "GET");
+    setPath(typeof entry.path === "string" ? entry.path : "");
+    setBody(typeof entry.body === "string" ? entry.body : "");
+    const hArr = Object.entries(entry.headers || {}).map(([key, value]) => ({ key, value: String(value ?? "") }));
     setHeaders(hArr.length ? hArr : DEFAULT_HEADERS);
     setShowHistory(false); setResp(null); setError("");
+    flashFormLoaded();
   };
 
   const clearHistory = () => {
@@ -167,7 +183,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   return (
     <div style={{ padding: bp.mobile ? 10 : 16, maxWidth: 1200, margin: "0 auto" }}>
       {/* Method + URL bar */}
-      <div style={{ ...crd({ padding: 10 }), marginBottom: 10 }}>
+      <div style={{ ...crd({ padding: 10, borderColor: loadFlash ? C.cy : C.bd, boxShadow: loadFlash ? `0 0 0 2px ${C.cy}44` : "none", transition: "border-color .2s ease, box-shadow .2s ease" }), marginBottom: 10 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "stretch", flexWrap: bp.mobile ? "wrap" : "nowrap" }}>
           <select
             value={method}
