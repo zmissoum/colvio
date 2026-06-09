@@ -98,6 +98,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
   const isLive = orgInfo?.isExtension;
   const[loadProgress,setLoadProgress]=useState({done:0,total:0,current:""});
+  const[startedAt,setStartedAt]=useState(null); // wall-clock time the import was launched (Date)
   // Live per-row log during import. Two-tier to avoid unbounded memory on huge imports:
   //  - liveLog.entries (state): bounded ring buffer of the most recent rows (newest first) for the DOM table.
   //  - fullLog (ref): lightweight record of EVERY processed row { csvRowNumber, status, msg } — no full csvRow copy,
@@ -306,6 +307,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     loadAbort.current=false;setCancelling(false);
     setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
     fullLog.current=[];
+    const launchedAt=new Date();setStartedAt(launchedAt);
     const rows=csvData.r;
     const SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
     const activeMaps=maps.filter(m=>m.d365 && !m.skip && !SYSTEM_FIELDS.has(m.d365.toLowerCase()));
@@ -457,7 +459,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     const batchLog=fullLog.current.map(e=>({row:e.csvRowNumber,status:e.status,detail:e.status==="ERROR"?(e.msg||"Batch error"):"OK",d365Id:""}));
     const combinedLog=[...logEntries,...batchLog];
     const resultLog=combinedLog.length>5000?combinedLog.slice(0,5000):combinedLog;
-    setResult({created,updated,errors,skipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled});
+    setResult({created,updated,errors,skipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date()});
     setLoadProgress({done:total,total,current:wasCancelled?"Cancelled":"Done"});
     setCancelling(false);
   };
@@ -791,6 +793,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                     <div style={{width:`${loadProgress.total?Math.round(loadProgress.done/loadProgress.total*100):0}%`,height:"100%",background:`linear-gradient(90deg,${cancelling?C.rd:C.vi},${cancelling?C.or:C.cy})`,borderRadius:3,transition:"width .3s"}}/>
                   </div>
                   <div style={{fontSize:12,color:C.txd,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
+                    {startedAt&&<span>🕐 Started {startedAt.toLocaleString()}</span>}
                     <span>{loadProgress.done.toLocaleString()} / {loadProgress.total.toLocaleString()} records</span>
                     {liveLog.counts.CREATED>0&&<span style={{color:C.gn,fontWeight:600}}>● {liveLog.counts.CREATED.toLocaleString()} created</span>}
                     {liveLog.counts.UPSERTED>0&&<span style={{color:C.cy,fontWeight:600}}>● {liveLog.counts.UPSERTED.toLocaleString()} upserted</span>}
@@ -805,7 +808,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   {cancelling?"Cancelling...":"✕ Cancel"}
                 </button>
               </div>
-              {cancelling&&<div style={{fontSize:11,color:C.txd,fontStyle:"italic",marginBottom:10}}>Waiting for the current batch (100 records) to complete before stopping. Records already sent will be kept.</div>}
+              {cancelling&&<div style={{fontSize:11,color:C.txd,fontStyle:"italic",marginBottom:10}}>Waiting for in-flight batches (up to {(batchSize*threads).toLocaleString()} records) to complete before stopping. Records already sent will be kept.</div>}
               {liveLog.entries.length>0&&(()=>{
                 // The DOM shows the bounded live buffer (newest first). The FULL log lives in fullLog.current
                 // (lightweight) and is what "Export current log" writes — reconstructing columns from csvData.r.
@@ -867,6 +870,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 <div style={{fontSize:38,marginBottom:8}}>{result.cancelled?"⏹":result.errors.length===0?"✅":"⚠️"}</div>
                 <h2 style={{color:C.tx,fontWeight:700,fontSize:18,marginBottom:4}}>{result.cancelled?`Cancelled after ${result.elapsed}s`:`Done in ${result.elapsed}s`}</h2>
                 {result.cancelled&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{(result.created+result.updated)} records sent · {result.totalRows-(result.created+result.updated)} not processed</div>}
+                {result.startedAt&&<div style={{fontSize:12,color:C.txd,marginTop:6,display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
+                  <span>🕐 Started {result.startedAt.toLocaleString()}</span>
+                  {result.finishedAt&&<span>🏁 Finished {result.finishedAt.toLocaleString()}</span>}
+                </div>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:8,maxWidth:500,margin:"0 auto 14px"}}>
                 {[{l:"Created",v:result.created,c:C.gn},{l:"Updated",v:result.updated,c:C.cy},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}].map((m,i)=><div key={i} style={{...crd({padding:"8px 10px",textAlign:"center"})}}><div style={{fontSize:20,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd}}>{m.l}</div></div>)}
@@ -925,6 +932,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                     "",
                     `# Summary`,
                     `# Entity: ${result.entity||target}`,
+                    `# Started: ${result.startedAt?result.startedAt.toLocaleString():"—"}`,
+                    `# Finished: ${result.finishedAt?result.finishedAt.toLocaleString():"—"}`,
                     `# Total rows: ${result.totalRows||0}`,
                     `# Created: ${result.created}`,
                     `# Updated: ${result.updated}`,

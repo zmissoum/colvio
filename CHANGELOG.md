@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.9] — 2026-06-09
+### Added
+- **Data Loader: import start/finish timestamps** — the launch date & time is shown live during the run ("🕐 Started …") and on the result panel ("🕐 Started … 🏁 Finished …"). Both are also written into the exported log CSV summary header.
+### Fixed
+- **Data Loader: cancel message no longer hardcodes "100 records"** — now reflects the actual in-flight ceiling (batch size × threads).
+
 ## [1.10.8] — 2026-06-09
 ### Fixed (audit pass — security + correctness)
 - **CRITICAL (regression in 1.10.7): unbounded live-log memory → tab crash on large imports.** The live import log kept every processed row (with its full CSV row object) in React state and spread-copied the whole growing array on every progress callback — O(n²) churn and ~1GB+ retained on a 600k-record import. Now a lightweight `fullLog` ref records every row (`{csvRowNumber, status, msg}` only, ~a few MB for 600k), while React state holds a bounded 2000-row buffer for the live table. The full log powers "Export current log" and the final "Download Log" (columns reconstructed from the parsed CSV at export time).
