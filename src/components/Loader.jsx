@@ -11,6 +11,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // probe completes (safer than flashing them then hiding).
   const canShowSpeedBoosters = permissions?.canBypassPlugins === true;
   const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
+  // Searchable entity picker — replaces the old dropdown so users can find an entity by typing a few letters.
+  const[entitySearch,setEntitySearch]=useState("");
+  const[entityPickerOpen,setEntityPickerOpen]=useState(false);
+  const entityPickerRef=useRef(null);
 
   const parseData=(text,delimiter=",")=>{
     const lines=text.split("\n").filter(l=>l.trim());
@@ -108,6 +112,16 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const[bypassSyncLogic,setBypassSyncLogic]=useState(false);
   const loadAbort=useRef(false);
   const[liveEntities,setLiveEntities]=useState([]);
+
+  // Close the entity picker when clicking outside, pressing Escape, or losing focus.
+  useEffect(()=>{
+    if(!entityPickerOpen) return;
+    const onClick=(e)=>{if(entityPickerRef.current&&!entityPickerRef.current.contains(e.target))setEntityPickerOpen(false);};
+    const onKey=(e)=>{if(e.key==="Escape")setEntityPickerOpen(false);};
+    document.addEventListener("mousedown",onClick);
+    document.addEventListener("keydown",onKey);
+    return()=>{document.removeEventListener("mousedown",onClick);document.removeEventListener("keydown",onKey);};
+  },[entityPickerOpen]);
 
   useEffect(()=>{
     if(!isLive) return;
@@ -390,7 +404,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             setLiveLog(prev=>{
               const newCounts={...prev.counts};
               for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
-              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
+              // Keep all entries during the import — the user explicitly wants the full log.
+              // The render layer caps the DOM portion to LIVE_LOG_DOM_CAP for perf; entries beyond that
+              // are still in memory (used by the "Export current log" button + the final result panel).
+              return {entries:[...enriched.slice().reverse(),...prev.entries],counts:newCounts};
             });
           }
         },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
@@ -414,7 +431,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             setLiveLog(prev=>{
               const newCounts={...prev.counts};
               for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
-              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,100),counts:newCounts};
+              // Keep all entries during the import — the user explicitly wants the full log.
+              // The render layer caps the DOM portion to LIVE_LOG_DOM_CAP for perf; entries beyond that
+              // are still in memory (used by the "Export current log" button + the final result panel).
+              return {entries:[...enriched.slice().reverse(),...prev.entries],counts:newCounts};
             });
           }
         },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
@@ -475,7 +495,49 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       {step===1&&(
         <div>
           <div style={{display:"flex",gap:10,marginBottom:12,flexDirection:bp.mobile?"column":"row"}}>
-            <div style={{...crd({padding:12}),flex:1}}><label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Target D365 entity</label><select value={target} onChange={e=>setTarget(e.target.value)} style={inp({fontSize:14})}>{entityList.map(e=><option key={e.l} value={e.l}>{e.i} {e.d} ({e.l})</option>)}</select></div>
+            <div style={{...crd({padding:12}),flex:1}}>
+              <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Target D365 entity</label>
+              {(()=>{
+                const selectedEnt=entityList.find(e=>e.l===target);
+                const filtered=(()=>{
+                  const q=entitySearch.trim().toLowerCase();
+                  if(!q) return entityList;
+                  return entityList.filter(e=>(e.l||"").toLowerCase().includes(q)||(e.d||"").toLowerCase().includes(q));
+                })();
+                return (<div ref={entityPickerRef} style={{position:"relative"}}>
+                  <input
+                    value={entityPickerOpen?entitySearch:(selectedEnt?`${selectedEnt.i} ${selectedEnt.d} (${selectedEnt.l})`:target)}
+                    onChange={e=>{setEntitySearch(e.target.value);if(!entityPickerOpen)setEntityPickerOpen(true);}}
+                    onFocus={()=>{setEntityPickerOpen(true);setEntitySearch("");}}
+                    placeholder="Type to search entities…"
+                    style={inp({fontSize:14,...mono,paddingRight:30})}
+                  />
+                  <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:C.txd,fontSize:14,pointerEvents:"none"}}>{entityPickerOpen?"🔍":"▾"}</span>
+                  {entityPickerOpen && (
+                    <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,maxHeight:280,overflow:"auto",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,.3)",zIndex:50}}>
+                      {filtered.length===0?(
+                        <div style={{padding:"10px 12px",fontSize:12,color:C.txd,fontStyle:"italic"}}>No entity matches "{entitySearch}"</div>
+                      ):filtered.slice(0,200).map(e=>(
+                        <button
+                          key={e.l}
+                          onMouseDown={(ev)=>{ev.preventDefault();setTarget(e.l);setEntityPickerOpen(false);setEntitySearch("");}}
+                          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",width:"100%",background:target===e.l?C.sfa:"transparent",border:"none",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",color:C.tx,fontSize:13,textAlign:"left"}}
+                        >
+                          <span style={{fontSize:14}}>{e.i}</span>
+                          <span style={{flex:1,fontWeight:target===e.l?600:400}}>{e.d}</span>
+                          <span style={{...mono,fontSize:11,color:C.txd}}>{e.l}</span>
+                        </button>
+                      ))}
+                      {filtered.length>200 && (
+                        <div style={{padding:"6px 10px",fontSize:11,color:C.txd,textAlign:"center",fontStyle:"italic"}}>
+                          {filtered.length-200} more matches — type more to narrow down
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>);
+              })()}
+            </div>
             <div style={{...crd({padding:12}),flex:1}}>
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Import mode</label>
               <div style={{display:"flex",gap:6,marginBottom:6}}>
@@ -736,11 +798,32 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 </button>
               </div>
               {cancelling&&<div style={{fontSize:11,color:C.txd,fontStyle:"italic",marginBottom:10}}>Waiting for the current batch (100 records) to complete before stopping. Records already sent will be kept.</div>}
-              {liveLog.entries.length>0&&(
-                <div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
+              {liveLog.entries.length>0&&(()=>{
+                // Cap the DOM-rendered rows for perf — the full log is still in memory
+                // (used by the "Export current log" button and the final result panel).
+                const LIVE_LOG_DOM_CAP=2000;
+                const totalProcessed=liveLog.counts.CREATED+liveLog.counts.UPSERTED+liveLog.counts.ERROR;
+                const visibleEntries=liveLog.entries.length>LIVE_LOG_DOM_CAP?liveLog.entries.slice(0,LIVE_LOG_DOM_CAP):liveLog.entries;
+                const exportLiveLog=()=>{
+                  const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
+                  const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
+                  const header=["CSV row","Status",...csvData.h,"Error detail"].map(esc).join(",");
+                  // Live entries are newest-first; flip to processing order for CSV
+                  const ordered=liveLog.entries.slice().reverse();
+                  const lines=ordered.map(e=>[e.csvRowNumber||0,e.status,...csvData.h.map(h=>esc(e.csvRow?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(","));
+                  dl("﻿"+[header,...lines].join("\n"),"text/csv;charset=utf-8",`live_log_${target}_${ts}.csv`);
+                };
+                return (<div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
                   <div style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12,fontWeight:600,flexWrap:"wrap",gap:6}}>
-                    <span>Live import log — last {liveLog.entries.length} of {(liveLog.counts.CREATED+liveLog.counts.UPSERTED+liveLog.counts.ERROR).toLocaleString()} processed</span>
-                    <span style={{fontSize:11,color:C.txd,fontWeight:400}}>(newest first · scroll horizontally for all columns)</span>
+                    <span>
+                      Live import log — {visibleEntries.length.toLocaleString()}{liveLog.entries.length>LIVE_LOG_DOM_CAP?` of ${liveLog.entries.length.toLocaleString()} shown`:""} (of {totalProcessed.toLocaleString()} processed)
+                    </span>
+                    <span style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:11,color:C.txd,fontWeight:400}}>(newest first · scroll for more)</span>
+                      <button onClick={exportLiveLog} style={{padding:"3px 9px",fontSize:11,background:"transparent",color:C.cy,border:`1px solid ${C.cy}55`,borderRadius:3,cursor:"pointer",fontWeight:600}} title="Download all processed rows so far as CSV">
+                        <I.Download/> Export current log
+                      </button>
+                    </span>
                   </div>
                   <div style={{maxHeight:320,overflow:"auto"}}>
                     <table style={{borderCollapse:"collapse",fontSize:12,tableLayout:"auto"}}>
@@ -750,7 +833,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                         <th style={{...ths(),textAlign:"center"}}>Status</th>
                         <th style={ths()}>Error detail</th>
                       </tr></thead>
-                      <tbody>{liveLog.entries.map((e,i)=>{
+                      <tbody>{visibleEntries.map((e,i)=>{
                         const isError=e.status==="ERROR";
                         const okColor=e.status==="CREATED"?C.gn:e.status==="UPSERTED"?C.cy:C.gn;
                         const sc=isError?C.rd:okColor;
@@ -769,8 +852,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                       })}</tbody>
                     </table>
                   </div>
-                </div>
-              )}
+                </div>);
+              })()}
             </div>
           ):(
             <div>

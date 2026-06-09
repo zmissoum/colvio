@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.10.7] — 2026-06-05
+### Changed
+- **Data Loader: Target entity picker is now searchable**
+  - Replaced the dropdown listing all entities alphabetically with an autocomplete-style search input. Type any part of the display name or logical name to filter in real time. Much faster on orgs with 200+ entities.
+  - Click outside or press Escape to dismiss without changing the selection. List capped at 200 visible matches with a hint to narrow down further.
+- **Data Loader: Live import log keeps the full log in memory (no more 100-row cap)**
+  - Previously, only the last 100 processed rows were kept in the live log state — older rows were lost during the import.
+  - Now all rows are kept; the rendered DOM portion is capped at 2000 rows for browser perf, but the full log lives in memory.
+  - New **Export current log** button in the live log header — downloads a CSV of every row processed so far, with all CSV columns + Success/Failed status + Dataverse error detail. Available mid-import or after completion.
+
 ## [1.10.6] — 2026-05-28
 ### Fixed
 - **API Tester: History entries didn't visibly pre-fill the form**
