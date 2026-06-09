@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.11] — 2026-06-09
+### Added (Data Loader UX — less tedious to fill in, batch 2)
+- **Saved mapping templates.** Configure a mapping once, save it as a named template, and reload it next time in one click — column mapping + transforms + parent lookups + upsert key + performance settings are all restored. Stored locally per entity (`chrome.storage.local`), up to 50 templates.
+  - "💾 Save this mapping as a template" on the Preview step.
+  - "📋 Templates" dropdown on the Mapping step lists templates for the current entity (with column/lookup/mode/date summary and a delete button).
+  - Templates apply **only within the same entity** (no metadata reload, no risk to the in-progress config). Mapping is matched by CSV column name; if the file or the entity changed since the template was saved, columns/fields that no longer exist are reported (not silently mis-applied) instead of failing.
+  - This goes beyond Salesforce Inspector, which re-derives mapping from headers every time and has no saved templates.
+
 ## [1.10.10] — 2026-06-09
 ### Changed (Data Loader UX — less tedious to fill in, batch 1)
 - **Empty Lookups step is now skipped.** When no parent lookups are detected, the Mapping "→" button goes straight to Preview, and the Lookups stepper node is dimmed/labelled "(none)" and not clickable. No more clicking through an empty step.
