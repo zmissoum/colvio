@@ -468,7 +468,11 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   return(
     <div style={{padding:bp.mobile?12:20,maxWidth:1100,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:bp.mobile?14:22,flexWrap:"wrap"}}>
-        {steps.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center"}}><button onClick={()=>i<=step&&setStep(i)} style={{display:"flex",alignItems:"center",gap:3,padding:bp.mobile?"4px 6px":"5px 10px",borderRadius:5,cursor:i<=step?"pointer":"default",background:i===step?C.sfa:"transparent",border:`1px solid ${i===step?C.vi:i<step?C.gnd:C.bd}`,fontSize:bp.mobile?10:11,color:i<=step?C.tx:C.txd,fontWeight:i===step?600:400}}><span style={{fontSize:bp.mobile?10:12}}>{i<step?"✅":s.i}</span>{(!bp.mobile||i===step)&&<span>{s.l}</span>}</button>{i<4&&<div style={{width:bp.mobile?6:14,height:1,background:i<step?C.gn:C.bd,margin:"0 2px"}}/>}</div>)}
+        {steps.map((s,i)=>{
+          const lookupsEmpty=i===2&&lookups.length===0&&csvData.h.length>0; // Lookups step with nothing to configure
+          const clickable=i<=step&&!lookupsEmpty;
+          return <div key={i} style={{display:"flex",alignItems:"center"}}><button onClick={()=>clickable&&setStep(i)} title={lookupsEmpty?"No parent lookups detected — step skipped":undefined} style={{display:"flex",alignItems:"center",gap:3,padding:bp.mobile?"4px 6px":"5px 10px",borderRadius:5,cursor:clickable?"pointer":"default",opacity:lookupsEmpty?0.45:1,background:i===step?C.sfa:"transparent",border:`1px solid ${i===step?C.vi:i<step?C.gnd:C.bd}`,fontSize:bp.mobile?10:11,color:i<=step?C.tx:C.txd,fontWeight:i===step?600:400}}><span style={{fontSize:bp.mobile?10:12}}>{i<step?"✅":s.i}</span>{(!bp.mobile||i===step)&&<span>{lookupsEmpty?`${s.l} (none)`:s.l}</span>}</button>{i<4&&<div style={{width:bp.mobile?6:14,height:1,background:i<step?C.gn:C.bd,margin:"0 2px"}}/>}</div>;
+        })}
       </div>
 
       {step===0&&(
@@ -627,7 +631,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               </tr>);})}</tbody>
             </table></div>
           </div>
-          <div style={{display:"flex",justifyContent:"flex-end",marginTop:12,gap:6}}><button onClick={()=>setStep(0)} style={bt()}>← Back</button><button onClick={()=>setStep(2)} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>Lookups →</button></div>
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:12,gap:6}}><button onClick={()=>setStep(0)} style={bt()}>← Back</button><button onClick={()=>setStep(lookups.length>0?2:3)} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{lookups.length>0?"Lookups →":"Preview →"}</button></div>
         </div>
       )}
 
@@ -714,6 +718,47 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:8,marginBottom:14}}>
             {[{l:"Records",v:csvData.r.length,c:C.cy},{l:"Columns",v:maps.filter(m=>m.d365).length,c:C.gn},{l:"Lookups",v:lookups.length,c:C.yw},{l:"Mode",v:uKey.d?"UPSERT":"INSERT",c:C.vi}].map((m,i)=><div key={i} style={{...crd({padding:"10px 12px",textAlign:"center"})}}><div style={{fontSize:18,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd,marginTop:1}}>{m.l}</div></div>)}
           </div>
+
+          {/* Reassurance sentence — plain-language description of exactly what Load will do */}
+          {(()=>{
+            const entDisplay=entityList.find(e=>e.l===target)?.d||target;
+            const n=csvData.r.length;
+            const isUpsert=!!uKey.d;
+            return (<div style={{...crd({padding:"10px 12px",background:C.cy+"0c",borderColor:C.cy+"44"}),marginBottom:12,fontSize:13,color:C.tx}}>
+              {isUpsert
+                ? <>Will <b style={{color:C.cy}}>UPSERT {n.toLocaleString()}</b> record{n>1?"s":""} into <b>{entDisplay}</b> — existing records matched on <code style={{...mono,fontSize:12,color:C.cy}}>{uKey.d}</code> are updated, the rest are created.</>
+                : <>Will <b style={{color:C.gn}}>CREATE {n.toLocaleString()}</b> new record{n>1?"s":""} in <b>{entDisplay}</b>.</>}
+              {canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassSyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
+            </div>);
+          })()}
+
+          {/* Pre-flight validation — non-blocking warnings, surfaced before Run instead of as mass errors */}
+          {(()=>{
+            const warnings=[];
+            // Required D365 fields not mapped (exclude PK + system/auto-managed fields)
+            const mappedSet=new Set(maps.filter(m=>m.d365&&!m.skip).map(m=>m.d365.toLowerCase()));
+            const pk=(target+"id").toLowerCase();
+            const autoManaged=new Set([pk,"ownerid","owningbusinessunit","owningteam","owninguser","statecode","statuscode","transactioncurrencyid","createdby","modifiedby","createdon","modifiedon"]);
+            const reqMissing=targetFieldsMeta.filter(f=>{const ln=(f.logical||f.l||"").toLowerCase();return f.required&&!autoManaged.has(ln)&&!mappedSet.has(ln);}).map(f=>f.logical||f.l);
+            if(reqMissing.length) warnings.push({k:"req",t:`${reqMissing.length} required field${reqMissing.length>1?"s":""} not mapped: ${reqMissing.slice(0,6).join(", ")}${reqMissing.length>6?` +${reqMissing.length-6} more`:""} — rows may fail unless D365 defaults them.`});
+            // Lookups in resolve mode without a key field → every row's lookup silently skipped
+            const badLookups=lookups.filter(lk=>lk.mode!=="direct"&&lk.csv&&lk.nav&&!lk.d365f&&!isAltKeyBind(lk));
+            if(badLookups.length) warnings.push({k:"lk",t:`${badLookups.length} lookup${badLookups.length>1?"s":""} have no D365 key field set — those relationships won't resolve (rows skipped or unlinked).`});
+            // Picklist/State/Status columns mapped without a transform chosen
+            const picklistTypes=new Set(["Picklist","State","Status"]);
+            const pickNoTransform=maps.filter(m=>{if(!m.d365||m.skip||m.transform)return false;const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);return meta&&picklistTypes.has(meta.type||meta.t);}).map(m=>m.d365);
+            if(pickNoTransform.length) warnings.push({k:"pick",t:`${pickNoTransform.length} option-set field${pickNoTransform.length>1?"s":""} have no transform chosen: ${pickNoTransform.slice(0,5).join(", ")} — labels won't convert to option values.`});
+            // UPSERT key set but no CSV column chosen
+            if(uKey.d&&!uKey.c) warnings.push({k:"uk",t:`UPSERT key "${uKey.d}" has no CSV column selected — the import can't match existing records.`});
+            if(!warnings.length) return null;
+            return (<div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:600,color:C.yw,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>⚠ Pre-flight checks ({warnings.length}) — review before loading</div>
+              <ul style={{margin:0,paddingLeft:18,display:"flex",flexDirection:"column",gap:4}}>
+                {warnings.map(w=><li key={w.k} style={{fontSize:12,color:C.txm}}>{w.t}</li>)}
+              </ul>
+              <div style={{fontSize:11,color:C.txd,marginTop:6,fontStyle:"italic"}}>These are warnings, not blockers — you can still load if this is intentional.</div>
+            </div>);
+          })()}
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
@@ -777,7 +822,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           </div>
           )}
 
-          <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(2)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button><button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button></div>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button><button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button></div>
         </div>
       )}
 
