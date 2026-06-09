@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.14] — 2026-06-09
+### Added
+- **Data Loader: per-row request details in the import log.** Click any row in the live log or the result Import Log to expand the exact Dataverse request that was sent for it — HTTP method (POST/PATCH), the request URL (incl. the alt-key/GUID and `If-Match: *` for UPDATE), and the JSON payload (the mapped D365 attributes with their transformed values and `@odata.bind` lookups).
+- **Exported logs now include Method, Request URL, and Payload columns** (both "Export current log" and "Download Log"), so the saved CSV is a full audit of what was sent per row — ideal for diagnosing failures offline.
+- Request details are reconstructed on demand from the original CSV row + mapping config (nothing extra stored per row → no memory impact on large imports). Resolve-mode lookup GUIDs aren't retained after the run, so those bind values show `<resolved at runtime>`.
+
 ## [1.10.13] — 2026-06-09
 ### Added
 - **Data Loader: UPDATE mode** (third import mode alongside CREATE and UPSERT). UPDATE only modifies records that already exist — rows whose key matches no record **fail instead of being created** (uses the `If-Match: *` header on each PATCH). Useful when you want to enrich/correct existing data without accidentally inserting new rows. The key configuration is shared with UPSERT; the Preview reassurance sentence, mode tile, and live counters reflect the chosen mode. UPDATE is also saved/restored in mapping templates.

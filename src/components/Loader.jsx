@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
 import Tooltip from "./Tooltip.jsx";
@@ -99,6 +99,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const isLive = orgInfo?.isExtension;
   const[loadProgress,setLoadProgress]=useState({done:0,total:0,current:""});
   const[startedAt,setStartedAt]=useState(null); // wall-clock time the import was launched (Date)
+  const[expandedLog,setExpandedLog]=useState(null); // csvRowNumber of the live-log row expanded to show its request
   // Mapping templates — save/restore a column mapping + lookup config per entity (chrome.storage.local).
   const[templates,setTemplates]=useState([]);
   const[showTemplates,setShowTemplates]=useState(false);
@@ -371,12 +372,51 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     return null;
   };
 
+  // Reconstruct the exact Dataverse request for a CSV row (method, URL path, body attributes) —
+  // used to enrich the post-import log. Mirrors doLoad's record-building so what's shown matches
+  // what was sent. Resolve-mode lookup GUIDs aren't retained after the run, so those bind values
+  // show a placeholder. Reconstructed on demand (not stored per row) to stay memory-safe on big loads.
+  const REQ_SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
+  const buildRequestForRow=(row)=>{
+    if(!row) return null;
+    const targetEnt=entityList.find(e=>e.l===target);
+    const entitySet=targetEnt?.p||target+"s";
+    const rec={};
+    for(const m of maps){
+      if(!m.d365||m.skip) continue;
+      if(REQ_SYSTEM_FIELDS.has(m.d365.toLowerCase())) continue;
+      const rawVal=row[m.csv];
+      if(rawVal===undefined||rawVal===null||rawVal==="") continue;
+      const val=applyTransform(rawVal,m.transform);
+      if(val!==null&&val!==undefined&&val!=="") rec[m.d365]=val;
+    }
+    for(const lk of lookups){
+      if(!lk.csv||!lk.nav) continue;
+      const val=row[lk.csv];
+      if(!val) continue;
+      if(lk.mode==="direct") rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${val})`;
+      else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${lk.d365f}='${e}')`;}
+      else rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(<resolved at runtime>)`;
+    }
+    if(uKey.d&&uKey.c&&row[uKey.c]){
+      const isPK=uKey.d.toLowerCase()===target+"id";
+      const keyVal=String(row[uKey.c]);
+      if(!isPK) rec[uKey.d]=row[uKey.c];
+      const path=isPK?`${entitySet}(${keyVal})`:`${entitySet}(${uKey.d}='${keyVal.replace(/'/g,"''")}')`;
+      const method="PATCH";
+      const headers={};
+      if(updateOnly) headers["If-Match"]="*";
+      return {method,path,body:rec,headers};
+    }
+    return {method:"POST",path:entitySet,body:rec,headers:{}};
+  };
+
   const doLoad=async()=>{
     setStep(4);setResult(null);
     loadAbort.current=false;setCancelling(false);
     setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
     fullLog.current=[];
-    const launchedAt=new Date();setStartedAt(launchedAt);
+    const launchedAt=new Date();setStartedAt(launchedAt);setExpandedLog(null);
     const rows=csvData.r;
     const SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
     const activeMaps=maps.filter(m=>m.d365 && !m.skip && !SYSTEM_FIELDS.has(m.d365.toLowerCase()));
@@ -968,9 +1008,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 const exportLiveLog=()=>{
                   const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
                   const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
-                  const header=["CSV row","Status",...csvData.h,"Error detail"].map(esc).join(",");
-                  // fullLog is in processing order; reconstruct columns from the original parsed rows (csvData.r)
-                  const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;return [e.csvRowNumber||0,e.status,...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
+                  // Each row now also carries the exact request that was sent: Method, Request URL, and Payload (JSON).
+                  const header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Error detail"].map(esc).join(",");
+                  const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
                   dl("﻿"+[header,...lines].join("\n"),"text/csv;charset=utf-8",`live_log_${target}_${ts}.csv`);
                 };
                 return (<div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
@@ -998,9 +1038,13 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                         const okColor=e.status==="CREATED"?C.gn:e.status==="UPSERTED"?C.cy:C.gn;
                         const sc=isError?C.rd:okColor;
                         const label=isError?"Failed":"Success";
+                        const isExpanded=expandedLog===e.csvRowNumber;
+                        const totalCols=2+csvData.h.length+1; // line + columns + status + detail
+                        const req=isExpanded?buildRequestForRow(e.csvRow):null;
                         return (
-                          <tr key={`${e.row}-${i}`} style={{borderBottom:`1px solid ${C.bd}`,background:isError?C.rd+"08":"transparent"}}>
-                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{(e.csvRowNumber||0).toLocaleString()}</td>
+                          <Fragment key={`${e.row}-${i}`}>
+                          <tr onClick={()=>setExpandedLog(isExpanded?null:e.csvRowNumber)} title="Click to see the request sent for this row" style={{borderBottom:`1px solid ${C.bd}`,background:isExpanded?C.vi+"11":isError?C.rd+"08":"transparent",cursor:"pointer"}}>
+                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{isExpanded?"▾ ":"▸ "}{(e.csvRowNumber||0).toLocaleString()}</td>
                             {csvData.h.map(h=>{
                               const val=e.csvRow?.[h]??"";
                               return <td key={h} style={{...tds,color:C.txd,fontSize:11,...mono}} title={String(val)}>{String(val)}</td>;
@@ -1008,6 +1052,16 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                             <td style={{...tds,textAlign:"center"}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:3,background:sc+"22",color:sc,fontWeight:700}}>{label}</span></td>
                             <td style={{...tds,color:C.rd,fontSize:11,...mono,whiteSpace:"normal",wordBreak:"break-word"}}>{isError?(e.msg||"").substring(0,300):""}</td>
                           </tr>
+                          {isExpanded&&req&&(
+                            <tr style={{background:C.bg}}>
+                              <td colSpan={totalCols} style={{padding:"8px 12px",borderBottom:`1px solid ${C.bd}`}}>
+                                <div style={{fontSize:11,...mono,color:C.txm,marginBottom:4}}><span style={{color:req.method==="POST"?C.gn:C.or,fontWeight:700}}>{req.method}</span> <span style={{color:C.cy}}>/api/data/v9.2/{req.path}</span>{req.headers&&req.headers["If-Match"]?<span style={{color:C.or}}>  ·  If-Match: *</span>:null}</div>
+                                <pre style={{margin:0,padding:8,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:4,fontSize:11,...mono,color:C.tx,maxHeight:200,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{JSON.stringify(req.body,null,2)}</pre>
+                                {isError&&<div style={{fontSize:11,color:C.rd,marginTop:4,...mono}}>↳ {e.msg}</div>}
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         );
                       })}</tbody>
                     </table>
@@ -1041,21 +1095,35 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                       {" "}<span style={{color:C.rd}}>● {result.log.filter(e=>e.status==="ERROR").length} errors</span>
                     </span>
                   </div>
+                  <div style={{fontSize:11,color:C.txd,marginBottom:4,fontStyle:"italic"}}>Click a row to see the exact request that was sent.</div>
                   <div style={{maxHeight:300,overflow:"auto"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead><tr>
-                        <th style={{...ths(),width:50}}>Row</th>
+                        <th style={{...ths(),width:60}}>Row</th>
                         <th style={{...ths(),width:90}}>Status</th>
                         <th style={ths()}>Detail</th>
                       </tr></thead>
                       <tbody>{result.log.map((e,i)=>{
                         const sc=e.status==="CREATED"?C.gn:e.status==="UPSERTED"?C.cy:e.status==="SKIPPED"?C.yw:C.rd;
+                        const canExpand=e.row>=2; // has a CSV row to reconstruct (skip synthetic row 0 entries)
+                        const isExpanded=canExpand&&expandedLog===e.row;
+                        const req=isExpanded?buildRequestForRow(csvData.r[e.row-2]):null;
                         return(
-                          <tr key={i} style={{borderBottom:`1px solid ${C.bd}`}} onMouseEnter={ev=>ev.currentTarget.style.background=C.sfh} onMouseLeave={ev=>ev.currentTarget.style.background="transparent"}>
-                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{e.row}</td>
+                          <Fragment key={i}>
+                          <tr onClick={()=>canExpand&&setExpandedLog(isExpanded?null:e.row)} style={{borderBottom:`1px solid ${C.bd}`,cursor:canExpand?"pointer":"default",background:isExpanded?C.vi+"11":"transparent"}} onMouseEnter={ev=>{if(!isExpanded)ev.currentTarget.style.background=C.sfh;}} onMouseLeave={ev=>{if(!isExpanded)ev.currentTarget.style.background="transparent";}}>
+                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{canExpand?(isExpanded?"▾ ":"▸ "):""}{e.row}</td>
                             <td style={tds}><span style={{fontSize:11,padding:"2px 8px",borderRadius:3,background:sc+"22",color:sc,fontWeight:600}}>{e.status}</span></td>
                             <td style={{...tds,color:e.status==="ERROR"?C.rd:C.txm,fontSize:12,...mono}}>{e.detail}</td>
                           </tr>
+                          {isExpanded&&req&&(
+                            <tr style={{background:C.bg}}>
+                              <td colSpan={3} style={{padding:"8px 12px",borderBottom:`1px solid ${C.bd}`}}>
+                                <div style={{fontSize:11,...mono,color:C.txm,marginBottom:4}}><span style={{color:req.method==="POST"?C.gn:C.or,fontWeight:700}}>{req.method}</span> <span style={{color:C.cy}}>/api/data/v9.2/{req.path}</span>{req.headers&&req.headers["If-Match"]?<span style={{color:C.or}}>  ·  If-Match: *</span>:null}</div>
+                                <pre style={{margin:0,padding:8,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:4,fontSize:11,...mono,color:C.tx,maxHeight:220,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{JSON.stringify(req.body,null,2)}</pre>
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         );
                       })}</tbody>
                     </table>
@@ -1073,8 +1141,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   const full=fullLog.current||[];
                   let lines, header;
                   if(full.length){
-                    header=["CSV row","Status",...csvData.h,"Detail"].map(esc).join(",");
-                    lines=full.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;return [e.csvRowNumber||0,e.status,...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"OK")].join(",");});
+                    header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Detail"].map(esc).join(",");
+                    lines=full.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"OK")].join(",");});
                   }else{
                     header="Row,Status,Detail";
                     lines=(result.log||[]).map(e=>[e.row,e.status,esc(e.detail)].join(","));
