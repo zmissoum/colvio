@@ -48,7 +48,9 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.local) return;
     chrome.storage.local.get(["colvio_api_tester_history"], (r) => {
-      if (r?.colvio_api_tester_history) setHistory(r.colvio_api_tester_history);
+      // Guard against corrupted / older-shape storage — a non-array would crash history.map on render.
+      const h = r?.colvio_api_tester_history;
+      if (Array.isArray(h)) setHistory(h.filter(e => e && typeof e === "object"));
     });
   }, []);
 
@@ -76,7 +78,10 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   }, [body, method]);
 
   const hasBody = method !== "GET" && method !== "DELETE" && method !== "HEAD";
-  const fullUrl = `${orgInfo?.clientUrl || ""}${API_PREFIX}${path}`;
+  // app.jsx exposes the org base as `orgUrl` in the extension; `clientUrl` only exists on the
+  // standalone mock. Fall back through both so the URL preview + cURL export show the real origin.
+  const orgBase = orgInfo?.orgUrl || orgInfo?.clientUrl || "";
+  const fullUrl = `${orgBase}${API_PREFIX}${path}`;
 
   const sendRequest = async () => {
     setLoading(true); setError(""); setResp(null);
@@ -101,9 +106,12 @@ export default function ApiTester({ bp, orgInfo, theme }) {
         status: r.status, ok: r.ok,
         elapsed: r.elapsed, at: new Date().toISOString(),
       };
-      const updated = [entry, ...history].slice(0, 50);
-      setHistory(updated);
-      try { chrome.storage?.local?.set({ colvio_api_tester_history: updated }); } catch {}
+      // Functional updater avoids dropping entries when two sends race before a re-render flush.
+      setHistory(prev => {
+        const updated = [entry, ...prev].slice(0, 50);
+        try { chrome.storage?.local?.set({ colvio_api_tester_history: updated }); } catch {}
+        return updated;
+      });
     } catch (e) {
       setError(e.message || String(e));
     }

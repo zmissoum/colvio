@@ -597,9 +597,22 @@
               params.bypassSyncLogic ? "MSCRM.BypassSynchronousLogic: true" : null,
             ].filter(Boolean).map(l => l + "\r\n").join("");
 
-            const buildPath = (item) => isPrimaryKey
-              ? `${entitySet}(${item.keyValue})`
-              : `${entitySet}(${keyField}='${String(item.keyValue).replace(/'/g, "''")}')`;
+            // Sanitize the key value before it goes into the multipart request line — prevents
+            // changeset break-out / HTTP-request injection when a CSV key column contains \r\n or
+            // path metacharacters (malformed or hostile data). Done per-record, no chunk abort.
+            const stripCtrl = (v) => String(v ?? "").replace(/[\x00-\x1f\x7f]/g, "");
+            const buildPath = (item) => {
+              if (isPrimaryKey) {
+                // PK upsert: value is a bare GUID inside (…) with no quotes — strip anything that
+                // isn't a GUID character so a malicious value can't inject path segments. A
+                // non-GUID result just yields a clean per-record 400/404, not an injection.
+                const guid = stripCtrl(item.keyValue).replace(/[^0-9a-fA-F-]/g, "");
+                return `${entitySet}(${guid})`;
+              }
+              // Alt-key upsert: value sits inside '…' (OData string literal). Escaping quotes +
+              // stripping control chars is sufficient; ) or / inside quotes can't break out.
+              return `${entitySet}(${keyField}='${stripCtrl(item.keyValue).replace(/'/g, "''")}')`;
+            };
             const buildClean = (item) => {
               const c = {};
               for (const [k, v] of Object.entries(item.record)) {
