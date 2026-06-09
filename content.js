@@ -595,8 +595,11 @@
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
 
-            // Microsoft bypass headers — see batchCreate above for details.
+            // Per-record request headers. `If-Match: *` forces UPDATE-ONLY semantics:
+            // Dataverse updates an existing record but returns 404 instead of creating one
+            // when it's missing (vs. plain PATCH-by-key which upserts). Plus the MSCRM bypass headers.
             const bypassHeaderLines = [
+              params.updateOnly ? "If-Match: *" : null,
               params.bypassPlugins ? "MSCRM.BypassCustomPluginExecution: true" : null,
               params.suppressDuplicates ? "MSCRM.SuppressDuplicateDetection: true" : null,
               params.bypassSyncLogic ? "MSCRM.BypassSynchronousLogic: true" : null,

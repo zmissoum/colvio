@@ -10,7 +10,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // `permissions` may be null briefly during connect — boosters stay hidden until the
   // probe completes (safer than flashing them then hiding).
   const canShowSpeedBoosters = permissions?.canBypassPlugins === true;
-  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
+  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
   // Searchable entity picker — replaces the old dropdown so users can find an entity by typing a few letters.
   const[entitySearch,setEntitySearch]=useState("");
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
@@ -136,7 +136,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
   const saveTemplate=(name)=>{
     const clean=(name||"").trim(); if(!clean) return;
-    const tpl={id:Date.now(),name:clean,entity:target,maps,lookups,uKey,batchSize,threads,savedAt:new Date().toISOString()};
+    const tpl={id:Date.now(),name:clean,entity:target,maps,lookups,uKey,updateOnly,batchSize,threads,savedAt:new Date().toISOString()};
     setTemplates(prev=>{const updated=[tpl,...prev.filter(t=>!(t.name===clean&&t.entity===target))].slice(0,50);persistTemplates(updated);return updated;});
     setSaveTplName("");
   };
@@ -166,6 +166,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     setLookups(tplLookups);
     // Upsert key: restore D365 side; CSV side only if the column still exists.
     if(tpl.uKey) setUKey({d:tpl.uKey.d||"",c:headerSet.has(tpl.uKey.c)?tpl.uKey.c:""});
+    setUpdateOnly(!!tpl.updateOnly);
     if(tpl.batchSize) setBatchSize(Math.max(1,Math.min(1000,tpl.batchSize)));
     if(tpl.threads) setThreads(Math.max(1,Math.min(10,tpl.threads)));
     // Report mismatches so the user knows the template wasn't a perfect fit.
@@ -496,11 +497,11 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     }
 
     if(upsertItems.length>0 && !loadAbort.current){
-      setLoadProgress({done:createRecords.length,total:total,current:`Sending ${upsertItems.length} records (UPSERT)...`});
+      setLoadProgress({done:createRecords.length,total:total,current:`Sending ${upsertItems.length} records (${updateOnly?"UPDATE":"UPSERT"})...`});
       try{
         const isPK = uKey.d.toLowerCase() === target + "id";
         const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
-          setLoadProgress({done:createRecords.length+p.done,total:total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (UPSERT) ${p.done}/${p.total}...`});
+          setLoadProgress({done:createRecords.length+p.done,total:total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
           if(p.newLog?.length){
             const enriched=p.newLog.map(e=>{const csvIdx=upsertRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
             for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
@@ -511,7 +512,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};
             });
           }
-        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
+        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic,updateOnly});
         updated=res.updated||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
         if(res.aborted){const remaining=upsertItems.length-updated;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
@@ -622,20 +623,24 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             </div>
             <div style={{...crd({padding:12}),flex:1}}>
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Import mode</label>
-              <div style={{display:"flex",gap:6,marginBottom:6}}>
-                <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                  <input type="radio" checked={!uKey.d} onChange={()=>setUKey({d:"",c:""})} style={{accentColor:C.gn}}/> CREATE (new records)
-                </label>
-                <label style={{fontSize:12,color:uKey.d?C.cy:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                  <input type="radio" checked={!!uKey.d} onChange={()=>{
-                    // Prefer an alt-key over the PK as the default upsert key (PK only works if CSV has GUIDs)
-                    const pk=target+"id";
-                    const defaultKey=targetAltKeys[0]||pk;
-                    const matchingCol=csvData.h.find(h=>h.toLowerCase()===defaultKey.toLowerCase());
-                    setUKey({d:defaultKey,c:matchingCol||csvData.h[0]||""});
-                  }} style={{accentColor:C.cy}}/> UPSERT (update or create)
-                </label>
+              <div style={{display:"flex",gap:10,marginBottom:6,flexWrap:"wrap"}}>
+                {(()=>{
+                  // Default key picker shared by UPSERT and UPDATE — prefer an alt-key over the PK.
+                  const ensureKey=()=>{ if(uKey.d) return; const pk=target+"id"; const defaultKey=targetAltKeys[0]||pk; const matchingCol=csvData.h.find(h=>h.toLowerCase()===defaultKey.toLowerCase()); setUKey({d:defaultKey,c:matchingCol||csvData.h[0]||""}); };
+                  return (<>
+                    <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
+                    </label>
+                    <label style={{fontSize:12,color:uKey.d&&!updateOnly?C.cy:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" checked={!!uKey.d&&!updateOnly} onChange={()=>{ensureKey();setUpdateOnly(false);}} style={{accentColor:C.cy}}/> UPSERT (update or create)
+                    </label>
+                    <label style={{fontSize:12,color:uKey.d&&updateOnly?C.or:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" checked={!!uKey.d&&updateOnly} onChange={()=>{ensureKey();setUpdateOnly(true);}} style={{accentColor:C.or}}/> UPDATE (existing only)
+                    </label>
+                  </>);
+                })()}
               </div>
+              {uKey.d&&updateOnly&&<div style={{fontSize:11,color:C.or,marginBottom:6}}>Rows with no matching record will <b>fail</b> (not created) — uses <code style={{...mono,fontSize:11}}>If-Match: *</code>.</div>}
               {uKey.d&&(()=>{
                 const pk=target+"id";
                 const isPK=uKey.d.toLowerCase()===pk;
@@ -808,17 +813,19 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       {step===3&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:8,marginBottom:14}}>
-            {[{l:"Records",v:csvData.r.length,c:C.cy},{l:"Columns",v:maps.filter(m=>m.d365).length,c:C.gn},{l:"Lookups",v:lookups.length,c:C.yw},{l:"Mode",v:uKey.d?"UPSERT":"INSERT",c:C.vi}].map((m,i)=><div key={i} style={{...crd({padding:"10px 12px",textAlign:"center"})}}><div style={{fontSize:18,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd,marginTop:1}}>{m.l}</div></div>)}
+            {[{l:"Records",v:csvData.r.length,c:C.cy},{l:"Columns",v:maps.filter(m=>m.d365).length,c:C.gn},{l:"Lookups",v:lookups.length,c:C.yw},{l:"Mode",v:uKey.d?(updateOnly?"UPDATE":"UPSERT"):"CREATE",c:C.vi}].map((m,i)=><div key={i} style={{...crd({padding:"10px 12px",textAlign:"center"})}}><div style={{fontSize:18,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd,marginTop:1}}>{m.l}</div></div>)}
           </div>
 
           {/* Reassurance sentence — plain-language description of exactly what Load will do */}
           {(()=>{
             const entDisplay=entityList.find(e=>e.l===target)?.d||target;
             const n=csvData.r.length;
-            const isUpsert=!!uKey.d;
-            return (<div style={{...crd({padding:"10px 12px",background:C.cy+"0c",borderColor:C.cy+"44"}),marginBottom:12,fontSize:13,color:C.tx}}>
-              {isUpsert
+            const mode=uKey.d?(updateOnly?"update":"upsert"):"create";
+            return (<div style={{...crd({padding:"10px 12px",background:(mode==="update"?C.or:C.cy)+"0c",borderColor:(mode==="update"?C.or:C.cy)+"44"}),marginBottom:12,fontSize:13,color:C.tx}}>
+              {mode==="upsert"
                 ? <>Will <b style={{color:C.cy}}>UPSERT {n.toLocaleString()}</b> record{n>1?"s":""} into <b>{entDisplay}</b> — existing records matched on <code style={{...mono,fontSize:12,color:C.cy}}>{uKey.d}</code> are updated, the rest are created.</>
+                : mode==="update"
+                ? <>Will <b style={{color:C.or}}>UPDATE {n.toLocaleString()}</b> existing record{n>1?"s":""} in <b>{entDisplay}</b> matched on <code style={{...mono,fontSize:12,color:C.or}}>{uKey.d}</code> — rows with <b>no matching record fail</b> (nothing is created).</>
                 : <>Will <b style={{color:C.gn}}>CREATE {n.toLocaleString()}</b> new record{n>1?"s":""} in <b>{entDisplay}</b>.</>}
               {canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassSyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
             </div>);
@@ -940,7 +947,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                     {startedAt&&<span>🕐 Started {startedAt.toLocaleString()}</span>}
                     <span>{loadProgress.done.toLocaleString()} / {loadProgress.total.toLocaleString()} records</span>
                     {liveLog.counts.CREATED>0&&<span style={{color:C.gn,fontWeight:600}}>● {liveLog.counts.CREATED.toLocaleString()} created</span>}
-                    {liveLog.counts.UPSERTED>0&&<span style={{color:C.cy,fontWeight:600}}>● {liveLog.counts.UPSERTED.toLocaleString()} upserted</span>}
+                    {liveLog.counts.UPSERTED>0&&<span style={{color:C.cy,fontWeight:600}}>● {liveLog.counts.UPSERTED.toLocaleString()} {updateOnly?"updated":"upserted"}</span>}
                     {liveLog.counts.ERROR>0&&<span style={{color:C.rd,fontWeight:600}}>● {liveLog.counts.ERROR.toLocaleString()} errors</span>}
                   </div>
                 </div>
