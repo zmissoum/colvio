@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.8] — 2026-06-09
+### Fixed (audit pass — security + correctness)
+- **CRITICAL (regression in 1.10.7): unbounded live-log memory → tab crash on large imports.** The live import log kept every processed row (with its full CSV row object) in React state and spread-copied the whole growing array on every progress callback — O(n²) churn and ~1GB+ retained on a 600k-record import. Now a lightweight `fullLog` ref records every row (`{csvRowNumber, status, msg}` only, ~a few MB for 600k), while React state holds a bounded 2000-row buffer for the live table. The full log powers "Export current log" and the final "Download Log" (columns reconstructed from the parsed CSV at export time).
+- **HIGH (security): HTTP-request/changeset injection via the upsert key value.** In `batchUpsert`, the alt-key / primary-key value flowed into the multipart `$batch` request line with only single-quote escaping. A key column containing `\r\n` (malformed or hostile CSV) could break out of its changeset and inject arbitrary operations. Now control characters are stripped from the key value, and primary-key (GUID) values are reduced to GUID characters only — neutralizing path/CRLF injection without aborting the batch (a bad value yields a clean per-record error instead).
+- **HIGH (correctness): final Import Log fabricated row numbers.** The result log was rebuilt from success *counts* (`1..N` synthetic rows) instead of the real per-row results, so "OK" rows didn't map to actual CSV lines. It's now built from the real per-row `fullLog`, with accurate CSV line numbers, capped at 5000 in the table (note shown) — the full set is always available via Download Log.
+- **MED (API Tester): URL preview and "Copy as cURL" showed no origin.** `fullUrl` read `orgInfo.clientUrl`, which only exists on the standalone mock; the extension exposes `orgUrl`. Now falls back through both, so the displayed URL and cURL command include the real org host.
+- **MED (API Tester): history robustness.** Loading history now validates it's an array (a corrupted/older shape previously crashed the whole tab on render). Saving uses a functional state updater so two quick sends can't drop an entry.
+- **LOW (theme): `localStorage` access in the OS-theme listener is now wrapped in try/catch** — no longer throws on every OS theme change in private/blocked-storage contexts.
+
+### Known / accepted (reviewed, low risk)
+- OData `$filter`/`$select` in the `query` action are interpolated without operator whitelisting — scoped to the user's own session privileges (no cross-tenant/privilege escalation), acceptable for a developer tool. The Builder mode sanitizes numeric/GUID/string values against injection.
+- `$batch` response parsing splits on a `Content-Type: application/http` marker; a Dataverse error message containing that exact literal could mis-number a row in the log (cosmetic, very low probability). Padding logic bounds the impact.
+
 ## [1.10.7] — 2026-06-05
 ### Changed
 - **Data Loader: Target entity picker is now searchable**

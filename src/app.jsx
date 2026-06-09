@@ -110,7 +110,9 @@ export default function App(){
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
     if (!mq) return;
     const handler = (e) => {
-      if (!localStorage.getItem("colvio_theme")) setTheme(e.matches ? "dark" : "light");
+      // localStorage can throw in private/blocked contexts — fail open to following the OS theme.
+      let saved=null; try{saved=localStorage.getItem("colvio_theme");}catch{}
+      if (!saved) setTheme(e.matches ? "dark" : "light");
     };
     mq.addEventListener?.('change', handler);
     return () => mq.removeEventListener?.('change', handler);

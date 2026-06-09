@@ -98,9 +98,14 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
   const isLive = orgInfo?.isExtension;
   const[loadProgress,setLoadProgress]=useState({done:0,total:0,current:""});
-  // Live per-row log during import: entries holds the last 200 rows processed (newest first),
-  // counts tracks running totals across all processed rows.
+  // Live per-row log during import. Two-tier to avoid unbounded memory on huge imports:
+  //  - liveLog.entries (state): bounded ring buffer of the most recent rows (newest first) for the DOM table.
+  //  - fullLog (ref): lightweight record of EVERY processed row { csvRowNumber, status, msg } — no full csvRow copy,
+  //    so 600k rows ≈ a few MB. Used by "Export current log" and to build the final result.log.
+  //    The original column values are reconstructed from `rows` at export time via csvRowNumber.
+  const LIVE_LOG_BUFFER=2000; // rows kept in React state for live display
   const[liveLog,setLiveLog]=useState({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
+  const fullLog=useRef([]);
   const[cancelling,setCancelling]=useState(false);
   // Tunable performance knobs (à la Salesforce Inspector). Defaults match Inspector's UX.
   const[batchSize,setBatchSize]=useState(200);
@@ -300,6 +305,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     setStep(4);setResult(null);
     loadAbort.current=false;setCancelling(false);
     setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
+    fullLog.current=[];
     const rows=csvData.r;
     const SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
     const activeMaps=maps.filter(m=>m.d365 && !m.skip && !SYSTEM_FIELDS.has(m.d365.toLowerCase()));
@@ -401,19 +407,18 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           if(p.newLog?.length){
             // Enrich each log entry with the original CSV row data (lookup via parallel index map)
             const enriched=p.newLog.map(e=>{const csvIdx=createRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
+            // Full log: lightweight (no csvRow copy) — every processed row, reconstructed from `rows` at export time.
+            for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
             setLiveLog(prev=>{
               const newCounts={...prev.counts};
               for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
-              // Keep all entries during the import — the user explicitly wants the full log.
-              // The render layer caps the DOM portion to LIVE_LOG_DOM_CAP for perf; entries beyond that
-              // are still in memory (used by the "Export current log" button + the final result panel).
-              return {entries:[...enriched.slice().reverse(),...prev.entries],counts:newCounts};
+              // Bounded ring buffer for the live DOM table (newest first); full history lives in fullLog ref.
+              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};
             });
           }
         },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
         created=res.created||0;
-        for(let j=0;j<created;j++) logEntries.push({row:j+1,status:"CREATED",detail:"OK",d365Id:""});
-        if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
+        if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
         if(res.aborted){const remaining=createRecords.length-created;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch CREATE failed: ${e.message}`,payload:""});
@@ -428,19 +433,17 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           setLoadProgress({done:createRecords.length+p.done,total:total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (UPSERT) ${p.done}/${p.total}...`});
           if(p.newLog?.length){
             const enriched=p.newLog.map(e=>{const csvIdx=upsertRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
+            for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
             setLiveLog(prev=>{
               const newCounts={...prev.counts};
               for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
-              // Keep all entries during the import — the user explicitly wants the full log.
-              // The render layer caps the DOM portion to LIVE_LOG_DOM_CAP for perf; entries beyond that
-              // are still in memory (used by the "Export current log" button + the final result panel).
-              return {entries:[...enriched.slice().reverse(),...prev.entries],counts:newCounts};
+              // Bounded ring buffer for the live DOM table (newest first); full history lives in fullLog ref.
+              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};
             });
           }
         },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
         updated=res.updated||0;
-        for(let j=0;j<updated;j++) logEntries.push({row:createRecords.length+j+1,status:"UPSERTED",detail:"OK",d365Id:""});
-        if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});logEntries.push({row:e.row||0,status:"ERROR",detail:e.msg||"Batch error",d365Id:""});}); }
+        if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
         if(res.aborted){const remaining=upsertItems.length-updated;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch UPSERT failed: ${e.message}`,payload:""});
@@ -449,7 +452,12 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
     const elapsed=((Date.now()-startTime)/1000).toFixed(1);
     const wasCancelled=loadAbort.current;
-    setResult({created,updated,errors,skipped,elapsed,log:logEntries,entity:target,totalRows:total,cancelled:wasCancelled});
+    // Final log = real per-row batch results (from fullLog ref) + prep-loop entries (skipped lookups, cancellations).
+    // Capped to keep the result-panel table renderable; full data is available via "Export current log".
+    const batchLog=fullLog.current.map(e=>({row:e.csvRowNumber,status:e.status,detail:e.status==="ERROR"?(e.msg||"Batch error"):"OK",d365Id:""}));
+    const combinedLog=[...logEntries,...batchLog];
+    const resultLog=combinedLog.length>5000?combinedLog.slice(0,5000):combinedLog;
+    setResult({created,updated,errors,skipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled});
     setLoadProgress({done:total,total,current:wasCancelled?"Cancelled":"Done"});
     setCancelling(false);
   };
@@ -799,28 +807,26 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               </div>
               {cancelling&&<div style={{fontSize:11,color:C.txd,fontStyle:"italic",marginBottom:10}}>Waiting for the current batch (100 records) to complete before stopping. Records already sent will be kept.</div>}
               {liveLog.entries.length>0&&(()=>{
-                // Cap the DOM-rendered rows for perf — the full log is still in memory
-                // (used by the "Export current log" button and the final result panel).
-                const LIVE_LOG_DOM_CAP=2000;
+                // The DOM shows the bounded live buffer (newest first). The FULL log lives in fullLog.current
+                // (lightweight) and is what "Export current log" writes — reconstructing columns from csvData.r.
                 const totalProcessed=liveLog.counts.CREATED+liveLog.counts.UPSERTED+liveLog.counts.ERROR;
-                const visibleEntries=liveLog.entries.length>LIVE_LOG_DOM_CAP?liveLog.entries.slice(0,LIVE_LOG_DOM_CAP):liveLog.entries;
+                const visibleEntries=liveLog.entries;
                 const exportLiveLog=()=>{
                   const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
                   const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
                   const header=["CSV row","Status",...csvData.h,"Error detail"].map(esc).join(",");
-                  // Live entries are newest-first; flip to processing order for CSV
-                  const ordered=liveLog.entries.slice().reverse();
-                  const lines=ordered.map(e=>[e.csvRowNumber||0,e.status,...csvData.h.map(h=>esc(e.csvRow?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(","));
+                  // fullLog is in processing order; reconstruct columns from the original parsed rows (csvData.r)
+                  const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;return [e.csvRowNumber||0,e.status,...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
                   dl("﻿"+[header,...lines].join("\n"),"text/csv;charset=utf-8",`live_log_${target}_${ts}.csv`);
                 };
                 return (<div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
                   <div style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12,fontWeight:600,flexWrap:"wrap",gap:6}}>
                     <span>
-                      Live import log — {visibleEntries.length.toLocaleString()}{liveLog.entries.length>LIVE_LOG_DOM_CAP?` of ${liveLog.entries.length.toLocaleString()} shown`:""} (of {totalProcessed.toLocaleString()} processed)
+                      Live import log — showing latest {visibleEntries.length.toLocaleString()} of {totalProcessed.toLocaleString()} processed
                     </span>
                     <span style={{display:"flex",alignItems:"center",gap:10}}>
-                      <span style={{fontSize:11,color:C.txd,fontWeight:400}}>(newest first · scroll for more)</span>
-                      <button onClick={exportLiveLog} style={{padding:"3px 9px",fontSize:11,background:"transparent",color:C.cy,border:`1px solid ${C.cy}55`,borderRadius:3,cursor:"pointer",fontWeight:600}} title="Download all processed rows so far as CSV">
+                      <span style={{fontSize:11,color:C.txd,fontWeight:400}}>(newest first · export for full log)</span>
+                      <button onClick={exportLiveLog} style={{padding:"3px 9px",fontSize:11,background:"transparent",color:C.cy,border:`1px solid ${C.cy}55`,borderRadius:3,cursor:"pointer",fontWeight:600}} title="Download ALL processed rows so far as CSV">
                         <I.Download/> Export current log
                       </button>
                     </span>
@@ -869,7 +875,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               {result.log&&result.log.length>0&&(
                 <div style={{...crd({padding:12}),marginTop:12}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                    <span style={{fontSize:14,fontWeight:600}}>Import Log ({result.log.length} rows)</span>
+                    <span style={{fontSize:14,fontWeight:600}}>Import Log {result.logTruncated?`(showing ${result.log.length.toLocaleString()} of ${(result.logTotal||0).toLocaleString()} — use Download Log for all)`:`(${result.log.length.toLocaleString()} rows)`}</span>
                     <span style={{fontSize:11,color:C.txd}}>
                       <span style={{color:C.gn}}>● {result.log.filter(e=>e.status==="CREATED").length} created</span>
                       {" "}<span style={{color:C.cy}}>● {result.log.filter(e=>e.status==="UPSERTED").length} upserted</span>
@@ -903,10 +909,18 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 <button onClick={()=>{setStep(0);setCsvFile(null);setCsvData({h:[],r:[]});setResult(null);setPasteText("");setLoadProgress({done:0,total:0,current:""});}} style={bt(null)}>New import</button>
                 <button onClick={()=>{
                   const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
-                  const esc=(v)=>{const s=String(v||"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
-                  const header="Row,Status,Detail";
-                  const log=result.log||[];
-                  const lines=log.map(e=>[e.row,e.status,esc(e.detail)].join(","));
+                  const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
+                  // Export the COMPLETE log from fullLog ref (every processed row + columns), not the
+                  // capped result.log. Reconstruct original columns from csvData.r via csvRowNumber.
+                  const full=fullLog.current||[];
+                  let lines, header;
+                  if(full.length){
+                    header=["CSV row","Status",...csvData.h,"Detail"].map(esc).join(",");
+                    lines=full.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;return [e.csvRowNumber||0,e.status,...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"OK")].join(",");});
+                  }else{
+                    header="Row,Status,Detail";
+                    lines=(result.log||[]).map(e=>[e.row,e.status,esc(e.detail)].join(","));
+                  }
                   const summary=[
                     "",
                     `# Summary`,
