@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.10.13] — 2026-06-09
+### Added
+- **Data Loader: UPDATE mode** (third import mode alongside CREATE and UPSERT). UPDATE only modifies records that already exist — rows whose key matches no record **fail instead of being created** (uses the `If-Match: *` header on each PATCH). Useful when you want to enrich/correct existing data without accidentally inserting new rows. The key configuration is shared with UPSERT; the Preview reassurance sentence, mode tile, and live counters reflect the chosen mode. UPDATE is also saved/restored in mapping templates.
+
 ## [1.10.12] — 2026-06-09
 ### Added
 - **API Tester: multiple request tabs** (like Salesforce Inspector's multiple query tabs). Open several requests side by side — each tab keeps its own method, URL, headers, body, and response. "+ New" to add a tab, ✕ to close, double-click a tab to rename. Switching tabs preserves every tab's state.

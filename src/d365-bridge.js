@@ -308,11 +308,12 @@ export const bridge = {
     if (!isExtension) return { updated: items.length, errors: [], log: [] };
     const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
-    // MSCRM bypass headers — see batchCreate for details.
+    // MSCRM bypass headers + update-only flag (If-Match: * → 404 instead of create when missing).
     const bypass = {
       bypassPlugins: !!opts.bypassPlugins,
       suppressDuplicates: !!opts.suppressDuplicates,
       bypassSyncLogic: !!opts.bypassSyncLogic,
+      updateOnly: !!opts.updateOnly,
     };
     const agg = { updated: 0, errors: [], log: [], aborted: false };
     const chunks = [];
