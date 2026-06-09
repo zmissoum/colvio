@@ -89,7 +89,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
         lks.push({src:p+"Id",csv:col,entity:p.toLowerCase(),nav:`parentcustomerid_${p.toLowerCase()}`,d365f:"",fb:"skip",mode:"resolve"});
       }
     });
-    setLookups(lks);setStep(1);
+    setLookups(lks);setTemplateNote("");setShowTemplates(false);setStep(1);
   };
 
   const handleFile=(e)=>{e.preventDefault();setDragOn(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;setCsvFile(f);const reader=new FileReader();const isExcel=/\.(xlsx|xls)$/i.test(f.name);reader.onload=(ev)=>{if(isExcel){const wb=XLSX.read(ev.target.result,{type:"array"});const csv=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);parseData(csv);}else parseData(ev.target.result);};isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);};
@@ -99,6 +99,11 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const isLive = orgInfo?.isExtension;
   const[loadProgress,setLoadProgress]=useState({done:0,total:0,current:""});
   const[startedAt,setStartedAt]=useState(null); // wall-clock time the import was launched (Date)
+  // Mapping templates — save/restore a column mapping + lookup config per entity (chrome.storage.local).
+  const[templates,setTemplates]=useState([]);
+  const[showTemplates,setShowTemplates]=useState(false);
+  const[saveTplName,setSaveTplName]=useState("");
+  const[templateNote,setTemplateNote]=useState(""); // transient note after applying a template (orphan fields/cols)
   // Live per-row log during import. Two-tier to avoid unbounded memory on huge imports:
   //  - liveLog.entries (state): bounded ring buffer of the most recent rows (newest first) for the DOM table.
   //  - fullLog (ref): lightweight record of EVERY processed row { csvRowNumber, status, msg } — no full csvRow copy,
@@ -118,6 +123,69 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const[bypassSyncLogic,setBypassSyncLogic]=useState(false);
   const loadAbort=useRef(false);
   const[liveEntities,setLiveEntities]=useState([]);
+
+  // ── Mapping templates ────────────────────────────────────────────────
+  useEffect(()=>{
+    if(typeof chrome==="undefined"||!chrome.storage?.local) return;
+    chrome.storage.local.get(["colvio_loader_templates"],(r)=>{
+      if(Array.isArray(r?.colvio_loader_templates)) setTemplates(r.colvio_loader_templates.filter(t=>t&&typeof t==="object"));
+    });
+  },[]);
+
+  const persistTemplates=(arr)=>{ try{chrome.storage?.local?.set({colvio_loader_templates:arr});}catch{} };
+
+  const saveTemplate=(name)=>{
+    const clean=(name||"").trim(); if(!clean) return;
+    const tpl={id:Date.now(),name:clean,entity:target,maps,lookups,uKey,batchSize,threads,savedAt:new Date().toISOString()};
+    setTemplates(prev=>{const updated=[tpl,...prev.filter(t=>!(t.name===clean&&t.entity===target))].slice(0,50);persistTemplates(updated);return updated;});
+    setSaveTplName("");
+  };
+
+  const deleteTemplate=(id)=>{
+    setTemplates(prev=>{const updated=prev.filter(t=>t.id!==id);persistTemplates(updated);return updated;});
+  };
+
+  // Apply a template against the CURRENT CSV. Same entity only (no metadata reload → no race).
+  // Maps are matched by CSV column name; columns/fields that no longer exist are reported, not applied.
+  const applyTemplate=(tpl)=>{
+    const headerSet=new Set(csvData.h);
+    const validFieldSet=new Set(targetFields.map(f=>String(f).toLowerCase()));
+    const tmplByCsv=new Map((tpl.maps||[]).map(m=>[m.csv,m]));
+    // Rebuild maps from the current headers, overlaying the template where the column matches.
+    let appliedCols=0; const droppedFields=[];
+    setMaps(prev=>prev.map(m=>{
+      const t=tmplByCsv.get(m.csv);
+      if(!t) return m;
+      // If the template's target field no longer exists on the entity, skip the d365 part but keep the column.
+      if(t.d365 && validFieldSet.size>0 && !validFieldSet.has(t.d365.toLowerCase())){ droppedFields.push(t.d365); return {...m,d365:"",transform:t.transform||""}; }
+      appliedCols++;
+      return {...m,d365:t.d365||"",transform:t.transform||"",skip:!!t.skip,isPK:!!t.isPK,isLookup:!!t.isLookup};
+    }));
+    // Lookups: keep only those whose source CSV column still exists.
+    const tplLookups=(tpl.lookups||[]).filter(lk=>!lk.csv||headerSet.has(lk.csv));
+    setLookups(tplLookups);
+    // Upsert key: restore D365 side; CSV side only if the column still exists.
+    if(tpl.uKey) setUKey({d:tpl.uKey.d||"",c:headerSet.has(tpl.uKey.c)?tpl.uKey.c:""});
+    if(tpl.batchSize) setBatchSize(Math.max(1,Math.min(1000,tpl.batchSize)));
+    if(tpl.threads) setThreads(Math.max(1,Math.min(10,tpl.threads)));
+    // Report mismatches so the user knows the template wasn't a perfect fit.
+    const missingCols=(tpl.maps||[]).filter(m=>m.d365&&!headerSet.has(m.csv)).map(m=>m.csv);
+    const notes=[];
+    if(missingCols.length) notes.push(`${missingCols.length} mapped column${missingCols.length>1?"s":""} from the template not in this file (${missingCols.slice(0,4).join(", ")}${missingCols.length>4?"…":""})`);
+    if(droppedFields.length) notes.push(`${droppedFields.length} field${droppedFields.length>1?"s":""} no longer on the entity (${[...new Set(droppedFields)].slice(0,4).join(", ")})`);
+    setTemplateNote(notes.length?`Template "${tpl.name}" applied to ${appliedCols} column${appliedCols>1?"s":""}. Heads up: ${notes.join("; ")}.`:`Template "${tpl.name}" applied to ${appliedCols} column${appliedCols>1?"s":""}.`);
+    setShowTemplates(false);
+  };
+
+  const entityTemplates=templates.filter(t=>t.entity===target);
+
+  // Escape closes the templates dropdown.
+  useEffect(()=>{
+    if(!showTemplates) return;
+    const onKey=(e)=>{if(e.key==="Escape")setShowTemplates(false);};
+    document.addEventListener("keydown",onKey);
+    return()=>document.removeEventListener("keydown",onKey);
+  },[showTemplates]);
 
   // Close the entity picker when clicking outside, pressing Escape, or losing focus.
   useEffect(()=>{
@@ -602,7 +670,31 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             </div>
           </div>
           <div style={{...crd({overflow:"hidden"})}}>
-            <div style={{padding:"8px 12px",borderBottom:`1px solid ${C.bd}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}><span style={{fontWeight:600,fontSize:14}}>Mapping</span><span style={{fontSize:12,color:C.txd}}>{csvFile?.name} — {csvData.r.length} rows</span></div>
+            <div style={{padding:"8px 12px",borderBottom:`1px solid ${C.bd}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontWeight:600,fontSize:14}}>Mapping</span>
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>setShowTemplates(v=>!v)} style={{padding:"3px 9px",fontSize:11,background:showTemplates?C.vi:"transparent",color:showTemplates?"white":C.cy,border:`1px solid ${showTemplates?C.vi:C.cy+"55"}`,borderRadius:4,cursor:"pointer",fontWeight:600}} title="Load a saved mapping template for this entity">📋 Templates{entityTemplates.length>0?` (${entityTemplates.length})`:""}</button>
+                  {showTemplates&&(
+                    <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,minWidth:280,maxWidth:380,maxHeight:300,overflow:"auto",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,.3)",zIndex:50,padding:6}}>
+                      {entityTemplates.length===0?(
+                        <div style={{padding:"8px 10px",fontSize:12,color:C.txd,fontStyle:"italic"}}>No saved templates for {target}. Save one from the Preview step.</div>
+                      ):entityTemplates.map(t=>(
+                        <div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 6px",borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background=C.sfh} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <button onClick={()=>applyTemplate(t)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"flex-start",gap:1,background:"transparent",border:"none",cursor:"pointer",textAlign:"left",color:C.tx}}>
+                            <span style={{fontSize:13,fontWeight:600}}>{t.name}</span>
+                            <span style={{fontSize:10,color:C.txd}}>{(t.maps||[]).filter(m=>m.d365).length} cols · {(t.lookups||[]).length} lookups · {t.uKey?.d?"UPSERT":"CREATE"} · {String(t.savedAt||"").substring(0,10)}</span>
+                          </button>
+                          <button onClick={()=>deleteTemplate(t.id)} title="Delete template" style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:2,fontSize:12}}>🗑</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <span style={{fontSize:12,color:C.txd}}>{csvFile?.name} — {csvData.r.length} rows</span>
+            </div>
+            {templateNote&&<div style={{padding:"6px 12px",fontSize:11,color:C.cy,background:C.cy+"0c",borderBottom:`1px solid ${C.bd}`,display:"flex",justifyContent:"space-between",gap:8}}><span>✓ {templateNote}</span><button onClick={()=>setTemplateNote("")} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",fontSize:11}}>✕</button></div>}
             <div style={{overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:460}}>
               <thead><tr style={{background:C.bg}}><th style={ths()}>CSV</th><th style={{...ths(),width:24}}></th><th style={ths()}>D365</th><th style={ths()}>Transform</th><th style={ths()}>Preview</th><th style={{...ths(),width:24}}></th></tr></thead>
               <tbody>{maps.map((m,i)=>{
@@ -822,6 +914,13 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           </div>
           )}
 
+          {/* Save the current mapping + lookups + key as a reusable template for this entity */}
+          <div style={{...crd({padding:"8px 12px"}),marginBottom:12,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,color:C.txm,fontWeight:500}}>💾 Save this mapping as a template</span>
+            <input value={saveTplName} onChange={e=>setSaveTplName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveTemplate(saveTplName);}} placeholder={`e.g. ${target} SAP import`} style={inp({flex:1,minWidth:160,fontSize:13,padding:"5px 8px"})}/>
+            <button onClick={()=>saveTemplate(saveTplName)} disabled={!saveTplName.trim()} style={bt(saveTplName.trim()?`linear-gradient(135deg,${C.vi},${C.vil})`:null,{fontSize:12,opacity:saveTplName.trim()?1:0.5})}>Save template</button>
+            <span style={{fontSize:11,color:C.txd}}>Reusable next time from the Mapping step (📋 Templates).</span>
+          </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button><button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button></div>
         </div>
       )}
