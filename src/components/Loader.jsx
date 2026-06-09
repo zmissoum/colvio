@@ -865,9 +865,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <label style={{fontSize:12,color:C.txm,fontWeight:500}}>Batch size</label>
-                <Tooltip text="Records per multipart $batch sent to Dataverse. Larger = fewer roundtrips & faster, but: longer cancel latency, higher memory per request, and a slow record blocks the whole batch. Sweet spot 100-300. Drop to 50 if you see HTTP 504 timeouts."/>
-                <input type="number" min="1" max="1000" value={batchSize} onChange={e=>setBatchSize(Math.max(1,Math.min(1000,parseInt(e.target.value,10)||100)))} style={inp({width:80,fontSize:13,...mono,padding:"5px 8px"})}/>
-                <span style={{fontSize:11,color:C.txd}}>records / HTTP $batch (1-1000)</span>
+                <Tooltip text="Records per multipart $batch sent to Dataverse in ONE roundtrip. Larger = fewer roundtrips & faster, but a slow record blocks the whole batch and cancel waits for the in-flight batch to finish (so larger = slower to cancel). Sweet spot 100-300. Drop to 50 if you see HTTP 504 timeouts or want a snappier cancel."/>
+                <input type="number" min="1" max="500" value={batchSize} onChange={e=>setBatchSize(Math.max(1,Math.min(500,parseInt(e.target.value,10)||100)))} style={inp({width:80,fontSize:13,...mono,padding:"5px 8px"})}/>
+                <span style={{fontSize:11,color:C.txd}}>records / HTTP $batch (1-500)</span>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <label style={{fontSize:12,color:C.txm,fontWeight:500}}>Threads</label>

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.12] — 2026-06-09
+### Added
+- **API Tester: multiple request tabs** (like Salesforce Inspector's multiple query tabs). Open several requests side by side — each tab keeps its own method, URL, headers, body, and response. "+ New" to add a tab, ✕ to close, double-click a tab to rename. Switching tabs preserves every tab's state.
+### Changed
+- **Data Loader: faster import + snappier cancel.** Each batch chunk is now sent as a single HTTP `$batch` roundtrip instead of being re-split into sequential 100-record sub-batches inside the content script. This means fewer Dataverse roundtrips (faster import) and a much quicker cancel — a worker drains in one roundtrip rather than several before it sees the abort. Batch size now reflects the real `$batch` size (1–500; the previous 1000 max gave no throughput benefit because the content script capped HTTP batches at 100). The default 200 is unchanged but now genuinely sends 200 records per roundtrip.
+
 ## [1.10.11] — 2026-06-09
 ### Added (Data Loader UX — less tedious to fill in, batch 2)
 - **Saved mapping templates.** Configure a mapping once, save it as a named template, and reload it next time in one click — column mapping + transforms + parent lookups + upsert key + performance settings are all restored. Stored locally per entity (`chrome.storage.local`), up to 50 templates.

@@ -457,7 +457,11 @@
             const results = { created: 0, errors: [], log: [] };
             const STRIP = new Set(["createdon","modifiedon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
             validateEntitySet(entitySet);
-            const BATCH_SIZE = 100;
+            // Process the whole received slice as ONE HTTP $batch (capped at 500). The panel-side
+            // worker pool already chunks to the user's batch size, so this avoids re-chunking into
+            // sequential 100-op sub-batches — fewer roundtrips (faster) and a snappier cancel
+            // (a worker drains in one roundtrip, not several, before it sees the abort flag).
+            const BATCH_SIZE = 500;
             const ctx = d365Context || extractContext();
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
@@ -585,7 +589,8 @@
             const STRIP = new Set(["createdon","modifiedon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
             validateEntitySet(entitySet);
             validateName(keyField, 'keyField');
-            const BATCH_SIZE = 100;
+            // One HTTP $batch per received slice (capped 500) — see batchCreate for rationale.
+            const BATCH_SIZE = 500;
             const ctx = d365Context || extractContext();
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;

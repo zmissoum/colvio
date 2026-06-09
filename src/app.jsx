@@ -8,7 +8,7 @@ import ConnScreen from "./components/ConnScreen.jsx";
 import ShowAllData from "./components/ShowAllData.jsx";
 import MetadataBrowser from "./components/MetadataBrowser.jsx";
 import Explorer from "./components/Explorer.jsx";
-import ApiTester from "./components/ApiTester.jsx";
+import ApiTesterTabs from "./components/ApiTesterTabs.jsx";
 import LoginHistory from "./components/LoginHistory.jsx";
 import Loader from "./components/Loader.jsx";
 import RelationshipGraph from "./components/RelationshipGraph.jsx";
@@ -266,7 +266,7 @@ export default function App(){
           </div>
           {showShortcuts&&<ShortcutsPanel onClose={()=>setShowShortcuts(false)}/>}
           <OnboardingTour/>
-          {tab==="apitester"&&<ErrorBoundary><ApiTester bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="apitester"&&<ErrorBoundary><ApiTesterTabs bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}

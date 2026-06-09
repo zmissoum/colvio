@@ -269,7 +269,7 @@ export const bridge = {
   // so CONCURRENCY=5 is well within bounds and keeps headroom for other operations.
   async batchCreate(entitySet, records, onProgress, shouldAbort, opts = {}) {
     if (!isExtension) return { created: records.length, errors: [], log: [] };
-    const CHUNK = Math.max(1, Math.min(1000, opts.chunk || 100));
+    const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     // MSCRM bypass headers — forwarded per-chunk; content.js injects them on each
     // individual operation inside the multipart $batch body.
@@ -306,7 +306,7 @@ export const bridge = {
 
   async batchUpsert(entitySet, keyField, items, isPrimaryKey = false, onProgress, shouldAbort, opts = {}) {
     if (!isExtension) return { updated: items.length, errors: [], log: [] };
-    const CHUNK = Math.max(1, Math.min(1000, opts.chunk || 100));
+    const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     // MSCRM bypass headers — see batchCreate for details.
     const bypass = {
