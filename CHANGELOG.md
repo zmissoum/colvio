@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.10] — 2026-06-09
+### Changed (Data Loader UX — less tedious to fill in, batch 1)
+- **Empty Lookups step is now skipped.** When no parent lookups are detected, the Mapping "→" button goes straight to Preview, and the Lookups stepper node is dimmed/labelled "(none)" and not clickable. No more clicking through an empty step.
+- **Pre-flight checks on Preview.** A non-blocking warning panel surfaces misconfigurations *before* Run instead of as mass errors at the end: required D365 fields not mapped, lookups with no key field (would silently skip), option-set columns with no transform chosen, UPSERT with no CSV key column. Warnings only — you can still load if it's intentional.
+- **Plain-language reassurance sentence on Preview.** Above the technical JSON example, a clear statement of exactly what Load will do: e.g. "Will UPSERT 12,400 records into Account — existing records matched on `fou_sapcustomernumber` are updated, the rest are created." Echoes a booster warning when Speed boosters are active.
+
 ## [1.10.9] — 2026-06-09
 ### Added
 - **Data Loader: import start/finish timestamps** — the launch date & time is shown live during the run ("🕐 Started …") and on the result panel ("🕐 Started … 🏁 Finished …"). Both are also written into the exported log CSV summary header.
