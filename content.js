@@ -738,6 +738,107 @@
             result = results;
             break;
           }
+
+          case "batchDeleteKeyed": {
+            // Bulk DELETE by primary key (GUID) or alternate key, via multipart $batch with
+            // one changeset per record (per-record log, errors don't cascade). Mirrors batchUpsert.
+            const items = params.items || []; // [{ keyValue }]
+            const entitySet = params.entitySet;
+            const keyField = params.keyField;
+            const isPrimaryKey = params.isPrimaryKey || false;
+            const results = { deleted: 0, errors: [], log: [] };
+            validateEntitySet(entitySet);
+            validateName(keyField, 'keyField');
+            const BATCH_SIZE = 500;
+            const ctx = d365Context || extractContext();
+            if (!ctx) throw new Error("D365 context not found");
+            const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
+
+            const stripCtrl = (v) => String(v ?? "").replace(/[\x00-\x1f\x7f]/g, "");
+            const buildPath = (item) => {
+              if (isPrimaryKey) {
+                const guid = stripCtrl(item.keyValue).replace(/[^0-9a-fA-F-]/g, "");
+                return `${entitySet}(${guid})`;
+              }
+              return `${entitySet}(${keyField}='${stripCtrl(item.keyValue).replace(/'/g, "''")}')`;
+            };
+
+            const parseBatchResponse = (text, batchOffset, chunkLen) => {
+              const log = [];
+              const blocks = text.split(/Content-Type:\s*application\/http/i);
+              for (let i = 1; i < blocks.length && i <= chunkLen; i++) {
+                const block = blocks[i];
+                const statusMatch = block.match(/HTTP\/1\.1\s+(\d{3})/);
+                if (!statusMatch) continue;
+                const status = parseInt(statusMatch[1], 10);
+                const rowIdx = batchOffset + i;
+                if (status === 204 || status === 200) {
+                  log.push({ row: rowIdx, status: "DELETED" });
+                } else {
+                  const msgMatch = block.match(/"message":"([^"]{0,300})"/);
+                  log.push({ row: rowIdx, status: "ERROR", msg: msgMatch ? msgMatch[1] : `HTTP ${status}` });
+                }
+              }
+              return log;
+            };
+
+            for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
+              const chunk = items.slice(batch, batch + BATCH_SIZE);
+              const boundary = "batch_d365_" + Date.now() + "_" + batch;
+              let body = "";
+              for (let i = 0; i < chunk.length; i++) {
+                const csName = "cs_" + Date.now() + "_" + (batch + i);
+                const path = buildPath(chunk[i]);
+                body += "--" + boundary + "\r\n";
+                body += "Content-Type: multipart/mixed; boundary=" + csName + "\r\n\r\n";
+                body += "--" + csName + "\r\n";
+                body += "Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n";
+                body += "Content-ID: " + (batch + i + 1) + "\r\n\r\n";
+                body += "DELETE " + baseUrl + "/" + path + " HTTP/1.1\r\n\r\n";
+                body += "--" + csName + "--\r\n";
+              }
+              body += "--" + boundary + "--\r\n";
+
+              try {
+                const resp = await fetch(baseUrl + "/$batch", {
+                  method: "POST",
+                  headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
+                  body,
+                  credentials: "same-origin",
+                });
+                if (resp.ok) {
+                  const respText = await resp.text();
+                  const chunkLog = parseBatchResponse(respText, batch, chunk.length);
+                  for (const entry of chunkLog) {
+                    if (entry.status === "ERROR") results.errors.push({ row: entry.row, msg: entry.msg || "Batch error", payload: "" });
+                    else results.deleted++;
+                    results.log.push(entry);
+                  }
+                  if (chunkLog.length < chunk.length) {
+                    for (let i = chunkLog.length; i < chunk.length; i++) {
+                      results.log.push({ row: batch + i + 1, status: "ERROR", msg: "No response received from batch" });
+                      results.errors.push({ row: batch + i + 1, msg: "No response received from batch", payload: "" });
+                    }
+                  }
+                } else {
+                  for (let i = 0; i < chunk.length; i++) {
+                    const rowIdx = batch + i + 1;
+                    try { await dvRequest("DELETE", buildPath(chunk[i])); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
+                    catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
+                  }
+                }
+              } catch (batchErr) {
+                for (let i = 0; i < chunk.length; i++) {
+                  const rowIdx = batch + i + 1;
+                  try { await dvRequest("DELETE", buildPath(chunk[i])); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
+                  catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
+                }
+              }
+            }
+            result = results;
+            break;
+          }
+
           case "update":
             validateEntitySet(params.entitySet);
             if (params.id) validateGuid(params.id);

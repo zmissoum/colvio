@@ -10,7 +10,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // `permissions` may be null briefly during connect — boosters stay hidden until the
   // probe completes (safer than flashing them then hiding).
   const canShowSpeedBoosters = permissions?.canBypassPlugins === true;
-  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
+  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[deleteMode,setDeleteMode]=useState(false);const[deleteConfirm,setDeleteConfirm]=useState("");const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
   // Searchable entity picker — replaces the old dropdown so users can find an entity by typing a few letters.
   const[entitySearch,setEntitySearch]=useState("");
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
@@ -89,7 +89,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
         lks.push({src:p+"Id",csv:col,entity:p.toLowerCase(),nav:`parentcustomerid_${p.toLowerCase()}`,d365f:"",fb:"skip",mode:"resolve"});
       }
     });
-    setLookups(lks);setTemplateNote("");setShowTemplates(false);setStep(1);
+    setLookups(lks);setTemplateNote("");setShowTemplates(false);setDeleteConfirm("");setStep(1);
   };
 
   const handleFile=(e)=>{e.preventDefault();setDragOn(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;setCsvFile(f);const reader=new FileReader();const isExcel=/\.(xlsx|xls)$/i.test(f.name);reader.onload=(ev)=>{if(isExcel){const wb=XLSX.read(ev.target.result,{type:"array"});const csv=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);parseData(csv);}else parseData(ev.target.result);};isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);};
@@ -381,6 +381,13 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     if(!row) return null;
     const targetEnt=entityList.find(e=>e.l===target);
     const entitySet=targetEnt?.p||target+"s";
+    // DELETE mode: no body, key-identified path.
+    if(deleteMode&&uKey.d&&uKey.c&&row[uKey.c]){
+      const isPK=uKey.d.toLowerCase()===target+"id";
+      const keyVal=String(row[uKey.c]);
+      const path=isPK?`${entitySet}(${keyVal})`:`${entitySet}(${uKey.d}='${keyVal.replace(/'/g,"''")}')`;
+      return {method:"DELETE",path,body:null,headers:{}};
+    }
     const rec={};
     for(const m of maps){
       if(!m.d365||m.skip) continue;
@@ -427,6 +434,46 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
     if(!isLive){
       setTimeout(()=>setResult({created:total-1,updated:1,errors:[],skipped:0,elapsed:"2.1"}),2000);
+      return;
+    }
+
+    // ── DELETE mode ── (no lookups, no body — just key-identified deletions)
+    if(deleteMode && uKey.d && uKey.c){
+      const targetEntD=entityList.find(e=>e.l===target);
+      const entitySetD=targetEntD?.p||target+"s";
+      const isPKD=uKey.d.toLowerCase()===target+"id";
+      const startTimeD=Date.now();
+      const deleteItems=[];const deleteRowMap=[];
+      for(let i=0;i<rows.length;i++){
+        const v=rows[i][uKey.c];
+        if(v===undefined||v===null||v===""){ skipped++; logEntries.push({row:i+1,status:"SKIPPED",detail:`Empty key: ${uKey.c}`,d365Id:""}); continue; }
+        deleteItems.push({keyValue:v});deleteRowMap.push(i);
+      }
+      let deleted=0;
+      if(deleteItems.length){
+        setLoadProgress({done:0,total:deleteItems.length,current:`Deleting ${deleteItems.length} records...`});
+        try{
+          const res=await bridge.batchDeleteKeyed(entitySetD,uKey.d,deleteItems,isPKD,p=>{
+            setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Deleting records ${p.done}/${p.total}...`});
+            if(p.newLog?.length){
+              const enriched=p.newLog.map(e=>{const csvIdx=deleteRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
+              for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
+              setLiveLog(prev=>{const newCounts={...prev.counts};for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};});
+            }
+          },()=>loadAbort.current,{chunk:batchSize,concurrency:threads});
+          deleted=res.deleted||0;
+          if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
+          if(res.aborted){const remaining=deleteItems.length-deleted;logEntries.push({row:0,status:"CANCELLED",detail:`Cancelled — ${remaining} records not processed`,d365Id:""});}
+        }catch(e){ errors.push({row:0,msg:`Batch DELETE failed: ${e.message}`,payload:""}); }
+      }
+      const elapsedD=((Date.now()-startTimeD)/1000).toFixed(1);
+      const wasCancelledD=loadAbort.current;
+      const batchLogD=fullLog.current.map(e=>({row:e.csvRowNumber,status:e.status,detail:e.status==="ERROR"?(e.msg||"Batch error"):"OK",d365Id:""}));
+      const combinedLogD=[...logEntries,...batchLogD];
+      const resultLogD=combinedLogD.length>5000?combinedLogD.slice(0,5000):combinedLogD;
+      setResult({created:0,updated:0,deleted,errors,skipped,elapsed:elapsedD,log:resultLogD,logTruncated:combinedLogD.length>5000,logTotal:combinedLogD.length,entity:target,totalRows:total,cancelled:wasCancelledD,startedAt:launchedAt,finishedAt:new Date(),mode:"delete"});
+      setLoadProgress({done:total,total,current:wasCancelledD?"Cancelled":"Done"});
+      setCancelling(false);
       return;
     }
 
@@ -669,18 +716,22 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   const ensureKey=()=>{ if(uKey.d) return; const pk=target+"id"; const defaultKey=targetAltKeys[0]||pk; const matchingCol=csvData.h.find(h=>h.toLowerCase()===defaultKey.toLowerCase()); setUKey({d:defaultKey,c:matchingCol||csvData.h[0]||""}); };
                   return (<>
                     <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                      <input type="radio" checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
+                      <input type="radio" checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
                     </label>
-                    <label style={{fontSize:12,color:uKey.d&&!updateOnly?C.cy:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                      <input type="radio" checked={!!uKey.d&&!updateOnly} onChange={()=>{ensureKey();setUpdateOnly(false);}} style={{accentColor:C.cy}}/> UPSERT (update or create)
+                    <label style={{fontSize:12,color:uKey.d&&!updateOnly&&!deleteMode?C.cy:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" checked={!!uKey.d&&!updateOnly&&!deleteMode} onChange={()=>{ensureKey();setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.cy}}/> UPSERT (update or create)
                     </label>
-                    <label style={{fontSize:12,color:uKey.d&&updateOnly?C.or:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                      <input type="radio" checked={!!uKey.d&&updateOnly} onChange={()=>{ensureKey();setUpdateOnly(true);}} style={{accentColor:C.or}}/> UPDATE (existing only)
+                    <label style={{fontSize:12,color:uKey.d&&updateOnly&&!deleteMode?C.or:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" checked={!!uKey.d&&updateOnly&&!deleteMode} onChange={()=>{ensureKey();setUpdateOnly(true);setDeleteMode(false);}} style={{accentColor:C.or}}/> UPDATE (existing only)
+                    </label>
+                    <label style={{fontSize:12,color:uKey.d&&deleteMode?C.rd:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" checked={!!uKey.d&&deleteMode} onChange={()=>{ensureKey();setDeleteMode(true);setUpdateOnly(false);setDeleteConfirm("");}} style={{accentColor:C.rd}}/> <span style={{color:uKey.d&&deleteMode?C.rd:C.txd}}>🗑 DELETE (remove records)</span>
                     </label>
                   </>);
                 })()}
               </div>
-              {uKey.d&&updateOnly&&<div style={{fontSize:11,color:C.or,marginBottom:6}}>Rows with no matching record will <b>fail</b> (not created) — uses <code style={{...mono,fontSize:11}}>If-Match: *</code>.</div>}
+              {uKey.d&&updateOnly&&!deleteMode&&<div style={{fontSize:11,color:C.or,marginBottom:6}}>Rows with no matching record will <b>fail</b> (not created) — uses <code style={{...mono,fontSize:11}}>If-Match: *</code>.</div>}
+              {uKey.d&&deleteMode&&<div style={{fontSize:11,color:C.rd,marginBottom:6,padding:"6px 8px",background:C.rd+"11",borderRadius:4,border:`1px solid ${C.rd}44`}}>⚠ <b>Permanent deletion.</b> Each row's key value identifies a record to <b>delete</b>. This cannot be undone. Rows with no matching record fail (404). A typed confirmation is required on the Preview step.</div>}
               {uKey.d&&(()=>{
                 const pk=target+"id";
                 const isPK=uKey.d.toLowerCase()===pk;
@@ -853,21 +904,24 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       {step===3&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:8,marginBottom:14}}>
-            {[{l:"Records",v:csvData.r.length,c:C.cy},{l:"Columns",v:maps.filter(m=>m.d365).length,c:C.gn},{l:"Lookups",v:lookups.length,c:C.yw},{l:"Mode",v:uKey.d?(updateOnly?"UPDATE":"UPSERT"):"CREATE",c:C.vi}].map((m,i)=><div key={i} style={{...crd({padding:"10px 12px",textAlign:"center"})}}><div style={{fontSize:18,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd,marginTop:1}}>{m.l}</div></div>)}
+            {[{l:"Records",v:csvData.r.length,c:C.cy},{l:"Columns",v:maps.filter(m=>m.d365).length,c:C.gn},{l:"Lookups",v:lookups.length,c:C.yw},{l:"Mode",v:uKey.d?(deleteMode?"DELETE":updateOnly?"UPDATE":"UPSERT"):"CREATE",c:deleteMode?C.rd:C.vi}].map((m,i)=><div key={i} style={{...crd({padding:"10px 12px",textAlign:"center"})}}><div style={{fontSize:18,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd,marginTop:1}}>{m.l}</div></div>)}
           </div>
 
           {/* Reassurance sentence — plain-language description of exactly what Load will do */}
           {(()=>{
             const entDisplay=entityList.find(e=>e.l===target)?.d||target;
             const n=csvData.r.length;
-            const mode=uKey.d?(updateOnly?"update":"upsert"):"create";
-            return (<div style={{...crd({padding:"10px 12px",background:(mode==="update"?C.or:C.cy)+"0c",borderColor:(mode==="update"?C.or:C.cy)+"44"}),marginBottom:12,fontSize:13,color:C.tx}}>
-              {mode==="upsert"
+            const mode=uKey.d?(deleteMode?"delete":updateOnly?"update":"upsert"):"create";
+            const accent=mode==="delete"?C.rd:mode==="update"?C.or:mode==="upsert"?C.cy:C.gn;
+            return (<div style={{...crd({padding:"10px 12px",background:accent+"0c",borderColor:accent+(mode==="delete"?"66":"44")}),marginBottom:12,fontSize:13,color:C.tx}}>
+              {mode==="delete"
+                ? <>🗑 Will <b style={{color:C.rd}}>permanently DELETE {n.toLocaleString()}</b> record{n>1?"s":""} from <b>{entDisplay}</b> matched on <code style={{...mono,fontSize:12,color:C.rd}}>{uKey.d}</code>. <b style={{color:C.rd}}>This cannot be undone.</b> Rows with no matching record fail (404).</>
+                : mode==="upsert"
                 ? <>Will <b style={{color:C.cy}}>UPSERT {n.toLocaleString()}</b> record{n>1?"s":""} into <b>{entDisplay}</b> — existing records matched on <code style={{...mono,fontSize:12,color:C.cy}}>{uKey.d}</code> are updated, the rest are created.</>
                 : mode==="update"
                 ? <>Will <b style={{color:C.or}}>UPDATE {n.toLocaleString()}</b> existing record{n>1?"s":""} in <b>{entDisplay}</b> matched on <code style={{...mono,fontSize:12,color:C.or}}>{uKey.d}</code> — rows with <b>no matching record fail</b> (nothing is created).</>
                 : <>Will <b style={{color:C.gn}}>CREATE {n.toLocaleString()}</b> new record{n>1?"s":""} in <b>{entDisplay}</b>.</>}
-              {canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassSyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
+              {mode!=="delete"&&canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassSyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
             </div>);
           })()}
 
@@ -968,7 +1022,20 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             <button onClick={()=>saveTemplate(saveTplName)} disabled={!saveTplName.trim()} style={bt(saveTplName.trim()?`linear-gradient(135deg,${C.vi},${C.vil})`:null,{fontSize:12,opacity:saveTplName.trim()?1:0.5})}>Save template</button>
             <span style={{fontSize:11,color:C.txd}}>Reusable next time from the Mapping step (📋 Templates).</span>
           </div>
-          <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button><button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button></div>
+          {/* DELETE requires a typed confirmation before the action is enabled */}
+          {deleteMode&&(()=>{
+            const confirmOk=deleteConfirm.trim().toLowerCase()===target.toLowerCase();
+            return (<div style={{...crd({padding:"10px 12px",background:C.rd+"0c",borderColor:C.rd+"66"}),marginBottom:12}}>
+              <div style={{fontSize:12,color:C.rd,fontWeight:600,marginBottom:6}}>🗑 Permanent deletion — type the entity name <code style={{...mono,fontSize:12,background:C.rd+"22",padding:"1px 5px",borderRadius:3}}>{target}</code> to confirm</div>
+              <input value={deleteConfirm} onChange={e=>setDeleteConfirm(e.target.value)} placeholder={`type "${target}" to enable Delete`} style={inp({fontSize:13,...mono,maxWidth:300,borderColor:confirmOk?C.gn:C.rd})}/>
+              {confirmOk&&<span style={{color:C.gn,fontSize:12,marginLeft:8}}>✓ confirmed</span>}
+            </div>);
+          })()}
+          <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button>
+            {deleteMode
+              ? <button onClick={doLoad} disabled={deleteConfirm.trim().toLowerCase()!==target.toLowerCase()} style={bt(deleteConfirm.trim().toLowerCase()===target.toLowerCase()?`linear-gradient(135deg,${C.rd},${C.rd}cc)`:null,{opacity:deleteConfirm.trim().toLowerCase()===target.toLowerCase()?1:0.5})}>🗑 Delete records</button>
+              : <button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button>}
+          </div>
         </div>
       )}
 
@@ -988,6 +1055,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                     <span>{loadProgress.done.toLocaleString()} / {loadProgress.total.toLocaleString()} records</span>
                     {liveLog.counts.CREATED>0&&<span style={{color:C.gn,fontWeight:600}}>● {liveLog.counts.CREATED.toLocaleString()} created</span>}
                     {liveLog.counts.UPSERTED>0&&<span style={{color:C.cy,fontWeight:600}}>● {liveLog.counts.UPSERTED.toLocaleString()} {updateOnly?"updated":"upserted"}</span>}
+                    {liveLog.counts.DELETED>0&&<span style={{color:C.rd,fontWeight:600}}>● {liveLog.counts.DELETED.toLocaleString()} deleted</span>}
                     {liveLog.counts.ERROR>0&&<span style={{color:C.rd,fontWeight:600}}>● {liveLog.counts.ERROR.toLocaleString()} errors</span>}
                   </div>
                 </div>
@@ -1010,7 +1078,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
                   // Each row now also carries the exact request that was sent: Method, Request URL, and Payload (JSON).
                   const header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Error detail"].map(esc).join(",");
-                  const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
+                  const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
                   dl("﻿"+[header,...lines].join("\n"),"text/csv;charset=utf-8",`live_log_${target}_${ts}.csv`);
                 };
                 return (<div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
@@ -1055,8 +1123,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                           {isExpanded&&req&&(
                             <tr style={{background:C.bg}}>
                               <td colSpan={totalCols} style={{padding:"8px 12px",borderBottom:`1px solid ${C.bd}`}}>
-                                <div style={{fontSize:11,...mono,color:C.txm,marginBottom:4}}><span style={{color:req.method==="POST"?C.gn:C.or,fontWeight:700}}>{req.method}</span> <span style={{color:C.cy}}>/api/data/v9.2/{req.path}</span>{req.headers&&req.headers["If-Match"]?<span style={{color:C.or}}>  ·  If-Match: *</span>:null}</div>
-                                <pre style={{margin:0,padding:8,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:4,fontSize:11,...mono,color:C.tx,maxHeight:200,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{JSON.stringify(req.body,null,2)}</pre>
+                                <div style={{fontSize:11,...mono,color:C.txm,marginBottom:4}}><span style={{color:req.method==="POST"?C.gn:req.method==="DELETE"?C.rd:C.or,fontWeight:700}}>{req.method}</span> <span style={{color:C.cy}}>/api/data/v9.2/{req.path}</span>{req.headers&&req.headers["If-Match"]?<span style={{color:C.or}}>  ·  If-Match: *</span>:null}</div>
+                                <pre style={{margin:0,padding:8,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:4,fontSize:11,...mono,color:C.tx,maxHeight:200,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{req.body?JSON.stringify(req.body,null,2):"(no request body — DELETE)"}</pre>
                                 {isError&&<div style={{fontSize:11,color:C.rd,marginTop:4,...mono}}>↳ {e.msg}</div>}
                               </td>
                             </tr>
@@ -1081,7 +1149,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 </div>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:8,maxWidth:500,margin:"0 auto 14px"}}>
-                {[{l:"Created",v:result.created,c:C.gn},{l:"Updated",v:result.updated,c:C.cy},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}].map((m,i)=><div key={i} style={{...crd({padding:"8px 10px",textAlign:"center"})}}><div style={{fontSize:20,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd}}>{m.l}</div></div>)}
+                {(result.mode==="delete"
+                  ? [{l:"Deleted",v:result.deleted||0,c:C.rd},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}]
+                  : [{l:"Created",v:result.created,c:C.gn},{l:"Updated",v:result.updated,c:C.cy},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}]
+                ).map((m,i)=><div key={i} style={{...crd({padding:"8px 10px",textAlign:"center"})}}><div style={{fontSize:20,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd}}>{m.l}</div></div>)}
               </div>
 
               {result.log&&result.log.length>0&&(
@@ -1118,8 +1189,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                           {isExpanded&&req&&(
                             <tr style={{background:C.bg}}>
                               <td colSpan={3} style={{padding:"8px 12px",borderBottom:`1px solid ${C.bd}`}}>
-                                <div style={{fontSize:11,...mono,color:C.txm,marginBottom:4}}><span style={{color:req.method==="POST"?C.gn:C.or,fontWeight:700}}>{req.method}</span> <span style={{color:C.cy}}>/api/data/v9.2/{req.path}</span>{req.headers&&req.headers["If-Match"]?<span style={{color:C.or}}>  ·  If-Match: *</span>:null}</div>
-                                <pre style={{margin:0,padding:8,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:4,fontSize:11,...mono,color:C.tx,maxHeight:220,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{JSON.stringify(req.body,null,2)}</pre>
+                                <div style={{fontSize:11,...mono,color:C.txm,marginBottom:4}}><span style={{color:req.method==="POST"?C.gn:req.method==="DELETE"?C.rd:C.or,fontWeight:700}}>{req.method}</span> <span style={{color:C.cy}}>/api/data/v9.2/{req.path}</span>{req.headers&&req.headers["If-Match"]?<span style={{color:C.or}}>  ·  If-Match: *</span>:null}</div>
+                                <pre style={{margin:0,padding:8,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:4,fontSize:11,...mono,color:C.tx,maxHeight:220,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{req.body?JSON.stringify(req.body,null,2):"(no request body — DELETE)"}</pre>
                               </td>
                             </tr>
                           )}
@@ -1132,7 +1203,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               )}
 
               <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:16,flexWrap:"wrap"}}>
-                <button onClick={()=>{setStep(0);setCsvFile(null);setCsvData({h:[],r:[]});setResult(null);setPasteText("");setLoadProgress({done:0,total:0,current:""});}} style={bt(null)}>New import</button>
+                <button onClick={()=>{setStep(0);setCsvFile(null);setCsvData({h:[],r:[]});setResult(null);setPasteText("");setLoadProgress({done:0,total:0,current:""});setDeleteMode(false);setDeleteConfirm("");setUpdateOnly(false);}} style={bt(null)}>New import</button>
                 <button onClick={()=>{
                   const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
                   const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
@@ -1142,7 +1213,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   let lines, header;
                   if(full.length){
                     header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Detail"].map(esc).join(",");
-                    lines=full.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"OK")].join(",");});
+                    lines=full.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"OK")].join(",");});
                   }else{
                     header="Row,Status,Detail";
                     lines=(result.log||[]).map(e=>[e.row,e.status,esc(e.detail)].join(","));
