@@ -101,7 +101,7 @@ async function callD365(action, params = {}) {
     let settled = false;
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
-    const isLongOp = action === "batchCreate" || action === "batchUpsert" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges";
+    const isLongOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges";
     const timeoutMs = isLongOp ? 300000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) { settled = true; reject(new Error(`Timeout after ${timeoutMs/1000}s — action: ${action}`)); }
@@ -329,6 +329,36 @@ export const bridge = {
         const { start, slice } = chunks[idx];
         const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, ...bypass });
         agg.updated += r?.updated || 0;
+        const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        if (chunkErrors.length) agg.errors.push(...chunkErrors);
+        if (chunkLog.length) agg.log.push(...chunkLog);
+        processedRecords += slice.length;
+        onProgress?.({ done: Math.min(processedRecords, items.length), total: items.length, errorCount: agg.errors.length, newErrors: chunkErrors, newLog: chunkLog });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
+    return agg;
+  },
+
+  // Bulk DELETE by primary key or alternate key — same worker-pool + per-row log as batchUpsert.
+  async batchDeleteKeyed(entitySet, keyField, items, isPrimaryKey = false, onProgress, shouldAbort, opts = {}) {
+    if (!isExtension) return { deleted: items.length, errors: [], log: [] };
+    const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
+    const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
+    const agg = { deleted: 0, errors: [], log: [], aborted: false };
+    const chunks = [];
+    for (let i = 0; i < items.length; i += CHUNK) chunks.push({ start: i, slice: items.slice(i, i + CHUNK) });
+    let nextIdx = 0;
+    let processedRecords = 0;
+    const worker = async () => {
+      while (true) {
+        if (shouldAbort?.()) { agg.aborted = true; return; }
+        const idx = nextIdx++;
+        if (idx >= chunks.length) return;
+        const { start, slice } = chunks[idx];
+        const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey });
+        agg.deleted += r?.deleted || 0;
         const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
         const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
         if (chunkErrors.length) agg.errors.push(...chunkErrors);

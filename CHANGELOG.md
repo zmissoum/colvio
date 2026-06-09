@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.15] — 2026-06-09
+### Added
+- **Data Loader: DELETE mode** (fourth import mode). Bulk-delete records identified by primary key (GUID) or alternate key from a CSV — same parallel `$batch` engine, per-row log, request details, and cancel as the other modes.
+  - **Safety rails (destructive, irreversible):** red warning banners; a **typed confirmation** on the Preview step (you must type the target entity's logical name) before the Delete button is enabled; Speed boosters are not applied (server-side logic stays active by default); the red "🗑 Delete records" button replaces "Load".
+  - Rows whose key matches no record fail with a 404 (visible per row). Empty key values are skipped.
+  - The result panel shows a "Deleted" count; the live log counts "deleted"; per-row request details show the `DELETE /entityset(key)` URL.
+  - New `batchDeleteKeyed` action (content.js) + bridge wrapper with the same worker pool as `batchUpsert`.
+
 ## [1.10.14] — 2026-06-09
 ### Added
 - **Data Loader: per-row request details in the import log.** Click any row in the live log or the result Import Log to expand the exact Dataverse request that was sent for it — HTTP method (POST/PATCH), the request URL (incl. the alt-key/GUID and `If-Match: *` for UPDATE), and the JSON payload (the mapped D365 attributes with their transformed values and `@odata.bind` lookups).
