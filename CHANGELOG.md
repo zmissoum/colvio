@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.10.20] — 2026-06-10
+### Fixed (UPDATE mode now never creates — guaranteed)
+- **UPDATE mode pre-checks which keys exist and skips the rest.** Relying on `If-Match: *` alone was not enough: some orgs don't honor the precondition when the record is addressed by an **alternate key**, so an UPDATE could still upsert (create) missing records. Colvio now queries which key values actually exist before writing, PATCHes only those, and reports every missing key as a per-row ERROR — so no create can happen regardless of how the org handles `If-Match`. `If-Match: *` is still sent as a second layer. (Adds an existence-check pass at the start of an UPDATE; the import aborts safely if that check itself fails, rather than risking accidental creates.)
+
 ## [1.10.19] — 2026-06-10
 ### Fixed (UPDATE mode is now strictly update-only)
 - **Serial-fallback path didn't carry `If-Match: *`.** If the `$batch` endpoint failed and Colvio fell back to per-record PATCH, an UPDATE-mode import would silently upsert — creating records that don't exist. The fallback now passes `If-Match: *` (and `dvRequest` accepts extra headers), so it still 404s instead of creating.

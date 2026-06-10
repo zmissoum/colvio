@@ -375,6 +375,23 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     return null;
   };
 
+  // UPDATE-only hard guarantee: query which key values actually EXIST before writing, so a
+  // non-existent key is never PATCHed (no create can happen, regardless of whether Dataverse
+  // honors If-Match: * for the target key). Returns a Set of existing keys, lowercased for
+  // case-insensitive matching (Dataverse string filters are case-insensitive). Throws on failure.
+  const resolveExistingKeys=async(entitySet,keyField,isPK,values)=>{
+    const existing=new Set();
+    const CHUNK=80; // OR-filters of ~80 values keep the URL within Dataverse limits
+    for(let i=0;i<values.length;i+=CHUNK){
+      const slice=values.slice(i,i+CHUNK);
+      const filter=slice.map(v=>isPK?`${keyField} eq ${String(v).replace(/[^0-9a-fA-F-]/g,"")}`:`${keyField} eq '${String(v).replace(/'/g,"''")}'`).join(" or ");
+      setLoadProgress({done:i,total:values.length,current:`Checking which records exist (${Math.min(i+slice.length,values.length)}/${values.length})...`});
+      const data=await bridge.query(entitySet,{filter,select:keyField,top:String(slice.length)});
+      for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null) existing.add(String(kv).toLowerCase()); }
+    }
+    return existing;
+  };
+
   // Reconstruct the exact Dataverse request for a CSV row (method, URL path, body attributes) —
   // used to enrich the post-import log. Mirrors doLoad's record-building so what's shown matches
   // what was sent. Resolve-mode lookup GUIDs aren't retained after the run, so those bind values
@@ -528,6 +545,21 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     const createRowMap=[];
     const upsertRowMap=[];
 
+    // UPDATE-only: resolve which keys exist up front. Rows whose key isn't found are errored and
+    // never PATCHed — so no create can occur even if the org doesn't honor If-Match on the key.
+    let existingKeys=null;
+    if(updateOnly && uKey.d && uKey.c){
+      const isPKupd=uKey.d.toLowerCase()===target+"id";
+      const uniqueKeyVals=[...new Set(rows.map(r=>r[uKey.c]).filter(v=>v!==undefined&&v!==null&&v!==""))];
+      try{
+        existingKeys=await resolveExistingKeys(entitySet,uKey.d,isPKupd,uniqueKeyVals);
+      }catch(e){
+        errors.push({row:0,msg:`Existence check failed — aborting to avoid accidental creates: ${e.message}`,payload:""});
+        setResult({created:0,updated:0,errors,skipped,elapsed:((Date.now()-startTime)/1000).toFixed(1),log:logEntries,entity:target,totalRows:total,cancelled:false,startedAt:launchedAt,finishedAt:new Date()});
+        setLoadProgress({done:total,total,current:"Aborted"});setCancelling(false);return;
+      }
+    }
+
     setLoadProgress({done:0,total,current:"Preparing records..."});
 
     for(let i=0;i<rows.length;i++){
@@ -579,9 +611,15 @@ export default function Loader({bp,orgInfo,theme,permissions}){
         if(skipRow) continue;
 
         if(uKey.d && uKey.c && row[uKey.c]){
-          rec[uKey.d]=row[uKey.c];
-          upsertItems.push({keyValue:row[uKey.c],record:rec});
-          upsertRowMap.push(i);
+          // UPDATE-only: skip (error) any key that doesn't already exist — guarantees no create.
+          if(updateOnly && existingKeys && !existingKeys.has(String(row[uKey.c]).toLowerCase())){
+            errors.push({row:i+1,msg:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`});
+            logEntries.push({row:i+1,status:"ERROR",detail:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`,d365Id:""});
+          } else {
+            rec[uKey.d]=row[uKey.c];
+            upsertItems.push({keyValue:row[uKey.c],record:rec});
+            upsertRowMap.push(i);
+          }
         } else if(uKey.d && updateOnly){
           // UPDATE-only: a row with no key value can't target a record — error, never create.
           errors.push({row:i+1,msg:`Cannot UPDATE: empty key in column "${uKey.c}"`});
