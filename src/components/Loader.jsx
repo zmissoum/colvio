@@ -26,7 +26,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const ingestAoa=(aoa)=>{
     if(!aoa||aoa.length<2)return;
     const headers=(aoa[0]||[]).map(h=>String(h==null?"":h).trim().replace(/^\uFEFF/,""));
-    const rows=aoa.slice(1).filter(arr=>arr.some(v=>String(v??"").trim()!=="")).map(arr=>{const obj={};headers.forEach((h,i)=>{const v=arr[i];obj[h]=v==null?"":String(v);});return obj;});
+    // .trim() every value: stray spaces around delimiters ("a, b") would otherwise leak into
+    // upsert keys (' A001' → no match → duplicate created), lookup GUIDs and field values; a
+    // whitespace-only cell must read as empty (skipped), not overwrite a field with " ".
+    const rows=aoa.slice(1).filter(arr=>arr.some(v=>String(v??"").trim()!=="")).map(arr=>{const obj={};headers.forEach((h,i)=>{const v=arr[i];obj[h]=v==null?"":String(v).trim();});return obj;});
     setCsvData({h:headers,r:rows});
 
     const commonMapping={firstname:"firstname",lastname:"lastname",email:"emailaddress1",phone:"telephone1",title:"jobtitle",mailingstreet:"address1_line1",mailingcity:"address1_city",mailingpostalcode:"address1_postalcode",mailingcountry:"address1_country",name:"name",accountnumber:"accountnumber",description:"description",website:"websiteurl",fax:"fax"};
@@ -139,6 +142,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const LIVE_LOG_BUFFER=2000; // rows kept in React state for live display
   const[liveLog,setLiveLog]=useState({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
   const fullLog=useRef([]);
+  // Option-set label→value maps from the last run — buildRequestForRow needs them so the per-row
+  // request details and the log export reconstruct the SAME body doLoad actually sent.
+  const optionMapsRef=useRef({});
   const[cancelling,setCancelling]=useState(false);
   // Tunable performance knobs (à la Salesforce Inspector). Defaults match Inspector's UX.
   const[batchSize,setBatchSize]=useState(200);
@@ -366,10 +372,14 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const resolveLookup=async(lk, value)=>{
     if(!value||!lk.entity||!lk.d365f) return null;
     const escaped=value.replace(/'/g,"''");
-    const data=await bridge.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:`${lk.entity}id`});
+    // $select the filter field itself — guaranteed to exist, unlike `${entity}id` (activities'
+    // PK is activityid, abstract owners' isn't ownerid → permanent 400). Dataverse always
+    // includes the primary key attribute in the response regardless of $select.
+    const data=await bridge.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:lk.d365f});
     if(data?.records?.length>0){
       const rec=data.records[0];
-      const idKey=Object.keys(rec).find(k=>k.endsWith("id")&&!k.includes("@"))||`${lk.entity}id`;
+      const fkey=lk.d365f.toLowerCase();
+      const idKey=Object.keys(rec).find(k=>k.endsWith("id")&&!k.includes("@")&&k.toLowerCase()!==fkey)||`${lk.entity}id`;
       return rec[idKey];
     }
     return null;
@@ -377,29 +387,47 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
   // UPDATE-only hard guarantee: query which key values actually EXIST before writing, so a
   // non-existent key is never PATCHed (no create can happen, regardless of whether Dataverse
-  // honors If-Match: * for the target key). Returns a Set of existing keys, lowercased for
-  // case-insensitive matching (Dataverse string filters are case-insensitive). Throws on failure.
-  const resolveExistingKeys=async(entitySet,keyField,isPK,values)=>{
+  // honors If-Match: * for the target key). Returns {existing, unverified, norm}:
+  //  - norm() canonicalizes a key for Set matching (GUIDs: hex only, lowercased — handles {braces},
+  //    case, stray separators; strings: trimmed + lowercased to mirror Dataverse's case-insensitive
+  //    filters). Both the query results AND the CSV row values go through it, so they can't drift.
+  //  - keyIsNumeric: integer/decimal alternate keys must NOT be quoted in the OData filter.
+  //  - A chunk that 400s (one malformed value poisons the whole OR-filter) falls back to per-value
+  //    queries; values that still fail land in `unverified` → per-row error, never a full abort.
+  const resolveExistingKeys=async(entitySet,keyField,isPK,values,keyIsNumeric)=>{
     const existing=new Set();
+    const unverified=new Set();
+    const norm=(v)=>isPK?String(v).replace(/[^0-9a-fA-F]/g,"").toLowerCase():String(v).trim().toLowerCase();
+    const lit=(v)=>isPK?String(v).replace(/[^0-9a-fA-F-]/g,""):(keyIsNumeric?String(v).trim():`'${String(v).trim().replace(/'/g,"''")}'`);
     const CHUNK=80; // OR-filters of ~80 values keep the URL within Dataverse limits
     const chunks=[];
     for(let i=0;i<values.length;i+=CHUNK) chunks.push(values.slice(i,i+CHUNK));
     let nextIdx=0,done=0;
+    const queryChunk=async(slice)=>{
+      const filter=slice.map(v=>`${keyField} eq ${lit(v)}`).join(" or ");
+      const data=await bridge.query(entitySet,{filter,select:keyField,top:String(slice.length)});
+      for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null) existing.add(norm(kv)); }
+    };
     const CONC=Math.min(6,chunks.length||1); // run several existence queries in parallel
     const worker=async()=>{
       while(true){
+        if(loadAbort.current) return; // user cancelled — stop checking
         const idx=nextIdx++;
         if(idx>=chunks.length) return;
         const slice=chunks[idx];
-        const filter=slice.map(v=>isPK?`${keyField} eq ${String(v).replace(/[^0-9a-fA-F-]/g,"")}`:`${keyField} eq '${String(v).replace(/'/g,"''")}'`).join(" or ");
-        const data=await bridge.query(entitySet,{filter,select:keyField,top:String(slice.length)});
-        for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null) existing.add(String(kv).toLowerCase()); }
+        try{ await queryChunk(slice); }
+        catch{
+          for(const v of slice){
+            if(loadAbort.current) return;
+            try{ await queryChunk([v]); }catch{ unverified.add(norm(v)); }
+          }
+        }
         done+=slice.length;
         setLoadProgress({done:Math.min(done,values.length),total:values.length,current:`Checking which records exist (${Math.min(done,values.length).toLocaleString()}/${values.length.toLocaleString()})...`});
       }
     };
     await Promise.all(Array.from({length:CONC},()=>worker()));
-    return existing;
+    return {existing,unverified,norm};
   };
 
   // Reconstruct the exact Dataverse request for a CSV row (method, URL path, body attributes) —
@@ -432,7 +460,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       if(REQ_SYSTEM_FIELDS.has(m.d365.toLowerCase())) continue;
       const rawVal=row[m.csv];
       if(rawVal===undefined||rawVal===null||rawVal==="") continue;
-      const val=applyTransform(rawVal,m.transform);
+      const val=applyTransform(rawVal,m.transform,optionMapsRef.current[m.d365]);
       if(val!==null&&val!==undefined&&val!=="") rec[m.d365]=val;
     }
     for(const lk of lookups){
@@ -533,7 +561,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     const optionMaps={}; // { [d365field]: { "<label lowercased>": value } }
     const unmatchedOpts={}; // { [d365field]: Set(labels) } — option-set labels that matched no value
     const pickFields=activeMaps.filter(m=>m.d365 && (m.transform==="picklist"||m.transform==="statecode"));
-    for(const m of pickFields){
+    await Promise.all(pickFields.map(async(m)=>{
       const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
       const attrType=meta?.type||meta?.t||"Picklist";
       try{
@@ -544,7 +572,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           optionMaps[m.d365]=map;
         }
       }catch{}
-    }
+    }));
+    optionMapsRef.current=optionMaps; // keep for buildRequestForRow (request details / log export)
 
     const entitySet = entitySetFor(target);
     const startTime=Date.now();
@@ -555,19 +584,17 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     const createRowMap=[];
     const upsertRowMap=[];
 
-    // UPDATE-only: resolve which keys exist up front. Rows whose key isn't found are errored and
-    // never PATCHed — so no create can occur even if the org doesn't honor If-Match on the key.
-    let existingKeys=null;
+    // UPDATE-only: resolve which keys exist up front. Rows whose key isn't found (or couldn't be
+    // verified) are errored per-row and never PATCHed — so no create can occur even if the org
+    // doesn't honor If-Match on the key. Query failures degrade to per-row errors, not an abort.
+    let existCheck=null;
     if(updateOnly && verifyExists && uKey.d && uKey.c){
       const isPKupd=uKey.d.toLowerCase()===target+"id";
+      const keyMeta=targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d);
+      const NUMERIC_TYPES=new Set(["Integer","BigInt","Decimal","Double","Money"]);
+      const keyIsNumeric=NUMERIC_TYPES.has(keyMeta?.type||keyMeta?.t);
       const uniqueKeyVals=[...new Set(rows.map(r=>r[uKey.c]).filter(v=>v!==undefined&&v!==null&&v!==""))];
-      try{
-        existingKeys=await resolveExistingKeys(entitySet,uKey.d,isPKupd,uniqueKeyVals);
-      }catch(e){
-        errors.push({row:0,msg:`Existence check failed — aborting to avoid accidental creates: ${e.message}`,payload:""});
-        setResult({created:0,updated:0,errors,skipped,elapsed:((Date.now()-startTime)/1000).toFixed(1),log:logEntries,entity:target,totalRows:total,cancelled:false,startedAt:launchedAt,finishedAt:new Date()});
-        setLoadProgress({done:total,total,current:"Aborted"});setCancelling(false);return;
-      }
+      existCheck=await resolveExistingKeys(entitySet,uKey.d,isPKupd,uniqueKeyVals,keyIsNumeric);
     }
 
     setLoadProgress({done:0,total,current:"Preparing records..."});
@@ -583,8 +610,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           if(rawVal === undefined || rawVal === null || rawVal === "") continue;
           const val=applyTransform(rawVal,m.transform,optionMaps[m.d365]);
           if(val!==null && val!==undefined && val!=="") rec[m.d365]=val;
-          else if((m.transform==="picklist"||m.transform==="statecode") && optionMaps[m.d365] && isNaN(parseInt(rawVal,10))){
-            // Option-set label that matched nothing — would otherwise be dropped silently. Track it.
+          else if((m.transform==="picklist"||m.transform==="statecode") && optionMaps[m.d365]){
+            // Transform returned null with a loaded option map → unmatched label (numeric values
+            // and known labels never return null). Track it instead of dropping silently.
             (unmatchedOpts[m.d365]||(unmatchedOpts[m.d365]=new Set())).add(String(rawVal));
           }
         }
@@ -607,9 +635,12 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           } else {
             const cached=lookupCache[`${lk.entity}.${lk.d365f}.${val}`];
             if(cached&&typeof cached==="object"&&cached.__resolveError){
-              // Couldn't verify (transient error) — always an ERROR, never silently skipped.
+              // Couldn't verify (query failed) — honor the user's fallback choice, but keep the
+              // transparent "check failed" message so it's never mistaken for a real not-found.
               const msg=`Lookup check failed: ${lk.csv}="${val}" (${cached.__resolveError})`;
-              errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break;
+              if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+1,status:"SKIPPED",detail:msg,d365Id:""});skipRow=true;break; }
+              if(lk.fb!=="null"){ errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break; }
+              // fb==="null": load the row without this lookup
             }else if(cached){
               rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${cached})`;
             } else {
@@ -622,7 +653,13 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
         if(uKey.d && uKey.c && row[uKey.c]){
           // UPDATE-only: skip (error) any key that doesn't already exist — guarantees no create.
-          if(updateOnly && existingKeys && !existingKeys.has(String(row[uKey.c]).toLowerCase())){
+          // norm() canonicalizes both sides ({braces}, case, spaces) so formatting can't mismatch.
+          const nk=existCheck?existCheck.norm(row[uKey.c]):null;
+          if(existCheck && existCheck.unverified.has(nk)){
+            const msg=`Existence check failed for ${uKey.d}="${row[uKey.c]}" — row not sent (UPDATE only)`;
+            errors.push({row:i+1,msg});
+            logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});
+          } else if(existCheck && !existCheck.existing.has(nk)){
             errors.push({row:i+1,msg:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`});
             logEntries.push({row:i+1,status:"ERROR",detail:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`,d365Id:""});
           } else {

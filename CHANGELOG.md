@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.25] — 2026-06-10
+### Fixed (full code-review pass — 10 findings)
+- **XLSX export: numbers are numbers again.** The 1.10.17 formula-injection guard wrapped every cell in a string, turning numeric columns into text (SUM() = 0) and prefixing a visible apostrophe to negatives. `.xlsx` cells carry explicit types — a string cell holding `=…` is inert — so the guard belongs to CSV only; the XLSX export now writes raw typed values.
+- **CSV values are trimmed again.** The RFC-4180 rewrite stopped trimming, so `"a, b"`-style files leaked leading spaces into upsert keys (`' A001'` → no match → duplicate created), lookup GUIDs and field values, and a whitespace-only cell could blank a field on UPDATE.
+- **Picklist labels that start with a digit convert correctly.** `"3 - Hot"` was truncated by `parseInt` to option 3 before the label lookup ran; labels are now matched first and numeric passthrough only applies to strictly-numeric values.
+- **`date ISO` handles times and US dates.** `13/06/2026 14:30` and `1/2/2026 3:45 PM` now produce valid ISO timestamps (they previously produced malformed strings that 400'd every row); `12/31/2026` auto-detects US month-day order. Unparseable time parts yield an explicit empty value instead of an invalid request.
+- **Lookup resolution works for activities & co.** The resolve query `$select`ed `<entity>id`, a permanent 400 for entities whose primary key differs (task/email → `activityid`); combined with 1.10.17's stricter errors this could fail every row. It now selects the match field (Dataverse always returns the PK) — and resolve failures honor the chosen fallback (Skip/Null/Error) instead of always erroring.
+- **UPDATE existence-check matches keys reliably.** GUIDs with braces/uppercase from exports are normalized on both sides (previously 100% of rows could be wrongly reported "No existing record"); integer alternate keys are no longer quoted in the filter; one malformed value now degrades to per-value checks and a per-row error instead of aborting the whole import; Cancel works during the check phase.
+- **Cancel now reaches the content script.** Cancelling mid-throttle previously let in-flight batches sleep through `Retry-After` waits and re-send their writes (up to ~2 min of unwanted server writes). A run-scoped abort flag stops back-off retries and remaining chunks immediately.
+- **429 retry at the right layer.** `dvRequest` (the funnel for lookups, existence checks, single-record ops) now honors `Retry-After` like the `$batch` path — a throttle during the pre-check no longer kills the run.
+- **Pasted Excel data parses correctly again.** Delimiter detection treats an unquoted tab as decisive (cells containing commas out-counted the tab and mis-split columns).
+- **Per-row request details match what was sent.** The request-log reconstruction now uses the same option-set label→value maps as the actual send (picklist fields no longer show as missing in the log); the option-set preload also runs in parallel.
+
 ## [1.10.24] — 2026-06-10
 ### Changed
 - **All export filenames now follow `<object>_<YYYYMMDD>.<ext>`** — e.g. `account_20260610.csv`, `contact_fields_20260610.csv`, `security_role_Sales_Manager_20260610.csv`. Run logs (live log, load log, errors) also append `_HHMMSS` so several runs the same day don't collide. One shared `expName()` helper in shared.jsx replaces the ad-hoc names (`*_export.csv`, `load_errors.csv`, ISO timestamps).
