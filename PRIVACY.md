@@ -25,13 +25,15 @@ Colvio stores the following data **locally in your browser only** (via `chrome.s
 | Data | Purpose | Retention |
 |------|---------|-----------|
 | Saved queries | Persist user-created query configurations | Until manually deleted |
-| Query history | Last 20 executed queries for quick reload | Until manually cleared |
-| Metadata cache | Speed up entity/field loading | Auto-expires (entities: 2h, fields: 1h) |
+| Query history | Last 20 executed queries for quick reload (filter values are stripped before saving) | Until manually cleared |
+| API Tester history | Last 50 ad-hoc requests for quick reload — secret-bearing headers (`Authorization`, `Cookie`, API keys) are **redacted before saving** | Until manually cleared |
+| Data Loader templates | Saved column-mapping configurations (no row data) | Until manually deleted |
+| Metadata cache | Speed up entity/field loading (org-scoped keys, no record data) | Auto-expires (entities: 2h, fields: 1h) |
 | Theme preference | Dark/Light mode setting | Until changed |
 | Language preference | EN/FR interface language | Until changed |
 | Onboarding status | Track if first-launch tour was completed | Permanent |
 
-This data never leaves your browser and is only accessible to the Colvio extension.
+This data never leaves your browser and is only accessible to the Colvio extension. Imported CSV/Excel file contents are processed in memory only and are never persisted.
 
 ## Data Access
 

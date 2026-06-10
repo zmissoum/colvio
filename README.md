@@ -38,6 +38,16 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Clickable lookups** — opens target record in D365
 - **Copy OData URL** — one-click copy for Postman/browser
 
+### API Tester
+- **Postman-style client for the Dataverse Web API** — authenticated by your active D365 session (no OAuth setup, no client secret)
+- GET / POST / PATCH / PUT / DELETE on relative paths or full same-org URLs (host re-validated)
+- Header autocomplete for common Dataverse headers (`Prefer`, `If-Match`, `MSCRM.*` bypass headers)
+- JSON body editor with line numbers and live validation pointing at the exact parse-error line
+- Response panel: status, elapsed time, body size, pretty JSON, headers tab
+- Request templates (WhoAmI, CREATE, PATCH, UPSERT by alt-key, DELETE, RetrieveCurrentOrganization)
+- History of the last 50 requests (stored locally; secret-bearing headers like `Authorization` are redacted before saving)
+- **Copy as cURL**, Ctrl/Cmd+Enter to send, multiple tabs
+
 ### Show All Data
 - Auto-detect current record from D365 tab
 - Card layout: Logical Name, label, type, value
@@ -52,13 +62,22 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 ### Data Loader
 - 5-step wizard: Source > Mapping > Lookups > Preview > Run
 - CSV / TSV / TXT drag-drop, **Excel (XLSX/XLS)** support, or paste from clipboard
-- Smart auto-mapping with metadata-driven lookup detection (auto-skips Lookup-type fields, picks alt-keys over PKs for upsert)
-- **Tunable performance**: batch size (1-1000) × threads (1-10) — default 200×6 for ~3-4k rec/sec
+- **RFC-4180 parser**: quoted cells, embedded commas/newlines, escaped quotes; delimiter auto-detected (`,` / tab / `;`); values trimmed; leading zeros preserved
+- **4 import modes**:
+  - **CREATE** — every row becomes a new record
+  - **UPSERT** — match on GUID or **alternate key**: update if found, create otherwise
+  - **UPDATE (existing only)** — strictly update via the native `If-Match: *` header: a missing or empty key **fails the row, never creates**; optional parallelized existence pre-check for orgs that don't honor `If-Match` on alt-keys
+  - **DELETE** — remove records matched on GUID or alternate key, typed confirmation required
+- Smart auto-mapping with metadata-driven lookup detection (auto-skips Lookup-type fields, picks alt-keys over PKs, warns on non-writable fields per mode)
+- **Column transforms**: picklist/statecode **label→value** (OptionSet preloaded; unmatched labels reported, never silently dropped), locale-aware dates (`dd/mm/yyyy`, US auto-detect, time + AM/PM), locale-aware numbers (`1,5`, `1.234,56`), booleans EN/FR
+- **Mapping templates** — save and reload a full configuration (mappings, lookups, key, mode) per entity
+- **Tunable performance**: batch size (1-500) × threads (1-10) — default 200×6 for ~3-4k rec/sec
 - Multipart **OData $batch** with **per-record changesets** — errors don't cascade across the chunk
-- **Alt-key direct bind**: when the lookup target field is a registered alternate key, skips the resolve query (no `?$filter=...` per unique value) and binds via `entity(field='value')` syntax
-- CREATE or UPSERT modes, alternate key supported as upsert key
-- **Live per-row import log** during the run: every line shown with its CSV columns + `Success`/`Failed` status + Dataverse error detail
-- **Cancel mid-import** with graceful in-flight batch completion
+- **429-aware**: Service Protection throttling retried automatically honoring `Retry-After`
+- **Alt-key direct bind**: when the lookup target field is a registered alternate key, skips the resolve query (no `?$filter=...` per unique value) and binds via `entity(field='value')` syntax; lookup `@odata.bind` paths use the real `EntitySetName` (irregular plurals, polymorphic targets)
+- **Speed boosters** (System Administrators only): per-record `MSCRM.BypassCustomPluginExecution`, `SuppressDuplicateDetection`, `BypassSynchronousLogic` headers
+- **Live per-row import log** during the run: every line shown with its CSV columns + `Success`/`Failed` status + Dataverse error detail + the exact request sent (method, URL, headers, body)
+- **Cancel mid-import** — stops remaining chunks *and* in-flight 429 retries: no writes are sent after cancel
 
 ### Relationship Graph
 - Visual SVG graph: N:1 parents, 1:N children, N:N many-to-many
@@ -126,23 +145,25 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Global
 - **Role-based tab access** — sensitive tabs auto-hidden for non-admin users (zero flash)
+- **Environment badge** — PROD / SANDBOX / UAT / DEV detected via Microsoft's `OrganizationType` API (URL heuristics as fallback)
 - Dark/Light theme (+ system preference detection)
-- English/French toggle (i18n)
-- Export: XLSX, CSV, JSON — copy or download
+- English/French toggle (i18n) — including a searchable in-app Help
+- Export: XLSX, CSV, JSON — standard filenames `<object>_<YYYYMMDD>.<ext>` (run logs add `_HHMMSS`)
 - Session expiration detection with Reconnect button
 - Error boundaries per tab (graceful crash recovery)
-- Rate limiting (10 req/sec)
-- Intelligent caching (memory + chrome.storage.local)
+- Rate limiting (30 req/sec client-side) + automatic 429 `Retry-After` back-off
+- Intelligent caching (memory + chrome.storage.local, org-scoped keys)
+- **Lazy-loaded xlsx** — the ~430 KB spreadsheet library loads only when an Excel file is dropped or exported
 
 ## Stats
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | ~7,100 |
-| API actions | 35 |
-| React components | 22 |
-| Source files | 32 |
-| Build size | ~680 KB |
+| Lines of code | ~9,900 |
+| API actions | 42 |
+| React components | 24 |
+| Unit tests | 207 |
+| Build size | ~490 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |
 
@@ -151,22 +172,25 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 medium open findings**.
 
 ### Data Protection
-- **Zero data exfiltration** — no external servers, no analytics, no telemetry
-- **PII protection** — query history strips filter values before persisting
-- **CSV formula injection protection** — exported cells prefixed to prevent spreadsheet formula execution
+- **Zero data exfiltration** — no external servers, no analytics, no telemetry (every `fetch` targets your own Dataverse org, `same-origin` credentials)
+- **PII protection** — query history strips filter values before persisting; API Tester history redacts secret-bearing headers (`Authorization`, `Cookie`, API keys)
+- **CSV formula injection protection** — exported CSV cells prefixed to prevent spreadsheet formula execution (XLSX exports keep real typed cells — string cells in .xlsx are inert)
 - **Anti-fingerprinting** — content script marker is non-enumerable
 
 ### Input Validation
 - **Entity/field name validation** — all names validated with regex in the content script
-- **OData injection protection** — numeric filter values validated, Lookup GUIDs format-checked
+- **OData injection protection** — numeric filter values validated, Lookup GUIDs format-checked, control characters stripped from batch key values (CRLF-injection proof)
+- **Same-org enforcement** — API Tester re-validates the final URL host after path assembly
 - **Content Security Policy** — explicit CSP on panel.html
 
 ### Write Operation Safeguards
 - **Typed confirmation on bulk delete** — you must type the entity name to confirm
+- **UPDATE mode never creates** — native `If-Match: *` on every PATCH + empty-key rows rejected client-side (optional existence pre-check as a second layer)
 - **CanBeDeleted pre-check** — verifies entity metadata before allowing delete
 - **Confirm dialog on bulk update** — shows field name, value, and record count
-- **Client-side rate limiting** — max 10 requests/second to prevent API abuse
-- **Server-side enforcement** — all write operations respect your D365 security roles, Colvio cannot bypass RBAC
+- **Client-side rate limiting** — max 30 requests/second, plus automatic `Retry-After` back-off on 429
+- **Cancel is honored end-to-end** — a cancelled import stops pending chunks and in-flight retries; nothing is written after cancel
+- **Server-side enforcement** — all write operations respect your D365 security roles, Colvio cannot bypass RBAC (Speed boosters are gated on the `prvBypassCustomPlugins` admin privilege)
 
 ### Access Control
 - **Role-based tab visibility** — sensitive modules auto-hidden for non-admin users (zero flash)
