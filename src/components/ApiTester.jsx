@@ -99,10 +99,15 @@ export default function ApiTester({ bp, orgInfo, theme }) {
         body: hasBody ? body : undefined,
       });
       setResp(r);
+      // Redact secret-bearing headers before persisting history (a pasted token shouldn't be
+      // written to local storage). The live request already went out with the real value.
+      const SECRET_HDR = /^(authorization|cookie|x-api-key|x-functions-key|api-key)$/i;
+      const safeHeaders = {};
+      for (const [k, v] of Object.entries(headersObj)) safeHeaders[k] = SECRET_HDR.test(k) ? "***redacted***" : v;
       // Save to history
       const entry = {
         id: Date.now(),
-        method, path, headers: headersObj, body: hasBody ? body : "",
+        method, path, headers: safeHeaders, body: hasBody ? body : "",
         status: r.status, ok: r.ok,
         elapsed: r.elapsed, at: new Date().toISOString(),
       };

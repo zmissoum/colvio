@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import * as XLSX from "xlsx";
 import Tooltip from "./Tooltip.jsx";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, isTrulyCustom } from "../shared.jsx";
 
 export default function Loader({bp,orgInfo,theme,permissions}){
@@ -16,12 +17,17 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
   const entityPickerRef=useRef(null);
 
-  const parseData=(text,delimiter=",")=>{
-    const lines=text.split("\n").filter(l=>l.trim());
-    if(lines.length<2)return;
-    const sep=delimiter==="auto"?(lines[0].includes("\t")?"\t":","):delimiter;
-    const headers=lines[0].split(sep).map(h=>h.trim().replace(/"/g,"").replace(/^\uFEFF/,""));
-    const rows=lines.slice(1).map(line=>{const vals=line.split(sep).map(v=>v.trim().replace(/"/g,""));const obj={};headers.forEach((h,i)=>obj[h]=vals[i]||"");return obj;});
+  const parseData=(text)=>{
+    const sep=detectSep(text);
+    const aoa=parseDelimited(text,sep);
+    ingestAoa(aoa);
+  };
+
+  // Build the working dataset + auto-mapping from a parsed array-of-arrays (CSV text or an XLSX sheet).
+  const ingestAoa=(aoa)=>{
+    if(!aoa||aoa.length<2)return;
+    const headers=(aoa[0]||[]).map(h=>String(h==null?"":h).trim().replace(/^\uFEFF/,""));
+    const rows=aoa.slice(1).filter(arr=>arr.some(v=>String(v??"").trim()!=="")).map(arr=>{const obj={};headers.forEach((h,i)=>{const v=arr[i];obj[h]=v==null?"":String(v);});return obj;});
     setCsvData({h:headers,r:rows});
 
     const commonMapping={firstname:"firstname",lastname:"lastname",email:"emailaddress1",phone:"telephone1",title:"jobtitle",mailingstreet:"address1_line1",mailingcity:"address1_city",mailingpostalcode:"address1_postalcode",mailingcountry:"address1_country",name:"name",accountnumber:"accountnumber",description:"description",website:"websiteurl",fax:"fax"};
@@ -92,9 +98,26 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     setLookups(lks);setTemplateNote("");setShowTemplates(false);setDeleteConfirm("");setStep(1);
   };
 
-  const handleFile=(e)=>{e.preventDefault();setDragOn(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;setCsvFile(f);const reader=new FileReader();const isExcel=/\.(xlsx|xls)$/i.test(f.name);reader.onload=(ev)=>{if(isExcel){const wb=XLSX.read(ev.target.result,{type:"array"});const csv=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);parseData(csv);}else parseData(ev.target.result);};isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);};
+  const handleFile=(e)=>{
+    e.preventDefault();setDragOn(false);
+    const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;
+    setCsvFile(f);
+    const reader=new FileReader();
+    const isExcel=/\.(xlsx|xls)$/i.test(f.name);
+    reader.onload=(ev)=>{
+      if(isExcel){
+        // Read the sheet straight to rows (header:1) — no CSV round-trip, so quoted/comma cells
+        // can't be mangled. raw:false keeps the cell's displayed text (preserves formatting).
+        const wb=XLSX.read(ev.target.result,{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
+        ingestAoa(aoa);
+      } else parseData(ev.target.result);
+    };
+    isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);
+  };
 
-  const handlePaste=()=>{if(pasteText.trim()){setCsvFile({name:"clipboard_data.csv"});parseData(pasteText,"auto");}};
+  const handlePaste=()=>{if(pasteText.trim()){setCsvFile({name:"clipboard_data.csv"});parseData(pasteText);}};
 
   const isLive = orgInfo?.isExtension;
   const[loadProgress,setLoadProgress]=useState({done:0,total:0,current:""});
@@ -328,77 +351,24 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     return !!(meta?.altKeys?.includes(lk.d365f));
   };
 
-  // Resolve the real EntitySetName for @odata.bind. Naive `logical + "s"` is wrong for
-  // irregular plurals (opportunity → opportunities) and abstract polymorphic targets
-  // (owner → must bind to /systemusers or /teams; customer → /accounts or /contacts).
-  const ABSTRACT_ENTITY_SETS = { owner: "systemusers", principal: "systemusers" };
-  const entitySetFor = (logical) => {
-    if (!logical) return "";
-    const found = entityList.find(e => e.l === logical);
-    if (found?.p) return found.p;                 // authoritative EntitySetName from metadata
-    if (ABSTRACT_ENTITY_SETS[logical]) return ABSTRACT_ENTITY_SETS[logical];
-    return logical + "s";                          // fallback for entities not yet loaded
-  };
+  // Real EntitySetName for @odata.bind (resolveEntitySet handles irregular plurals + abstract
+  // owner/customer targets). Bound to the loaded entity list.
+  const entitySetFor = (logical) => resolveEntitySet(logical, entityList);
 
-  const STATECODE_MAP={"active":0,"inactive":1,"actif":0,"inactif":1,"0":0,"1":1};
-  const BOOLEAN_YESNO={"yes":true,"no":false,"oui":true,"non":false,"true":true,"false":false,"1":true,"0":false,"vrai":true,"faux":false};
+  // STATECODE_MAP, BOOLEAN_YESNO, applyTransform are imported from ../loaderUtils.js (pure, tested).
 
-  // optionMap (optional): { "<label lowercased>": <int value> } for the field — lets a CSV that
-  // contains option *labels* (e.g. "Chaud") convert to the option value instead of being dropped.
-  const applyTransform=(val,transform,optionMap)=>{
-    if(val===undefined||val===null||val==="") return null;
-    const low=String(val).toLowerCase().trim();
-    switch(transform){
-      case "statecode": {
-        if(STATECODE_MAP[low]!==undefined) return STATECODE_MAP[low];
-        if(optionMap&&optionMap[low]!==undefined) return optionMap[low];
-        const n=parseInt(val,10);
-        return isNaN(n)?null:n;
-      }
-      case "picklist": {
-        const n=parseInt(val,10);
-        if(!isNaN(n)) return n;                       // already a numeric value
-        if(optionMap&&optionMap[low]!==undefined) return optionMap[low]; // label → value
-        return null;
-      }
-      case "boolean_yesno": {
-        if(BOOLEAN_YESNO[low]!==undefined) return BOOLEAN_YESNO[low];
-        return null;
-      }
-      case "boolean": return low==="true"||low==="1"||low==="oui"||low==="yes";
-      case "int": { const n=parseInt(val,10); return isNaN(n)?null:n; }
-      case "float": { const n=parseFloat(val); return isNaN(n)?null:n; }
-      case "date_iso": {
-        const s=String(val).trim();
-        // Already ISO date-only (yyyy-mm-dd): keep verbatim — avoids the UTC-midnight shift that
-        // moves DateOnly fields back a day in negative-offset timezones.
-        if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-        // FR / EU formats dd/mm/yyyy or dd-mm-yyyy (optionally with time) → yyyy-mm-dd[THH:mm...]
-        const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)$/);
-        if(m){
-          const dd=m[1].padStart(2,"0"),mm=m[2].padStart(2,"0"),yyyy=m[3],rest=(m[4]||"").trim();
-          return rest?`${yyyy}-${mm}-${dd}T${rest.replace(/^[T\s]/,"")}`:`${yyyy}-${mm}-${dd}`;
-        }
-        // Fallback: let Date parse ISO/RFC strings with a time component.
-        try{ const d=new Date(s); return isNaN(d.getTime())?null:d.toISOString(); }catch{ return null; }
-      }
-      case "upper": return val.toUpperCase();
-      case "lower": return val.toLowerCase();
-      default: return val;
-    }
-  };
-
+  // Returns the GUID string, or null for a GENUINE not-found (0 records).
+  // THROWS on a transient failure (network / 403 / 500) so the caller can distinguish a real
+  // "no such record" from "couldn't check" — instead of silently treating both as not-found.
   const resolveLookup=async(lk, value)=>{
     if(!value||!lk.entity||!lk.d365f) return null;
-    try{
-      const escaped=value.replace(/'/g,"''");
-      const data=await bridge.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:`${lk.entity}id`});
-      if(data?.records?.length>0){
-        const rec=data.records[0];
-        const idKey=Object.keys(rec).find(k=>k.endsWith("id")&&!k.includes("@"))||`${lk.entity}id`;
-        return rec[idKey];
-      }
-    }catch{}
+    const escaped=value.replace(/'/g,"''");
+    const data=await bridge.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:`${lk.entity}id`});
+    if(data?.records?.length>0){
+      const rec=data.records[0];
+      const idKey=Object.keys(rec).find(k=>k.endsWith("id")&&!k.includes("@"))||`${lk.entity}id`;
+      return rec[idKey];
+    }
     return null;
   };
 
@@ -407,10 +377,18 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // what was sent. Resolve-mode lookup GUIDs aren't retained after the run, so those bind values
   // show a placeholder. Reconstructed on demand (not stored per row) to stay memory-safe on big loads.
   const REQ_SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
+  // Shared live-log writer for all batch modes — enriches each result with its CSV row, appends to
+  // the full-log ref, and updates the bounded display buffer + counts. (Was copy-pasted ×3.)
+  const pushBatchLog=(newLog,rowMap,rows)=>{
+    if(!newLog?.length) return;
+    const enriched=newLog.map(e=>{const csvIdx=rowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
+    for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
+    setLiveLog(prev=>{const newCounts={...prev.counts};for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};});
+  };
+
   const buildRequestForRow=(row)=>{
     if(!row) return null;
-    const targetEnt=entityList.find(e=>e.l===target);
-    const entitySet=targetEnt?.p||target+"s";
+    const entitySet=entitySetFor(target);
     // DELETE mode: no body, key-identified path.
     if(deleteMode&&uKey.d&&uKey.c&&row[uKey.c]){
       const isPK=uKey.d.toLowerCase()===target+"id";
@@ -469,8 +447,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
     // ── DELETE mode ── (no lookups, no body — just key-identified deletions)
     if(deleteMode && uKey.d && uKey.c){
-      const targetEntD=entityList.find(e=>e.l===target);
-      const entitySetD=targetEntD?.p||target+"s";
+      const entitySetD=entitySetFor(target);
       const isPKD=uKey.d.toLowerCase()===target+"id";
       const startTimeD=Date.now();
       const deleteItems=[];const deleteRowMap=[];
@@ -485,11 +462,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
         try{
           const res=await bridge.batchDeleteKeyed(entitySetD,uKey.d,deleteItems,isPKD,p=>{
             setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Deleting records ${p.done}/${p.total}...`});
-            if(p.newLog?.length){
-              const enriched=p.newLog.map(e=>{const csvIdx=deleteRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
-              for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
-              setLiveLog(prev=>{const newCounts={...prev.counts};for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};});
-            }
+            pushBatchLog(p.newLog,deleteRowMap,rows);
           },()=>loadAbort.current,{chunk:batchSize,concurrency:threads});
           deleted=res.deleted||0;
           if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
@@ -515,8 +488,13 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       const uniqueVals=[...new Set(rows.map(r=>r[lk.csv]).filter(Boolean))];
       setLoadProgress({done:0,total,current:`Resolving lookups ${lk.entity} (${uniqueVals.length} values)...`});
       for(const val of uniqueVals){
-        const guid=await resolveLookup(lk,val);
-        lookupCache[`${lk.entity}.${lk.d365f}.${val}`]=guid;
+        try{
+          const guid=await resolveLookup(lk,val);
+          lookupCache[`${lk.entity}.${lk.d365f}.${val}`]=guid; // string = found, null = genuine not-found
+        }catch(e){
+          // Transient failure (network/403/500) — mark distinctly so rows aren't mislabelled "not found".
+          lookupCache[`${lk.entity}.${lk.d365f}.${val}`]={__resolveError:(e&&e.message)||"lookup query failed"};
+        }
       }
     }
 
@@ -537,8 +515,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       }catch{}
     }
 
-    const targetEnt = entityList.find(e => e.l === target);
-    const entitySet = targetEnt?.p || target+"s";
+    const entitySet = entitySetFor(target);
     const startTime=Date.now();
     const createRecords=[];
     const upsertItems=[];
@@ -578,9 +555,13 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             const escaped=String(val).replace(/'/g,"''");
             rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${escaped}')`;
           } else {
-            const guid=lookupCache[`${lk.entity}.${lk.d365f}.${val}`];
-            if(guid){
-              rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${guid})`;
+            const cached=lookupCache[`${lk.entity}.${lk.d365f}.${val}`];
+            if(cached&&typeof cached==="object"&&cached.__resolveError){
+              // Couldn't verify (transient error) — always an ERROR, never silently skipped.
+              const msg=`Lookup check failed: ${lk.csv}="${val}" (${cached.__resolveError})`;
+              errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break;
+            }else if(cached){
+              rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${cached})`;
             } else {
               if(lk.fb==="error"){ errors.push({row:i+1,msg:`Lookup not found: ${lk.csv}="${val}"`});logEntries.push({row:i+1,status:"ERROR",detail:`Lookup not found: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
               if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+1,status:"SKIPPED",detail:`Lookup not resolved: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
@@ -609,18 +590,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       try{
         const res=await bridge.batchCreate(entitySet,createRecords,p=>{
           setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (CREATE) ${p.done}/${p.total}...`});
-          if(p.newLog?.length){
-            // Enrich each log entry with the original CSV row data (lookup via parallel index map)
-            const enriched=p.newLog.map(e=>{const csvIdx=createRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
-            // Full log: lightweight (no csvRow copy) — every processed row, reconstructed from `rows` at export time.
-            for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
-            setLiveLog(prev=>{
-              const newCounts={...prev.counts};
-              for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
-              // Bounded ring buffer for the live DOM table (newest first); full history lives in fullLog ref.
-              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};
-            });
-          }
+          pushBatchLog(p.newLog,createRowMap,rows);
         },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
         created=res.created||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
@@ -636,16 +606,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
         const isPK = uKey.d.toLowerCase() === target + "id";
         const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
           setLoadProgress({done:createRecords.length+p.done,total:total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
-          if(p.newLog?.length){
-            const enriched=p.newLog.map(e=>{const csvIdx=upsertRowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
-            for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
-            setLiveLog(prev=>{
-              const newCounts={...prev.counts};
-              for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;
-              // Bounded ring buffer for the live DOM table (newest first); full history lives in fullLog ref.
-              return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};
-            });
-          }
+          pushBatchLog(p.newLog,upsertRowMap,rows);
         },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic,updateOnly});
         updated=res.updated||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
@@ -1128,7 +1089,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 const visibleEntries=liveLog.entries;
                 const exportLiveLog=()=>{
                   const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
-                  const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
+                  const esc=(v)=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
                   // Each row now also carries the exact request that was sent: Method, Request URL, and Payload (JSON).
                   const header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Error detail"].map(esc).join(",");
                   const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
@@ -1259,7 +1220,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 <button onClick={()=>{setStep(0);setCsvFile(null);setCsvData({h:[],r:[]});setResult(null);setPasteText("");setLoadProgress({done:0,total:0,current:""});setDeleteMode(false);setDeleteConfirm("");setUpdateOnly(false);}} style={bt(null)}>New import</button>
                 <button onClick={()=>{
                   const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
-                  const esc=(v)=>{const s=String(v??"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
+                  const esc=(v)=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
                   // Export the COMPLETE log from fullLog ref (every processed row + columns), not the
                   // capped result.log. Reconstruct original columns from csvData.r via csvRowNumber.
                   const full=fullLog.current||[];
