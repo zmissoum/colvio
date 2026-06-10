@@ -74,7 +74,7 @@
   }
 
   // ── Fetch Dataverse ───────────────────────────────────────
-  async function dvRequest(method, path, body = null) {
+  async function dvRequest(method, path, body = null, extraHeaders = null) {
     const ctx = d365Context || extractContext();
     if (!ctx) throw new Error("D365 context not detected");
     const url = path.startsWith("http") ? path : `${ctx.clientUrl}/api/data/${ctx.apiVersion}/${path}`;
@@ -84,6 +84,7 @@
       "OData-Version": "4.0",
     };
     if (body) headers["Content-Type"] = "application/json";
+    if (extraHeaders) Object.assign(headers, extraHeaders);
 
     const isWrite = method === "POST" || method === "PATCH" || method === "DELETE" || method === "PUT";
 
@@ -734,7 +735,7 @@
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
                     try {
-                      await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]));
+                      await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), params.updateOnly ? { "If-Match": "*" } : null);
                       results.updated++;
                       results.log.push({ row: rowIdx, status: "UPSERTED" });
                     } catch (e) {
@@ -749,7 +750,7 @@
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
                   try {
-                    await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]));
+                    await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), params.updateOnly ? { "If-Match": "*" } : null);
                     results.updated++;
                     results.log.push({ row: rowIdx, status: "UPSERTED" });
                   } catch (e) {
