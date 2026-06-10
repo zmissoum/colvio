@@ -10,7 +10,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // `permissions` may be null briefly during connect — boosters stay hidden until the
   // probe completes (safer than flashing them then hiding).
   const canShowSpeedBoosters = permissions?.canBypassPlugins === true;
-  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[deleteMode,setDeleteMode]=useState(false);const[deleteConfirm,setDeleteConfirm]=useState("");const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
+  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[verifyExists,setVerifyExists]=useState(true);const[deleteMode,setDeleteMode]=useState(false);const[deleteConfirm,setDeleteConfirm]=useState("");const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
   // Searchable entity picker — replaces the old dropdown so users can find an entity by typing a few letters.
   const[entitySearch,setEntitySearch]=useState("");
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
@@ -382,13 +382,23 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const resolveExistingKeys=async(entitySet,keyField,isPK,values)=>{
     const existing=new Set();
     const CHUNK=80; // OR-filters of ~80 values keep the URL within Dataverse limits
-    for(let i=0;i<values.length;i+=CHUNK){
-      const slice=values.slice(i,i+CHUNK);
-      const filter=slice.map(v=>isPK?`${keyField} eq ${String(v).replace(/[^0-9a-fA-F-]/g,"")}`:`${keyField} eq '${String(v).replace(/'/g,"''")}'`).join(" or ");
-      setLoadProgress({done:i,total:values.length,current:`Checking which records exist (${Math.min(i+slice.length,values.length)}/${values.length})...`});
-      const data=await bridge.query(entitySet,{filter,select:keyField,top:String(slice.length)});
-      for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null) existing.add(String(kv).toLowerCase()); }
-    }
+    const chunks=[];
+    for(let i=0;i<values.length;i+=CHUNK) chunks.push(values.slice(i,i+CHUNK));
+    let nextIdx=0,done=0;
+    const CONC=Math.min(6,chunks.length||1); // run several existence queries in parallel
+    const worker=async()=>{
+      while(true){
+        const idx=nextIdx++;
+        if(idx>=chunks.length) return;
+        const slice=chunks[idx];
+        const filter=slice.map(v=>isPK?`${keyField} eq ${String(v).replace(/[^0-9a-fA-F-]/g,"")}`:`${keyField} eq '${String(v).replace(/'/g,"''")}'`).join(" or ");
+        const data=await bridge.query(entitySet,{filter,select:keyField,top:String(slice.length)});
+        for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null) existing.add(String(kv).toLowerCase()); }
+        done+=slice.length;
+        setLoadProgress({done:Math.min(done,values.length),total:values.length,current:`Checking which records exist (${Math.min(done,values.length).toLocaleString()}/${values.length.toLocaleString()})...`});
+      }
+    };
+    await Promise.all(Array.from({length:CONC},()=>worker()));
     return existing;
   };
 
@@ -548,7 +558,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     // UPDATE-only: resolve which keys exist up front. Rows whose key isn't found are errored and
     // never PATCHed — so no create can occur even if the org doesn't honor If-Match on the key.
     let existingKeys=null;
-    if(updateOnly && uKey.d && uKey.c){
+    if(updateOnly && verifyExists && uKey.d && uKey.c){
       const isPKupd=uKey.d.toLowerCase()===target+"id";
       const uniqueKeyVals=[...new Set(rows.map(r=>r[uKey.c]).filter(v=>v!==undefined&&v!==null&&v!==""))];
       try{
@@ -789,7 +799,13 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   </>);
                 })()}
               </div>
-              {uKey.d&&updateOnly&&!deleteMode&&<div style={{fontSize:11,color:C.or,marginBottom:6}}>Rows with no matching record will <b>fail</b> (not created) — uses <code style={{...mono,fontSize:11}}>If-Match: *</code>.</div>}
+              {uKey.d&&updateOnly&&!deleteMode&&<div style={{marginBottom:6}}>
+                <div style={{fontSize:11,color:C.or,marginBottom:4}}>Rows with no matching record will <b>fail</b> (not created) — uses <code style={{...mono,fontSize:11}}>If-Match: *</code>.</div>
+                <label style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:11,color:C.txm,cursor:"pointer"}}>
+                  <input type="checkbox" checked={verifyExists} onChange={e=>setVerifyExists(e.target.checked)} style={{accentColor:C.or,marginTop:1}}/>
+                  <span><b>Verify each record exists first</b> (bulletproof — guarantees zero creates even if your org ignores <code style={{...mono,fontSize:11}}>If-Match</code> on alternate keys). Adds an existence-check pass up front (parallelized). <b>Uncheck for max speed</b> on very large updates once you've confirmed your org honors If-Match.</span>
+                </label>
+              </div>}
               {uKey.d&&deleteMode&&<div style={{fontSize:11,color:C.rd,marginBottom:6,padding:"6px 8px",background:C.rd+"11",borderRadius:4,border:`1px solid ${C.rd}44`}}>⚠ <b>Permanent deletion.</b> Each row's key value identifies a record to <b>delete</b>. This cannot be undone. Rows with no matching record fail (404). A typed confirmation is required on the Preview step.</div>}
               {uKey.d&&(()=>{
                 const pk=target+"id";

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.22] — 2026-06-10
+### Changed
+- **UPDATE existence-check is now optional and parallelized.** The "verify which records exist before writing" pass (added in 1.10.20 to guarantee no creates) was sequential — costly on very large updates (~5,000 queries for 400k rows). It now runs ~6 queries in parallel, and there's a checkbox **"Verify each record exists first"** in the UPDATE config:
+  - **On (default):** bulletproof — zero creates even if the org ignores `If-Match` on alternate keys.
+  - **Off:** relies on `If-Match: *` only (always sent) — no extra queries, fastest. Use once you've confirmed your org honors `If-Match` (test with one non-existent key).
+
 ## [1.10.21] — 2026-06-10
 ### Fixed
 - **The upsert/update key is no longer duplicated in the request body.** The alternate key (or GUID) addresses the record in the URL — `entityset(field='value')` — and Dataverse applies that value to the record from the URL, so repeating it in the JSON body was redundant and could 400 if the key field isn't writable. The key is now sent in the URL only; the Preview "D365 record example" and the per-row request details reflect this. (Defense-in-depth: the content script also strips the key field from any body.)
