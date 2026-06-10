@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.10.17] — 2026-06-10
+### Fixed (data-integrity audit)
+- **Data Loader: robust RFC-4180 CSV parser.** The previous parser did `split("\n")` then `split(delimiter)` and stripped all quotes — so a cell like `"Acme, Inc."`, an embedded newline, or escaped quotes silently mis-split into the wrong columns, corrupting every column after it. Replaced with a proper quoted-field parser that preserves each value as its exact string (leading zeros and SAP-style codes survive). Excel files now read straight to rows (no CSV round-trip that re-introduced the bug). Auto-detects `,` / `tab` / `;`.
+- **Decimal locale.** The `float` transform now handles EU formats (`1,5` → 1.5, `1.234,56` → 1234.56) and strips thousands spaces, instead of `parseFloat` silently truncating at the first comma.
+- **Lookup resolution no longer hides transient errors.** A 403/timeout/500 during resolve-mode lookup is now reported as an explicit per-row ERROR instead of being treated as "record not found" and silently skipped.
+- **Formula-injection guard** added to the Explorer XLSX export and the Login History CSV export (the CSV exports already had it); also applied to the Loader log exports.
+### Security / privacy
+- API Tester history redacts secret-bearing headers (`Authorization`, `Cookie`, `x-api-key`, …) before writing to local storage.
+### Internal
+- Extracted the pure loader logic (CSV parsing, value transforms, EntitySetName resolution) into `src/loaderUtils.js` and added **31 unit tests** (169 total). De-duplicated the live-log writer across the 4 import modes; standardized EntitySetName resolution on one helper.
+
 ## [1.10.16] — 2026-06-10
 ### Fixed (audit hardening — D365 correctness + security)
 - **Lookup binding now uses the real EntitySetName** instead of naive `logical + "s"`. This fixes `@odata.bind` (and the resolve-mode GET) for irregular plurals (`opportunity` → `opportunities`, not `opportunitys`) and abstract polymorphic targets (`owner` now binds to `/systemusers`, not the invalid `/owners`). Resolved via the already-loaded entity metadata.

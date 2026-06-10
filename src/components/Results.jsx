@@ -184,7 +184,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const dlCSV=()=>{dl(toCSV(),"text/csv;charset=utf-8",`${res.entity.l}_export.csv`);showFeedback(`CSV downloaded (${n} rows)`);};
   const dlXLSX=()=>{
     try{
-      const wsData=[res.fields,...res.data.map(r=>res.fields.map(f=>bestGet(r,f)))];
+      // Apply the same formula-injection guard as the CSV path — XLSX cells can execute formulas too.
+      const wsData=[res.fields,...res.data.map(r=>res.fields.map(f=>safeVal(String(bestGet(r,f)??""))))];
       const ws=XLSX.utils.aoa_to_sheet(wsData);
       ws["!cols"]=res.fields.map(f=>({wch:Math.max(f.length,12)}));
       const wb=XLSX.utils.book_new();

@@ -93,7 +93,7 @@ export default function LoginHistory({bp,orgInfo,theme}){
   },[history]);
 
   const copyAll=()=>{
-    const esc=(v)=>{const s=String(v||"");return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
+    const esc=(v)=>{let s=String(v||"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
     const csv=["Date,Time,Action,Access Type,Operation,Session Info,Additional Info",...history.map(h=>{
       const d=new Date(h.date);
       return [d.toLocaleDateString("en-US"),d.toLocaleTimeString("en-US"),h.action,h.accessType||"",h.operation||"",h.changedata||"",h.info||""].map(esc).join(",");
