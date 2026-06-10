@@ -436,7 +436,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     if(uKey.d&&uKey.c&&row[uKey.c]){
       const isPK=uKey.d.toLowerCase()===target+"id";
       const keyVal=String(row[uKey.c]);
-      if(!isPK) rec[uKey.d]=row[uKey.c];
+      // The key addresses the record in the URL; Dataverse applies it from there — no need in the body.
       const path=isPK?`${entitySet}(${keyVal})`:`${entitySet}(${uKey.d}='${keyVal.replace(/'/g,"''")}')`;
       const method="PATCH";
       const headers={};
@@ -616,7 +616,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             errors.push({row:i+1,msg:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`});
             logEntries.push({row:i+1,status:"ERROR",detail:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`,d365Id:""});
           } else {
-            rec[uKey.d]=row[uKey.c];
+            // Key goes in the URL only (keyValue) — not the body. Dataverse applies it from the URL.
             upsertItems.push({keyValue:row[uKey.c],record:rec});
             upsertRowMap.push(i);
           }
@@ -1020,7 +1020,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
-{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{rec[m.d365]=row[m.csv]||"";});const isPK=uKey.d&&uKey.d.toLowerCase()===target+"id";if(uKey.d&&uKey.c&&!isPK)rec[uKey.d]=row[uKey.c]||"";lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
+{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{rec[m.d365]=row[m.csv]||"";});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
             </pre>
           </div>
           <div style={{...crd({padding:12}),marginBottom:12}}>

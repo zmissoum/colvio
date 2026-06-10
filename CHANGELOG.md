@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.10.21] — 2026-06-10
+### Fixed
+- **The upsert/update key is no longer duplicated in the request body.** The alternate key (or GUID) addresses the record in the URL — `entityset(field='value')` — and Dataverse applies that value to the record from the URL, so repeating it in the JSON body was redundant and could 400 if the key field isn't writable. The key is now sent in the URL only; the Preview "D365 record example" and the per-row request details reflect this. (Defense-in-depth: the content script also strips the key field from any body.)
+
 ## [1.10.20] — 2026-06-10
 ### Fixed (UPDATE mode now never creates — guaranteed)
 - **UPDATE mode pre-checks which keys exist and skips the rest.** Relying on `If-Match: *` alone was not enough: some orgs don't honor the precondition when the record is addressed by an **alternate key**, so an UPDATE could still upsert (create) missing records. Colvio now queries which key values actually exist before writing, PATCHes only those, and reports every missing key as a per-row ERROR — so no create can happen regardless of how the org handles `If-Match`. `If-Match: *` is still sent as a second layer. (Adds an existence-check pass at the start of an UPDATE; the import aborts safely if that check itself fails, rather than risking accidental creates.)
