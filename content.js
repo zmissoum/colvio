@@ -650,8 +650,8 @@
             const buildClean = (item) => {
               const c = {};
               for (const [k, v] of Object.entries(item.record)) {
-                if (STRIP.has(k) && k !== keyField) continue;
-                if (isPrimaryKey && k === keyField) continue;
+                if (STRIP.has(k)) continue;
+                if (k === keyField) continue; // key addresses the record via the URL — never in the body
                 c[k] = v;
               }
               return c;
