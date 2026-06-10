@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.10.18] — 2026-06-10
+### Changed
+- **Smaller initial bundle: the xlsx library is now lazy-loaded.** It's only fetched when an Excel file is actually dropped (Data Loader) or an XLSX export is run (Data Explorer). The panel bundle drops from ~890 KB to ~492 KB; the ~430 KB xlsx chunk loads on demand. Faster panel open for the common (no-Excel) case.
+- **Data Loader: unmatched option-set labels are now reported.** When a `picklist`/`statecode` column uses a label that matches no option value, the result panel lists exactly which labels in which fields didn't convert (instead of those cells being silently left empty).
+
 ## [1.10.17] — 2026-06-10
 ### Fixed (data-integrity audit)
 - **Data Loader: robust RFC-4180 CSV parser.** The previous parser did `split("\n")` then `split(delimiter)` and stripped all quotes — so a cell like `"Acme, Inc."`, an embedded newline, or escaped quotes silently mis-split into the wrong columns, corrupting every column after it. Replaced with a proper quoted-field parser that preserves each value as its exact string (leading zeros and SAP-style codes survive). Excel files now read straight to rows (no CSV round-trip that re-introduced the bug). Auto-detects `,` / `tab` / `;`.

@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import * as XLSX from "xlsx";
 import { C, I, Spin, mono, bt, dl, copyText, ths, tds } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
@@ -182,8 +181,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
   const copyJSON=()=>{copyText(toJSON());showFeedback(`${t("results.json_copied")} (${n} rows)`);};
   const dlCSV=()=>{dl(toCSV(),"text/csv;charset=utf-8",`${res.entity.l}_export.csv`);showFeedback(`CSV downloaded (${n} rows)`);};
-  const dlXLSX=()=>{
+  const dlXLSX=async()=>{
     try{
+      // Lazy-load xlsx only when the user actually exports to .xlsx.
+      const m=await import("xlsx"); const XLSX=m.utils?m:(m.default||m);
       // Apply the same formula-injection guard as the CSV path — XLSX cells can execute formulas too.
       const wsData=[res.fields,...res.data.map(r=>res.fields.map(f=>safeVal(String(bestGet(r,f)??""))))];
       const ws=XLSX.utils.aoa_to_sheet(wsData);
