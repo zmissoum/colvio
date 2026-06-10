@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
-import * as XLSX from "xlsx";
 import Tooltip from "./Tooltip.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, isTrulyCustom } from "../shared.jsx";
@@ -104,14 +103,18 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     setCsvFile(f);
     const reader=new FileReader();
     const isExcel=/\.(xlsx|xls)$/i.test(f.name);
-    reader.onload=(ev)=>{
+    reader.onload=async(ev)=>{
       if(isExcel){
+        // Lazy-load the heavy xlsx lib only when an Excel file is actually dropped.
         // Read the sheet straight to rows (header:1) — no CSV round-trip, so quoted/comma cells
         // can't be mangled. raw:false keeps the cell's displayed text (preserves formatting).
-        const wb=XLSX.read(ev.target.result,{type:"array"});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
-        ingestAoa(aoa);
+        try{
+          const m=await import("xlsx"); const XLSX=m.read?m:(m.default||m);
+          const wb=XLSX.read(ev.target.result,{type:"array"});
+          const ws=wb.Sheets[wb.SheetNames[0]];
+          const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
+          ingestAoa(aoa);
+        }catch(err){ setCsvData({h:[],r:[]}); setCsvFile(null); }
       } else parseData(ev.target.result);
     };
     isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);
@@ -501,6 +504,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     // Pre-load OptionSet metadata for picklist/statecode columns so a CSV holding option *labels*
     // (e.g. "Chaud", "En cours") converts to the option value instead of being silently dropped.
     const optionMaps={}; // { [d365field]: { "<label lowercased>": value } }
+    const unmatchedOpts={}; // { [d365field]: Set(labels) } — option-set labels that matched no value
     const pickFields=activeMaps.filter(m=>m.d365 && (m.transform==="picklist"||m.transform==="statecode"));
     for(const m of pickFields){
       const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
@@ -537,6 +541,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           if(rawVal === undefined || rawVal === null || rawVal === "") continue;
           const val=applyTransform(rawVal,m.transform,optionMaps[m.d365]);
           if(val!==null && val!==undefined && val!=="") rec[m.d365]=val;
+          else if((m.transform==="picklist"||m.transform==="statecode") && optionMaps[m.d365] && isNaN(parseInt(rawVal,10))){
+            // Option-set label that matched nothing — would otherwise be dropped silently. Track it.
+            (unmatchedOpts[m.d365]||(unmatchedOpts[m.d365]=new Set())).add(String(rawVal));
+          }
         }
 
         let skipRow=false;
@@ -623,7 +631,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     const batchLog=fullLog.current.map(e=>({row:e.csvRowNumber,status:e.status,detail:e.status==="ERROR"?(e.msg||"Batch error"):"OK",d365Id:""}));
     const combinedLog=[...logEntries,...batchLog];
     const resultLog=combinedLog.length>5000?combinedLog.slice(0,5000):combinedLog;
-    setResult({created,updated,errors,skipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date()});
+    const optionWarnings=Object.entries(unmatchedOpts).map(([field,set])=>({field,labels:[...set].slice(0,10)})).filter(w=>w.labels.length);
+    setResult({created,updated,errors,skipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date(),optionWarnings});
     setLoadProgress({done:total,total,current:wasCancelled?"Cancelled":"Done"});
     setCancelling(false);
   };
@@ -1168,6 +1177,16 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   : [{l:"Created",v:result.created,c:C.gn},{l:"Updated",v:result.updated,c:C.cy},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}]
                 ).map((m,i)=><div key={i} style={{...crd({padding:"8px 10px",textAlign:"center"})}}><div style={{fontSize:20,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd}}>{m.l}</div></div>)}
               </div>
+
+              {result.optionWarnings&&result.optionWarnings.length>0&&(
+                <div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:600,color:C.yw,marginBottom:5}}>⚠ Option-set labels that matched no value (these cells were left empty)</div>
+                  <ul style={{margin:0,paddingLeft:18,display:"flex",flexDirection:"column",gap:3}}>
+                    {result.optionWarnings.map(w=><li key={w.field} style={{fontSize:12,color:C.txm,...mono}}>{w.field}: {w.labels.map(l=>`"${l}"`).join(", ")}</li>)}
+                  </ul>
+                  <div style={{fontSize:11,color:C.txd,marginTop:5,fontStyle:"italic"}}>Check the option-set's exact labels in Metadata Browser, or use numeric option values in the CSV.</div>
+                </div>
+              )}
 
               {result.log&&result.log.length>0&&(
                 <div style={{...crd({padding:12}),marginTop:12}}>
