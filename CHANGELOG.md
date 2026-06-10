@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.10.26] — 2026-06-10
+### Changed
+- **In-app Help fully rebuilt** (EN + FR): a search bar filters topics; 6 new sections — **API Tester**, **the 4 import modes** (CREATE / UPSERT / UPDATE-only with If-Match / DELETE), **column transforms** (label→value picklists, EU/US dates with time, locale numbers), **performance & speed boosters** (batching, 429 retry, cancel semantics, admin-gated MSCRM headers), **exports & file naming** (incl. why Excel shows the Protected View banner), and a **Troubleshooting / FAQ** (session expired, 404s in UPDATE, unmatched labels, 429, PROD badge, slow imports).
+- **Docs refreshed across the board**: README (API Tester section added, Data Loader rewritten around the 4 modes/transforms/boosters, stats and security sections updated to v1.10.25 reality), Chrome Web Store listing (loader + API Tester paragraphs), privacy policy (API Tester history redaction, loader templates, org-scoped cache — and the guarantee that imported file contents are never persisted).
+
 ## [1.10.25] — 2026-06-10
 ### Fixed (full code-review pass — 10 findings)
 - **XLSX export: numbers are numbers again.** The 1.10.17 formula-injection guard wrapped every cell in a string, turning numeric columns into text (SUM() = 0) and prefixing a visible apostrophe to negatives. `.xlsx` cells carry explicit types — a string cell holding `=…` is inert — so the guard belongs to CSV only; the XLSX export now writes raw typed values.
