@@ -74,6 +74,11 @@
   }
 
   // ── Fetch Dataverse ───────────────────────────────────────
+  // Set by the panel (via "abortBatch") when the user cancels a bulk run; cleared by
+  // "resetBatchAbort" at the start of each run. Checked by the batch builders and the 429
+  // back-off loops so a cancel stops retries and chunk processing inside the content script too.
+  let batchAborted = false;
+
   async function dvRequest(method, path, body = null, extraHeaders = null) {
     const ctx = d365Context || extractContext();
     if (!ctx) throw new Error("D365 context not detected");
@@ -98,8 +103,21 @@
     const timeout = setTimeout(() => controller.abort(), isWrite ? 25000 : 60000);
 
     try {
-      const resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
+      let resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
       clearTimeout(timeout);
+
+      // 429 Service Protection: the request was rejected BEFORE execution, so retrying is safe
+      // for reads and writes alike. Honors Retry-After (capped 30s, 3 attempts). This is the
+      // funnel for every non-$batch call — lookup resolution, existence checks, single PATCHes —
+      // which are exactly the paths throttled alongside big loads.
+      let attempt429 = 0;
+      while (resp.status === 429 && attempt429 < 3 && !batchAborted) {
+        const ra = parseInt(resp.headers.get("Retry-After") || "", 10);
+        await new Promise(r => setTimeout(r, Math.min(isNaN(ra) ? 2 * (attempt429 + 1) : ra, 30) * 1000));
+        if (batchAborted) break;
+        attempt429++;
+        resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin" });
+      }
 
       if (!resp.ok) {
         if (resp.status === 401 || resp.status === 403) {
@@ -137,10 +155,11 @@
     let attempt = 0;
     while (true) {
       const resp = await fetch(url, options);
-      if (resp.status !== 429 || attempt >= maxRetries) return resp;
+      if (resp.status !== 429 || attempt >= maxRetries || batchAborted) return resp;
       const ra = parseInt(resp.headers.get("Retry-After") || "", 10);
       const waitMs = Math.min(isNaN(ra) ? 2 * (attempt + 1) : ra, 30) * 1000; // cap 30s
       await new Promise(r => setTimeout(r, waitMs));
+      if (batchAborted) return resp; // user cancelled during the back-off — never re-send writes
       attempt++;
     }
   }
@@ -527,6 +546,7 @@
             };
 
             for (let batch = 0; batch < records.length; batch += BATCH_SIZE) {
+              if (batchAborted) break; // user cancelled — stop sending further chunks
               const chunk = records.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
 
@@ -681,6 +701,7 @@
             };
 
             for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
+              if (batchAborted) break; // user cancelled — stop sending further chunks
               const chunk = items.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
 
@@ -809,6 +830,7 @@
             };
 
             for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
+              if (batchAborted) break; // user cancelled — stop sending further chunks
               const chunk = items.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
               let body = "";
@@ -1017,6 +1039,16 @@
           }
           case "getCurrentRecord":
             result = getCurrentRecord();
+            break;
+          // Bulk-run cancellation: the bridge resets the flag when a run starts and sets it when
+          // the user cancels — so retries/chunks already inside the content script stop too.
+          case "resetBatchAbort":
+            batchAborted = false;
+            result = { ok: true };
+            break;
+          case "abortBatch":
+            batchAborted = true;
+            result = { ok: true };
             break;
           case "getApiLimits":
             try {

@@ -29,7 +29,10 @@ export function detectSep(text) {
   const counts = { ",": 0, "\t": 0, ";": 0 };
   let inQ = false;
   for (const c of firstLine) { if (c === '"') inQ = !inQ; else if (!inQ && counts[c] !== undefined) counts[c]++; }
-  return Object.keys(counts).reduce((a, b) => counts[b] > counts[a] ? b : a, ",");
+  // An unquoted tab is decisive: pasted Excel/TSV always tab-separates cells, while commas and
+  // semicolons commonly appear INSIDE cell content ("Revenue, gross" would out-count the tab).
+  if (counts["\t"] > 0) return "\t";
+  return counts[";"] > counts[","] ? ";" : ",";
 }
 
 export const STATECODE_MAP = { active: 0, inactive: 1, actif: 0, inactif: 1, "0": 0, "1": 1 };
@@ -44,12 +47,14 @@ export function applyTransform(val, transform, optionMap) {
     case "statecode": {
       if (STATECODE_MAP[low] !== undefined) return STATECODE_MAP[low];
       if (optionMap && optionMap[low] !== undefined) return optionMap[low];
-      const n = parseInt(val, 10); return isNaN(n) ? null : n;
+      if (/^-?\d+$/.test(low)) return parseInt(low, 10);
+      return null;
     }
     case "picklist": {
-      const n = parseInt(val, 10);
-      if (!isNaN(n)) return n;
+      // Label lookup FIRST: a label like "3 - Hot" must map to its real option value, not be
+      // truncated to 3 by a loose parseInt. Numeric passthrough only for strictly-numeric strings.
       if (optionMap && optionMap[low] !== undefined) return optionMap[low];
+      if (/^-?\d+$/.test(low)) return parseInt(low, 10);
       return null;
     }
     case "boolean_yesno": {
@@ -70,11 +75,24 @@ export function applyTransform(val, transform, optionMap) {
     }
     case "date_iso": {
       const s = String(val).trim();
+      // ISO date-only: keep verbatim — avoids the UTC-midnight shift on DateOnly fields.
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)$/);
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[T\s]+(.*))?$/);
       if (m) {
-        const dd = m[1].padStart(2, "0"), mm = m[2].padStart(2, "0"), yyyy = m[3], rest = (m[4] || "").trim();
-        return rest ? `${yyyy}-${mm}-${dd}T${rest.replace(/^[T\s]/, "")}` : `${yyyy}-${mm}-${dd}`;
+        let dd = +m[1], mm = +m[2];
+        // Day-first by default (EU); if the middle part can't be a month, it's US m/d → swap.
+        if (mm > 12 && dd <= 12) { const t = dd; dd = mm; mm = t; }
+        if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+        const dateStr = `${m[3]}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+        const rest = (m[4] || "").trim();
+        if (!rest) return dateStr; // DateOnly — no time, no TZ shift
+        // Time part: HH:mm[:ss] with optional AM/PM → build a LOCAL Date, emit UTC ISO.
+        const t = rest.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i);
+        if (!t) return null; // unrecognized time → explicit null beats sending invalid ISO (400)
+        let hh = +t[1];
+        if (t[4]) { const pm = /p/i.test(t[4]); if (pm && hh < 12) hh += 12; if (!pm && hh === 12) hh = 0; }
+        const d = new Date(`${dateStr}T${String(hh).padStart(2, "0")}:${t[2]}:${t[3] || "00"}`);
+        return isNaN(d.getTime()) ? null : d.toISOString();
       }
       try { const d = new Date(s); return isNaN(d.getTime()) ? null : d.toISOString(); } catch { return null; }
     }

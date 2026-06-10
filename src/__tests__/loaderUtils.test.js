@@ -36,6 +36,9 @@ describe("detectSep", () => {
   it("ignores delimiters inside quotes when detecting", () => {
     expect(detectSep('"a,b,c,d";x')).toBe(";");
   });
+  it("tab is decisive even when commas out-count it (Excel paste)", () => {
+    expect(detectSep("Revenue, gross, net\tNotes")).toBe("\t");
+  });
 });
 
 describe("applyTransform", () => {
@@ -58,6 +61,26 @@ describe("applyTransform", () => {
     expect(applyTransform("Chaud", "picklist", { chaud: 1 })).toBe(1));
   it("picklist unknown label → null (not silently wrong)", () =>
     expect(applyTransform("Unknown", "picklist", { chaud: 1 })).toBeNull());
+  it("picklist: digit-prefixed label resolves via map, NOT truncated by parseInt", () =>
+    expect(applyTransform("3 - Hot", "picklist", { "3 - hot": 100000003 })).toBe(100000003));
+  it("picklist: digit-prefixed label with no map match → null (not 3)", () =>
+    expect(applyTransform("3 - Hot", "picklist", { chaud: 1 })).toBeNull());
+  it("date: US m/d/yyyy auto-swap when month>12", () =>
+    expect(applyTransform("12/31/2026", "date_iso")).toBe("2026-12-31"));
+  it("date: dd/mm/yyyy with 24h time → valid ISO at the right local time", () => {
+    const r = applyTransform("13/06/2026 14:30", "date_iso");
+    const d = new Date(r);
+    expect(isNaN(d.getTime())).toBe(false);
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()]).toEqual([2026, 5, 13, 14, 30]);
+  });
+  it("date: m/d/yyyy with AM/PM time → valid ISO", () => {
+    const r = applyTransform("1/2/2026 3:45 PM", "date_iso");
+    const d = new Date(r);
+    expect(isNaN(d.getTime())).toBe(false);
+    expect([d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()]).toEqual([1, 1, 15, 45]); // Feb 1 (day-first), 15:45
+  });
+  it("date: unparseable time part → null, never invalid ISO", () =>
+    expect(applyTransform("13/06/2026 not-a-time", "date_iso")).toBeNull());
   it("no transform → passthrough", () => expect(applyTransform("Acme", "")).toBe("Acme"));
 });
 

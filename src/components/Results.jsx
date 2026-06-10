@@ -185,8 +185,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     try{
       // Lazy-load xlsx only when the user actually exports to .xlsx.
       const m=await import("xlsx"); const XLSX=m.utils?m:(m.default||m);
-      // Apply the same formula-injection guard as the CSV path — XLSX cells can execute formulas too.
-      const wsData=[res.fields,...res.data.map(r=>res.fields.map(f=>safeVal(String(bestGet(r,f)??""))))];
+      // Raw values on purpose: .xlsx cells carry explicit types, so a string cell holding "=..."
+      // stays inert text (unlike CSV) — no formula-injection guard needed. Wrapping in
+      // safeVal(String(...)) turned every number into a text cell (SUM()=0) and put a visible
+      // apostrophe on negatives.
+      const wsData=[res.fields,...res.data.map(r=>res.fields.map(f=>{const v=bestGet(r,f);return v==null?"":(typeof v==="object"?JSON.stringify(v):v);}))];
       const ws=XLSX.utils.aoa_to_sheet(wsData);
       ws["!cols"]=res.fields.map(f=>({wch:Math.max(f.length,12)}));
       const wb=XLSX.utils.book_new();

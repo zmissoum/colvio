@@ -269,6 +269,11 @@ export const bridge = {
   // so CONCURRENCY=5 is well within bounds and keeps headroom for other operations.
   async batchCreate(entitySet, records, onProgress, shouldAbort, opts = {}) {
     if (!isExtension) return { created: records.length, errors: [], log: [] };
+    // Clear any stale abort flag in the content script, and prepare a once-only notifier so a
+    // user cancel also stops retries/chunks already running inside the content script.
+    try { await callD365("resetBatchAbort"); } catch {}
+    let abortNotified = false;
+    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch").catch(() => {}); } };
     const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     // MSCRM bypass headers — forwarded per-chunk; content.js injects them on each
@@ -286,7 +291,7 @@ export const bridge = {
     let processedRecords = 0;
     const worker = async () => {
       while (true) {
-        if (shouldAbort?.()) { agg.aborted = true; return; }
+        if (shouldAbort?.()) { agg.aborted = true; notifyAbort(); return; }
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
@@ -306,6 +311,9 @@ export const bridge = {
 
   async batchUpsert(entitySet, keyField, items, isPrimaryKey = false, onProgress, shouldAbort, opts = {}) {
     if (!isExtension) return { updated: items.length, errors: [], log: [] };
+    try { await callD365("resetBatchAbort"); } catch {}
+    let abortNotified = false;
+    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch").catch(() => {}); } };
     const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     // MSCRM bypass headers + update-only flag (If-Match: * → 404 instead of create when missing).
@@ -323,7 +331,7 @@ export const bridge = {
     let processedRecords = 0;
     const worker = async () => {
       while (true) {
-        if (shouldAbort?.()) { agg.aborted = true; return; }
+        if (shouldAbort?.()) { agg.aborted = true; notifyAbort(); return; }
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
@@ -344,6 +352,9 @@ export const bridge = {
   // Bulk DELETE by primary key or alternate key — same worker-pool + per-row log as batchUpsert.
   async batchDeleteKeyed(entitySet, keyField, items, isPrimaryKey = false, onProgress, shouldAbort, opts = {}) {
     if (!isExtension) return { deleted: items.length, errors: [], log: [] };
+    try { await callD365("resetBatchAbort"); } catch {}
+    let abortNotified = false;
+    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch").catch(() => {}); } };
     const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     const agg = { deleted: 0, errors: [], log: [], aborted: false };
@@ -353,7 +364,7 @@ export const bridge = {
     let processedRecords = 0;
     const worker = async () => {
       while (true) {
-        if (shouldAbort?.()) { agg.aborted = true; return; }
+        if (shouldAbort?.()) { agg.aborted = true; notifyAbort(); return; }
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
