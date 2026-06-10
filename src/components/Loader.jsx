@@ -582,6 +582,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           rec[uKey.d]=row[uKey.c];
           upsertItems.push({keyValue:row[uKey.c],record:rec});
           upsertRowMap.push(i);
+        } else if(uKey.d && updateOnly){
+          // UPDATE-only: a row with no key value can't target a record — error, never create.
+          errors.push({row:i+1,msg:`Cannot UPDATE: empty key in column "${uKey.c}"`});
+          logEntries.push({row:i+1,status:"ERROR",detail:`Cannot UPDATE: empty key in column "${uKey.c}"`,d365Id:""});
         } else {
           createRecords.push(rec);
           createRowMap.push(i);

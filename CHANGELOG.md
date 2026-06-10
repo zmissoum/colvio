@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.10.19] — 2026-06-10
+### Fixed (UPDATE mode is now strictly update-only)
+- **Serial-fallback path didn't carry `If-Match: *`.** If the `$batch` endpoint failed and Colvio fell back to per-record PATCH, an UPDATE-mode import would silently upsert — creating records that don't exist. The fallback now passes `If-Match: *` (and `dvRequest` accepts extra headers), so it still 404s instead of creating.
+- **Rows with an empty key value were routed to CREATE even in UPDATE mode.** Such a row can't target a record, so it's now reported as a per-row ERROR instead of being inserted. Result: UPDATE mode only ever updates existing records — a missing id/alt-key (or empty key) always yields an error, never a create.
+
 ## [1.10.18] — 2026-06-10
 ### Changed
 - **Smaller initial bundle: the xlsx library is now lazy-loaded.** It's only fetched when an Excel file is actually dropped (Data Loader) or an XLSX export is run (Data Explorer). The panel bundle drops from ~890 KB to ~492 KB; the ~430 KB xlsx chunk loads on demand. Faster panel open for the common (no-Excel) case.
