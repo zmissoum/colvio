@@ -107,6 +107,9 @@ export const ROWS=[
 export const D365CF=["firstname","lastname","emailaddress1","telephone1","jobtitle","address1_line1","address1_city","address1_postalcode","address1_country","new_externalid"];
 
 export function dl(c,t,n){const b=new Blob([c],{type:t});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=n;a.click();URL.revokeObjectURL(u);}
+// Standard export filename: <base>_<YYYYMMDD>.<ext> (local date). withTime adds _HHMMSS for
+// files exported several times a day (run logs) so they don't collide.
+export function expName(base,ext,withTime=false){const d=new Date();const p=(n)=>String(n).padStart(2,"0");const ymd=`${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;const hms=withTime?`_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`:"";return `${base}_${ymd}${hms}.${ext}`;}
 export function Spin({s=14}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid ${C.txd}44`,borderTopColor:C.tx,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>;}
 export function copyText(t){navigator.clipboard?.writeText(String(t));}
 

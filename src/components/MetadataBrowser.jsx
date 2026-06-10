@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, copyText, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, expName, copyText, isTrulyCustom } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -23,7 +23,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     for(const f of fields){
       rows.push([esc(f.l),esc(f.d),esc(f.o||f.l),esc(displayType(f.t)),f.req?"Yes":"No",f.cust?"Yes":"No"].join(","));
     }
-    dl(rows.join("\n"),"text/csv;charset=utf-8",`${selEnt.l}_fields.csv`);
+    dl(rows.join("\n"),"text/csv;charset=utf-8",expName(`${selEnt.l}_fields`,"csv"));
   };
 
   // Export ALL OptionSet values for the selected entity as a single CSV
@@ -46,7 +46,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
           }
         }
       }
-      if(rows.length>1) dl(rows.join("\n"),"text/csv;charset=utf-8",`${selEnt.l}_all_optionsets.csv`);
+      if(rows.length>1) dl(rows.join("\n"),"text/csv;charset=utf-8",expName(`${selEnt.l}_all_optionsets`,"csv"));
     }catch{}finally{setExportingOS(false);}
   };
   useEffect(()=>{if(!showPicklist)return;const h=e=>{if(e.key==="Escape")setShowPicklist(null);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[showPicklist]);
@@ -177,7 +177,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                         {opts.length>0&&<span style={{fontSize:12,color:C.txm}}>{opts.length} values</span>}
                       </div>
                       <div style={{display:"flex",gap:6}}>
-                        {opts.length>0&&<button onClick={()=>{const csv=opts.map(o=>`${o.value},"${(o.label||"").replace(/"/g,'""')}","${(o.description||"").replace(/"/g,'""')}"`).join("\n");dl("\uFEFF"+"Value,Label,Description\n"+csv,"text/csv;charset=utf-8",`${field.l}_optionset.csv`);cp("","opts");}} style={bt(null,{fontSize:12})}><I.Download/> {copied==="opts"?"✓ Downloaded":"Export CSV"}</button>}
+                        {opts.length>0&&<button onClick={()=>{const csv=opts.map(o=>`${o.value},"${(o.label||"").replace(/"/g,'""')}","${(o.description||"").replace(/"/g,'""')}"`).join("\n");dl("\uFEFF"+"Value,Label,Description\n"+csv,"text/csv;charset=utf-8",expName(`${field.l}_optionset`,"csv"));cp("","opts");}} style={bt(null,{fontSize:12})}><I.Download/> {copied==="opts"?"✓ Downloaded":"Export CSV"}</button>}
                         <button onClick={()=>setShowPicklist(null)} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:4,fontSize:16}}>✕</button>
                       </div>
                     </div>

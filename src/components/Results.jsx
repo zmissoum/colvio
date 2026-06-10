@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, bt, dl, copyText, ths, tds } from "../shared.jsx";
+import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
 
@@ -180,7 +180,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows)`);};
   const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
   const copyJSON=()=>{copyText(toJSON());showFeedback(`${t("results.json_copied")} (${n} rows)`);};
-  const dlCSV=()=>{dl(toCSV(),"text/csv;charset=utf-8",`${res.entity.l}_export.csv`);showFeedback(`CSV downloaded (${n} rows)`);};
+  const dlCSV=()=>{dl(toCSV(),"text/csv;charset=utf-8",expName(res.entity.l,"csv"));showFeedback(`CSV downloaded (${n} rows)`);};
   const dlXLSX=async()=>{
     try{
       // Lazy-load xlsx only when the user actually exports to .xlsx.
@@ -191,11 +191,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       ws["!cols"]=res.fields.map(f=>({wch:Math.max(f.length,12)}));
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,ws,res.entity.l.substring(0,31));
-      XLSX.writeFile(wb,`${res.entity.l}_export.xlsx`);
+      XLSX.writeFile(wb,expName(res.entity.l,"xlsx"));
       showFeedback(`XLSX downloaded (${n} rows)`);
     }catch(e){showFeedback("XLSX error: "+e.message);}
   };
-  const dlJSON=()=>{dl(toJSON(),"application/json;charset=utf-8",`${res.entity.l}_export.json`);showFeedback(`JSON downloaded (${n} rows)`);};
+  const dlJSON=()=>{dl(toJSON(),"application/json;charset=utf-8",expName(res.entity.l,"json"));showFeedback(`JSON downloaded (${n} rows)`);};
 
   const btnCopy=(label,icon,onClick,accent)=>(<button onClick={onClick} style={{
     padding:"4px 8px",fontSize:12,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:4,
