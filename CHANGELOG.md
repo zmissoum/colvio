@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.10.24] — 2026-06-10
+### Changed
+- **All export filenames now follow `<object>_<YYYYMMDD>.<ext>`** — e.g. `account_20260610.csv`, `contact_fields_20260610.csv`, `security_role_Sales_Manager_20260610.csv`. Run logs (live log, load log, errors) also append `_HHMMSS` so several runs the same day don't collide. One shared `expName()` helper in shared.jsx replaces the ad-hoc names (`*_export.csv`, `load_errors.csv`, ISO timestamps).
+
 ## [1.10.23] — 2026-06-10
 ### Changed
 - **UPDATE relies on `If-Match: *` by default — the existence pre-check is now opt-in (off).** Alternate-key UPDATE is fully supported by Dataverse, and `If-Match: *` (sent on every PATCH) is the documented native mechanism that makes Dataverse return 404 instead of creating when a record is missing — for both GUIDs and alternate keys. So the default UPDATE path adds no extra queries and is fast even on very large updates. The "pre-verify existence" pass remains available as an opt-in safety net for the rare org that doesn't honor `If-Match`. (The creates seen earlier came from pre-1.10.19 bugs — the serial-fallback PATCH missing `If-Match` and empty-key rows routed to create — both fixed.)

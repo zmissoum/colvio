@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet } from "../loaderUtils.js";
-import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
 
 export default function Loader({bp,orgInfo,theme,permissions}){
   // Speed boosters require prvBypassCustomPlugins — granted by the System Administrator
@@ -1112,7 +1112,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               {confirmOk&&<span style={{color:C.gn,fontSize:12,marginLeft:8}}>✓ confirmed</span>}
             </div>);
           })()}
-          <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",`load_${target}.json`);}} style={bt()}><I.Download/> YAML</button>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",expName(`load_${target}`,"json"));}} style={bt()}><I.Download/> YAML</button>
             {deleteMode
               ? <button onClick={doLoad} disabled={deleteConfirm.trim().toLowerCase()!==target.toLowerCase()} style={bt(deleteConfirm.trim().toLowerCase()===target.toLowerCase()?`linear-gradient(135deg,${C.rd},${C.rd}cc)`:null,{opacity:deleteConfirm.trim().toLowerCase()===target.toLowerCase()?1:0.5})}>🗑 Delete records</button>
               : <button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button>}
@@ -1155,12 +1155,11 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 const totalProcessed=liveLog.counts.CREATED+liveLog.counts.UPSERTED+liveLog.counts.ERROR;
                 const visibleEntries=liveLog.entries;
                 const exportLiveLog=()=>{
-                  const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
                   const esc=(v)=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
                   // Each row now also carries the exact request that was sent: Method, Request URL, and Payload (JSON).
                   const header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Error detail"].map(esc).join(",");
                   const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
-                  dl("﻿"+[header,...lines].join("\n"),"text/csv;charset=utf-8",`live_log_${target}_${ts}.csv`);
+                  dl("﻿"+[header,...lines].join("\n"),"text/csv;charset=utf-8",expName(`live_log_${target}`,"csv",true));
                 };
                 return (<div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
                   <div style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12,fontWeight:600,flexWrap:"wrap",gap:6}}>
@@ -1296,7 +1295,6 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:16,flexWrap:"wrap"}}>
                 <button onClick={()=>{setStep(0);setCsvFile(null);setCsvData({h:[],r:[]});setResult(null);setPasteText("");setLoadProgress({done:0,total:0,current:""});setDeleteMode(false);setDeleteConfirm("");setUpdateOnly(false);}} style={bt(null)}>New import</button>
                 <button onClick={()=>{
-                  const ts=new Date().toISOString().replace(/[:.]/g,"-").substring(0,19);
                   const esc=(v)=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
                   // Export the COMPLETE log from fullLog ref (every processed row + columns), not the
                   // capped result.log. Reconstruct original columns from csvData.r via csvRowNumber.
@@ -1323,9 +1321,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                     `# Duration: ${result.elapsed}s`,
                     `# Timestamp: ${new Date().toISOString()}`,
                   ];
-                  dl("\uFEFF"+[header,...lines,...summary].join("\n"),"text/csv;charset=utf-8",`colvio_load_${result.entity||target}_${ts}.csv`);
+                  dl("\uFEFF"+[header,...lines,...summary].join("\n"),"text/csv;charset=utf-8",expName(`colvio_load_${result.entity||target}`,"csv",true));
                 }} style={bt(null,{color:C.gn})}><I.Download/> Download Log</button>
-                {result.errors.length>0&&<button onClick={()=>{const csv=["Row,Error,Payload",...result.errors.map(e=>`${e.row},"${(e.msg||"").replace(/"/g,'""')}","${(e.payload||"").replace(/"/g,'""')}"`)].join("\n");dl("\uFEFF"+csv,"text/csv;charset=utf-8","load_errors.csv");}} style={bt(null,{color:C.rd})}>Export errors CSV</button>}
+                {result.errors.length>0&&<button onClick={()=>{const csv=["Row,Error,Payload",...result.errors.map(e=>`${e.row},"${(e.msg||"").replace(/"/g,'""')}","${(e.payload||"").replace(/"/g,'""')}"`)].join("\n");dl("\uFEFF"+csv,"text/csv;charset=utf-8",expName(`load_errors_${result.entity||target}`,"csv",true));}} style={bt(null,{color:C.rd})}>Export errors CSV</button>}
               </div>
             </div>
           )}

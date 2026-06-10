@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, dl } from "../shared.jsx";
+import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, dl, expName } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 export default function TranslationManager({bp,orgInfo,theme}){
@@ -71,7 +71,7 @@ export default function TranslationManager({bp,orgInfo,theme}){
       codes.forEach(c=>{const lbl=a.labels.find(l=>l.languageCode===c)?.label||"";vals.push(`"${lbl.replace(/"/g,'""')}"`)});
       return vals.join(",");
     });
-    dl("\uFEFF"+header+"\n"+rows.join("\n"),"text/csv;charset=utf-8",`${selEnt.l}_translations.csv`);
+    dl("\uFEFF"+header+"\n"+rows.join("\n"),"text/csv;charset=utf-8",expName(`${selEnt.l}_translations`,"csv"));
   };
 
   const handleImport=(text)=>{

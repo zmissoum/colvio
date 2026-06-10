@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, dl } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
 
 export default function LoginHistory({bp,orgInfo,theme}){
   const[search,setSearch]=useState("");
@@ -98,7 +98,7 @@ export default function LoginHistory({bp,orgInfo,theme}){
       const d=new Date(h.date);
       return [d.toLocaleDateString("en-US"),d.toLocaleTimeString("en-US"),h.action,h.accessType||"",h.operation||"",h.changedata||"",h.info||""].map(esc).join(",");
     })].join("\n");
-    dl("\uFEFF"+csv,"text/csv;charset=utf-8",`login_history_${selectedUser?.fullname?.replace(/\s+/g,"_")||"export"}.csv`);
+    dl("\uFEFF"+csv,"text/csv;charset=utf-8",expName(`login_history_${selectedUser?.fullname?.replace(/\s+/g,"_")||"export"}`,"csv"));
   };
 
   return(

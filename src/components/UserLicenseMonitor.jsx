@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, dl } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -98,7 +98,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
     const headers = ["fullname", "email", "disabled", "accessMode", "calType", "businessUnit", "title", "createdOn"];
     const rows = users.map(u => [u.fullname, u.email, u.disabled ? "Yes" : "No", u.accessModeLabel, u.calTypeLabel, u.buName, u.title, u.createdOn].map(esc).join(","));
     const csv = "\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
-    dl(csv, "text/csv;charset=utf-8", "d365_users_licenses.csv");
+    dl(csv, "text/csv;charset=utf-8", expName("d365_users_licenses","csv"));
     setFeedback(`CSV downloaded (${users.length} users)`);
     setTimeout(() => setFeedback(""), 2000);
   };

@@ -1,6 +1,6 @@
 {
   "name": "colvio-d365",
-  "version": "1.10.23",
+  "version": "1.10.24",
   "description": "Colvio — Data Explorer, Loader & Inspector for Microsoft Dynamics 365 / Dataverse",
   "private": true,
   "type": "module",

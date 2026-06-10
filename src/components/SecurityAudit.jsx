@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, dl } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -139,7 +139,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     const headers = ["privilege", "label", "depth", "depthLabel", "isOrg", "isSensitive"];
     const rows = privileges.map(p => [p.name, formatPrivName(p.name), p.depth, p.depthLabel, p.isOrg ? "Yes" : "No", isSensitive(p.name) ? "Yes" : "No"].map(esc).join(","));
     const csv = "\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
-    dl(csv, "text/csv;charset=utf-8", `security_role_${selRole.name.replace(/\s+/g, "_")}.csv`);
+    dl(csv, "text/csv;charset=utf-8", expName(`security_role_${selRole.name.replace(/\s+/g, "_")}`, "csv"));
     setFeedback(`CSV downloaded (${privileges.length} privileges)`);
     setTimeout(() => setFeedback(""), 2000);
   };
