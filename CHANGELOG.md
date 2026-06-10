@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.10.23] — 2026-06-10
+### Changed
+- **UPDATE relies on `If-Match: *` by default — the existence pre-check is now opt-in (off).** Alternate-key UPDATE is fully supported by Dataverse, and `If-Match: *` (sent on every PATCH) is the documented native mechanism that makes Dataverse return 404 instead of creating when a record is missing — for both GUIDs and alternate keys. So the default UPDATE path adds no extra queries and is fast even on very large updates. The "pre-verify existence" pass remains available as an opt-in safety net for the rare org that doesn't honor `If-Match`. (The creates seen earlier came from pre-1.10.19 bugs — the serial-fallback PATCH missing `If-Match` and empty-key rows routed to create — both fixed.)
+
 ## [1.10.22] — 2026-06-10
 ### Changed
 - **UPDATE existence-check is now optional and parallelized.** The "verify which records exist before writing" pass (added in 1.10.20 to guarantee no creates) was sequential — costly on very large updates (~5,000 queries for 400k rows). It now runs ~6 queries in parallel, and there's a checkbox **"Verify each record exists first"** in the UPDATE config:

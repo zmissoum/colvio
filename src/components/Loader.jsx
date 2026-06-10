@@ -10,7 +10,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // `permissions` may be null briefly during connect — boosters stay hidden until the
   // probe completes (safer than flashing them then hiding).
   const canShowSpeedBoosters = permissions?.canBypassPlugins === true;
-  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[verifyExists,setVerifyExists]=useState(true);const[deleteMode,setDeleteMode]=useState(false);const[deleteConfirm,setDeleteConfirm]=useState("");const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
+  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[verifyExists,setVerifyExists]=useState(false);const[deleteMode,setDeleteMode]=useState(false);const[deleteConfirm,setDeleteConfirm]=useState("");const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
   // Searchable entity picker — replaces the old dropdown so users can find an entity by typing a few letters.
   const[entitySearch,setEntitySearch]=useState("");
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
@@ -800,10 +800,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 })()}
               </div>
               {uKey.d&&updateOnly&&!deleteMode&&<div style={{marginBottom:6}}>
-                <div style={{fontSize:11,color:C.or,marginBottom:4}}>Rows with no matching record will <b>fail</b> (not created) — uses <code style={{...mono,fontSize:11}}>If-Match: *</code>.</div>
-                <label style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:11,color:C.txm,cursor:"pointer"}}>
+                <div style={{fontSize:11,color:C.or,marginBottom:4}}>Update-only: rows with no matching record <b>fail</b> (not created) — enforced natively by the <code style={{...mono,fontSize:11}}>If-Match: *</code> header on every PATCH. This is the documented Dataverse mechanism; no extra queries.</div>
+                <label style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:11,color:C.txd,cursor:"pointer"}}>
                   <input type="checkbox" checked={verifyExists} onChange={e=>setVerifyExists(e.target.checked)} style={{accentColor:C.or,marginTop:1}}/>
-                  <span><b>Verify each record exists first</b> (bulletproof — guarantees zero creates even if your org ignores <code style={{...mono,fontSize:11}}>If-Match</code> on alternate keys). Adds an existence-check pass up front (parallelized). <b>Uncheck for max speed</b> on very large updates once you've confirmed your org honors If-Match.</span>
+                  <span>Also pre-verify existence (safety net) — adds a parallelized existence-check pass before writing. Only needed for the rare org that doesn't honor <code style={{...mono,fontSize:11}}>If-Match</code>. Slower on large updates; leave off unless you've actually seen creates.</span>
                 </label>
               </div>}
               {uKey.d&&deleteMode&&<div style={{fontSize:11,color:C.rd,marginBottom:6,padding:"6px 8px",background:C.rd+"11",borderRadius:4,border:`1px solid ${C.rd}44`}}>⚠ <b>Permanent deletion.</b> Each row's key value identifies a record to <b>delete</b>. This cannot be undone. Rows with no matching record fail (404). A typed confirmation is required on the Preview step.</div>}
