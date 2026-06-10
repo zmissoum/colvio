@@ -129,6 +129,21 @@
     }
   }
 
+  // Fetch a $batch with automatic 429 (Service Protection) backoff. Dataverse counts every
+  // operation inside a $batch against the request budget, so big loads can hit 429 — this honors
+  // Retry-After (capped) and retries the same batch instead of surfacing a throttle as a row error.
+  async function fetchBatchWithRetry(url, options, maxRetries = 4) {
+    let attempt = 0;
+    while (true) {
+      const resp = await fetch(url, options);
+      if (resp.status !== 429 || attempt >= maxRetries) return resp;
+      const ra = parseInt(resp.headers.get("Retry-After") || "", 10);
+      const waitMs = Math.min(isNaN(ra) ? 2 * (attempt + 1) : ra, 30) * 1000; // cap 30s
+      await new Promise(r => setTimeout(r, waitMs));
+      attempt++;
+    }
+  }
+
   // ── Record URL detection ──────────────────────────────────
   function getCurrentRecord() {
     try {
@@ -235,6 +250,10 @@
                   type: aType,
                   isCustom: a.IsCustomAttribute || false,
                   required: a.RequiredLevel?.Value === "ApplicationRequired" || a.RequiredLevel?.Value === "SystemRequired",
+                  // Writability — used by the Loader to keep read-only / calculated / rollup
+                  // fields out of CREATE/UPDATE mapping (they 400 per row otherwise).
+                  validForCreate: a.IsValidForCreate !== false,
+                  validForUpdate: a.IsValidForUpdate !== false,
                 };
               });
             break;
@@ -340,16 +359,22 @@
             // Only allow same-org URLs. Block anything pointing outside the user's Dataverse instance.
             const ctxApi = d365Context || extractContext();
             if (!ctxApi) throw new Error("D365 context not found");
+            const baseHost = new URL(ctxApi.clientUrl).hostname;
             let url;
             if (path.startsWith("http://") || path.startsWith("https://")) {
               const u = new URL(path);
-              const baseHost = new URL(ctxApi.clientUrl).hostname;
               if (u.hostname !== baseHost) throw new Error(`URL not allowed: ${u.hostname} is not your D365 org host (${baseHost})`);
               url = path;
             } else {
               const trimmed = path.startsWith("/") ? path : `/${path}`;
               url = `${ctxApi.clientUrl}${trimmed}`;
             }
+            // Defense-in-depth: re-parse the FINAL url and re-assert the host, so protocol-relative
+            // (//evil.com) or backslash-normalized paths can never drift off the org host.
+            try {
+              const finalHost = new URL(url, ctxApi.clientUrl).hostname;
+              if (finalHost !== baseHost) throw new Error(`URL not allowed: resolved host ${finalHost} is not your D365 org host (${baseHost})`);
+            } catch (e) { throw new Error(e.message || "Invalid URL"); }
             const customHeaders = params.headers && typeof params.headers === "object" ? params.headers : {};
             const finalHeaders = {
               "Accept": "application/json",
@@ -524,7 +549,7 @@
               body += "--" + boundary + "--\r\n";
 
               try {
-                const resp = await fetch(baseUrl + "/$batch", {
+                const resp = await fetchBatchWithRetry(baseUrl + "/$batch", {
                   method: "POST",
                   headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
                   body,
@@ -680,7 +705,7 @@
               body += "--" + boundary + "--\r\n";
 
               try {
-                const resp = await fetch(baseUrl + "/$batch", {
+                const resp = await fetchBatchWithRetry(baseUrl + "/$batch", {
                   method: "POST",
                   headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
                   body,
@@ -800,7 +825,7 @@
               body += "--" + boundary + "--\r\n";
 
               try {
-                const resp = await fetch(baseUrl + "/$batch", {
+                const resp = await fetchBatchWithRetry(baseUrl + "/$batch", {
                   method: "POST",
                   headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
                   body,
@@ -981,11 +1006,14 @@
             result = records;
             break;
           }
-          case "upsert":
+          case "upsert": {
             validateEntitySet(params.entitySet);
             validateName(params.keyField, 'keyField');
-            result = await dvRequest("PATCH", `${params.entitySet}(${params.keyField}='${params.keyValue.replace(/'/g, "''")}')`, params.data);
+            // Strip control chars (CR/LF) like the batch path, then quote-escape — no request-line drift.
+            const keyVal = String(params.keyValue ?? "").replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''");
+            result = await dvRequest("PATCH", `${params.entitySet}(${params.keyField}='${keyVal}')`, params.data);
             break;
+          }
           case "getCurrentRecord":
             result = getCurrentRecord();
             break;

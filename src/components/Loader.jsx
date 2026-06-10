@@ -328,21 +328,38 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     return !!(meta?.altKeys?.includes(lk.d365f));
   };
 
+  // Resolve the real EntitySetName for @odata.bind. Naive `logical + "s"` is wrong for
+  // irregular plurals (opportunity → opportunities) and abstract polymorphic targets
+  // (owner → must bind to /systemusers or /teams; customer → /accounts or /contacts).
+  const ABSTRACT_ENTITY_SETS = { owner: "systemusers", principal: "systemusers" };
+  const entitySetFor = (logical) => {
+    if (!logical) return "";
+    const found = entityList.find(e => e.l === logical);
+    if (found?.p) return found.p;                 // authoritative EntitySetName from metadata
+    if (ABSTRACT_ENTITY_SETS[logical]) return ABSTRACT_ENTITY_SETS[logical];
+    return logical + "s";                          // fallback for entities not yet loaded
+  };
+
   const STATECODE_MAP={"active":0,"inactive":1,"actif":0,"inactif":1,"0":0,"1":1};
   const BOOLEAN_YESNO={"yes":true,"no":false,"oui":true,"non":false,"true":true,"false":false,"1":true,"0":false,"vrai":true,"faux":false};
 
-  const applyTransform=(val,transform)=>{
+  // optionMap (optional): { "<label lowercased>": <int value> } for the field — lets a CSV that
+  // contains option *labels* (e.g. "Chaud") convert to the option value instead of being dropped.
+  const applyTransform=(val,transform,optionMap)=>{
     if(val===undefined||val===null||val==="") return null;
     const low=String(val).toLowerCase().trim();
     switch(transform){
       case "statecode": {
         if(STATECODE_MAP[low]!==undefined) return STATECODE_MAP[low];
+        if(optionMap&&optionMap[low]!==undefined) return optionMap[low];
         const n=parseInt(val,10);
         return isNaN(n)?null:n;
       }
       case "picklist": {
         const n=parseInt(val,10);
-        return isNaN(n)?null:n;
+        if(!isNaN(n)) return n;                       // already a numeric value
+        if(optionMap&&optionMap[low]!==undefined) return optionMap[low]; // label → value
+        return null;
       }
       case "boolean_yesno": {
         if(BOOLEAN_YESNO[low]!==undefined) return BOOLEAN_YESNO[low];
@@ -351,7 +368,20 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       case "boolean": return low==="true"||low==="1"||low==="oui"||low==="yes";
       case "int": { const n=parseInt(val,10); return isNaN(n)?null:n; }
       case "float": { const n=parseFloat(val); return isNaN(n)?null:n; }
-      case "date_iso": { try{ return new Date(val).toISOString(); }catch{ return null; } }
+      case "date_iso": {
+        const s=String(val).trim();
+        // Already ISO date-only (yyyy-mm-dd): keep verbatim — avoids the UTC-midnight shift that
+        // moves DateOnly fields back a day in negative-offset timezones.
+        if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        // FR / EU formats dd/mm/yyyy or dd-mm-yyyy (optionally with time) → yyyy-mm-dd[THH:mm...]
+        const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)$/);
+        if(m){
+          const dd=m[1].padStart(2,"0"),mm=m[2].padStart(2,"0"),yyyy=m[3],rest=(m[4]||"").trim();
+          return rest?`${yyyy}-${mm}-${dd}T${rest.replace(/^[T\s]/,"")}`:`${yyyy}-${mm}-${dd}`;
+        }
+        // Fallback: let Date parse ISO/RFC strings with a time component.
+        try{ const d=new Date(s); return isNaN(d.getTime())?null:d.toISOString(); }catch{ return null; }
+      }
       case "upper": return val.toUpperCase();
       case "lower": return val.toLowerCase();
       default: return val;
@@ -362,7 +392,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     if(!value||!lk.entity||!lk.d365f) return null;
     try{
       const escaped=value.replace(/'/g,"''");
-      const data=await bridge.query(`${lk.entity}s`,{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:`${lk.entity}id`});
+      const data=await bridge.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:`${lk.entity}id`});
       if(data?.records?.length>0){
         const rec=data.records[0];
         const idKey=Object.keys(rec).find(k=>k.endsWith("id")&&!k.includes("@"))||`${lk.entity}id`;
@@ -401,9 +431,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       if(!lk.csv||!lk.nav) continue;
       const val=row[lk.csv];
       if(!val) continue;
-      if(lk.mode==="direct") rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${val})`;
-      else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${lk.d365f}='${e}')`;}
-      else rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(<resolved at runtime>)`;
+      if(lk.mode==="direct") rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
+      else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${e}')`;}
+      else rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(<resolved at runtime>)`;
     }
     if(uKey.d&&uKey.c&&row[uKey.c]){
       const isPK=uKey.d.toLowerCase()===target+"id";
@@ -490,6 +520,23 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       }
     }
 
+    // Pre-load OptionSet metadata for picklist/statecode columns so a CSV holding option *labels*
+    // (e.g. "Chaud", "En cours") converts to the option value instead of being silently dropped.
+    const optionMaps={}; // { [d365field]: { "<label lowercased>": value } }
+    const pickFields=activeMaps.filter(m=>m.d365 && (m.transform==="picklist"||m.transform==="statecode"));
+    for(const m of pickFields){
+      const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
+      const attrType=meta?.type||meta?.t||"Picklist";
+      try{
+        const opts=await bridge.getOptionSet(target,m.d365,attrType);
+        if(Array.isArray(opts)){
+          const map={};
+          for(const o of opts){ if(o&&o.label!=null&&o.value!=null) map[String(o.label).toLowerCase().trim()]=o.value; }
+          optionMaps[m.d365]=map;
+        }
+      }catch{}
+    }
+
     const targetEnt = entityList.find(e => e.l === target);
     const entitySet = targetEnt?.p || target+"s";
     const startTime=Date.now();
@@ -511,7 +558,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           if(!m.d365) continue;
           const rawVal = row[m.csv];
           if(rawVal === undefined || rawVal === null || rawVal === "") continue;
-          const val=applyTransform(rawVal,m.transform);
+          const val=applyTransform(rawVal,m.transform,optionMaps[m.d365]);
           if(val!==null && val!==undefined && val!=="") rec[m.d365]=val;
         }
 
@@ -524,16 +571,16 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             continue;
           }
           if(lk.mode==="direct"){
-            rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${val})`;
+            rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
           } else if(isAltKeyBind(lk)){
             // Alt-key direct binding — Dataverse resolves server-side. Empty fb=skip/null already
             // short-circuited above; missing record on the server returns a per-row PATCH error.
             const escaped=String(val).replace(/'/g,"''");
-            rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${lk.d365f}='${escaped}')`;
+            rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${escaped}')`;
           } else {
             const guid=lookupCache[`${lk.entity}.${lk.d365f}.${val}`];
             if(guid){
-              rec[`${lk.nav}@odata.bind`]=`/${lk.entity}s(${guid})`;
+              rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${guid})`;
             } else {
               if(lk.fb==="error"){ errors.push({row:i+1,msg:`Lookup not found: ${lk.csv}="${val}"`});logEntries.push({row:i+1,status:"ERROR",detail:`Lookup not found: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
               if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+1,status:"SKIPPED",detail:`Lookup not resolved: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
@@ -943,6 +990,12 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             if(pickNoTransform.length) warnings.push({k:"pick",t:`${pickNoTransform.length} option-set field${pickNoTransform.length>1?"s":""} have no transform chosen: ${pickNoTransform.slice(0,5).join(", ")} — labels won't convert to option values.`});
             // UPSERT key set but no CSV column chosen
             if(uKey.d&&!uKey.c) warnings.push({k:"uk",t:`UPSERT key "${uKey.d}" has no CSV column selected — the import can't match existing records.`});
+            // Non-writable fields mapped for the chosen mode (calculated/rollup/read-only → 400 per row)
+            if(!deleteMode){
+              const isUpdateMode=uKey.d&&updateOnly;
+              const nonWritable=maps.filter(m=>{if(!m.d365||m.skip)return false;const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);if(!meta)return false;return isUpdateMode?(meta.validForUpdate===false):(meta.validForCreate===false);}).map(m=>m.d365);
+              if(nonWritable.length) warnings.push({k:"ro",t:`${nonWritable.length} field${nonWritable.length>1?"s":""} not writable in ${isUpdateMode?"UPDATE":"CREATE/UPSERT"}: ${nonWritable.slice(0,5).join(", ")}${nonWritable.length>5?` +${nonWritable.length-5}`:""} — calculated/rollup/read-only fields will fail per row. Unmap them.`});
+            }
             if(!warnings.length) return null;
             return (<div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:600,color:C.yw,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>⚠ Pre-flight checks ({warnings.length}) — review before loading</div>
@@ -955,7 +1008,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
-{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{rec[m.d365]=row[m.csv]||"";});const isPK=uKey.d&&uKey.d.toLowerCase()===target+"id";if(uKey.d&&uKey.c&&!isPK)rec[uKey.d]=row[uKey.c]||"";lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const ent=lk.entity||"?";if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${ent}s(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${ent}s(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${ent}s(<GUID>)`;}}});return rec;})(),null,2)}
+{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{rec[m.d365]=row[m.csv]||"";});const isPK=uKey.d&&uKey.d.toLowerCase()===target+"id";if(uKey.d&&uKey.c&&!isPK)rec[uKey.d]=row[uKey.c]||"";lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
             </pre>
           </div>
           <div style={{...crd({padding:12}),marginBottom:12}}>

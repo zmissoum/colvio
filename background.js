@@ -42,6 +42,10 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 // ── Relay: Panel <-> Content Script ──────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Defense-in-depth: only accept messages from this extension's own pages/content scripts.
+  // (No externally_connectable is declared, so web pages already can't reach this — this also
+  // rejects a hypothetical compromised co-installed extension.)
+  if (sender.id !== chrome.runtime.id) return;
   if (message.__d365InspectorRequest) {
     const targetTab = message.d365TabId || d365TabId;
     if (!targetTab) { sendResponse({ error: "D365 tab not found — go back to D365 and click ⚡" }); return true; }

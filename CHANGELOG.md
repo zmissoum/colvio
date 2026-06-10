@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.16] — 2026-06-10
+### Fixed (audit hardening — D365 correctness + security)
+- **Lookup binding now uses the real EntitySetName** instead of naive `logical + "s"`. This fixes `@odata.bind` (and the resolve-mode GET) for irregular plurals (`opportunity` → `opportunities`, not `opportunitys`) and abstract polymorphic targets (`owner` now binds to `/systemusers`, not the invalid `/owners`). Resolved via the already-loaded entity metadata.
+- **Loader now knows which fields are writable.** `getFields` returns `IsValidForCreate` / `IsValidForUpdate`; a new pre-flight check warns when a read-only / calculated / rollup field is mapped for the current mode (CREATE/UPSERT vs UPDATE) — these would otherwise fail with a 400 on every row.
+- **Picklist / State columns can convert option *labels* → values.** When the `picklist` or `statecode` transform is chosen, Colvio pre-loads the field's OptionSet and maps CSV labels (e.g. "Chaud") to the option value, instead of silently dropping non-numeric values.
+- **`date ISO` transform is timezone- and format-safe.** Date-only `yyyy-mm-dd` is kept verbatim (no more UTC-midnight day shift), and `dd/mm/yyyy` / `dd-mm-yyyy` (FR/EU) are parsed explicitly instead of being misread or dropped.
+- **429 (Service Protection) backoff on bulk loads.** `$batch` requests now honor `Retry-After` and retry instead of surfacing a throttle as a per-row error.
+### Security (defense-in-depth)
+- API Tester: the final request URL is re-validated against the org host after path assembly (blocks protocol-relative / backslash drift, on top of the existing same-origin guard).
+- `upsert` single-record path strips control chars from the key value (parity with the batch builders).
+- `background.js` only accepts runtime messages from the extension's own pages (`sender.id` check).
+
 ## [1.10.15] — 2026-06-09
 ### Added
 - **Data Loader: DELETE mode** (fourth import mode). Bulk-delete records identified by primary key (GUID) or alternate key from a CSV — same parallel `$batch` engine, per-row log, request details, and cancel as the other modes.
