@@ -83,6 +83,26 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   const orgBase = orgInfo?.orgUrl || orgInfo?.clientUrl || "";
   const fullUrl = `${orgBase}${API_PREFIX}${path}`;
 
+  // Two-step confirmation for DELETE only: first Send (or Ctrl+Enter) arms the button,
+  // the second one within 3s actually sends. DELETE is the one irreversible method here
+  // (no recycle bin in Dataverse) and history recall + Ctrl+Enter muscle memory make an
+  // accidental send realistic. Re-arms on method/path change; other methods are untouched.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const confirmTimer = useRef(null);
+  useEffect(() => { setConfirmDelete(false); clearTimeout(confirmTimer.current); }, [method, path]);
+  useEffect(() => () => clearTimeout(confirmTimer.current), []);
+  const trySend = () => {
+    if (method === "DELETE" && !confirmDelete) {
+      setConfirmDelete(true);
+      clearTimeout(confirmTimer.current);
+      confirmTimer.current = setTimeout(() => setConfirmDelete(false), 3000);
+      return;
+    }
+    setConfirmDelete(false);
+    clearTimeout(confirmTimer.current);
+    sendRequest();
+  };
+
   const sendRequest = async () => {
     setLoading(true); setError(""); setResp(null);
     const startTime = Date.now();
@@ -218,16 +238,16 @@ export default function ApiTester({ bp, orgInfo, theme }) {
               onChange={(e) => setPath(e.target.value)}
               placeholder="accounts?$select=name&$top=5"
               style={{ flex: 1, padding: "8px 12px", background: "transparent", border: "none", color: C.tx, fontSize: 13, ...mono, outline: "none" }}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendRequest(); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) trySend(); }}
             />
           </div>
           <button
-            onClick={sendRequest}
+            onClick={trySend}
             disabled={loading || (hasBody && bodyError && body.trim())}
-            style={{ ...bt(`linear-gradient(135deg,${C.vi},${C.vid})`, { fontSize: 14, fontWeight: 700, padding: "8px 18px", opacity: loading ? 0.6 : 1 }) }}
-            title="Ctrl/Cmd + Enter"
+            style={{ ...bt(confirmDelete ? C.rd : `linear-gradient(135deg,${C.vi},${C.vid})`, { fontSize: 14, fontWeight: 700, padding: "8px 18px", opacity: loading ? 0.6 : 1 }) }}
+            title={confirmDelete ? "Click again to permanently delete — no recycle bin in Dataverse" : "Ctrl/Cmd + Enter"}
           >
-            {loading ? <><Spin s={12} /> Sending...</> : <><I.Zap /> Send</>}
+            {loading ? <><Spin s={12} /> Sending...</> : confirmDelete ? <>⚠ Confirm DELETE</> : <><I.Zap /> Send</>}
           </button>
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>

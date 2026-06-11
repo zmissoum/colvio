@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.10.28] — 2026-06-12
+### Changed
+- **API Tester: two-step confirmation on DELETE.** The first Send (button or Ctrl+Enter) arms the button — it turns red and reads "⚠ Confirm DELETE" — and only a second activation within 3 seconds actually sends. It re-arms automatically when the method or path changes. DELETE is the one irreversible method (Dataverse has no recycle bin), and recalling an old DELETE from history + Ctrl+Enter muscle memory made an accidental send realistic. Other methods are untouched — no extra friction on GET/POST/PATCH/PUT. This closes the last destructive surface in Colvio without a UI safeguard (Explorer bulk delete and Loader DELETE mode already require typed confirmations).
+
 ## [1.10.27] — 2026-06-12
 ### Changed (finer permission-aware UI)
 - **Translations opens read-only without the publish privilege.** On top of the existing tab gating (solutions read), Colvio now probes `prvPublishCustomization` at startup (new generic `hasPrivilege` action: WhoAmI → privilege id → `RetrieveUserPrivileges`). Without it, the Translations tab stays accessible for **browsing and CSV export**, but label inputs are locked and Save / Import are hidden, with a banner explaining which privilege is missing — no more failed saves discovered at the end of an editing session.
