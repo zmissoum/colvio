@@ -1473,6 +1473,40 @@
             break;
           }
 
+          case "hasPrivilege": {
+            // Does the current user hold a named privilege (through any of their roles)?
+            // Used to refine UI gating (e.g. prvPublishCustomization → Translations read-only).
+            // Returns true/false, or null when it couldn't be determined (callers fail-open:
+            // the server re-enforces anyway, and blocking UI on a probe error would frustrate).
+            try {
+              validateName(params.privilegeName, "privilegeName");
+              const who = await dvRequest("GET", "WhoAmI");
+              if (!who?.UserId) { result = null; break; }
+              const priv = await dvRequest("GET", `privileges?$select=privilegeid&$filter=name eq '${params.privilegeName}'`);
+              const privId = priv?.value?.[0]?.privilegeid;
+              if (!privId) { result = null; break; }
+              const up = await dvRequest("GET", `systemusers(${who.UserId})/Microsoft.Dynamics.CRM.RetrieveUserPrivileges()`);
+              result = (up?.RolePrivileges || []).some(p => String(p.PrivilegeId || "").toLowerCase() === String(privId).toLowerCase());
+            } catch { result = null; }
+            break;
+          }
+
+          case "principalAccess": {
+            // The current user's access rights on ONE record (e.g. "ReadAccess,WriteAccess,...").
+            // Lets the UI pre-check inline edit BEFORE the user types a value, instead of failing
+            // on commit. Returns the rights string, or null when undetermined (callers fail-open).
+            try {
+              validateEntitySet(params.entitySet);
+              validateGuid(params.id);
+              const who = await dvRequest("GET", "WhoAmI");
+              if (!who?.UserId) { result = null; break; }
+              const target = encodeURIComponent(JSON.stringify({ "@odata.id": `${params.entitySet}(${params.id})` }));
+              const r = await dvRequest("GET", `systemusers(${who.UserId})/Microsoft.Dynamics.CRM.RetrievePrincipalAccess(Target=@tid)?@tid=${target}`);
+              result = r?.AccessRights || null;
+            } catch { result = null; }
+            break;
+          }
+
           case "isSystemAdmin": {
             // Check if the current user has the System Administrator role.
             // The System Administrator role grants prvBypassCustomPlugins (among many others),

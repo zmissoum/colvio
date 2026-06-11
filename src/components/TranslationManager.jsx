@@ -3,8 +3,10 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, dl, expName } from "../shared.jsx";
 import { t } from "../i18n.js";
 
-export default function TranslationManager({bp,orgInfo,theme}){
+export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const isLive=orgInfo?.isExtension;
+  // No publish privilege → read-only: browse + export stay, editing/saving/import are hidden.
+  const readOnly=canPublish===false;
   const[entities,setEntities]=useState(ENTS);
   const[search,setSearch]=useState("");
   const[selEnt,setSelEnt]=useState(null);
@@ -128,11 +130,16 @@ export default function TranslationManager({bp,orgInfo,theme}){
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
                 {saveMsg&&<span style={{fontSize:12,color:C.gn}}>{saveMsg}</span>}
                 <button onClick={exportCSV} style={bt(null,{fontSize:12})}><I.Download/> Export CSV</button>
-                <input ref={fRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>handleImport(ev.target.result);r.readAsText(f);}}}/>
-                <button onClick={()=>fRef.current?.click()} style={bt(null,{fontSize:12})}><I.Upload/> Import CSV</button>
-                <button onClick={handleSave} disabled={editCount===0||saving} style={bt(editCount>0?C.vi:C.sfh,{fontSize:12,opacity:editCount===0?.5:1})}>{saving?<Spin s={12}/>:null} Save {editCount>0?`(${editCount})`:""}</button>
+                {!readOnly&&<>
+                  <input ref={fRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>handleImport(ev.target.result);r.readAsText(f);}}}/>
+                  <button onClick={()=>fRef.current?.click()} style={bt(null,{fontSize:12})}><I.Upload/> Import CSV</button>
+                  <button onClick={handleSave} disabled={editCount===0||saving} style={bt(editCount>0?C.vi:C.sfh,{fontSize:12,opacity:editCount===0?.5:1})}>{saving?<Spin s={12}/>:null} Save {editCount>0?`(${editCount})`:""}</button>
+                </>}
               </div>
             </div>
+            {readOnly&&<div style={{fontSize:12,color:C.yw,background:C.yw+"14",border:`1px solid ${C.yw}44`,borderRadius:6,padding:"8px 12px",marginBottom:10}}>
+              {t("translations.readonly")}
+            </div>}
             <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
               {languages.map(lang=>(
                 <label key={lang.code} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:selLangs.includes(lang.code)?C.tx:C.txd,cursor:"pointer"}}>
@@ -163,7 +170,7 @@ export default function TranslationManager({bp,orgInfo,theme}){
                         const existing=attr.labels.find(l=>l.languageCode===code)?.label||"";
                         const edited=edits[attr.logical]?.[code];
                         const val=edited!==undefined?edited:existing;
-                        const locked=attr.canRename===false;
+                        const locked=attr.canRename===false||readOnly;
                         return(
                           <td key={code} style={{padding:"2px 4px"}}>
                             <input value={val} readOnly={locked} onChange={locked?undefined:e=>handleEdit(attr.logical,code,e.target.value)} style={inp({fontSize:12,padding:"3px 6px",borderColor:edited!==undefined?C.yw:C.bd,...mono,cursor:locked?"not-allowed":"text",background:locked?"transparent":C.sf})}/>

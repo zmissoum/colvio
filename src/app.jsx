@@ -155,7 +155,7 @@ export default function App(){
         setConnected(true);
       }).catch(() => {
         // If probes fail entirely, show all tabs (fail-open, D365 will still enforce server-side)
-        setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true });
+        setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canPublish: true });
         setConnected(true);
       });
     }
@@ -168,7 +168,7 @@ export default function App(){
     setTimeout(() => {
       setConnecting(false);
       setOrgInfo({ orgUrl: "https://demo.crm4.dynamics.com", orgName: "demo", region: "crm4", isProduction: false, isExtension: false });
-      setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true });
+      setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canPublish: true });
       setConnected(true);
     }, 1500);
   };
@@ -274,7 +274,7 @@ export default function App(){
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="schema"&&<ErrorBoundary><SchemaViewer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo} theme={theme} canPublish={permissions?.canPublish!==false}/></ErrorBoundary>}
           {tab==="licenses"&&<ErrorBoundary><UserLicenseMonitor bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="security"&&<ErrorBoundary><SecurityAudit bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
