@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { C, I, mono } from "../shared.jsx";
 
-export default function VirtualTable({ res, fields, data, selected, toggleSel, toggleAll, getRecordId, copy, cp, bestGet, rawGet, flatVal, fmt, ths, tds, onSort, sortField, sortDir, onInlineEdit, orgInfo, entityName }) {
+export default function VirtualTable({ res, fields, data, selected, toggleSel, toggleAll, getRecordId, copy, cp, bestGet, rawGet, flatVal, fmt, ths, tds, onSort, sortField, sortDir, onInlineEdit, onBeforeEdit, orgInfo, entityName }) {
   const ROW_H = 32;
   const [editing, setEditing] = useState(null);
   const [focusedRow, setFocusedRow] = useState(-1);
@@ -89,7 +89,7 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
                   return (
                     <td key={f} style={{...tds,maxWidth:220,cursor:"pointer",background:isEd?C.sfa:undefined}}
                       onClick={()=>!isEd&&copy(bestGet(r,f),k)}
-                      onDoubleClick={()=>{if(onInlineEdit&&!f.includes(".")){const raw=rawGet(r,f);setEditing({row:i,field:f,value:raw!=null?String(raw):"",record:r});}}}
+                      onDoubleClick={async()=>{if(onInlineEdit&&!f.includes(".")){if(onBeforeEdit&&!(await onBeforeEdit(r)))return;const raw=rawGet(r,f);setEditing({row:i,field:f,value:raw!=null?String(raw):"",record:r});}}}
                       title={isEd?"Enter=save | Esc=cancel":"Click=copy | Dbl-click=edit"}>
                       {isEd?(
                         <input ref={editRef} value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})}

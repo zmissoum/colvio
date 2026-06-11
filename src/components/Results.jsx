@@ -43,6 +43,24 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     setBulkUpdate(null);
     showFeedback(`${t("results.bulk_update")} ${ok} ${t("results.updated")}${fail?`, ${fail} ${t("results.failed")}`:""}`);
   };
+  // Pre-check WRITE access before entering inline-edit, so the user learns they can't edit
+  // BEFORE typing a value (instead of a 403 on commit). One RetrievePrincipalAccess call per
+  // entity, cached for the session. Approximation: row-level security can vary per record —
+  // we probe the first-clicked record; a per-record mismatch still fails cleanly on PATCH.
+  const writeAccessCache=useRef(new Map());
+  const canEditRecord=async(record)=>{
+    const set=res.entity?.p;
+    if(!set) return true;
+    if(writeAccessCache.current.has(set)) return writeAccessCache.current.get(set);
+    const id=getRecordId(record);
+    if(!id) return true;
+    const rights=await bridge.getRecordAccess(set,id);
+    const ok=rights==null?true:rights.includes("WriteAccess"); // null = undetermined → fail-open
+    writeAccessCache.current.set(set,ok);
+    if(!ok) showFeedback("Read-only: your security roles don't grant write access on this table");
+    return ok;
+  };
+
   const inlineEdit=async(record,field,newValue)=>{
     const id=getRecordId(record);
     if(!id||!res.entity?.p) return;
@@ -272,7 +290,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       <VirtualTable res={res} fields={res.fields} data={sortedData}
         selected={selected} toggleSel={toggleSel} toggleAll={toggleAll}
         getRecordId={getRecordId} copy={copy} cp={cp} bestGet={bestGet} rawGet={rawGet} flatVal={flatVal} fmt={fmt}
-        ths={ths} tds={tds} onSort={toggleSort} sortField={sortField} sortDir={sortDir} onInlineEdit={inlineEdit} orgInfo={orgInfo} entityName={res.entity?.l} />
+        ths={ths} tds={tds} onSort={toggleSort} sortField={sortField} sortDir={sortDir} onInlineEdit={inlineEdit} onBeforeEdit={canEditRecord} orgInfo={orgInfo} entityName={res.entity?.l} />
 
       {res.fetching && (
         <div style={{padding:"10px 16px",borderTop:`1px solid ${C.bd}`,background:C.sf,display:"flex",alignItems:"center",gap:10}}>

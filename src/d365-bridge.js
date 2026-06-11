@@ -153,20 +153,33 @@ export const bridge = {
   },
 
   async checkPermissions() {
-    if (!isExtension) return { canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canBypassPlugins: true };
+    if (!isExtension) return { canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canBypassPlugins: true, canPublish: true };
     const probe = async (url) => {
       try { await callD365("probe", { url }); return true; } catch { return false; }
     };
     const checkAdmin = async () => {
       try { return !!(await callD365("isSystemAdmin")); } catch { return false; }
     };
-    const [canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins] = await Promise.all([
+    // Fail-open by design (unlike canBypassPlugins which fails CLOSED): a probe error must not
+    // lock honest users out of editing — Dataverse still enforces publish rights server-side.
+    const checkPublish = async () => {
+      try { const r = await callD365("hasPrivilege", { privilegeName: "prvPublishCustomization" }); return r !== false; } catch { return true; }
+    };
+    const [canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish] = await Promise.all([
       probe("audits?$top=1&$select=createdon"),
       probe("solutions?$top=1&$filter=isvisible eq true&$select=solutionid"),
       probe("systemusers?$top=1&$select=systemuserid"),
       checkAdmin(),
+      checkPublish(),
     ]);
-    return { canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins };
+    return { canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish };
+  },
+
+  // Access rights of the current user on one record ("ReadAccess,WriteAccess,..."), or null when
+  // undetermined. Used to pre-check inline edit; callers should fail-open on null.
+  async getRecordAccess(entitySet, id) {
+    if (!isExtension) return "ReadAccess,WriteAccess";
+    try { return await callD365("principalAccess", { entitySet, id }); } catch { return null; }
   },
 
   async getEntities() {

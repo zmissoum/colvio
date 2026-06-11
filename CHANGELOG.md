@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.27] — 2026-06-12
+### Changed (finer permission-aware UI)
+- **Translations opens read-only without the publish privilege.** On top of the existing tab gating (solutions read), Colvio now probes `prvPublishCustomization` at startup (new generic `hasPrivilege` action: WhoAmI → privilege id → `RetrieveUserPrivileges`). Without it, the Translations tab stays accessible for **browsing and CSV export**, but label inputs are locked and Save / Import are hidden, with a banner explaining which privilege is missing — no more failed saves discovered at the end of an editing session.
+- **Explorer inline edit pre-checks write access.** Double-clicking a cell now verifies your rights via `RetrievePrincipalAccess` (one call per table, cached for the session) — if your roles don't grant write on that table, you're told immediately instead of typing a value and hitting a 403 on Enter. Fail-open on probe errors: Dataverse still enforces server-side.
+- Help → Tab Visibility section rewritten (EN+FR) to document exactly which permission unlocks which module.
+
 ## [1.10.26] — 2026-06-10
 ### Changed
 - **In-app Help fully rebuilt** (EN + FR): a search bar filters topics; 6 new sections — **API Tester**, **the 4 import modes** (CREATE / UPSERT / UPDATE-only with If-Match / DELETE), **column transforms** (label→value picklists, EU/US dates with time, locale numbers), **performance & speed boosters** (batching, 429 retry, cancel semantics, admin-gated MSCRM headers), **exports & file naming** (incl. why Excel shows the Protected View banner), and a **Troubleshooting / FAQ** (session expired, 404s in UPDATE, unmatched labels, 429, PROD badge, slow imports).
