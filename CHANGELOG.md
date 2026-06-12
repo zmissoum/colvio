@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.0] — 2026-06-12
+### Added (Data Loader: Dry run & Rollback)
+- **🔍 Dry run** — a new button next to Load simulates the **entire** import with zero writes: parsing, transforms, lookup resolution and existence classification all run for real, then the report shows row by row what would happen — *Would create / Would update / Would fail (UPDATE 404) / Would delete / Not found* — plus unmatched option-set labels. Works in all 4 modes (DELETE included, without the typed confirmation since nothing is deleted). In UPSERT mode the dry run always resolves key existence, so you see the exact create-vs-update split before committing.
+- **↩ Rollback** — Colvio now captures the GUID of every record a run creates (from the `OData-EntityId` batch response headers). After a run that created records, the result panel offers *Rollback created records*: type `ROLLBACK` to confirm, and exactly those records are deleted through the same parallel batch engine (progress shown, per-record errors reported). Creations only — updates keep their new values.
+- Help (EN+FR): new "Loader — Dry run & Rollback" section.
+
 ## [1.10.28] — 2026-06-12
 ### Changed
 - **API Tester: two-step confirmation on DELETE.** The first Send (button or Ctrl+Enter) arms the button — it turns red and reads "⚠ Confirm DELETE" — and only a second activation within 3 seconds actually sends. It re-arms automatically when the method or path changes. DELETE is the one irreversible method (Dataverse has no recycle bin), and recalling an old DELETE from history + Ctrl+Enter muscle memory made an accidental send realistic. Other methods are untouched — no extra friction on GET/POST/PATCH/PUT. This closes the last destructive surface in Colvio without a UI safeguard (Explorer bulk delete and Loader DELETE mode already require typed confirmations).
