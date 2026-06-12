@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.2] — 2026-06-12
+### Added (Show All Data: record change history 📜)
+- Every inspected record now has a collapsible **"Change history"** panel: the audit timeline (when, which user, which action — formatted labels) with a click-to-expand **field-level diff** (old value → new value, formatted values for lookups/option sets, additions in green, removals in red).
+- Implementation grounded in the Microsoft docs: the Web API `RetrieveRecordChangeHistory` **omits the user/date per change** (documented limitation), so Colvio reads the `audits` table for the record and calls `RetrieveAuditDetails` per entry on expand. Requires auditing enabled (org + table) and audit-read privileges — a friendly hint explains this when the query fails or returns nothing.
+
 ## [1.11.1] — 2026-06-12
 ### Added (new module: Recycle Bin ♻)
 - **View and restore deleted Dataverse records** — a true server-side restore via the platform's "Keep deleted Dataverse records" feature. Pick a table, see what's in the bin (name, created/modified, id), select and **Restore**; restored records come back with their original values.

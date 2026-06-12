@@ -175,6 +175,16 @@ export const bridge = {
     return { canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish };
   },
 
+  // ── Record audit history ─────────────────────────────────────
+  async getRecordAuditTrail(id, top = 50) {
+    if (!isExtension) return [];
+    return callD365("recordAuditTrail", { id, top });
+  },
+  async getAuditDetails(auditId) {
+    if (!isExtension) return null;
+    return callD365("auditDetails", { auditId });
+  },
+
   // ── Recycle bin (Dataverse "keep deleted records") ───────────
   async recycleBinStatus() {
     if (!isExtension) return { enabled: true, retentionDays: 30 };
