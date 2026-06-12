@@ -13,6 +13,8 @@ import LoginHistory from "./components/LoginHistory.jsx";
 import Loader from "./components/Loader.jsx";
 import RecycleBin from "./components/RecycleBin.jsx";
 import SystemOps from "./components/SystemOps.jsx";
+import CommandPalette from "./components/CommandPalette.jsx";
+import WhatsNew from "./components/WhatsNew.jsx";
 import RelationshipGraph from "./components/RelationshipGraph.jsx";
 import SolutionExplorer from "./components/SolutionExplorer.jsx";
 import TranslationManager from "./components/TranslationManager.jsx";
@@ -125,8 +127,10 @@ export default function App(){
   const[expired,setExpired]=useState(false);
   const[,setLocaleState]=useState(getLocale());// value unused, setter triggers re-render on locale change
   const[showShortcuts,setShowShortcuts]=useState(false);
+  const[showPalette,setShowPalette]=useState(false);
   const bp=useBP();
   useKeyboard("/",()=>setShowShortcuts(s=>!s),[]);
+  useKeyboard("k",()=>setShowPalette(s=>!s),[]);
 
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
 
@@ -195,9 +199,16 @@ export default function App(){
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
   const tabs=allTabs.filter(t=>!t.requires||permissions?.[t.requires]);
+  const paletteActions=[
+    {label:t("palette.a_theme"),hint:"dark / light",icon:"🌓",run:toggleTheme},
+    {label:t("palette.a_lang"),hint:"EN ⇄ FR",icon:"🌐",run:()=>{const next=getLocale()==="en"?"fr":"en";setLocale(next);setLocaleState(next);}},
+    {label:t("palette.a_shortcuts"),hint:"Ctrl+/",icon:"⌨",run:()=>setShowShortcuts(true)},
+  ];
 
   return(
     <div style={{display:"flex",height:"100vh",background:C.bg,color:C.tx,fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",fontSize:15}}>
+      <CommandPalette open={showPalette} onClose={()=>setShowPalette(false)} tabs={tabs} onNavigate={setTab} actions={paletteActions}/>
+      <WhatsNew/>
       {expired && (
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:200,background:C.rd,color:"white",padding:"10px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14}}>
           <span>{t("session.expired")}</span>
