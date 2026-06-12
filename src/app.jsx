@@ -12,6 +12,7 @@ import ApiTesterTabs from "./components/ApiTesterTabs.jsx";
 import LoginHistory from "./components/LoginHistory.jsx";
 import Loader from "./components/Loader.jsx";
 import RecycleBin from "./components/RecycleBin.jsx";
+import SystemOps from "./components/SystemOps.jsx";
 import RelationshipGraph from "./components/RelationshipGraph.jsx";
 import SolutionExplorer from "./components/SolutionExplorer.jsx";
 import TranslationManager from "./components/TranslationManager.jsx";
@@ -188,6 +189,7 @@ export default function App(){
     {id:"schema",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
     {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
     {id:"translations",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
+    {id:"ops",label:t("nav.ops"),desc:t("nav.ops.desc"),icon:<I.Zap/>,requires:"canReadAllUsers"},
     {id:"licenses",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
     {id:"security",label:t("nav.security"),desc:t("nav.security.desc"),icon:<I.Shield/>,requires:"canReadAllUsers"},
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
@@ -274,6 +276,7 @@ export default function App(){
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary>}
           {tab==="recyclebin"&&<ErrorBoundary><RecycleBin bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="ops"&&<ErrorBoundary><SystemOps bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary>}
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="schema"&&<ErrorBoundary><SchemaViewer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}

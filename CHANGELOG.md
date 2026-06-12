@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.3] — 2026-06-12
+### Added (new module: System Ops ⚡ — jobs & plugin traces)
+- **System Jobs**: the `asyncoperation` monitor with quick filters (Failed / Waiting-Suspended / In progress / Canceled / All recent), expandable details (started/completed, friendly message), and — for System Administrators — **bulk Cancel** (the documented `statecode 3` / `statuscode 32` transition) and **Resume** (from Suspended). Platform-maintenance jobs can't be cancelled (Microsoft restriction) — the error is translated when it happens.
+- **Plugin Traces**: the `plugintracelog` viewer — exceptions highlighted, full trace text per entry (the platform caps `messageblock` at 10 KB and trims oldest lines), >2s duration warnings, filter by plug-in/message/entity, exceptions-only toggle, CSV export. The UI documents how to enable logging (System Settings → Customization → Off/Exception/All) and the ~24h auto-purge.
+- Tab gated on user-read rights like the other admin modules; Help section EN+FR.
+
 ## [1.11.2] — 2026-06-12
 ### Added (Show All Data: record change history 📜)
 - Every inspected record now has a collapsible **"Change history"** panel: the audit timeline (when, which user, which action — formatted labels) with a click-to-expand **field-level diff** (old value → new value, formatted values for lookups/option sets, additions in green, removals in red).
