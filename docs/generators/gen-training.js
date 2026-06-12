@@ -2,7 +2,7 @@
 // Run: node gen-training.js
 const { h1, h2, h3, p, note, bullets, num, pageBreak, table, img, coverAndToc, buildDoc, writeDoc } = require("./helpers");
 
-const VERSION = "v1.10.26";
+const VERSION = "v1.11.7";
 
 function build(L) {
   const c = [];
@@ -55,6 +55,14 @@ function build(L) {
   c.push(...bullets(L.s6boost));
   c.push(h2(L.s6f)); c.push(p(L.s6log));
 
+  // 6bis — Safety net + new modules
+  c.push(pageBreak(), h1(L.s6x));
+  c.push(h2(L.s6xaT)); c.push(p(L.s6xa));
+  c.push(h2(L.s6xbT)); c.push(p(L.s6xb));
+  c.push(h2(L.s6xcT)); c.push(p(L.s6xc));
+  c.push(h2(L.s6xdT)); c.push(p(L.s6xd));
+  c.push(h2(L.s6xeT)); c.push(p(L.s6xe));
+
   // 7 — Modeling modules
   c.push(pageBreak(), h1(L.s7));
   c.push(h2("Schema (ERD)")); c.push(p(L.s7erd));
@@ -93,7 +101,7 @@ const FR = {
   s1b: [
     "**Zéro configuration** — l'authentification réutilise vos cookies de session D365.",
     "**Confidentialité totale** — aucune donnée ne quitte le navigateur : pas de télémétrie, pas de serveur tiers.",
-    "**12 modules** couvrant l'exploration, le chargement de données, le test d'API et l'audit.",
+    "**14 modules** couvrant l'exploration, la restauration, le chargement de données, le test d'API et l'audit.",
     "Interface **EN / FR**, thème sombre/clair, aide intégrée avec recherche.",
   ],
   s1n: "💡 Capture d'écran recommandée ici : la barre latérale Colvio avec les 12 onglets, sur votre org de démo.",
@@ -184,6 +192,17 @@ const FR = {
   ],
   s6f: "Le log temps réel",
   s6log: "Pendant le run, chaque ligne s'affiche avec ses valeurs CSV et son statut **Success / Failed** + le message d'erreur Dataverse exact. Après le run : cliquez une ligne pour voir la **requête exacte envoyée** (méthode, URL, headers, body), exportez le log complet ou seulement les erreurs en CSV, et consultez la liste des labels d'option-set non convertis.",
+  s6x: "6 bis. Filet de sécurité et nouveaux modules",
+  s6xaT: "Dry run, Rollback, Delta",
+  s6xa: "Avant un chargement risqué : **Dry run** simule tout l'import sans rien écrire et rapporte ligne par ligne ce qu'un vrai run ferait. Après un run de création : **Rollback** supprime exactement les enregistrements créés (GUID capturés des réponses batch), confirmation tapée. Sur les synchros récurrentes : **Delta mode** lit d'abord les valeurs actuelles et n'envoie que les champs réellement modifiés — les lignes inchangées sont sautées (statut UNCHANGED).",
+  s6xbT: "Corbeille (Recycle Bin)",
+  s6xb: "Liste et **restaure les enregistrements supprimés** (restauration serveur réelle, valeurs d'origine) quand l'option d'org « Conserver les enregistrements supprimés » est active (rétention 1-30 jours). Limitations Microsoft affichées dans le module : suppressions antérieures à l'activation, tables virtuelles/élastiques/composants, tables de plus de 600 colonnes, ordre des cascades, conflits de clés.",
+  s6xcT: "Historique des modifications",
+  s6xc: "Dans Show All Data, chaque enregistrement a un panneau **Historique** : timeline d'audit (qui, quand, action) et diff champ par champ (ancienne → nouvelle valeur). Nécessite l'audit activé (org + table).",
+  s6xdT: "System Ops",
+  s6xd: "**Jobs système** : filtres rapides (échoués, en attente, en cours), annulation/reprise en masse pour les admins — les jobs de maintenance plateforme ne sont pas annulables. **Traces plug-ins** : exceptions en évidence, texte complet (plafond 10 Ko), export CSV ; purge auto ~24 h.",
+  s6xeT: "Snapshot & diff de schéma",
+  s6xe: "Dans le Metadata Browser (bouton ⇄) : exportez le schéma en JSON sur une org, chargez-le sur une autre, et obtenez le **diff classé** (tables/colonnes manquantes, types différents) avec export CSV — idéal avant un déploiement DEV → UAT → PROD.",
   s7: "7. Modéliser : schéma, relations, solutions, traductions",
   s7erd: "Diagramme Entité-Relation interactif : ajoutez des entités au canevas, les cartes montrent les champs avec badges FK, des courbes relient chaque lookup à sa cible. Glissez, zoomez, « + » ajoute les entités liées. Export **PNG, SVG, Mermaid**.",
   s7relT: "Relations",
@@ -233,7 +252,7 @@ const EN = {
   s1b: [
     "**Zero configuration** — authentication reuses your D365 session cookies.",
     "**Privacy first** — nothing leaves the browser: no telemetry, no third-party servers.",
-    "**12 modules** covering exploration, data loading, API testing and auditing.",
+    "**14 modules** covering exploration, restore, data loading, API testing and auditing.",
     "**EN / FR** interface, dark/light theme, searchable built-in Help.",
   ],
   s1n: "💡 Recommended screenshot here: the Colvio sidebar with all 12 tabs, on your demo org.",
@@ -324,6 +343,17 @@ const EN = {
   ],
   s6f: "The live log",
   s6log: "During the run every row appears with its CSV values and **Success / Failed** status + the exact Dataverse error. After the run: click a row to see the **exact request sent** (method, URL, headers, body), export the full log or only the errors as CSV, and review the list of unconverted option-set labels.",
+  s6x: "6b. Safety net & new modules",
+  s6xaT: "Dry run, Rollback, Delta",
+  s6xa: "Before a risky load: **Dry run** simulates the whole import with zero writes and reports row by row what a real run would do. After a create run: **Rollback** deletes exactly the records that run created (GUIDs captured from the batch responses), typed confirmation. On recurring syncs: **Delta mode** reads current values first and only sends the fields that actually changed — unchanged rows are skipped (UNCHANGED status).",
+  s6xbT: "Recycle Bin",
+  s6xb: "Lists and **restores deleted records** (true server-side restore, original values) when the org-level Keep-deleted-records setting is on (1-30 day retention). Microsoft limitations are shown in the module: pre-enablement deletes, virtual/elastic/solution tables, tables with more than 600 columns, cascade ordering, key conflicts.",
+  s6xcT: "Record change history",
+  s6xc: "In Show All Data, every record gets a **History** panel: the audit timeline (who, when, action) and a field-level diff (old → new). Requires auditing enabled (org + table).",
+  s6xdT: "System Ops",
+  s6xd: "**System Jobs**: quick filters (failed, waiting, in progress), bulk cancel/resume for admins — platform-maintenance jobs cannot be cancelled. **Plugin Traces**: exceptions highlighted, full trace text (10 KB cap), CSV export; ~24h auto-purge.",
+  s6xeT: "Schema snapshot & diff",
+  s6xe: "In the Metadata Browser (⇄ button): export the schema as JSON on one org, load it on another, and get a **ranked diff** (missing tables/columns, type mismatches) with CSV export — ideal before a DEV → UAT → PROD deployment.",
   s7: "7. Modeling: schema, relationships, solutions, translations",
   s7erd: "Interactive Entity-Relationship Diagram: add entities to the canvas, cards show fields with FK badges, curves connect each lookup to its target. Drag, zoom, “+” adds related entities. Export **PNG, SVG, Mermaid**.",
   s7relT: "Relationships",

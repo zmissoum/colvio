@@ -170,13 +170,13 @@ def d_security():
 
 # ── 6. Module map ──────────────────────────────────────────────────────────
 def d_modules():
-    fig, ax = new_fig(10, 5.0)
-    ax.text(0.5, 0.965, "Colvio — 12 modules", ha="center", fontsize=13.5, fontweight="bold")
+    fig, ax = new_fig(10, 5.6)
+    ax.text(0.5, 0.965, "Colvio — 14 modules", ha="center", fontsize=13.5, fontweight="bold")
     mods = [
         ("Data Explorer", "Builder · OData · FetchXML · SQL", VI),
         ("API Tester", "Postman-style Web API client", VI),
         ("Data Loader", "CREATE · UPSERT · UPDATE · DELETE", VI),
-        ("Show All Data", "inspect any record's fields", CY),
+        ("Show All Data", "fields + change history (audit)", CY),
         ("Metadata Browser", "entities · fields · OptionSets", CY),
         ("Schema (ERD)", "interactive diagram + exports", CY),
         ("Relationships", "N:1 · 1:N · N:N graph", CY),
@@ -185,9 +185,11 @@ def d_modules():
         ("Users & Licenses", "CAL types · last login", GN),
         ("Security Audit", "roles · privileges · flags", GN),
         ("Login History", "audit timeline per user", GN),
+        ("Recycle Bin", "restore deleted records", VI),
+        ("System Ops", "system jobs / plugin traces", GN),
     ]
-    cols, w, h, gx, gy = 3, 0.295, 0.15, 0.0425, 0.062
-    x0, y0 = 0.015, 0.73
+    cols, w, h, gx, gy = 3, 0.295, 0.135, 0.0425, 0.046
+    x0, y0 = 0.015, 0.775
     for i, (t, s, c) in enumerate(mods):
         r, col = divmod(i, cols)
         box(ax, x0 + col * (w + gx), y0 - r * (h + gy), w, h, t, s, ec=c, fs=10, subfs=8)

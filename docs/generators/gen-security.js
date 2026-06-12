@@ -2,7 +2,7 @@
 // Run: node gen-security.js
 const { h1, h2, p, note, bullets, pageBreak, table, img, coverAndToc, buildDoc, writeDoc } = require("./helpers");
 
-const VERSION = "v1.10.26";
+const VERSION = "v1.11.7";
 const c = [];
 
 c.push(...coverAndToc({

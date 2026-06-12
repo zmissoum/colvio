@@ -68,6 +68,10 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
   - **UPSERT** — match on GUID or **alternate key**: update if found, create otherwise
   - **UPDATE (existing only)** — strictly update via the native `If-Match: *` header: a missing or empty key **fails the row, never creates**; optional parallelized existence pre-check for orgs that don't honor `If-Match` on alt-keys
   - **DELETE** — remove records matched on GUID or alternate key, typed confirmation required
+- **🔍 Dry run** — simulate the entire import (parsing, transforms, lookups, existence checks) with zero writes; per-row *would create / update / fail / delete* report
+- **↩ Rollback** — created GUIDs are captured from the batch responses; one typed confirmation deletes exactly the records a run created
+- **Δ Delta mode** — fetch current org values and send only the fields that changed; unchanged rows skipped entirely
+- **Team-aware owner lookups** — direct `ownerid` GUIDs are probed user-vs-team and bound to the right entity set
 - Smart auto-mapping with metadata-driven lookup detection (auto-skips Lookup-type fields, picks alt-keys over PKs, warns on non-writable fields per mode)
 - **Column transforms**: picklist/statecode **label→value** (OptionSet preloaded; unmatched labels reported, never silently dropped), locale-aware dates (`dd/mm/yyyy`, US auto-detect, time + AM/PM), locale-aware numbers (`1,5`, `1.234,56`), booleans EN/FR
 - **Mapping templates** — save and reload a full configuration (mappings, lookups, key, mode) per entity
@@ -78,6 +82,22 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Speed boosters** (System Administrators only): per-record `MSCRM.BypassCustomPluginExecution`, `SuppressDuplicateDetection`, `BypassSynchronousLogic` headers
 - **Live per-row import log** during the run: every line shown with its CSV columns + `Success`/`Failed` status + Dataverse error detail + the exact request sent (method, URL, headers, body)
 - **Cancel mid-import** — stops remaining chunks *and* in-flight 429 retries: no writes are sent after cancel
+
+### Recycle Bin
+- **List & restore deleted records** — true server-side restore via Dataverse "keep deleted records" (queried with FetchXML `datasource='bin'`, restored with the platform `Restore` action)
+- Detects whether the feature is enabled (retention days shown) and explains how to enable it
+- Every Microsoft limitation surfaced in plain words (pre-enablement deletes, virtual/elastic/solution tables, >600-column tables, cascade ordering, key conflicts)
+
+### Record Change History
+- In Show All Data: the **audit timeline** of any record (who, when, which action) with click-to-expand **field-level diffs** (old → new, formatted values)
+- Reads the audit table directly (the Web API change-history function omits user/date — documented MS limitation)
+
+### System Ops
+- **System Jobs monitor** — quick filters for failed / waiting / in-progress jobs, bulk **Cancel** and **Resume** with the documented state transitions (admin-gated)
+- **Plugin Trace viewer** — exceptions highlighted, full trace text, duration warnings, CSV export; enablement and the 24h auto-purge documented in-UI
+
+### Schema snapshot & diff
+- Export the org schema as JSON, load a snapshot from another environment and get a **ranked diff** (missing tables/columns, type mismatches) with CSV export — deployment prep in two clicks
 
 ### Relationship Graph
 - Visual SVG graph: N:1 parents, 1:N children, N:N many-to-many
@@ -144,6 +164,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - 3 template queries to get started
 
 ### Global
+- **⌘K / Ctrl+K command palette** — jump to any module or action
+- **"What's new" popup** after each update (per-version, EN/FR)
 - **Role-based tab access** — sensitive tabs auto-hidden for non-admin users (zero flash)
 - **Environment badge** — PROD / SANDBOX / UAT / DEV detected via Microsoft's `OrganizationType` API (URL heuristics as fallback)
 - Dark/Light theme (+ system preference detection)
@@ -159,10 +181,10 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | ~9,900 |
-| API actions | 42 |
-| React components | 24 |
-| Unit tests | 207 |
+| Lines of code | ~11,400 |
+| API actions | 48 |
+| React components | 30 |
+| Unit tests | 215 |
 | Build size | ~490 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |
@@ -210,6 +232,9 @@ npm run build
 ```
 
 Chrome > `chrome://extensions` > Developer Mode > Load unpacked > `dist/`
+
+### Microsoft Edge
+Colvio is fully Edge-compatible (same package). See [EDGE_LISTING.md](EDGE_LISTING.md) for the Add-ons submission guide — or sideload `dist/` via `edge://extensions`.
 
 ### From Chrome Web Store
 [Install Colvio](https://chromewebstore.google.com/detail/colvio-for-dynamics-365/edieednbdaclheikneelkjfbckibhdgl)
