@@ -1479,6 +1479,27 @@
             break;
           }
 
+          case "recordAuditTrail": {
+            // Audit rows for one record (who / when / action). The Web API version of
+            // RetrieveRecordChangeHistory does NOT include the AuditRecord (user/date) --
+            // documented limitation -- so we list the audit table and fetch per-audit
+            // details on demand (RetrieveAuditDetails). Requires auditing enabled
+            // (org + table) and the prvReadAuditSummary privilege.
+            validateGuid(params.id);
+            const topA = Math.min(Math.max(parseInt(params.top, 10) || 50, 1), 200);
+            const trail = await dvRequest("GET",
+              `audits?$filter=_objectid_value eq ${params.id}&$orderby=createdon desc&$top=${topA}&$select=auditid,action,operation,createdon`);
+            result = trail?.value || [];
+            break;
+          }
+
+          case "auditDetails": {
+            // Field-level old->new diff for one audit row (RetrieveAuditDetails function).
+            validateGuid(params.auditId);
+            result = await dvRequest("GET", `audits(${params.auditId})/Microsoft.Dynamics.CRM.RetrieveAuditDetails()`);
+            break;
+          }
+
           case "recycleBinStatus": {
             // Is Dataverse "Keep deleted records" (recycle bin) enabled for this org?
             // Enabled ⇔ a recyclebinconfig row named 'organization' exists and is active.

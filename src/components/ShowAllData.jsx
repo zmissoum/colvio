@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
+import AuditHistory from "./AuditHistory.jsx";
 import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom } from "../shared.jsx";
 
 export default function ShowAllData({bp,orgInfo,theme}){
@@ -146,6 +147,8 @@ export default function ShowAllData({bp,orgInfo,theme}){
               <button onClick={()=>{const json=JSON.stringify(Object.fromEntries(record.fields.map(f=>[f.l,f.value])),null,2);copyText(json);cp("","json");}} style={bt(null,{fontSize:12})}>{copied==="json"?"✓ Copied":"Copy JSON"}</button>
             </div>
           </div>
+
+          {orgInfo?.isExtension&&<AuditHistory recordId={record.id}/>}
 
           <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
             <div style={{position:"relative",flex:1,maxWidth:300}}>
