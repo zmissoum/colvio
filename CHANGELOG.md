@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.4] — 2026-06-12
+### Added (Metadata Browser: schema snapshot & diff ⇄)
+- **Export a JSON snapshot of the org's schema** (custom tables by default, or everything) — table by table: column types, requirement levels, custom flags. Progress shown, deterministic file name `schema_<org>_<YYYYMMDD>.json`.
+- **Compare a snapshot against the current org**: load a snapshot taken on DEV while connected to UAT/PROD and get a ranked diff — missing tables and columns (HIGH), type mismatches (HIGH), requirement-level differences (MED), elements present only in the target (LOW) — with CSV export for the deployment checklist.
+- Help section EN+FR.
+
 ## [1.11.3] — 2026-06-12
 ### Added (new module: System Ops ⚡ — jobs & plugin traces)
 - **System Jobs**: the `asyncoperation` monitor with quick filters (Failed / Waiting-Suspended / In progress / Canceled / All recent), expandable details (started/completed, friendly message), and — for System Administrators — **bulk Cancel** (the documented `statecode 3` / `statuscode 32` transition) and **Resume** (from Suspended). Platform-maintenance jobs can't be cancelled (Microsoft restriction) — the error is translated when it happens.

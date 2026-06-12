@@ -27,6 +27,7 @@ const SECTIONS=[
   {icon:<I.Trash/>,   titleKey:"help.recyclebin_title",      bodyKey:"help.recyclebin_body"},
   {icon:<I.Clock/>,   titleKey:"help.audit_title",           bodyKey:"help.audit_body"},
   {icon:<I.Zap/>,     titleKey:"help.ops_title",             bodyKey:"help.ops_body"},
+  {icon:<I.Grid/>,    titleKey:"help.schemadiff_title",      bodyKey:"help.schemadiff_body"},
   {icon:<I.Zap/>,     titleKey:"help.performance_title",     bodyKey:"help.performance_body"},
   {icon:<I.Link/>,    titleKey:"help.graph_title",           bodyKey:"help.graph_body"},
   {icon:<I.Grid/>,    titleKey:"help.schema_title",          bodyKey:"help.schema_body"},
