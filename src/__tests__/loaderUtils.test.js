@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual } from "../loaderUtils.js";
 
 describe("parseDelimited (RFC-4180)", () => {
   it("splits simple comma rows", () => {
@@ -96,4 +96,17 @@ describe("resolveEntitySet", () => {
   it("abstract owner → systemusers", () => expect(resolveEntitySet("owner", entities)).toBe("systemusers"));
   it("fallback +s when unknown", () => expect(resolveEntitySet("widget", entities)).toBe("widgets"));
   it("empty → empty", () => expect(resolveEntitySet("", entities)).toBe(""));
+});
+
+describe("deltaEqual (delta mode)", () => {
+  it("number vs numeric string", () => expect(deltaEqual(3, "3")).toBe(true));
+  it("different numbers", () => expect(deltaEqual(3, "4")).toBe(false));
+  it("null vs empty", () => expect(deltaEqual(null, "")).toBe(true));
+  it("boolean vs string", () => expect(deltaEqual(true, "true")).toBe(true));
+  it("same datetime, different representation", () =>
+    expect(deltaEqual("2026-06-13T00:00:00Z", "2026-06-13T00:00:00.000Z")).toBe(true));
+  it("different datetimes", () =>
+    expect(deltaEqual("2026-06-13T00:00:00Z", "2026-06-14T00:00:00Z")).toBe(false));
+  it("plain strings", () => expect(deltaEqual("Acme", "Acme")).toBe(true));
+  it("changed string", () => expect(deltaEqual("Acme", "Acme Corp")).toBe(false));
 });

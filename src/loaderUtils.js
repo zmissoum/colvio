@@ -114,3 +114,25 @@ export function resolveEntitySet(logical, entities, abstractMap = ABSTRACT_ENTIT
   if (abstractMap[logical]) return abstractMap[logical];
   return logical + "s";
 }
+
+// Tolerant equality for delta mode: compares a value we are about to send with the value
+// currently in the org. Coerces number-vs-string, boolean-vs-string, null/undefined-vs-"",
+// and datetimes that differ only in representation (offset/ms).
+export function deltaEqual(orgVal, newVal) {
+  let a = orgVal, b = newVal;
+  if (a === null || a === undefined) a = "";
+  if (b === null || b === undefined) b = "";
+  if (a === b) return true;
+  if (typeof a === "number" || typeof b === "number") {
+    const na = Number(a), nb = Number(b);
+    if (!isNaN(na) && !isNaN(nb)) return na === nb;
+  }
+  if (typeof a === "boolean" || typeof b === "boolean") return String(a) === String(b);
+  const sa = String(a), sb = String(b);
+  if (sa === sb) return true;
+  if (/^\d{4}-\d{2}-\d{2}/.test(sa) && /^\d{4}-\d{2}-\d{2}/.test(sb)) {
+    const da = new Date(sa), db = new Date(sb);
+    if (!isNaN(da.getTime()) && !isNaN(db.getTime())) return da.getTime() === db.getTime();
+  }
+  return false;
+}
