@@ -142,6 +142,11 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const LIVE_LOG_BUFFER=2000; // rows kept in React state for live display
   const[liveLog,setLiveLog]=useState({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
   const fullLog=useRef([]);
+  // GUIDs of records created by the last real run (from OData-EntityId) — enables Rollback.
+  const createdIdsRef=useRef([]);
+  // Rollback run state: null | {running, done, total, deleted, errors}
+  const[rollback,setRollback]=useState(null);
+  const[rollbackConfirm,setRollbackConfirm]=useState("");
   // Option-set label→value maps from the last run — buildRequestForRow needs them so the per-row
   // request details and the log export reconstruct the SAME body doLoad actually sent.
   const optionMapsRef=useRef({});
@@ -440,7 +445,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const pushBatchLog=(newLog,rowMap,rows)=>{
     if(!newLog?.length) return;
     const enriched=newLog.map(e=>{const csvIdx=rowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
-    for(const e of enriched) fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg});
+    for(const e of enriched){
+      fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg,id:e.id});
+      if(e.status==="CREATED"&&e.id) createdIdsRef.current.push(e.id); // fuels post-import Rollback
+    }
     setLiveLog(prev=>{const newCounts={...prev.counts};for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};});
   };
 
@@ -484,11 +492,14 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     return {method:"POST",path:entitySet,body:rec,headers:{}};
   };
 
-  const doLoad=async()=>{
+  // dry=true → full simulation: parse, transforms, lookup resolution, existence classification —
+  // ZERO writes. Reports what WOULD happen (create/update/fail/delete) row by row.
+  const doLoad=async(dry=false)=>{
     setStep(4);setResult(null);
     loadAbort.current=false;setCancelling(false);
     setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
     fullLog.current=[];
+    createdIdsRef.current=[];setRollback(null);setRollbackConfirm("");
     const launchedAt=new Date();setStartedAt(launchedAt);setExpandedLog(null);
     const rows=csvData.r;
     const SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
@@ -513,6 +524,23 @@ export default function Loader({bp,orgInfo,theme,permissions}){
         const v=rows[i][uKey.c];
         if(v===undefined||v===null||v===""){ skipped++; logEntries.push({row:i+1,status:"SKIPPED",detail:`Empty key: ${uKey.c}`,d365Id:""}); continue; }
         deleteItems.push({keyValue:v});deleteRowMap.push(i);
+      }
+      // Dry run: classify by existence instead of deleting.
+      if(dry){
+        const keyMetaD=targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d);
+        const NUM_D=new Set(["Integer","BigInt","Decimal","Double","Money"]);
+        const uniqD=[...new Set(deleteItems.map(it=>it.keyValue))];
+        const chk=await resolveExistingKeys(entitySetD,uKey.d,isPKD,uniqD,NUM_D.has(keyMetaD?.type||keyMetaD?.t));
+        let wouldDelete=0,notFound=0;
+        deleteItems.forEach((it,k)=>{
+          const ok=chk.existing.has(chk.norm(it.keyValue));
+          if(ok) wouldDelete++; else notFound++;
+          logEntries.push({row:deleteRowMap[k]+2,status:ok?"WOULD DELETE":"NOT FOUND",detail:ok?`${uKey.d}="${it.keyValue}"`:`No record for ${uKey.d}="${it.keyValue}" — nothing to delete`,d365Id:""});
+        });
+        const logD2=logEntries.length>5000?logEntries.slice(0,5000):logEntries;
+        setResult({dryRun:true,mode:"delete",deleted:0,wouldDelete,notFound,created:0,updated:0,errors,skipped,elapsed:((Date.now()-startTimeD)/1000).toFixed(1),log:logD2,logTruncated:logEntries.length>5000,logTotal:logEntries.length,entity:target,totalRows:total,cancelled:false,startedAt:launchedAt,finishedAt:new Date()});
+        setLoadProgress({done:total,total,current:"Dry run done"});setCancelling(false);
+        return;
       }
       let deleted=0;
       if(deleteItems.length){
@@ -588,7 +616,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     // verified) are errored per-row and never PATCHed — so no create can occur even if the org
     // doesn't honor If-Match on the key. Query failures degrade to per-row errors, not an abort.
     let existCheck=null;
-    if(updateOnly && verifyExists && uKey.d && uKey.c){
+    // Dry run always resolves existence when a key is set (that's how it classifies
+    // would-update vs would-create vs would-fail); real runs only when the user opted in.
+    if(((updateOnly && verifyExists) || (dry && uKey.d)) && uKey.d && uKey.c){
       const isPKupd=uKey.d.toLowerCase()===target+"id";
       const keyMeta=targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d);
       const NUMERIC_TYPES=new Set(["Integer","BigInt","Decimal","Double","Money"]);
@@ -681,6 +711,26 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       }
     }
 
+    // ── Dry run: classify what WOULD happen, write nothing, report. ──
+    if(dry){
+      let wouldCreate=0,wouldUpdate=0,wouldFail=0;
+      upsertItems.forEach((it,k)=>{
+        const exists=existCheck?existCheck.existing.has(existCheck.norm(it.keyValue)):null;
+        let st,detail;
+        if(exists===true){ st="WOULD UPDATE";detail=`${uKey.d}="${it.keyValue}"`;wouldUpdate++; }
+        else if(updateOnly){ st="WOULD FAIL";detail=`No existing record for ${uKey.d}="${it.keyValue}" — UPDATE only → 404`;wouldFail++; }
+        else if(exists===false){ st="WOULD CREATE";detail=`No record for ${uKey.d}="${it.keyValue}" — upsert would create it`;wouldCreate++; }
+        else { st="WOULD UPSERT";detail=`${uKey.d}="${it.keyValue}" (existence not verified)`;wouldUpdate++; }
+        logEntries.push({row:upsertRowMap[k]+2,status:st,detail,d365Id:""});
+      });
+      createRowMap.forEach(idx=>{ wouldCreate++; logEntries.push({row:idx+2,status:"WOULD CREATE",detail:"New record (POST)",d365Id:""}); });
+      const optionWarnings=Object.entries(unmatchedOpts).map(([field,set])=>({field,labels:[...set].slice(0,10)})).filter(w=>w.labels.length);
+      const lg=logEntries.length>5000?logEntries.slice(0,5000):logEntries;
+      setResult({dryRun:true,created:0,updated:0,wouldCreate,wouldUpdate,wouldFail,errors,skipped,elapsed:((Date.now()-startTime)/1000).toFixed(1),log:lg,logTruncated:logEntries.length>5000,logTotal:logEntries.length,entity:target,totalRows:total,cancelled:false,startedAt:launchedAt,finishedAt:new Date(),optionWarnings});
+      setLoadProgress({done:total,total,current:"Dry run done"});
+      setCancelling(false);
+      return;
+    }
 
     if(createRecords.length>0){
       setLoadProgress({done:0,total:createRecords.length,current:`Sending ${createRecords.length} records (CREATE)...`});
@@ -1150,9 +1200,12 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             </div>);
           })()}
           <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",expName(`load_${target}`,"json"));}} style={bt()}><I.Download/> YAML</button>
+            {/* Dry run: full simulation, zero writes — available in every mode (DELETE included,
+                without the typed confirmation since nothing is deleted). */}
+            <button onClick={()=>doLoad(true)} style={bt(null,{borderColor:C.cy,color:C.cy})} title="Simulate the whole run — parsing, transforms, lookups, existence checks — without writing anything">🔍 Dry run</button>
             {deleteMode
-              ? <button onClick={doLoad} disabled={deleteConfirm.trim().toLowerCase()!==target.toLowerCase()} style={bt(deleteConfirm.trim().toLowerCase()===target.toLowerCase()?`linear-gradient(135deg,${C.rd},${C.rd}cc)`:null,{opacity:deleteConfirm.trim().toLowerCase()===target.toLowerCase()?1:0.5})}>🗑 Delete records</button>
-              : <button onClick={doLoad} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button>}
+              ? <button onClick={()=>doLoad(false)} disabled={deleteConfirm.trim().toLowerCase()!==target.toLowerCase()} style={bt(deleteConfirm.trim().toLowerCase()===target.toLowerCase()?`linear-gradient(135deg,${C.rd},${C.rd}cc)`:null,{opacity:deleteConfirm.trim().toLowerCase()===target.toLowerCase()?1:0.5})}>🗑 Delete records</button>
+              : <button onClick={()=>doLoad(false)} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button>}
           </div>
         </div>
       )}
@@ -1257,8 +1310,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           ):(
             <div>
               <div style={{textAlign:"center",marginBottom:16}}>
-                <div style={{fontSize:38,marginBottom:8}}>{result.cancelled?"⏹":result.errors.length===0?"✅":"⚠️"}</div>
-                <h2 style={{color:C.tx,fontWeight:700,fontSize:18,marginBottom:4}}>{result.cancelled?`Cancelled after ${result.elapsed}s`:`Done in ${result.elapsed}s`}</h2>
+                <div style={{fontSize:38,marginBottom:8}}>{result.dryRun?"🔍":result.cancelled?"⏹":result.errors.length===0?"✅":"⚠️"}</div>
+                <h2 style={{color:C.tx,fontWeight:700,fontSize:18,marginBottom:4}}>{result.dryRun?`Dry run done in ${result.elapsed}s`:result.cancelled?`Cancelled after ${result.elapsed}s`:`Done in ${result.elapsed}s`}</h2>
+                {result.dryRun&&<div style={{fontSize:13,color:C.cy,fontWeight:600,marginTop:4}}>Simulation only — nothing was written to Dataverse. Numbers below show what a real run WOULD do.</div>}
                 {result.cancelled&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{(result.created+result.updated)} records sent · {result.totalRows-(result.created+result.updated)} not processed</div>}
                 {result.startedAt&&<div style={{fontSize:12,color:C.txd,marginTop:6,display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
                   <span>🕐 Started {result.startedAt.toLocaleString()}</span>
@@ -1266,11 +1320,48 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                 </div>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr 1fr":"1fr 1fr 1fr 1fr",gap:8,maxWidth:500,margin:"0 auto 14px"}}>
-                {(result.mode==="delete"
-                  ? [{l:"Deleted",v:result.deleted||0,c:C.rd},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}]
-                  : [{l:"Created",v:result.created,c:C.gn},{l:"Updated",v:result.updated,c:C.cy},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}]
+                {(result.dryRun
+                  ? (result.mode==="delete"
+                    ? [{l:"Would delete",v:result.wouldDelete||0,c:C.rd},{l:"Not found",v:result.notFound||0,c:C.yw},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}]
+                    : [{l:"Would create",v:result.wouldCreate||0,c:C.gn},{l:"Would update",v:result.wouldUpdate||0,c:C.cy},{l:"Would fail",v:result.wouldFail||0,c:C.rd},{l:"Errors/skips",v:result.errors.length+result.skipped,c:C.yw}])
+                  : (result.mode==="delete"
+                    ? [{l:"Deleted",v:result.deleted||0,c:C.rd},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}]
+                    : [{l:"Created",v:result.created,c:C.gn},{l:"Updated",v:result.updated,c:C.cy},{l:"Skipped",v:result.skipped,c:C.yw},{l:"Errors",v:result.errors.length,c:C.rd}])
                 ).map((m,i)=><div key={i} style={{...crd({padding:"8px 10px",textAlign:"center"})}}><div style={{fontSize:20,fontWeight:700,color:m.c}}>{m.v}</div><div style={{fontSize:11,color:C.txd}}>{m.l}</div></div>)}
               </div>
+
+              {/* Rollback: delete the records this run just created (GUIDs captured from the batch
+                  responses). Typed confirmation, same worker pool as DELETE mode. */}
+              {!result.dryRun&&createdIdsRef.current.length>0&&!rollback?.done&&(
+                <div style={{...crd({padding:"10px 12px",background:C.or+"0c",borderColor:C.or+"55"}),maxWidth:560,margin:"0 auto 14px"}}>
+                  {rollback?.running?(
+                    <div style={{fontSize:13,color:C.or,fontWeight:600}}>↩ Rolling back… {rollback.doneCount.toLocaleString()} / {rollback.total.toLocaleString()}</div>
+                  ):(
+                    <>
+                      <div style={{fontSize:12,fontWeight:600,color:C.or,marginBottom:6}}>↩ Rollback — permanently delete the {createdIdsRef.current.length.toLocaleString()} records created by this run. Type <code style={{...mono,fontSize:12,background:C.or+"22",padding:"1px 5px",borderRadius:3}}>ROLLBACK</code> to confirm.</div>
+                      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                        <input value={rollbackConfirm} onChange={e=>setRollbackConfirm(e.target.value)} placeholder='type "ROLLBACK"' style={inp({fontSize:13,...mono,maxWidth:220,borderColor:rollbackConfirm.trim()==="ROLLBACK"?C.gn:C.or})}/>
+                        <button onClick={async()=>{
+                          if(rollbackConfirm.trim()!=="ROLLBACK")return;
+                          const ids=createdIdsRef.current;
+                          const es=entitySetFor(result.entity||target);
+                          setRollback({running:true,doneCount:0,total:ids.length});
+                          try{
+                            const res=await bridge.batchDeleteKeyed(es,(result.entity||target)+"id",ids.map(id=>({keyValue:id})),true,
+                              p=>setRollback({running:true,doneCount:p.done,total:p.total}),()=>false,{chunk:batchSize,concurrency:threads});
+                            setRollback({running:false,done:true,deleted:res.deleted||0,failed:(res.errors||[]).length,total:ids.length});
+                          }catch(e){ setRollback({running:false,done:true,deleted:0,failed:ids.length,total:ids.length,error:e.message}); }
+                        }} disabled={rollbackConfirm.trim()!=="ROLLBACK"} style={bt(rollbackConfirm.trim()==="ROLLBACK"?`linear-gradient(135deg,${C.or},${C.rd})`:null,{fontSize:12,opacity:rollbackConfirm.trim()==="ROLLBACK"?1:0.5})}>↩ Rollback created records</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {rollback?.done&&(
+                <div style={{...crd({padding:"10px 12px",background:(rollback.failed?C.rd:C.gn)+"0c",borderColor:(rollback.failed?C.rd:C.gn)+"55"}),maxWidth:560,margin:"0 auto 14px",fontSize:13,color:rollback.failed?C.rd:C.gn,fontWeight:600}}>
+                  {rollback.error?`Rollback failed: ${rollback.error}`:`↩ Rollback finished — ${rollback.deleted.toLocaleString()} deleted${rollback.failed?`, ${rollback.failed} failed`:""} (of ${rollback.total.toLocaleString()}).`}
+                </div>
+              )}
 
               {result.optionWarnings&&result.optionWarnings.length>0&&(
                 <div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
@@ -1302,7 +1393,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                         <th style={ths()}>Detail</th>
                       </tr></thead>
                       <tbody>{result.log.map((e,i)=>{
-                        const sc=e.status==="CREATED"?C.gn:e.status==="UPSERTED"?C.cy:e.status==="SKIPPED"?C.yw:C.rd;
+                        const sc=e.status==="CREATED"||e.status==="WOULD CREATE"?C.gn
+                          :e.status==="UPSERTED"||e.status==="WOULD UPDATE"||e.status==="WOULD UPSERT"?C.cy
+                          :e.status==="SKIPPED"||e.status==="NOT FOUND"?C.yw
+                          :e.status==="WOULD DELETE"?C.or:C.rd;
                         const canExpand=e.row>=2; // has a CSV row to reconstruct (skip synthetic row 0 entries)
                         const isExpanded=canExpand&&expandedLog===e.row;
                         const req=isExpanded?buildRequestForRow(csvData.r[e.row-2]):null;

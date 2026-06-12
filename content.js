@@ -536,7 +536,10 @@
                 const status = parseInt(statusMatch[1], 10);
                 const rowIdx = batchOffset + i;
                 if (status === 204 || status === 201) {
-                  log.push({ row: rowIdx, status: "CREATED" });
+                  // Capture the created record's GUID (OData-EntityId header) — fuels the
+                  // post-import Rollback feature and id display in the log.
+                  const idMatch = block.match(/OData-EntityId:[^(]*\(([0-9a-f-]{36})\)/i);
+                  log.push({ row: rowIdx, status: "CREATED", id: idMatch ? idMatch[1] : "" });
                 } else {
                   const msgMatch = block.match(/"message":"([^"]{0,300})"/);
                   log.push({ row: rowIdx, status: "ERROR", msg: msgMatch ? msgMatch[1] : `HTTP ${status}` });
