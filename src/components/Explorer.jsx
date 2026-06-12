@@ -3,7 +3,7 @@ import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
@@ -28,6 +28,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
   const[lim,setLim]=useState(50);
   const[showList,setShowList]=useState(true);
   const[savedQueries,setSavedQueries]=useState([]);
+  const qImportRef=useRef(null);
   const[queryHistory,setQueryHistory]=useState([]);
   const[showHistory,setShowHistory]=useState(false);
   const[showSaved,setShowSaved]=useState(false);
@@ -1084,8 +1085,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
                 </div>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowSaved(!showSaved);setShowHistory(false);}} style={{padding:"4px 8px",background:showSaved?C.vi+"33":"transparent",border:`1px solid ${C.bd}`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12}}>{savedQueries.length>0?`📂 ${savedQueries.length}`:"📂"}</button>
-                  {showSaved&&savedQueries.length>0&&(
-                    <div style={{position:"absolute",top:"100%",right:0,zIndex:20,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,marginTop:4,minWidth:220,maxHeight:200,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
+                  {showSaved&&(
+                    <div style={{position:"absolute",top:"100%",right:0,zIndex:20,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,marginTop:4,minWidth:240,maxHeight:240,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
+                      {/* Share saved queries between colleagues: plain JSON export/import (merge by name). */}
+                      <div style={{display:"flex",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`}}>
+                        <button onClick={()=>{dl(JSON.stringify({colvioQueries:1,queries:savedQueries},null,1),"application/json",expName("colvio_queries","json"));}} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬇ {t("explorer.export_queries")}</button>
+                        <button onClick={()=>qImportRef.current?.click()} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬆ {t("explorer.import_queries")}</button>
+                        <input ref={qImportRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const qs=d.colvioQueries===1?d.queries:null;if(!Array.isArray(qs))throw 0;const merged=[...qs.filter(q=>q&&q.name),...savedQueries.filter(s2=>!qs.some(q=>q.name===s2.name))].slice(0,20);setSavedQueries(merged);if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.set({d365_saved_queries:merged});}catch{alert(t("explorer.import_queries_bad"));}};r.readAsText(f);e.target.value="";}}/>
+                      </div>
                       {savedQueries.map(q=>(
                         <div key={q.name} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer"}} onClick={()=>loadSavedQuery(q)}
                           onMouseEnter={e=>e.currentTarget.style.background=C.sfh}

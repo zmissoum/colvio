@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.5] — 2026-06-12
+### Added (UX layer)
+- **⌘K / Ctrl+K command palette** — fuzzy-jump to any module (permission-filtered) or run quick actions (theme, language, shortcuts). Arrow keys + Enter.
+- **"What's new" popup** — after an update, a one-time dialog lists the highlights of the new version (EN/FR, tracked per version, silent on first install).
+- **Saved-query sharing** — the Explorer's 📂 saved-queries menu gains Export / Import (JSON): share query packs with colleagues, merged by name on import.
+
 ## [1.11.4] — 2026-06-12
 ### Added (Metadata Browser: schema snapshot & diff ⇄)
 - **Export a JSON snapshot of the org's schema** (custom tables by default, or everything) — table by table: column types, requirement levels, custom flags. Progress shown, deterministic file name `schema_<org>_<YYYYMMDD>.json`.
