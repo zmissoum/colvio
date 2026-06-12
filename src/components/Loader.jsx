@@ -366,8 +366,16 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   };
 
   // Real EntitySetName for @odata.bind (resolveEntitySet handles irregular plurals + abstract
-  // owner/customer targets). Bound to the loaded entity list.
-  const entitySetFor = (logical) => resolveEntitySet(logical, entityList);
+  // owner/customer targets). MEMOIZED: this is called per lookup per row (×400k rows in the
+  // prep loop and again when exporting the log) — the raw linear entityList.find() would cost
+  // hundreds of millions of comparisons on big loads. Cache resets when entityList changes.
+  const entitySetCache = useRef({ list: null, map: new Map() });
+  const entitySetFor = (logical) => {
+    const c = entitySetCache.current;
+    if (c.list !== entityList) { c.list = entityList; c.map.clear(); }
+    if (!c.map.has(logical)) c.map.set(logical, resolveEntitySet(logical, entityList));
+    return c.map.get(logical);
+  };
 
   // STATECODE_MAP, BOOLEAN_YESNO, applyTransform are imported from ../loaderUtils.js (pure, tested).
 
@@ -581,12 +589,15 @@ export default function Loader({bp,orgInfo,theme,permissions}){
         const guids=[...new Set(rows.flatMap(r=>ownerDirect.map(lk=>r[lk.csv])).filter(v=>v&&/^[0-9a-f-]{36}$/i.test(String(v).trim())).map(v=>String(v).trim().toLowerCase()))];
         if(guids.length){
           setLoadProgress({done:0,total:guids.length,current:`Resolving owner type (user vs team) for ${guids.length} unique ids...`});
-          let doneO=0;
-          for(const g of guids){
+          let doneO=0,nextO=0;
+          const probeOne=async(g)=>{
             try{ await bridge.query(`systemusers(${g})`,{select:"systemuserid"}); ownerSetCache[g]="systemusers"; }
             catch{ try{ await bridge.query(`teams(${g})`,{select:"teamid"}); ownerSetCache[g]="teams"; }catch{ /* unknown — falls back to entitySetFor */ } }
             doneO++; if(doneO%20===0) setLoadProgress({done:doneO,total:guids.length,current:`Resolving owner type ${doneO}/${guids.length}...`});
-          }
+          };
+          // 5-way pool: owner probes are independent reads, well under the 30 req/s budget.
+          const workerO=async()=>{ while(nextO<guids.length){ if(loadAbort.current) return; const g=guids[nextO++]; await probeOne(g); } };
+          await Promise.all(Array.from({length:Math.min(5,guids.length)},()=>workerO()));
         }
       }
     }

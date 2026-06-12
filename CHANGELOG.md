@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.11.8] — 2026-06-12
+### Changed (org-feature detection + performance pass)
+- **Org-feature gates, everywhere.** One consolidated probe per session (`organization.isauditenabled`, `plugintracelogsetting`, recycle-bin config — 2 GETs, cached 10 min) now feeds the whole UI: when a Dataverse feature is disabled on the environment, its tab is **dimmed with a ● badge** ("Feature not enabled on this org") and the module shows a clear banner explaining the feature is not usable via Colvio **and the exact admin-center path to enable it**. Gated: Recycle Bin (bin setting), Login History + record Change History (auditing), Plugin Traces (trace logging Off). Unknown status (no read rights) never dims — fail-open, the module's own errors guide instead.
+- **Performance pass over the 1.10.27→1.11.7 additions:**
+  - **Startup un-blocked**: the publish-privilege probe (3 chained requests, added in 1.10.27) no longer gates the first paint of the tab bar — it resolves in the background and is **cached 6 h**. Startup is back to the 4 parallel one-shot probes.
+  - **`entitySetFor` memoized** in the Loader: it runs per lookup per row (×400k rows in the prep loop and again in the log export) — the linear entity-list scan became O(1) per logical name, removing seconds of main-thread freeze on large loads.
+  - **Owner user-vs-team probes parallelized** (5-way pool, abort-aware) instead of strictly sequential.
+  - **Recycle-bin status served from the shared cached probe** — opening the tab no longer costs its own roundtrip.
+  - Everything else added in 1.11 was already lazy by design: org probes after connect, module queries on tab open, audit details on expand, What's New from localStorage, palette renders nothing while closed, xlsx still a lazy chunk. Bundle: panel ~584 KB (+~92 KB for 7 new modules/features), xlsx chunk unchanged.
+
 ## [1.11.7] — 2026-06-12
 ### Documentation & distribution
 - **EDGE_LISTING.md** — complete Microsoft Edge Add-ons submission guide: the package is Edge-ready as-is (no `update_url`, all APIs supported), free Partner Center account, permission justifications, certification notes, Edge-specific listing copy. Publishing to Edge is the biggest distribution win available (enterprise D365 users live in Edge).

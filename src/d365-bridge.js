@@ -160,19 +160,16 @@ export const bridge = {
     const checkAdmin = async () => {
       try { return !!(await callD365("isSystemAdmin")); } catch { return false; }
     };
-    // Fail-open by design (unlike canBypassPlugins which fails CLOSED): a probe error must not
-    // lock honest users out of editing — Dataverse still enforces publish rights server-side.
-    const checkPublish = async () => {
-      try { const r = await callD365("hasPrivilege", { privilegeName: "prvPublishCustomization" }); return r !== false; } catch { return true; }
-    };
-    const [canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish] = await Promise.all([
+    // NOTE: canPublish is intentionally NOT probed here — it chains 3 requests (WhoAmI →
+    // privilege id → RetrieveUserPrivileges) and this function gates the first paint of the
+    // tab bar. Call checkPublishPrivilege() separately (cached); default fail-open.
+    const [canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins] = await Promise.all([
       probe("audits?$top=1&$select=createdon"),
       probe("solutions?$top=1&$filter=isvisible eq true&$select=solutionid"),
       probe("systemusers?$top=1&$select=systemuserid"),
       checkAdmin(),
-      checkPublish(),
     ]);
-    return { canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish };
+    return { canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish: true };
   },
 
   // ── Record audit history ─────────────────────────────────────
@@ -187,8 +184,9 @@ export const bridge = {
 
   // ── Recycle bin (Dataverse "keep deleted records") ───────────
   async recycleBinStatus() {
-    if (!isExtension) return { enabled: true, retentionDays: 30 };
-    try { return await callD365("recycleBinStatus"); } catch { return { enabled: false, unknown: true }; }
+    // Delegates to the cached org-features probe — one shared roundtrip per session.
+    const f = await this.getOrgFeatures();
+    return f?.recycleBin || { enabled: false, unknown: true };
   },
   async restoreRecord(entitySet, id) {
     if (!isExtension) return { id };
@@ -200,6 +198,33 @@ export const bridge = {
   async getRecordAccess(entitySet, id) {
     if (!isExtension) return "ReadAccess,WriteAccess";
     try { return await callD365("principalAccess", { entitySet, id }); } catch { return null; }
+  },
+
+  // Publish privilege, resolved OFF the startup path and cached 6h (org-scoped). Fail-open:
+  // the server still enforces publish rights; this only refines the Translations UI.
+  async checkPublishPrivilege() {
+    if (!isExtension) return true;
+    const k = cacheKey("priv", "publish");
+    const cached = await cacheGet(k);
+    if (cached !== null) return cached.value;
+    let value = true;
+    try { const r = await callD365("hasPrivilege", { privilegeName: "prvPublishCustomization" }); value = r !== false; } catch {}
+    await cacheSet(k, { value }, 21600000); // 6h
+    return value;
+  },
+
+  // Org-level feature switches (audit, plugin traces, recycle bin) — ONE probe per session,
+  // cached 10 min (org-scoped) so tab badges and module banners never re-query.
+  async getOrgFeatures() {
+    if (!isExtension) return { auditEnabled: true, pluginTraceSetting: 2, recycleBin: { enabled: true, retentionDays: 30 } };
+    const k = cacheKey("orgfeat", "all");
+    const cached = await cacheGet(k);
+    if (cached) return cached;
+    try {
+      const data = await callD365("orgFeatures");
+      if (data) await cacheSet(k, data, 600000);
+      return data || { auditEnabled: null, pluginTraceSetting: null, recycleBin: { enabled: false, unknown: true } };
+    } catch { return { auditEnabled: null, pluginTraceSetting: null, recycleBin: { enabled: false, unknown: true } }; }
   },
 
   async getEntities() {

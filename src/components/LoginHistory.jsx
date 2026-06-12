@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
+import { t } from "../i18n.js";
 
-export default function LoginHistory({bp,orgInfo,theme}){
+export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
   const[search,setSearch]=useState("");
   const[users,setUsers]=useState([]);
   const[selectedUser,setSelectedUser]=useState(null);
@@ -105,6 +106,7 @@ export default function LoginHistory({bp,orgInfo,theme}){
     <div style={{padding:bp.mobile?12:20,maxWidth:900,margin:"0 auto"}}>
       <h2 style={{fontSize:16,fontWeight:700,marginBottom:4,display:"flex",alignItems:"center",gap:8}}><I.Clock/> Login History</h2>
       <p style={{color:C.txm,fontSize:14,marginBottom:16}}>Search for a user to view their D365 login history (via Audit).</p>
+      {orgFeatures?.auditEnabled===false&&<div style={{padding:"10px 14px",background:C.yw+"14",border:`1px solid ${C.yw}44`,borderRadius:8,color:C.yw,fontSize:13,marginBottom:14,lineHeight:1.6}}>⚠ {t("featuregate.audit_off")}</div>}
 
       <div style={{position:"relative",marginBottom:16}}>
         <div style={{display:"flex",gap:8,flexDirection:bp.mobile?"column":"row"}}>
