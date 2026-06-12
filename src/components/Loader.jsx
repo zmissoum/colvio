@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
 
 export default function Loader({bp,orgInfo,theme,permissions}){
@@ -10,7 +10,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // `permissions` may be null briefly during connect — boosters stay hidden until the
   // probe completes (safer than flashing them then hiding).
   const canShowSpeedBoosters = permissions?.canBypassPlugins === true;
-  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[verifyExists,setVerifyExists]=useState(false);const[deleteMode,setDeleteMode]=useState(false);const[deleteConfirm,setDeleteConfirm]=useState("");const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
+  const[step,setStep]=useState(0);const[csvFile,setCsvFile]=useState(null);const[csvData,setCsvData]=useState({h:[],r:[]});const[target,setTarget]=useState("account");const[maps,setMaps]=useState([]);const[lookups,setLookups]=useState([]);const[uKey,setUKey]=useState({d:"",c:""});const[updateOnly,setUpdateOnly]=useState(false);const[verifyExists,setVerifyExists]=useState(false);const[deltaMode,setDeltaMode]=useState(false);const[deleteMode,setDeleteMode]=useState(false);const[deleteConfirm,setDeleteConfirm]=useState("");const[result,setResult]=useState(null);const[dragOn,setDragOn]=useState(false);const[pasteMode,setPasteMode]=useState(false);const[pasteText,setPasteText]=useState("");const fRef=useRef(null);
   // Searchable entity picker — replaces the old dropdown so users can find an entity by typing a few letters.
   const[entitySearch,setEntitySearch]=useState("");
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
@@ -399,19 +399,23 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   //  - keyIsNumeric: integer/decimal alternate keys must NOT be quoted in the OData filter.
   //  - A chunk that 400s (one malformed value poisons the whole OR-filter) falls back to per-value
   //    queries; values that still fail land in `unverified` → per-row error, never a full abort.
-  const resolveExistingKeys=async(entitySet,keyField,isPK,values,keyIsNumeric)=>{
+  // selectFields (optional): also fetch these columns for the matched records — fuels delta mode
+  // (records map keyed by norm(key) so rows can be diffed against current org values).
+  const resolveExistingKeys=async(entitySet,keyField,isPK,values,keyIsNumeric,selectFields)=>{
     const existing=new Set();
     const unverified=new Set();
+    const records=selectFields?new Map():null;
     const norm=(v)=>isPK?String(v).replace(/[^0-9a-fA-F]/g,"").toLowerCase():String(v).trim().toLowerCase();
     const lit=(v)=>isPK?String(v).replace(/[^0-9a-fA-F-]/g,""):(keyIsNumeric?String(v).trim():`'${String(v).trim().replace(/'/g,"''")}'`);
     const CHUNK=80; // OR-filters of ~80 values keep the URL within Dataverse limits
     const chunks=[];
     for(let i=0;i<values.length;i+=CHUNK) chunks.push(values.slice(i,i+CHUNK));
     let nextIdx=0,done=0;
+    const selectCols=selectFields?[...new Set([keyField,...selectFields])].join(","):keyField;
     const queryChunk=async(slice)=>{
       const filter=slice.map(v=>`${keyField} eq ${lit(v)}`).join(" or ");
-      const data=await bridge.query(entitySet,{filter,select:keyField,top:String(slice.length)});
-      for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null) existing.add(norm(kv)); }
+      const data=await bridge.query(entitySet,{filter,select:selectCols,top:String(slice.length)});
+      for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null){ existing.add(norm(kv)); if(records) records.set(norm(kv),rec); } }
     };
     const CONC=Math.min(6,chunks.length||1); // run several existence queries in parallel
     const worker=async()=>{
@@ -432,7 +436,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       }
     };
     await Promise.all(Array.from({length:CONC},()=>worker()));
-    return {existing,unverified,norm};
+    return {existing,unverified,norm,records};
   };
 
   // Reconstruct the exact Dataverse request for a CSV row (method, URL path, body attributes) —
@@ -566,6 +570,27 @@ export default function Loader({bp,orgInfo,theme,permissions}){
       return;
     }
 
+    // Polymorphic owner lookups in DIRECT mode: a GUID may be a USER or a TEAM. Probe each
+    // unique GUID (systemusers first, then teams) so the bind targets the right entity set —
+    // previously team GUIDs were always bound to /systemusers and failed per row.
+    const ownerSetCache={}; // guid -> "systemusers" | "teams"
+    const isOwnerLk=(lk)=>lk.entity==="owner"||lk.entity==="principal"||(lk.nav||"").toLowerCase()==="ownerid";
+    {
+      const ownerDirect=lookups.filter(lk=>lk.mode==="direct"&&lk.csv&&isOwnerLk(lk));
+      if(ownerDirect.length){
+        const guids=[...new Set(rows.flatMap(r=>ownerDirect.map(lk=>r[lk.csv])).filter(v=>v&&/^[0-9a-f-]{36}$/i.test(String(v).trim())).map(v=>String(v).trim().toLowerCase()))];
+        if(guids.length){
+          setLoadProgress({done:0,total:guids.length,current:`Resolving owner type (user vs team) for ${guids.length} unique ids...`});
+          let doneO=0;
+          for(const g of guids){
+            try{ await bridge.query(`systemusers(${g})`,{select:"systemuserid"}); ownerSetCache[g]="systemusers"; }
+            catch{ try{ await bridge.query(`teams(${g})`,{select:"teamid"}); ownerSetCache[g]="teams"; }catch{ /* unknown — falls back to entitySetFor */ } }
+            doneO++; if(doneO%20===0) setLoadProgress({done:doneO,total:guids.length,current:`Resolving owner type ${doneO}/${guids.length}...`});
+          }
+        }
+      }
+    }
+
     const lookupCache={};
     for(const lk of lookups){
       if(lk.mode==="direct") continue;
@@ -618,13 +643,16 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     let existCheck=null;
     // Dry run always resolves existence when a key is set (that's how it classifies
     // would-update vs would-create vs would-fail); real runs only when the user opted in.
-    if(((updateOnly && verifyExists) || (dry && uKey.d)) && uKey.d && uKey.c){
+    const wantDelta=deltaMode && uKey.d && uKey.c && !deleteMode;
+    if(((updateOnly && verifyExists) || (dry && uKey.d) || wantDelta) && uKey.d && uKey.c){
       const isPKupd=uKey.d.toLowerCase()===target+"id";
       const keyMeta=targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d);
       const NUMERIC_TYPES=new Set(["Integer","BigInt","Decimal","Double","Money"]);
       const keyIsNumeric=NUMERIC_TYPES.has(keyMeta?.type||keyMeta?.t);
       const uniqueKeyVals=[...new Set(rows.map(r=>r[uKey.c]).filter(v=>v!==undefined&&v!==null&&v!==""))];
-      existCheck=await resolveExistingKeys(entitySet,uKey.d,isPKupd,uniqueKeyVals,keyIsNumeric);
+      // Delta mode needs the current org values of the mapped columns (OData names for lookups).
+      const deltaSelect=wantDelta?activeMaps.map(m=>{const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);return meta&&meta.odataName?meta.odataName:m.d365;}).filter(Boolean):null;
+      existCheck=await resolveExistingKeys(entitySet,uKey.d,isPKupd,uniqueKeyVals,keyIsNumeric,deltaSelect);
     }
 
     setLoadProgress({done:0,total,current:"Preparing records..."});
@@ -656,7 +684,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             continue;
           }
           if(lk.mode==="direct"){
-            rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
+            const ownerSet=isOwnerLk(lk)?ownerSetCache[String(val).trim().toLowerCase()]:null;
+            rec[`${lk.nav}@odata.bind`]=`/${ownerSet||entitySetFor(lk.entity)}(${val})`;
           } else if(isAltKeyBind(lk)){
             // Alt-key direct binding — Dataverse resolves server-side. Empty fb=skip/null already
             // short-circuited above; missing record on the server returns a per-row PATCH error.
@@ -685,16 +714,40 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           // UPDATE-only: skip (error) any key that doesn't already exist — guarantees no create.
           // norm() canonicalizes both sides ({braces}, case, spaces) so formatting can't mismatch.
           const nk=existCheck?existCheck.norm(row[uKey.c]):null;
-          if(existCheck && existCheck.unverified.has(nk)){
+          // The hard "never create" gates only apply to REAL UPDATE-only runs: in dry runs
+          // (any mode) rows flow to upsertItems so the dry classifier reports WOULD FAIL/CREATE,
+          // and in UPSERT+delta a missing key legitimately means "create".
+          if(updateOnly && !dry && existCheck && existCheck.unverified.has(nk)){
             const msg=`Existence check failed for ${uKey.d}="${row[uKey.c]}" — row not sent (UPDATE only)`;
             errors.push({row:i+1,msg});
             logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});
-          } else if(existCheck && !existCheck.existing.has(nk)){
+          } else if(updateOnly && !dry && existCheck && !existCheck.existing.has(nk)){
             errors.push({row:i+1,msg:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`});
             logEntries.push({row:i+1,status:"ERROR",detail:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`,d365Id:""});
           } else {
+            // Delta mode: against the fetched org record, drop fields whose value is already
+            // identical; if nothing differs (and no lookup binds), skip the row entirely.
+            let recToSend=rec;
+            if(!dry && wantDelta && existCheck?.records && existCheck.existing.has(nk)){
+              const cur=existCheck.records.get(nk);
+              if(cur){
+                const slim={};let kept=0,binds=0;
+                for(const [k,v] of Object.entries(rec)){
+                  if(k.includes("@odata.bind")){ slim[k]=v;binds++;continue; } // binds kept (cheap compare impossible)
+                  const metaF=targetFieldsMeta.find(f=>(f.logical||f.l)===k);
+                  const curV=cur[metaF&&metaF.odataName?metaF.odataName:k];
+                  if(deltaEqual(curV,v)) continue;
+                  slim[k]=v;kept++;
+                }
+                if(kept===0&&binds===0){
+                  skipped++;logEntries.push({row:i+1,status:"UNCHANGED",detail:"Delta: every mapped field already matches — row skipped",d365Id:""});
+                  continue;
+                }
+                recToSend=slim;
+              }
+            }
             // Key goes in the URL only (keyValue) — not the body. Dataverse applies it from the URL.
-            upsertItems.push({keyValue:row[uKey.c],record:rec});
+            upsertItems.push({keyValue:row[uKey.c],record:recToSend});
             upsertRowMap.push(i);
           }
         } else if(uKey.d && updateOnly){
@@ -893,6 +946,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                   <span>Also pre-verify existence (safety net) — adds a parallelized existence-check pass before writing. Only needed for the rare org that doesn't honor <code style={{...mono,fontSize:11}}>If-Match</code>. Slower on large updates; leave off unless you've actually seen creates.</span>
                 </label>
               </div>}
+              {uKey.d&&uKey.c&&!deleteMode&&<label style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:11,color:C.txd,cursor:"pointer",marginBottom:6}}>
+                <input type="checkbox" checked={deltaMode} onChange={e=>setDeltaMode(e.target.checked)} style={{accentColor:C.cy,marginTop:1}}/>
+                <span><b style={{color:C.cy}}>Δ Delta mode</b> — fetch the current org values first and <b>send only the fields that actually changed</b>; rows where nothing differs are skipped entirely. Cuts API writes massively on recurring syncs. (Adds a read pass before writing; lookup bindings are always sent.)</span>
+              </label>}
               {uKey.d&&deleteMode&&<div style={{fontSize:11,color:C.rd,marginBottom:6,padding:"6px 8px",background:C.rd+"11",borderRadius:4,border:`1px solid ${C.rd}44`}}>⚠ <b>Permanent deletion.</b> Each row's key value identifies a record to <b>delete</b>. This cannot be undone. Rows with no matching record fail (404). A typed confirmation is required on the Preview step.</div>}
               {uKey.d&&(()=>{
                 const pk=target+"id";
@@ -1395,7 +1452,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                       <tbody>{result.log.map((e,i)=>{
                         const sc=e.status==="CREATED"||e.status==="WOULD CREATE"?C.gn
                           :e.status==="UPSERTED"||e.status==="WOULD UPDATE"||e.status==="WOULD UPSERT"?C.cy
-                          :e.status==="SKIPPED"||e.status==="NOT FOUND"?C.yw
+                          :e.status==="SKIPPED"||e.status==="NOT FOUND"||e.status==="UNCHANGED"?C.yw
                           :e.status==="WOULD DELETE"?C.or:C.rd;
                         const canExpand=e.row>=2; // has a CSV row to reconstruct (skip synthetic row 0 entries)
                         const isExpanded=canExpand&&expandedLog===e.row;

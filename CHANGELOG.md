@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.6] — 2026-06-12
+### Added (Data Loader power-ups)
+- **Δ Delta mode** (UPSERT/UPDATE with a key) — Colvio fetches the current org values of the mapped columns up front and **sends only the fields that actually changed**; rows where nothing differs are skipped with status `UNCHANGED`. Tolerant comparison (number/string, boolean, datetime representations). On recurring syncs this slashes write volume and keeps `modifiedon`/audit clean for untouched records. Lookup bindings are always sent.
+- **Owner lookups handle teams** — for direct-mode lookups on the polymorphic `ownerid`, each unique GUID is probed (user, then team) and bound to `/systemusers` or `/teams` accordingly. Team-owned imports no longer fail per row.
+- **Fixed a 1.11.0 dry-run gap**: in dry runs the UPDATE-only existence gates no longer pre-empt classification — UPSERT dry runs now correctly report *Would create* for missing keys instead of erroring them.
+### Roadmap (deliberately deferred, tracked)
+- Composite (multi-attribute) alternate keys, resume-after-crash for interrupted runs, and a visual picklist label mapper are designed but not shipped in this arc — each touches the import core and deserves its own focused release with tests.
+
 ## [1.11.5] — 2026-06-12
 ### Added (UX layer)
 - **⌘K / Ctrl+K command palette** — fuzzy-jump to any module (permission-filtered) or run quick actions (theme, language, shortcuts). Arrow keys + Enter.
