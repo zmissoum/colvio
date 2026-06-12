@@ -26,7 +26,7 @@ const JOB_FILTERS = [
 const CANCELABLE = (j) => j.statecode === 0 || j.statecode === 1 || j.statecode === 2;
 const RESUMABLE = (j) => j.statecode === 1;
 
-function PluginTraces({ bp }) {
+function PluginTraces({ bp, orgFeatures }) {
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -62,6 +62,7 @@ function PluginTraces({ bp }) {
 
   return (
     <div>
+      {orgFeatures?.pluginTraceSetting===0&&<div style={{ padding: "10px 14px", background: C.yw + "14", border: `1px solid ${C.yw}44`, borderRadius: 8, color: C.yw, fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}>⚠ {t("featuregate.traces_off")}</div>}
       <div style={{ fontSize: 12, color: C.txd, marginBottom: 10, lineHeight: 1.6 }}>{t("ops.traces_hint")}</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("ops.traces_search")} style={inp({ fontSize: 13, maxWidth: 260 })} />
@@ -240,7 +241,7 @@ function SystemJobs({ bp, isAdmin }) {
   );
 }
 
-export default function SystemOps({ bp, orgInfo, theme, permissions }) {
+export default function SystemOps({ bp, orgInfo, theme, permissions, orgFeatures }) {
   const [panel, setPanel] = useState("jobs");
   const isAdmin = permissions?.canBypassPlugins === true; // job cancel/resume needs write on asyncoperation — sysadmin proxy
   return (
@@ -255,7 +256,7 @@ export default function SystemOps({ bp, orgInfo, theme, permissions }) {
           </button>
         ))}
       </div>
-      {panel === "traces" ? <PluginTraces bp={bp} /> : <SystemJobs bp={bp} isAdmin={isAdmin} />}
+      {panel === "traces" ? <PluginTraces bp={bp} orgFeatures={orgFeatures} /> : <SystemJobs bp={bp} isAdmin={isAdmin} />}
     </div>
   );
 }

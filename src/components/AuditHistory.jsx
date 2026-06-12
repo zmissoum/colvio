@@ -29,7 +29,7 @@ function diffRows(detail) {
     .sort((a, b) => a.field.localeCompare(b.field));
 }
 
-export default function AuditHistory({ recordId }) {
+export default function AuditHistory({ recordId, orgFeatures }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [trail, setTrail] = useState(null);
@@ -38,7 +38,9 @@ export default function AuditHistory({ recordId }) {
   const [details, setDetails] = useState({});          // auditid -> {loading, rows, error}
 
   const load = async () => {
-    setOpen(true); setLoading(true); setError("");
+    setOpen(true);
+    if (orgFeatures?.auditEnabled === false) { setError(t("featuregate.audit_off")); setTrail([]); return; }
+    setLoading(true); setError("");
     try { setTrail(await bridge.getRecordAuditTrail(recordId, 100)); }
     catch (e) {
       const m = e.message || "";

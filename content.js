@@ -1500,6 +1500,31 @@
             break;
           }
 
+          case "orgFeatures": {
+            // ONE consolidated probe for org-level feature switches that gate Colvio modules:
+            //  - isauditenabled        → Login History + record Change History
+            //  - plugintracelogsetting → Plugin Traces (0 Off / 1 Exception / 2 All)
+            //  - recyclebinconfig row  → Recycle Bin (+ retention days)
+            // Two GETs total; the bridge caches the result so the panel pays this at most
+            // once per session — module tabs/banners read it, they never re-probe.
+            const out = { auditEnabled: null, pluginTraceSetting: null, recycleBin: { enabled: false, retentionDays: null } };
+            try {
+              const org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting&$top=1");
+              const row = org?.value?.[0];
+              if (row) {
+                out.auditEnabled = row.isauditenabled !== false;
+                out.pluginTraceSetting = typeof row.plugintracelogsetting === "number" ? row.plugintracelogsetting : null;
+              }
+            } catch { /* unknown — fail-open (null = don't gate) */ }
+            try {
+              const r = await dvRequest("GET", "recyclebinconfigs?$select=cleanupintervalindays,statecode&$filter=name eq 'organization'");
+              const row = r?.value?.[0];
+              out.recycleBin = { enabled: !!row && row.statecode === 0, retentionDays: row?.cleanupintervalindays ?? null };
+            } catch { out.recycleBin = { enabled: false, unknown: true }; }
+            result = out;
+            break;
+          }
+
           case "recycleBinStatus": {
             // Is Dataverse "Keep deleted records" (recycle bin) enabled for this org?
             // Enabled ⇔ a recyclebinconfig row named 'organization' exists and is active.

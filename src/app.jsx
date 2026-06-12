@@ -128,6 +128,7 @@ export default function App(){
   const[,setLocaleState]=useState(getLocale());// value unused, setter triggers re-render on locale change
   const[showShortcuts,setShowShortcuts]=useState(false);
   const[showPalette,setShowPalette]=useState(false);
+  const[orgFeatures,setOrgFeatures]=useState(null); // org-level switches: audit, traces, recycle bin
   const bp=useBP();
   useKeyboard("/",()=>setShowShortcuts(s=>!s),[]);
   useKeyboard("k",()=>setShowPalette(s=>!s),[]);
@@ -159,6 +160,10 @@ export default function App(){
       bridge.checkPermissions().then(perms => {
         setPermissions(perms);
         setConnected(true);
+        // Deferred, cached, non-blocking: publish privilege (3 chained calls) and the
+        // org-feature switches must never delay the first paint of the tab bar.
+        bridge.checkPublishPrivilege().then(canPublish => setPermissions(p => ({ ...p, canPublish }))).catch(() => {});
+        bridge.getOrgFeatures().then(setOrgFeatures).catch(() => {});
       }).catch(() => {
         // If probes fail entirely, show all tabs (fail-open, D365 will still enforce server-side)
         setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canPublish: true });
@@ -186,9 +191,9 @@ export default function App(){
     {id:"apitester",label:t("nav.apitester"),desc:t("nav.apitester.desc"),icon:<I.Zap/>},
     {id:"show",label:t("nav.show"),desc:t("nav.show.desc"),icon:<I.Eye/>},
     {id:"metadata",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
-    {id:"logins",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit"},
+    {id:"logins",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
     {id:"loader",label:t("nav.loader"),desc:t("nav.loader.desc"),icon:<I.Upload/>},
-    {id:"recyclebin",label:t("nav.recyclebin"),desc:t("nav.recyclebin.desc"),icon:<I.Trash/>},
+    {id:"recyclebin",label:t("nav.recyclebin"),desc:t("nav.recyclebin.desc"),icon:<I.Trash/>,featureOff:!!(orgFeatures&&orgFeatures.recycleBin&&!orgFeatures.recycleBin.enabled&&!orgFeatures.recycleBin.unknown)},
     {id:"graph",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
     {id:"schema",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
     {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
@@ -227,9 +232,9 @@ export default function App(){
         </div>
         <div style={{padding:"8px 6px",flex:1,overflow:"auto"}}>
           {tabs.map(tb=>(
-            <button key={tb.id} onClick={()=>{setTab(tb.id);setSideOpen(false);}} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"8px 9px",border:"none",borderRadius:6,cursor:"pointer",marginBottom:2,transition:"all .12s",background:tab===tb.id?C.sfa:"transparent",color:tab===tb.id?C.tx:C.txm}}>
+            <button key={tb.id} onClick={()=>{setTab(tb.id);setSideOpen(false);}} title={tb.featureOff?t("featuregate.tab_tooltip"):undefined} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"8px 9px",border:"none",borderRadius:6,cursor:"pointer",marginBottom:2,transition:"all .12s",background:tab===tb.id?C.sfa:"transparent",color:tab===tb.id?C.tx:C.txm,opacity:tb.featureOff?0.55:1}}>
               <span style={{color:tab===tb.id?C.cy:C.txd,flexShrink:0}}>{tb.icon}</span>
-              <div style={{textAlign:"left",minWidth:0}}><div style={{fontSize:14,fontWeight:tab===tb.id?600:400}}>{tb.label}</div><div style={{fontSize:11,color:C.txd,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tb.desc}</div></div>
+              <div style={{textAlign:"left",minWidth:0}}><div style={{fontSize:14,fontWeight:tab===tb.id?600:400}}>{tb.label}{tb.featureOff&&<span style={{marginLeft:6,fontSize:9,verticalAlign:"middle",color:C.yw}}>●</span>}</div><div style={{fontSize:11,color:C.txd,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tb.featureOff?t("featuregate.tab_desc"):tb.desc}</div></div>
             </button>
           ))}
           {/* Query history */}
@@ -282,12 +287,12 @@ export default function App(){
           {showShortcuts&&<ShortcutsPanel onClose={()=>setShowShortcuts(false)}/>}
           <OnboardingTour/>
           {tab==="apitester"&&<ErrorBoundary><ApiTesterTabs bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary>}
           {tab==="recyclebin"&&<ErrorBoundary><RecycleBin bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="ops"&&<ErrorBoundary><SystemOps bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary>}
+          {tab==="ops"&&<ErrorBoundary><SystemOps bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="schema"&&<ErrorBoundary><SchemaViewer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}

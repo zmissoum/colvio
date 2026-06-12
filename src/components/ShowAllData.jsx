@@ -3,7 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import AuditHistory from "./AuditHistory.jsx";
 import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom } from "../shared.jsx";
 
-export default function ShowAllData({bp,orgInfo,theme}){
+export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
   const isLive = orgInfo?.isExtension;
   const[recordUrl,setRecordUrl]=useState("");
   const[record,setRecord]=useState(null);
@@ -148,7 +148,7 @@ export default function ShowAllData({bp,orgInfo,theme}){
             </div>
           </div>
 
-          {orgInfo?.isExtension&&<AuditHistory recordId={record.id}/>}
+          {orgInfo?.isExtension&&<AuditHistory recordId={record.id} orgFeatures={orgFeatures}/>}
 
           <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
             <div style={{position:"relative",flex:1,maxWidth:300}}>
