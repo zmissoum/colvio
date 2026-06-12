@@ -2,7 +2,7 @@
 // Run: node gen-spec.js
 const { h1, h2, h3, p, note, bullets, num, pageBreak, table, img, coverAndToc, buildDoc, writeDoc } = require("./helpers");
 
-const VERSION = "v1.10.26";
+const VERSION = "v1.11.7";
 
 function build(L) {
   const c = [];
@@ -54,10 +54,10 @@ function build(L) {
 }
 
 const COMMON_STATS = (L) => [
-  [L.stats1, "~9 900"],
-  [L.stats2, "24"],
-  [L.stats3, "42"],
-  [L.stats4, "207 (Vitest)"],
+  [L.stats1, "~11 400"],
+  [L.stats2, "30"],
+  [L.stats3, "48"],
+  [L.stats4, "215 (Vitest)"],
   [L.stats5, "~490 KB (+ ~430 KB xlsx " + L.onDemand + ")"],
   [L.stats6, "React 18, react-dom, xlsx (lazy)"],
   [L.stats7, "activeTab · scripting · storage · declarativeContent"],
@@ -98,6 +98,9 @@ const FR = {
     ["Show All Data / Metadata", "EntityDefinitions + attributs ; exports CSV dictionnaire de données et OptionSets."],
     ["Schema (ERD) / Relationships", "Rendu SVG custom (drag/zoom/pan), exports PNG 2x / SVG / Mermaid."],
     ["Solutions / Translations", "Composants de solution résolus (13 types) ; labels multilingues via LocLabels, publication auto."],
+    ["Recycle Bin", "FetchXML datasource='bin' + unbound Restore action (PK only); recyclebinconfig enablement detection; MS limitations surfaced."],
+    ["Audit History / System Ops", "audits + RetrieveAuditDetails per entry; asyncoperation state machine (cancel 3/32, resume), plugintracelog viewer."],
+    ["Schema diff", "JSON schema snapshots (getFields per table) + ranked diff vs current org."],
     ["Users & Licenses / Security Audit / Login History", "Pagination complète systemusers, privilèges par rôle (FetchXML), audit logs (logins). Onglets masqués sans droits."],
   ],
   s4: "4. Intégration Dataverse",
@@ -189,6 +192,9 @@ const EN = {
     ["Show All Data / Metadata", "EntityDefinitions + attributes; data-dictionary and OptionSet CSV exports."],
     ["Schema (ERD) / Relationships", "Custom SVG rendering (drag/zoom/pan), PNG 2x / SVG / Mermaid exports."],
     ["Solutions / Translations", "Solution components resolved (13 types); multilingual labels via LocLabels, auto-publish."],
+    ["Recycle Bin", "FetchXML datasource='bin' + unbound Restore action (PK only); recyclebinconfig enablement detection; MS limitations surfaced."],
+    ["Audit History / System Ops", "audits + RetrieveAuditDetails per entry; asyncoperation state machine (cancel 3/32, resume), plugintracelog viewer."],
+    ["Schema diff", "JSON schema snapshots (getFields per table) + ranked diff vs current org."],
     ["Users & Licenses / Security Audit / Login History", "Full systemusers pagination, per-role privileges (FetchXML), audit logs (logins). Tabs hidden without rights."],
   ],
   s4: "4. Dataverse integration",

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.7] — 2026-06-12
+### Documentation & distribution
+- **EDGE_LISTING.md** — complete Microsoft Edge Add-ons submission guide: the package is Edge-ready as-is (no `update_url`, all APIs supported), free Partner Center account, permission justifications, certification notes, Edge-specific listing copy. Publishing to Edge is the biggest distribution win available (enterprise D365 users live in Edge).
+- **README / Chrome Web Store listing** updated for the whole 1.11 arc (Recycle Bin, change history, System Ops, schema diff, dry run/rollback/delta, palette) and refreshed stats (~11,400 LOC, 48 API actions, 30 components, 215 tests).
+- **All 6 Office documents regenerated** (training guides FR+EN with a new "Safety net & new modules" chapter, technical specs with the new module rows and stats, walkthrough deck with the 14-module map) — version-stamped v1.11.7.
+
 ## [1.11.6] — 2026-06-12
 ### Added (Data Loader power-ups)
 - **Δ Delta mode** (UPSERT/UPDATE with a key) — Colvio fetches the current org values of the mapped columns up front and **sends only the fields that actually changed**; rows where nothing differs are skipped with status `UNCHANGED`. Tolerant comparison (number/string, boolean, datetime representations). On recurring syncs this slashes write volume and keeps `modifiedon`/audit clean for untouched records. Lookup bindings are always sent.

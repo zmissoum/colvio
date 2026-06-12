@@ -30,6 +30,24 @@ Browse entities, fields, and OptionSet values with codes, labels, and descriptio
 Data Loader — fully rewritten
 Import CSV, TSV, or Excel files (XLSX/XLS) directly — drag-drop or paste from any spreadsheet. Proper RFC-4180 parsing: quoted cells, embedded commas and line breaks, auto-detected delimiter (comma, tab, semicolon). Four import modes: CREATE, UPSERT (match on GUID or alternate key), UPDATE existing-only (native If-Match — a missing key fails the row, nothing is ever created), and DELETE by key with typed confirmation. Multipart OData $batch parallelized across concurrent workers with one changeset per record, so a single bad row doesn't roll back the entire batch. Tunable performance: batch size (1-500) and parallel threads (1-10), defaults 200×6 for ~3-4k records/second; automatic retry on Dataverse 429 throttling. Live per-row import log shown in real time during the run, with every CSV column visible, Success/Failed status, the exact Dataverse error message, and the exact request sent. Column transforms convert option-set labels to values ("Hot" → 1, with unmatched labels reported), parse EU/US dates with times, and handle decimal commas. Alt-key direct binding skips the GUID resolution query when the lookup target field is a registered alternate key (auto-detected from metadata). Smart upsert key dropdown with alt-keys highlighted at the top. Mapping templates save your full configuration per entity. Auto-skip of Lookup-type fields in the mapping step. Speed boosters for admins (bypass plugins / duplicate detection / sync workflows per record). Cancel mid-import stops everything — no writes after cancel.
 
+Data Loader — safety net
+Dry run simulates the entire import with zero writes and reports row by row what would happen. Rollback captures the GUIDs a run created and deletes exactly those on a typed confirmation. Delta mode fetches current values and sends only the fields that changed — unchanged rows are skipped. Owner lookups probe user-vs-team per GUID.
+
+Recycle Bin
+View and restore deleted Dataverse records — a true server-side restore via the platform's "keep deleted records" feature, with retention shown and every Microsoft limitation explained (cascade ordering, key conflicts, unsupported tables).
+
+Record Change History
+Field-level audit timeline on any record: who changed what, when, old → new values with formatted labels.
+
+System Ops
+System jobs monitor (find stuck workflows, bulk cancel/resume with the documented state transitions) and plug-in trace viewer (exceptions highlighted, durations, CSV export).
+
+Schema snapshot & diff
+Export an environment's schema as JSON and diff it against another org — missing tables, missing columns, type mismatches, ranked and exportable. Deployment prep in two clicks.
+
+Command palette
+Ctrl+K jumps to any module or action. A "What's new" popup summarizes each update.
+
 Relationship Graph
 Visual SVG graph of entity relationships: N:1 parents, 1:N children, N:N many-to-many. Depth 1-2, click nodes to drill down.
 
