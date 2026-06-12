@@ -11,6 +11,7 @@ import Explorer from "./components/Explorer.jsx";
 import ApiTesterTabs from "./components/ApiTesterTabs.jsx";
 import LoginHistory from "./components/LoginHistory.jsx";
 import Loader from "./components/Loader.jsx";
+import RecycleBin from "./components/RecycleBin.jsx";
 import RelationshipGraph from "./components/RelationshipGraph.jsx";
 import SolutionExplorer from "./components/SolutionExplorer.jsx";
 import TranslationManager from "./components/TranslationManager.jsx";
@@ -182,6 +183,7 @@ export default function App(){
     {id:"metadata",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
     {id:"logins",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit"},
     {id:"loader",label:t("nav.loader"),desc:t("nav.loader.desc"),icon:<I.Upload/>},
+    {id:"recyclebin",label:t("nav.recyclebin"),desc:t("nav.recyclebin.desc"),icon:<I.Trash/>},
     {id:"graph",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
     {id:"schema",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
     {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
@@ -271,6 +273,7 @@ export default function App(){
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary>}
+          {tab==="recyclebin"&&<ErrorBoundary><RecycleBin bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="schema"&&<ErrorBoundary><SchemaViewer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}

@@ -175,6 +175,16 @@ export const bridge = {
     return { canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish };
   },
 
+  // ── Recycle bin (Dataverse "keep deleted records") ───────────
+  async recycleBinStatus() {
+    if (!isExtension) return { enabled: true, retentionDays: 30 };
+    try { return await callD365("recycleBinStatus"); } catch { return { enabled: false, unknown: true }; }
+  },
+  async restoreRecord(entitySet, id) {
+    if (!isExtension) return { id };
+    return callD365("restoreRecord", { entitySet, id });
+  },
+
   // Access rights of the current user on one record ("ReadAccess,WriteAccess,..."), or null when
   // undetermined. Used to pre-check inline edit; callers should fail-open on null.
   async getRecordAccess(entitySet, id) {
