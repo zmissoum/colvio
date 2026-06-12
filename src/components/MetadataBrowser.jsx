@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, expName, copyText, isTrulyCustom } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
+import SchemaDiff from "./SchemaDiff.jsx";
 
 export default function MetadataBrowser({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
@@ -64,6 +65,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   },[showPicklist,selEnt?.l]);
   const[copied,setCopied]=useState("");
   const[entities,setEntities]=useState(ENTS);
+  const[mbPanel,setMbPanel]=useState("browser"); // "browser" | "diff"
   const[fields,setFields]=useState([]);
   const[loadingFields,setLoadingFields]=useState(false);
 
@@ -101,11 +103,22 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
 
   const cp=(t,k)=>{copyText(t);setCopied(k);setTimeout(()=>setCopied(""),1000);};
 
+  if(mbPanel==="diff") return(
+    <div style={{padding:bp.mobile?12:20,maxWidth:1000,margin:"0 auto"}}>
+      <div style={{display:"flex",gap:6,marginBottom:14,alignItems:"center"}}>
+        <button onClick={()=>setMbPanel("browser")} style={bt(null,{fontSize:12})}>← {t("schemadiff.back")}</button>
+        <h2 style={{fontSize:16,fontWeight:700,margin:0}}>⇄ {t("schemadiff.title")}</h2>
+      </div>
+      <SchemaDiff bp={bp} orgInfo={orgInfo} entities={entities}/>
+    </div>
+  );
+
   return(
     <div style={{display:"flex",height:"100%",flexDirection:bp.mobile?"column":"row"}}>
       <div style={{width:bp.mobile?"100%":bp.tablet?200:260,borderRight:bp.mobile?"none":`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0,...(bp.mobile&&selEnt?{display:"none"}:{})}}>
         <div style={{padding:"8px 8px 4px"}}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search entity..." style={inp({fontSize:13,padding:"6px 10px"})}/>
+          <button onClick={()=>setMbPanel("diff")} title={t("schemadiff.title")} style={{width:"100%",marginTop:6,padding:"5px 10px",fontSize:11.5,border:`1px solid ${C.cy}55`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.cy,fontWeight:600}}>⇄ {t("schemadiff.title")}</button>
           <div style={{display:"flex",gap:2,marginTop:6,flexWrap:"wrap"}}>
             <button onClick={()=>setCatFilter("all")} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter==="all"?C.vi:"transparent",color:catFilter==="all"?"white":C.txd}}>All</button>
             {cats.map(c=><button key={c} onClick={()=>setCatFilter(c)} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter===c?C.vi:"transparent",color:catFilter===c?"white":C.txd}}>{c}</button>)}
