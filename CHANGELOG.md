@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1] — 2026-06-12
+### Added (new module: Recycle Bin ♻)
+- **View and restore deleted Dataverse records** — a true server-side restore via the platform's "Keep deleted Dataverse records" feature. Pick a table, see what's in the bin (name, created/modified, id), select and **Restore**; restored records come back with their original values.
+- Grounded in the Microsoft docs: the bin is queried through FetchXML with `datasource='bin'` (the only Web API path), restore uses the unbound `Restore` action **by primary key** (platform limitation), and the module detects whether the org has the feature enabled (`recyclebinconfig` row, retention days shown). When disabled, it shows the exact admin-center path to enable it.
+- **Documented limitations surfaced in the UI**: records deleted before enablement aren't restorable; retention 1-30 days; **virtual tables, elastic tables, solution-component tables and tables with more than 600 columns are excluded**; cascade-deleted records don't appear — restore the original parent first; conflicts (reused primary key, duplicate alternate-key values, removed choice options) block a restore. Restore failures are translated to actionable messages (e.g. "restore the parent record first").
+- Help section EN+FR.
+
 ## [1.11.0] — 2026-06-12
 ### Added (Data Loader: Dry run & Rollback)
 - **🔍 Dry run** — a new button next to Load simulates the **entire** import with zero writes: parsing, transforms, lookup resolution and existence classification all run for real, then the report shows row by row what would happen — *Would create / Would update / Would fail (UPDATE 404) / Would delete / Not found* — plus unmatched option-set labels. Works in all 4 modes (DELETE included, without the typed confirmation since nothing is deleted). In UPSERT mode the dry run always resolves key existence, so you see the exact create-vs-update split before committing.

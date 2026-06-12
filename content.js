@@ -1296,11 +1296,14 @@
           case "getEntityMetadata": {
             validateName(params.logicalName, 'logicalName');
             const meta = await dvRequest("GET",
-              `EntityDefinitions(LogicalName='${params.logicalName}')?$select=CanBeDeleted,DisplayName`
+              `EntityDefinitions(LogicalName='${params.logicalName}')?$select=CanBeDeleted,DisplayName,PrimaryNameAttribute,PrimaryIdAttribute,EntitySetName`
             );
             result = {
               canBeDeleted: meta?.CanBeDeleted?.Value ?? true,
               displayName: meta?.DisplayName?.UserLocalizedLabel?.Label || params.logicalName,
+              primaryName: meta?.PrimaryNameAttribute || "name",
+              primaryId: meta?.PrimaryIdAttribute || params.logicalName + "id",
+              entitySet: meta?.EntitySetName || params.logicalName + "s",
             };
             break;
           }
@@ -1473,6 +1476,36 @@
             // Lightweight permission probe — returns true if endpoint is accessible
             await dvRequest("GET", params.url);
             result = true;
+            break;
+          }
+
+          case "recycleBinStatus": {
+            // Is Dataverse "Keep deleted records" (recycle bin) enabled for this org?
+            // Enabled ⇔ a recyclebinconfig row named 'organization' exists and is active.
+            // Its cleanupintervalindays is the org-wide retention (1-30 days).
+            // Docs: learn.microsoft.com/power-platform/admin/restore-deleted-table-records
+            try {
+              const r = await dvRequest("GET", "recyclebinconfigs?$select=cleanupintervalindays,statecode&$filter=name eq 'organization'");
+              const row = r?.value?.[0];
+              result = { enabled: !!row && row.statecode === 0, retentionDays: row?.cleanupintervalindays ?? null };
+            } catch (e) {
+              // Table missing (older org) or no read privilege — report unknown, never throw.
+              result = { enabled: false, unknown: true, error: e.message?.substring(0, 200) };
+            }
+            break;
+          }
+
+          case "restoreRecord": {
+            // Restore a deleted record from the recycle bin — unbound Restore action.
+            // Target is an @odata.id reference (restore works by PRIMARY KEY only; the
+            // platform does not support alternate keys for Restore).
+            validateEntitySet(params.entitySet);
+            validateGuid(params.id);
+            const ctxR = d365Context || extractContext();
+            if (!ctxR) throw new Error("D365 context not found");
+            result = await dvRequest("POST", "Restore", {
+              Target: { "@odata.id": `${ctxR.clientUrl}/api/data/${ctxR.apiVersion}/${params.entitySet}(${params.id})` },
+            });
             break;
           }
 
