@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.10] — 2026-06-12
+### Fixed (rollback transparency)
+- **The Rollback panel now reports records it cannot reach.** A created record whose GUID wasn't returned (rare `OData-EntityId` miss, or the serial-fallback path that creates via single PATCH) was silently absent from the rollback list. The panel now counts those rows and shows a clear warning ("N created record(s) had no GUID returned and cannot be rolled back here — delete them manually if needed"), and the panel appears even when *every* created GUID was un-captured, so the user is never told rollback succeeded when it didn't.
+### Note
+- The delta-mode behavior of always re-sending lookup `@odata.bind` values is **intended and correctly documented** ("lookup bindings are always sent — no cheap server-side compare"): skipping them would risk dropping a binding that actually changed. No change — it is not a bug, and the help does not overstate the savings.
+
 ## [1.11.9] — 2026-06-12
 ### Fixed (full-project code review)
 - **Rollback now covers UPSERT-created records.** UPSERT rows that *create* a record return HTTP 201 (tagged CREATED) but their GUID was never captured from the `OData-EntityId` header — only `batchCreate` did. So "Rollback created records" after an upsert silently skipped exactly those records. The upsert batch parser now captures the created GUID too.
