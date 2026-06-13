@@ -38,6 +38,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
   const [results, setResults] = useState(null);        // [{id, name, ok, error}]
   const [error, setError] = useState("");
   const [supported, setSupported] = useState(null);    // Set of restore-enabled logical names, or null (= show all)
+  const [recordSearch, setRecordSearch] = useState(""); // server-side name filter for the deleted list
 
   useEffect(() => {
     bridge.recycleBinStatus().then(setStatus);
@@ -52,15 +53,24 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     bridge.recycleBinTables().then(list => { if (Array.isArray(list) && list.length) setSupported(new Set(list)); }).catch(() => {});
   }, []);
 
-  const loadDeleted = async (ent) => {
+  const loadDeleted = async (ent, topVal = top, searchVal = recordSearch) => {
     setLoading(true); setError(""); setRows(null); setSelected(new Set()); setResults(null);
     try {
       const m = await bridge.getEntityMetadata(ent.l);
       setMeta(m);
+      // Server-side name filter: lets you find a specific deleted record by name even when there
+      // are more than the page cap — the `like` runs in Dataverse, not on the loaded rows.
+      let filterXml = "";
+      const term = (searchVal || "").trim();
+      if (term) {
+        const esc = term.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+        filterXml = `<filter><condition attribute='${m.primaryName}' operator='like' value='%${esc}%' /></filter>`;
+      }
       // datasource='bin' is the documented (and only) Web API way to read the recycle bin.
-      const xml = `<fetch top='${top}' datasource='bin'><entity name='${ent.l}'>` +
+      const xml = `<fetch top='${topVal}' datasource='bin'><entity name='${ent.l}'>` +
         `<attribute name='${m.primaryId}' /><attribute name='${m.primaryName}' />` +
         `<attribute name='createdon' /><attribute name='modifiedon' />` +
+        filterXml +
         `<order attribute='modifiedon' descending='true' /></entity></fetch>`;
       const data = await bridge.executeFetchXml(xml);
       setRows(data?.records || []);
@@ -125,7 +135,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
               {pickerOpen && !entity && (
                 <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 6, marginTop: 4, maxHeight: 240, overflow: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.4)" }}>
                   {filtered.slice(0, 50).map(e => (
-                    <button key={e.l} onClick={() => { setEntity(e); setSearch(""); setPickerOpen(false); loadDeleted(e); }}
+                    <button key={e.l} onClick={() => { setEntity(e); setSearch(""); setRecordSearch(""); setPickerOpen(false); loadDeleted(e, top, ""); }}
                       style={{ width: "100%", textAlign: "left", padding: "7px 10px", border: "none", cursor: "pointer", background: "transparent", color: C.tx, fontSize: 13 }}
                       onMouseEnter={ev => ev.currentTarget.style.background = C.sfh} onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
                       {e.d || e.l} <span style={{ color: C.txd, ...mono, fontSize: 11 }}>({e.l})</span>
@@ -134,8 +144,11 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
                 </div>
               )}
             </div>
-            <select value={top} onChange={e => { setTop(+e.target.value); }} style={inp({ width: "auto", fontSize: 13, padding: "6px 10px" })}>
-              <option value={100}>Top 100</option><option value={500}>Top 500</option><option value={1000}>Top 1000</option>
+            {entity && <input value={recordSearch} onChange={e => setRecordSearch(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") loadDeleted(entity); }}
+              placeholder={t("recyclebin.search_records")} style={inp({ fontSize: 13, maxWidth: 200 })} />}
+            <select value={top} onChange={e => { const v = +e.target.value; setTop(v); if (entity) loadDeleted(entity, v); }} style={inp({ width: "auto", fontSize: 13, padding: "6px 10px" })}>
+              <option value={100}>Top 100</option><option value={500}>Top 500</option><option value={1000}>Top 1000</option><option value={2000}>Top 2000</option>
             </select>
             {entity && <button onClick={() => loadDeleted(entity)} style={bt(null, { fontSize: 12 })}>↻ {t("recyclebin.refresh")}</button>}
             {selected.size > 0 && !restoring && (

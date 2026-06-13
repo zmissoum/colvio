@@ -158,6 +158,7 @@ export default {
   "recyclebin.retention": "r\u00e9tention",
   "recyclebin.days": "jours",
   "recyclebin.pick_entity": "Rechercher une table (ex. account, contact\u2026)",
+  "recyclebin.search_records": "Rechercher par nom… (Entrée)",
   "recyclebin.refresh": "Actualiser",
   "recyclebin.restore": "Restaurer",
   "recyclebin.restoring": "Restauration",
