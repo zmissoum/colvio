@@ -1569,6 +1569,25 @@
             break;
           }
 
+          case "deletesByEntity": {
+            // Best-effort: WHO deleted / WHEN, from the audit log (action=Delete) for one table.
+            // "Deleted by" isn't a column on the bin record — the delete event lives in `audits`.
+            // ONE query (not per-row) → map { objectIdLower: {by, on} }. null on failure / audit off.
+            validateName(params.logicalName, "logicalName");
+            try {
+              const topD = Math.min(Math.max(parseInt(params.top, 10) || 2000, 1), 5000);
+              const data = await dvRequest("GET",
+                `audits?$select=_objectid_value,_userid_value,createdon&$filter=action eq 3 and objecttypecode eq '${params.logicalName}'&$orderby=createdon desc&$top=${topD}`);
+              const map = {};
+              for (const a of (data?.value || [])) {
+                const oid = String(a._objectid_value || "").toLowerCase();
+                if (oid && !map[oid]) map[oid] = { by: a["_userid_value@OData.Community.Display.V1.FormattedValue"] || "", on: a.createdon };
+              }
+              result = map;
+            } catch { result = null; }
+            break;
+          }
+
           case "recycleBinTables": {
             // The tables ACTUALLY enabled for deleted-record keeping (Microsoft-documented
             // detection): recyclebinconfig rows with statecode=0 (active) and isreadyforrecyclebin=1,

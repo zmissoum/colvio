@@ -194,6 +194,12 @@ export const bridge = {
   },
   // Logical names of tables enabled for restore (cached 10 min, org-scoped). null = couldn't
   // determine (no privilege / older org) → the UI should fall back to showing all tables.
+  // Best-effort map { objectIdLower: {by, on} } of who/when deleted records of a table (audit log).
+  // Returns {} or null when unavailable (audit off / no privilege) — caller treats as "unknown".
+  async recordsDeletedBy(logicalName, top = 2000) {
+    if (!isExtension) return {};
+    try { return await callD365("deletesByEntity", { logicalName, top }); } catch { return null; }
+  },
   async recycleBinTables() {
     if (!isExtension) return ["account", "contact"];
     const k = cacheKey("rbtables", "all");

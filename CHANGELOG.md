@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.16] — 2026-06-12
+### Added (Recycle Bin: ownership & deletion columns)
+- The deleted-records list now shows **Created by**, **Modified by** (standard ownership lookups on the retained record, resolved to user names) and **Deleted by / Deleted on**. "Deleted by/on" isn't stored on the bin record — Colvio pulls it from the **audit log** (the delete event) with a single best-effort query per load: it fills in when auditing is enabled for the table, and shows "—" otherwise (never blocks the list). The table scrolls horizontally and the Id is truncated (full value on hover).
+
 ## [1.11.15] — 2026-06-12
 ### Added
 - **Recycle Bin: find a deleted record by name, beyond the page cap.** A name search box runs a **server-side** `like` filter on the bin query, so you can locate a specific deleted record even when there are more than the displayed page — it doesn't just filter the loaded rows. The page size now also offers Top 2000 (the list shows the most recently deleted first; the Dataverse FetchXML single-page hard cap is 5000). Changing the page size or table reloads automatically.

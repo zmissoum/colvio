@@ -3,6 +3,8 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, mono, inp, bt, crd, ths, tds } from "../shared.jsx";
 import { t } from "../i18n.js";
 
+const FMT = "@OData.Community.Display.V1.FormattedValue";
+
 // Recycle Bin — list & restore deleted records via Dataverse "keep deleted records".
 // Querying the bin is only possible through FetchXML with datasource='bin';
 // restore is the unbound Restore action by PRIMARY KEY (platform limitation).
@@ -39,6 +41,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
   const [error, setError] = useState("");
   const [supported, setSupported] = useState(null);    // Set of restore-enabled logical names, or null (= show all)
   const [recordSearch, setRecordSearch] = useState(""); // server-side name filter for the deleted list
+  const [deletedBy, setDeletedBy] = useState(null);     // { objectIdLower: {by, on} } from the audit log
 
   useEffect(() => {
     bridge.recycleBinStatus().then(setStatus);
@@ -54,7 +57,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
   }, []);
 
   const loadDeleted = async (ent, topVal = top, searchVal = recordSearch) => {
-    setLoading(true); setError(""); setRows(null); setSelected(new Set()); setResults(null);
+    setLoading(true); setError(""); setRows(null); setSelected(new Set()); setResults(null); setDeletedBy(null);
     try {
       const m = await bridge.getEntityMetadata(ent.l);
       setMeta(m);
@@ -67,13 +70,20 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
         filterXml = `<filter><condition attribute='${m.primaryName}' operator='like' value='%${esc}%' /></filter>`;
       }
       // datasource='bin' is the documented (and only) Web API way to read the recycle bin.
+      // createdby/modifiedby are standard ownership lookups on the retained record (formatted
+      // names come back via the include-annotations Prefer header dvRequest adds on reads).
       const xml = `<fetch top='${topVal}' datasource='bin'><entity name='${ent.l}'>` +
         `<attribute name='${m.primaryId}' /><attribute name='${m.primaryName}' />` +
-        `<attribute name='createdon' /><attribute name='modifiedon' />` +
+        `<attribute name='createdby' /><attribute name='createdon' />` +
+        `<attribute name='modifiedby' /><attribute name='modifiedon' />` +
         filterXml +
         `<order attribute='modifiedon' descending='true' /></entity></fetch>`;
       const data = await bridge.executeFetchXml(xml);
-      setRows(data?.records || []);
+      const records = data?.records || [];
+      setRows(records);
+      // "Deleted by / on" isn't on the bin record — pull it from the audit log (best-effort,
+      // one query, non-blocking). Blank columns if auditing is off or the table isn't audited.
+      if (records.length) bridge.recordsDeletedBy(ent.l, Math.max(records.length, 100)).then(map => { if (map) setDeletedBy(map); }).catch(() => {});
     } catch (e) {
       setError(e.message || String(e));
     }
@@ -182,19 +192,24 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
               ? <div style={{ textAlign: "center", color: C.txd, marginTop: 30, fontSize: 13 }}>{t("recyclebin.empty")}</div>
               : <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
                 <div style={{ maxHeight: 460, overflow: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, whiteSpace: "nowrap" }}>
                     <thead><tr style={{ background: C.bg, position: "sticky", top: 0, zIndex: 1 }}>
                       <th style={{ ...ths(), width: 30 }}>
                         <input type="checkbox" checked={selected.size === rows.length && rows.length > 0}
                           onChange={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map(r => r[meta.primaryId])))} style={{ accentColor: C.vi }} />
                       </th>
                       <th style={ths()}>{t("recyclebin.col_name")}</th>
-                      <th style={ths()}>{t("recyclebin.col_created")}</th>
+                      <th style={ths()}>{t("recyclebin.col_deleted_by")}</th>
+                      <th style={ths()}>{t("recyclebin.col_deleted_on")}</th>
+                      <th style={ths()}>{t("recyclebin.col_modified_by")}</th>
                       <th style={ths()}>{t("recyclebin.col_modified")}</th>
+                      <th style={ths()}>{t("recyclebin.col_created_by")}</th>
+                      <th style={ths()}>{t("recyclebin.col_created")}</th>
                       <th style={ths()}>Id</th>
                     </tr></thead>
                     <tbody>{rows.map((r, i) => {
                       const id = r[meta.primaryId];
+                      const del = deletedBy && id ? deletedBy[String(id).toLowerCase()] : null;
                       return (
                         <tr key={id || i} style={{ borderBottom: `1px solid ${C.bd}33`, background: selected.has(id) ? C.vi + "11" : i % 2 ? C.sfh + "22" : "transparent" }}>
                           <td style={{ ...tds, width: 30 }}>
@@ -202,9 +217,13 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
                               onChange={() => setSelected(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; })} style={{ accentColor: C.vi }} />
                           </td>
                           <td style={{ ...tds, fontWeight: 600 }}>{r[meta.primaryName] || <span style={{ color: C.txd, fontStyle: "italic" }}>(no name)</span>}</td>
-                          <td style={{ ...tds, fontSize: 12, color: C.txm }}>{fmtDate(r.createdon)}</td>
+                          <td style={{ ...tds, fontSize: 12, color: C.txm }}>{del ? del.by : (deletedBy === null ? <Spin s={10} /> : <span style={{ color: C.txd }}>—</span>)}</td>
+                          <td style={{ ...tds, fontSize: 12, color: C.txm }}>{del ? fmtDate(del.on) : ""}</td>
+                          <td style={{ ...tds, fontSize: 12, color: C.txm }}>{r["_modifiedby_value" + FMT] || ""}</td>
                           <td style={{ ...tds, fontSize: 12, color: C.txm }}>{fmtDate(r.modifiedon)}</td>
-                          <td style={{ ...tds, ...mono, fontSize: 11, color: C.txd }}>{id}</td>
+                          <td style={{ ...tds, fontSize: 12, color: C.txm }}>{r["_createdby_value" + FMT] || ""}</td>
+                          <td style={{ ...tds, fontSize: 12, color: C.txm }}>{fmtDate(r.createdon)}</td>
+                          <td style={{ ...tds, ...mono, fontSize: 11, color: C.txd }} title={id}>{String(id || "").substring(0, 8)}…</td>
                         </tr>
                       );
                     })}</tbody>
