@@ -22,7 +22,7 @@ API Tester
 A Postman-equivalent for Dataverse, built right in. Run ad-hoc Web API requests (GET, POST, PATCH, PUT, DELETE) without leaving Colvio. Auth is automatic via your active D365 session — no OAuth dance, no client secret, no token refresh, no environment variables per org. Headers autocomplete for common Dataverse headers (Prefer, MSCRM.SuppressDuplicateDetection, MSCRM.BypassCustomPluginExecution, If-Match, etc.). JSON body editor with line-numbers gutter and live validation that points to the exact line on parse errors. Response panel with status, elapsed time, body size, pretty-printed JSON, and headers tab. Templates for common operations (WhoAmI, CREATE, PATCH, UPSERT by alt-key, DELETE, RetrieveCurrentOrganization). History of your last 50 requests stored locally — secret-bearing headers (Authorization, Cookie, API keys) are redacted before saving. Copy as cURL for sharing in tickets or chat. Ctrl/Cmd+Enter to send. Multiple tabs.
 
 Show All Data
-Auto-detects the record open in your D365 tab. One click to inspect every field with logical name, type, and value. Copy individual fields or full JSON.
+Auto-detects the record open in your D365 tab. One click to inspect every field with logical name, type, and value. Fields render in a responsive multi-column grid that fills the screen, so even 400+ field records stay readable with minimal scrolling. Copy individual fields or full JSON.
 
 Metadata Browser
 Browse entities, fields, and OptionSet values with codes, labels, and descriptions. Export all fields of any entity as CSV (logical name, OData column name, type, required flag, custom flag) — instant data dictionary, ready to paste into a $select clause. Export all OptionSets as CSV for offline documentation.
@@ -34,13 +34,13 @@ Data Loader — safety net
 Dry run simulates the entire import with zero writes and reports row by row what would happen. Rollback captures the GUIDs a run created and deletes exactly those on a typed confirmation. Delta mode fetches current values and sends only the fields that changed — unchanged rows are skipped. Owner lookups probe user-vs-team per GUID.
 
 Recycle Bin
-View and restore deleted Dataverse records — a true server-side restore via the platform's "keep deleted records" feature, with retention shown and every Microsoft limitation explained (cascade ordering, key conflicts, unsupported tables).
+View and restore deleted Dataverse records — a true server-side restore via the platform's "keep deleted records" feature. Shows who deleted, created, and last modified each record, with retention and every Microsoft limitation explained (cascade ordering, key conflicts, unsupported tables). Restore-enabled tables are pre-filtered, deleted records are searchable by name server-side, and pagination lets you walk through mass deletes of hundreds of thousands of rows without loading them all at once.
 
 Record Change History
 Field-level audit timeline on any record: who changed what, when, old → new values with formatted labels.
 
 System Ops
-System jobs monitor (find stuck workflows, bulk cancel/resume with the documented state transitions) and plug-in trace viewer (exceptions highlighted, durations, CSV export).
+System jobs monitor (find stuck workflows, bulk cancel/resume with the documented state transitions) and plug-in trace viewer (exceptions highlighted, durations, CSV export). Both paginate without a hard cap and add server-side filters — date range, name/text search, and a minimum-duration filter on traces — so nothing stays hidden behind a Top-N limit.
 
 Schema snapshot & diff
 Export an environment's schema as JSON and diff it against another org — missing tables, missing columns, type mismatches, ranked and exportable. Deployment prep in two clicks.
@@ -55,16 +55,16 @@ Schema (ERD)
 Interactive Entity Relationship Diagram. Add entities to a canvas, see field details with FK badges, bezier curves between lookups and target entities. Drag cards, zoom, pan. Expand/collapse fields or view tables only. Export as PNG, SVG, or Mermaid.
 
 Solution Explorer
-Browse D365 solutions and their components. 13 component types resolved to readable names (Entity, Attribute, View, Plugin, Web Resource, etc.).
+Browse D365 solutions and their components. 40+ component types resolved to readable names against Microsoft's official enumeration (Entity, Attribute, Web Resource, Security Role, Email Template, Model-driven App, Environment Variable, Routing/Convert Rule, SLA, and more), with component names resolved per type instead of raw GUIDs.
 
 Translation Manager
-View and edit field labels in multiple languages. Non-renameable fields automatically locked as read-only. Export/import CSV for bulk translation workflows. Auto-publish after save.
+View and edit field labels in multiple languages, each shown with its proper language name — full coverage of Dataverse-provisioned languages, no raw LCID codes. Non-renameable fields automatically locked as read-only. Export/import CSV for bulk translation workflows. Auto-publish after save.
 
 User & License Monitor
 Monitor ALL D365 users — Access Mode, CAL Type, Business Unit, security roles, last login date. Filter by Active/Disabled/Non-Interactive, identify unused licenses (never logged in, disabled but still allocated). Full CSV export. No limit on user count.
 
 Security Audit
-Review all security roles and their privileges. Readable labels (prvDeleteAccount becomes Delete · Account), depth badges (User/BU/Org), sensitive privilege flags (30+ critical privileges highlighted). Filter by Org-level or Sensitive. CSV export per role.
+Review all security roles and their privileges. Readable labels (prvDeleteAccount becomes Delete · Account), depth badges (User/BU/Org), sensitive privilege flags (30+ critical privileges highlighted). Filter by Org-level or Sensitive. A Users sub-tab lists exactly who holds each role — name, email, business unit, status — aggregated across every business-unit copy of the role and deduplicated, so members sitting in child business units are never missed. Service / non-interactive accounts are flagged. Filter and CSV export on both privileges and members.
 
 Login History
 User login/logout audit timeline from D365 audit logs. Session duration, access type stats, CSV export.
@@ -76,6 +76,7 @@ GLOBAL
 
 Dark/Light theme with system preference detection
 English/French interface toggle
+Responsive, full-width layout — record inspector on a multi-column grid, data-heavy tabs use the whole screen, less scrolling
 Environment badge — reads Microsoft's authoritative OrganizationType (Production / Sandbox / CustomerTest / Trial / Preview / Developer) so you always know which environment you're working in
 Export: XLSX, CSV, JSON — copy or download
 Keyboard shortcuts (Ctrl+Enter to query, Ctrl+/ for shortcuts, Escape to close)
@@ -153,5 +154,6 @@ English, French
 3. Data Loader — Live import log with per-row Success/Failed status
 4. Show All Data — record inspector with field details
 5. Schema — interactive ERD with entity cards and bezier lines
-6. Security Audit — roles and privileges viewer
+6. Security Audit — roles and privileges viewer, with the Users sub-tab showing who holds the role
 7. Metadata Browser — entity fields with Export buttons and OptionSet viewer
+8. Recycle Bin — deleted records with who-deleted / created / modified columns and restore
