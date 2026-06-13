@@ -103,7 +103,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
   };
 
   return(
-    <div style={{padding:bp.mobile?12:20,maxWidth:900,margin:"0 auto"}}>
+    <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1500,margin:"0 auto"}}>
       <h2 style={{fontSize:16,fontWeight:700,marginBottom:4,display:"flex",alignItems:"center",gap:8}}><I.Clock/> Login History</h2>
       <p style={{color:C.txm,fontSize:14,marginBottom:16}}>Search for a user to view their D365 login history (via Audit).</p>
       {orgFeatures?.auditEnabled===false&&<div style={{padding:"10px 14px",background:C.yw+"14",border:`1px solid ${C.yw}44`,borderRadius:8,color:C.yw,fontSize:13,marginBottom:14,lineHeight:1.6}}>⚠ {t("featuregate.audit_off")}</div>}

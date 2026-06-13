@@ -862,7 +862,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const steps=[{l:"Source",i:"📄"},{l:"Mapping",i:"🔗"},{l:"Lookups",i:"🔍"},{l:"Preview",i:"👁"},{l:"Run",i:"🚀"}];
 
   return(
-    <div style={{padding:bp.mobile?12:20,maxWidth:1100,margin:"0 auto"}}>
+    <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1400,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:bp.mobile?14:22,flexWrap:"wrap"}}>
         {steps.map((s,i)=>{
           const lookupsEmpty=i===2&&lookups.length===0&&csvData.h.length>0; // Lookups step with nothing to configure

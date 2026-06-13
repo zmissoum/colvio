@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.19] — 2026-06-13
+### Changed (Responsive layout — use the full screen, less scrolling)
+- **Show All Data** now renders fields in a **responsive grid** instead of one long single-column list: 1 column on narrow panels, 2 on a normal window, 3+ on wide screens (each column ≥440 px). A 400-field record that used to be a tall scroll now fits in roughly a third of the height. The view also uses the full width (cap raised 900 → 1600 px).
+- **Wider content on every data-heavy tab** so big screens aren't half-empty and tables/lists scroll less: width caps raised — Metadata Browser & Login History 900–1000 → 1500, System Jobs/Traces 1100 → 1500, API Tester 1200 → 1500, Loader 1100 → 1400 (Recycle Bin was already 1500 in 1.11.17). All collapse to full width on mobile. The Help tab stays narrow on purpose (prose reads better in a column).
+
 ## [1.11.18] — 2026-06-13
 ### Fixed (SQL Explorer: TOP semantics + paging-cookie 400)
 - **`TOP n` now actually limits the result.** Two bugs compounded: (1) the parser only recognized `TOP` right after `SELECT`, so the suffix form Colvio's own templates use (`… ORDER BY name ASC TOP 100`) was silently dropped; (2) when `TOP` *was* read it mapped to FetchXML `count` (a page size), so the query paginated through the entire table n-at-a-time instead of stopping. `TOP` is now parsed in either position and emitted as FetchXML `top` (a hard cap that disables paging), capped at the platform max of 5000.
