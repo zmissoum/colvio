@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.20] — 2026-06-13
+### Fixed (Translations: language names · Solutions: component types & names)
+- **Translation Manager — language columns showed raw codes** ("LCID 2070", "LCID 3082") for any language outside a short hard-coded list. The map now covers the full set of Dataverse-provisionable languages, so 2070 → Portuguese (Portugal), 3082 → Spanish, plus ~40 others (with the easy-to-confuse pairs labelled: Portuguese Brazil 1046 vs Portugal 2070, Spanish 3082 vs legacy 1034, Chinese Simplified 2052 vs Traditional 1028). Unknown codes still fall back to "LCID n".
+- **Solution Explorer — component type labels were wrong, and names showed as GUIDs.** The internal `componenttype` codes were shifted by a few against Microsoft's enumeration, so groups were mislabelled (type 60 "Web Resource" was actually System Form; real Web Resources 61 were labelled "Sitemap"; 63 "Security Role" was actually Connection Role; etc.) and the name-resolvers queried the wrong tables — which is why Web Resources, Roles, Apps and others fell back to raw GUIDs. All codes are corrected to the official list, the type map is expanded (Security Role 20, Email Template 36, Field Security Profile 70, Model-driven App 80, Routing Rule 150, Convert Rule 154, Environment Variable 380, SLA 152…), and name resolution now hits the correct table per type (best-effort; still shows the GUID if a record can't be read).
+
 ## [1.11.19] — 2026-06-13
 ### Changed (Responsive layout — use the full screen, less scrolling)
 - **Show All Data** now renders fields in a **responsive grid** instead of one long single-column list: 1 column on narrow panels, 2 on a normal window, 3+ on wide screens (each column ≥440 px). A 400-field record that used to be a tall scroll now fits in roughly a third of the height. The view also uses the full width (cap raised 900 → 1600 px).
