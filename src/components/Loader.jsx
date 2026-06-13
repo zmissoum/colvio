@@ -144,6 +144,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const fullLog=useRef([]);
   // GUIDs of records created by the last real run (from OData-EntityId) — enables Rollback.
   const createdIdsRef=useRef([]);
+  const createdMissingIdRef=useRef(0); // CREATED rows whose GUID wasn't captured → not rollback-able
   // Rollback run state: null | {running, done, total, deleted, errors}
   const[rollback,setRollback]=useState(null);
   const[rollbackConfirm,setRollbackConfirm]=useState("");
@@ -459,7 +460,10 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     const enriched=newLog.map(e=>{const csvIdx=rowMap[(e.row||1)-1];return {...e,csvRow:csvIdx!=null?rows[csvIdx]:null,csvRowNumber:csvIdx!=null?csvIdx+2:0};});
     for(const e of enriched){
       fullLog.current.push({csvRowNumber:e.csvRowNumber,status:e.status,msg:e.msg,id:e.id});
-      if(e.status==="CREATED"&&e.id) createdIdsRef.current.push(e.id); // fuels post-import Rollback
+      if(e.status==="CREATED"){
+        if(e.id) createdIdsRef.current.push(e.id);            // fuels post-import Rollback
+        else createdMissingIdRef.current++;                   // created but GUID not captured (rare) — Rollback can't reach it
+      }
     }
     setLiveLog(prev=>{const newCounts={...prev.counts};for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};});
   };
@@ -511,7 +515,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     loadAbort.current=false;setCancelling(false);
     setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
     fullLog.current=[];
-    createdIdsRef.current=[];setRollback(null);setRollbackConfirm("");
+    createdIdsRef.current=[];createdMissingIdRef.current=0;setRollback(null);setRollbackConfirm("");
     const launchedAt=new Date();setStartedAt(launchedAt);setExpandedLog(null);
     const rows=csvData.r;
     const SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
@@ -1416,14 +1420,15 @@ export default function Loader({bp,orgInfo,theme,permissions}){
 
               {/* Rollback: delete the records this run just created (GUIDs captured from the batch
                   responses). Typed confirmation, same worker pool as DELETE mode. */}
-              {!result.dryRun&&createdIdsRef.current.length>0&&!rollback?.done&&(
+              {!result.dryRun&&(createdIdsRef.current.length>0||createdMissingIdRef.current>0)&&!rollback?.done&&(
                 <div style={{...crd({padding:"10px 12px",background:C.or+"0c",borderColor:C.or+"55"}),maxWidth:560,margin:"0 auto 14px"}}>
                   {rollback?.running?(
                     <div style={{fontSize:13,color:C.or,fontWeight:600}}>↩ Rolling back… {rollback.doneCount.toLocaleString()} / {rollback.total.toLocaleString()}</div>
                   ):(
                     <>
-                      <div style={{fontSize:12,fontWeight:600,color:C.or,marginBottom:6}}>↩ Rollback — permanently delete the {createdIdsRef.current.length.toLocaleString()} records created by this run. Type <code style={{...mono,fontSize:12,background:C.or+"22",padding:"1px 5px",borderRadius:3}}>ROLLBACK</code> to confirm.</div>
-                      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      {createdIdsRef.current.length>0&&<div style={{fontSize:12,fontWeight:600,color:C.or,marginBottom:6}}>↩ Rollback — permanently delete the {createdIdsRef.current.length.toLocaleString()} records created by this run. Type <code style={{...mono,fontSize:12,background:C.or+"22",padding:"1px 5px",borderRadius:3}}>ROLLBACK</code> to confirm.</div>}
+                      {createdMissingIdRef.current>0&&<div style={{fontSize:11,color:C.rd,marginBottom:6}}>⚠ {createdMissingIdRef.current.toLocaleString()} created record(s) had no GUID returned (e.g. via the serial fallback) and <b>cannot be rolled back here</b> — delete them manually if needed.</div>}
+                      {createdIdsRef.current.length>0&&<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                         <input value={rollbackConfirm} onChange={e=>setRollbackConfirm(e.target.value)} placeholder='type "ROLLBACK"' style={inp({fontSize:13,...mono,maxWidth:220,borderColor:rollbackConfirm.trim()==="ROLLBACK"?C.gn:C.or})}/>
                         <button onClick={async()=>{
                           if(rollbackConfirm.trim()!=="ROLLBACK")return;
@@ -1436,7 +1441,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
                             setRollback({running:false,done:true,deleted:res.deleted||0,failed:(res.errors||[]).length,total:ids.length});
                           }catch(e){ setRollback({running:false,done:true,deleted:0,failed:ids.length,total:ids.length,error:e.message}); }
                         }} disabled={rollbackConfirm.trim()!=="ROLLBACK"} style={bt(rollbackConfirm.trim()==="ROLLBACK"?`linear-gradient(135deg,${C.or},${C.rd})`:null,{fontSize:12,opacity:rollbackConfirm.trim()==="ROLLBACK"?1:0.5})}>↩ Rollback created records</button>
-                      </div>
+                      </div>}
                     </>
                   )}
                 </div>
