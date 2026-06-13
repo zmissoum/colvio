@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.14] — 2026-06-12
+### Added
+- **Recycle Bin: the table picker now lists only tables that actually support restore.** Using Microsoft's documented detection (`recyclebinconfig` rows where `statecode=0` and `isreadyforrecyclebin=1`, joined to the `entity` table for the logical name), the picker hides tables that can't be restored on this environment (virtual/elastic/solution-component tables, tables with >600 columns, anything not yet enabled) — so you can't pick a table that would error. A small note shows the count. Fail-open: if the support list can't be read (e.g. no privilege, older org), all tables are shown as before. Cached 10 min, fetched lazily when the tab opens.
+
 ## [1.11.13] — 2026-06-12
 ### Fixed
 - **Recycle Bin: selecting a table failed with "Could not find a property named 'CanBeDeleted'".** The shared entity-metadata query `$select`ed `CanBeDeleted`, a managed property that isn't selectable on every org/API version. The core query now requests only universally-selectable properties (display name, primary name/id, entity set); `CanBeDeleted` is fetched separately, best-effort and opt-in (only the Explorer bulk-delete pre-check asks for it), so a non-selectable property can never break the metadata call. Recycle Bin (and any other metadata consumer) works regardless. The org-level "recycle bin enabled" detection was already correct (the green banner) — this was a per-table metadata issue, not the activation check.

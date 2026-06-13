@@ -192,6 +192,19 @@ export const bridge = {
     if (!isExtension) return { id };
     return callD365("restoreRecord", { entitySet, id });
   },
+  // Logical names of tables enabled for restore (cached 10 min, org-scoped). null = couldn't
+  // determine (no privilege / older org) → the UI should fall back to showing all tables.
+  async recycleBinTables() {
+    if (!isExtension) return ["account", "contact"];
+    const k = cacheKey("rbtables", "all");
+    const cached = await cacheGet(k);
+    if (cached) return cached.list;
+    try {
+      const list = await callD365("recycleBinTables");
+      if (Array.isArray(list)) { await cacheSet(k, { list }, 600000); return list; }
+      return null;
+    } catch { return null; }
+  },
 
   // Access rights of the current user on one record ("ReadAccess,WriteAccess,..."), or null when
   // undetermined. Used to pre-check inline edit; callers should fail-open on null.

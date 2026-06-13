@@ -37,6 +37,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
   const [restoring, setRestoring] = useState(null);    // {done, total}
   const [results, setResults] = useState(null);        // [{id, name, ok, error}]
   const [error, setError] = useState("");
+  const [supported, setSupported] = useState(null);    // Set of restore-enabled logical names, or null (= show all)
 
   useEffect(() => {
     bridge.recycleBinStatus().then(setStatus);
@@ -46,6 +47,9 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     bridge.getEntities().then(list => {
       if (list?.length) setEntities(list.map(e => ({ l: e.logical, d: e.display, p: e.entitySet || e.logical + "s" })).sort((a, b) => (a.d || "").localeCompare(b.d || "")));
     }).catch(() => {});
+    // Restrict the picker to tables actually enabled for restore. null (no privilege / older org)
+    // → keep all tables (fail-open) so the user is never locked out.
+    bridge.recycleBinTables().then(list => { if (Array.isArray(list) && list.length) setSupported(new Set(list)); }).catch(() => {});
   }, []);
 
   const loadDeleted = async (ent) => {
@@ -87,7 +91,9 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     if (out.some(r => r.ok)) loadDeleted(entity);
   };
 
-  const filtered = entities.filter(e => !search || e.l.includes(search.toLowerCase()) || e.d?.toLowerCase().includes(search.toLowerCase()));
+  const filtered = entities
+    .filter(e => !supported || supported.has(e.l))   // only restore-enabled tables (when known)
+    .filter(e => !search || e.l.includes(search.toLowerCase()) || e.d?.toLowerCase().includes(search.toLowerCase()));
   const fmtDate = (v) => v ? new Date(v).toLocaleString() : "";
 
   return (
@@ -106,9 +112,10 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
 
       {status?.enabled && (
         <>
-          <div style={{ fontSize: 12, color: C.gn, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: C.gn, marginBottom: supported ? 4 : 12 }}>
             ● {t("recyclebin.enabled_label")}{status.retentionDays != null ? ` — ${t("recyclebin.retention")} ${status.retentionDays} ${t("recyclebin.days")}` : ""}
           </div>
+          {supported && <div style={{ fontSize: 11, color: C.txd, marginBottom: 12 }}>{t("recyclebin.supported_only").replace("{n}", supported.size)}</div>}
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ position: "relative", minWidth: 260 }}>

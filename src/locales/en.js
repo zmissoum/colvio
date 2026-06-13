@@ -166,6 +166,7 @@ export default {
   "recyclebin.subtitle": "View and restore records deleted from Dataverse — a true server-side restore, not a copy.",
   "recyclebin.disabled_title": "The Dataverse recycle bin is not enabled on this environment",
   "recyclebin.disabled_body": "An administrator can enable it in the Power Platform admin center:\nManage → Environments → (your environment) → Settings → Product → Features → \"Keep deleted Dataverse records\" (1-30 days), then allow ~30 minutes for the background job to finish.\nImportant: only records deleted AFTER the setting is turned on can be restored.",
+  "recyclebin.supported_only": "Showing only the {n} tables enabled for restore on this environment.",
   "recyclebin.enabled_label": "Recycle bin enabled",
   "recyclebin.retention": "retention",
   "recyclebin.days": "days",

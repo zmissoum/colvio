@@ -1569,6 +1569,24 @@
             break;
           }
 
+          case "recycleBinTables": {
+            // The tables ACTUALLY enabled for deleted-record keeping (Microsoft-documented
+            // detection): recyclebinconfig rows with statecode=0 (active) and isreadyforrecyclebin=1,
+            // joined to the entity table for the logical name. Returns logical names so the UI can
+            // show only restorable tables. Returns null on failure/no-privilege → caller shows all.
+            // Docs: learn.microsoft.com/power-apps/developer/data-platform/restore-deleted-records
+            try {
+              const xml = "<fetch><entity name='recyclebinconfig'>" +
+                "<filter type='and'><condition attribute='statecode' operator='eq' value='0' />" +
+                "<condition attribute='isreadyforrecyclebin' operator='eq' value='1' /></filter>" +
+                "<link-entity name='entity' from='entityid' to='extensionofrecordid' link-type='inner' alias='ent'>" +
+                "<attribute name='logicalname' /><order attribute='logicalname' /></link-entity></entity></fetch>";
+              const data = await dvRequest("GET", `recyclebinconfigs?fetchXml=${encodeURIComponent(xml)}`);
+              result = (data?.value || []).map(r => r["ent.logicalname"]).filter(Boolean);
+            } catch { result = null; }
+            break;
+          }
+
           case "restoreRecord": {
             // Restore a deleted record from the recycle bin — unbound Restore action.
             // Target is an @odata.id reference (restore works by PRIMARY KEY only; the
