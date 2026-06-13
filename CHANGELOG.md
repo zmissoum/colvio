@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.15] — 2026-06-12
+### Added
+- **Recycle Bin: find a deleted record by name, beyond the page cap.** A name search box runs a **server-side** `like` filter on the bin query, so you can locate a specific deleted record even when there are more than the displayed page — it doesn't just filter the loaded rows. The page size now also offers Top 2000 (the list shows the most recently deleted first; the Dataverse FetchXML single-page hard cap is 5000). Changing the page size or table reloads automatically.
+
 ## [1.11.14] — 2026-06-12
 ### Added
 - **Recycle Bin: the table picker now lists only tables that actually support restore.** Using Microsoft's documented detection (`recyclebinconfig` rows where `statecode=0` and `isreadyforrecyclebin=1`, joined to the `entity` table for the logical name), the picker hides tables that can't be restored on this environment (virtual/elastic/solution-component tables, tables with >600 columns, anything not yet enabled) — so you can't pick a table that would error. A small note shows the count. Fail-open: if the support list can't be read (e.g. no privilege, older org), all tables are shown as before. Cached 10 min, fetched lazily when the tab opens.

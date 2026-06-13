@@ -171,6 +171,7 @@ export default {
   "recyclebin.retention": "retention",
   "recyclebin.days": "days",
   "recyclebin.pick_entity": "Search a table (e.g. account, contact…)",
+  "recyclebin.search_records": "Find by name… (Enter)",
   "recyclebin.refresh": "Refresh",
   "recyclebin.restore": "Restore",
   "recyclebin.restoring": "Restoring",
