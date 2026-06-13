@@ -99,8 +99,9 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
       if (selectGen.current === gen) { setError(e.message); setLoadingPriv(false); }
     });
 
-    // Load user count in parallel (independent)
-    bridge.getRoleUserCount(role.id).then(uc => {
+    // Load user count in parallel (independent). Pass rootId so the count spans every business-unit
+    // copy of the role, not just the selected one.
+    bridge.getRoleUserCount(role.id, role.rootId).then(uc => {
       if (selectGen.current !== gen) return;
       setUserCount(uc?.count ?? 0);
       setLoadingCount(false);
@@ -116,7 +117,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     if (users !== null || loadingUsers || !selRole) return;
     const gen = selectGen.current;
     setLoadingUsers(true);
-    bridge.getRoleUsers(selRole.id).then(list => {
+    bridge.getRoleUsers(selRole.id, selRole.rootId).then(list => {
       if (selectGen.current !== gen) return;
       setUsers(list || []);
       setLoadingUsers(false);
@@ -330,7 +331,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: C.txd, marginTop: 8, lineHeight: 1.6 }}>
-                      Members of this role instance (this business unit). The same-named role in another business unit can have different members.
+                      Members across every business-unit copy of this role (deduplicated by user). The "Business Unit" column shows where each user sits.
                     </div>
                   </>
                 )}

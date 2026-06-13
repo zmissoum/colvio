@@ -701,19 +701,19 @@ export const bridge = {
     return callD365("getRolePrivileges", { roleId });
   },
 
-  async getRoleUserCount(roleId) {
+  async getRoleUserCount(roleId, rootId) {
     if (!isExtension) return { count: Math.floor(Math.random() * 50) + 1 };
-    return callD365("getRoleUserCount", { roleId });
+    return callD365("getRoleUserCount", { roleId, rootId });
   },
 
-  async getRoleUsers(roleId) {
+  async getRoleUsers(roleId, rootId) {
     if (!isExtension) return [
       { id: "u1", name: "Alice Martin", email: "alice.martin@contoso.com", domain: "contoso\\alice", disabled: false, accessMode: "Read-Write", accessModeCode: 0, bu: "Contoso" },
-      { id: "u2", name: "Bruno Lefebvre", email: "bruno.lefebvre@contoso.com", domain: "contoso\\bruno", disabled: false, accessMode: "Read-Write", accessModeCode: 0, bu: "Contoso" },
+      { id: "u2", name: "Bruno Lefebvre", email: "bruno.lefebvre@contoso.com", domain: "contoso\\bruno", disabled: false, accessMode: "Read-Write", accessModeCode: 0, bu: "Sales EU" },
       { id: "u3", name: "Svc Integration", email: "", domain: "app\\svcint", disabled: false, accessMode: "Non-interactive", accessModeCode: 4, bu: "Contoso" },
-      { id: "u4", name: "Old Account", email: "old@contoso.com", domain: "contoso\\old", disabled: true, accessMode: "Read-Write", accessModeCode: 0, bu: "Contoso" },
+      { id: "u4", name: "Old Account", email: "old@contoso.com", domain: "contoso\\old", disabled: true, accessMode: "Read-Write", accessModeCode: 0, bu: "Sales US" },
     ];
-    return callD365("getRoleUsers", { roleId });
+    return callD365("getRoleUsers", { roleId, rootId });
   },
 
   async getManyToManyRelationships(logicalName) {
