@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, ths, tds, dl, expName } from "../shared.jsx";
 import { t } from "../i18n.js";
@@ -26,12 +26,26 @@ const JOB_FILTERS = [
 const CANCELABLE = (j) => j.statecode === 0 || j.statecode === 1 || j.statecode === 2;
 const RESUMABLE = (j) => j.statecode === 1;
 
-function PluginTraces({ bp, orgFeatures }) {
+// Escape a single-quoted OData string literal (double the quotes). The query path is percent-
+// encoded by fetch(), so only the OData-level quote needs handling.
+const odEsc = (s) => String(s).replace(/'/g, "''");
+// createdon range → OData conditions. The "to" date includes the whole day.
+const dateConds = (col, from, to) => {
+  const p = [];
+  if (from) p.push(`${col} ge ${from}T00:00:00Z`);
+  if (to) p.push(`${col} le ${to}T23:59:59Z`);
+  return p;
+};
+
+function PluginTraces({ bp, orgFeatures, theme }) {
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [minMs, setMinMs] = useState("");
   const [pageSize, setPageSize] = useState(100);
   const [nextLink, setNextLink] = useState(null);   // @odata.nextLink → another page exists
   const [loadingMore, setLoadingMore] = useState(false);
@@ -39,19 +53,34 @@ function PluginTraces({ bp, orgFeatures }) {
 
   const SELECT = "plugintracelogid,typename,messagename,primaryentity,mode,operationtype,exceptiondetails,messageblock,performanceexecutionduration,depth,correlationid,createdon";
 
+  // All filters run SERVER-side (the plugintracelog table is small — auto-purged after ~24h — so
+  // contains() is cheap here) so search/date span the whole table, not just the loaded pages.
+  const buildFilter = () => {
+    const f = [];
+    if (onlyErrors) f.push("exceptiondetails ne null");
+    const s = search.trim();
+    if (s) f.push(`(contains(typename,'${odEsc(s)}') or contains(messagename,'${odEsc(s)}') or contains(primaryentity,'${odEsc(s)}'))`);
+    f.push(...dateConds("createdon", dateFrom, dateTo));
+    const ms = parseInt(minMs, 10);
+    if (ms > 0) f.push(`performanceexecutionduration gt ${ms}`);
+    return f.join(" and ");
+  };
+
   const load = async () => {
     setLoading(true); setError(""); setExpanded(null);
     try {
       // maxpagesize (not $top) → server-driven paging: returns one page + a nextLink when there's more.
       const opts = { orderby: "createdon desc", maxpagesize: String(pageSize), select: SELECT };
-      if (onlyErrors) opts.filter = "exceptiondetails ne null";
+      const filter = buildFilter();
+      if (filter) opts.filter = filter;
       const data = await bridge.query("plugintracelogs", opts);
       setRows(data?.records || []);
       setNextLink(data?.nextLink || null);
     } catch (e) { setError(e.message); setRows([]); setNextLink(null); }
     setLoading(false);
   };
-  // Append the next page (follow @odata.nextLink) — keeps everything loaded so search spans all rows.
+  // Append the next page (follow @odata.nextLink) — the nextLink carries the same $filter, so
+  // appended rows already match. Everything stays loaded for CSV export.
   const loadMore = async () => {
     if (!nextLink || loadingMore) return;
     setLoadingMore(true);
@@ -62,10 +91,20 @@ function PluginTraces({ bp, orgFeatures }) {
     } catch (e) { setError(e.message); }
     setLoadingMore(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [onlyErrors, pageSize]);
+  // First render loads immediately; later filter changes are debounced (350 ms) so typing a search
+  // term doesn't fire a request per keystroke. Discrete controls also pass through the debounce —
+  // an imperceptible delay, and it keeps a single source of truth.
+  const firstRef = useRef(true);
+  useEffect(() => {
+    if (firstRef.current) { firstRef.current = false; load(); return; }
+    const id = setTimeout(load, 350);
+    return () => clearTimeout(id);
+    /* eslint-disable-next-line */
+  }, [onlyErrors, pageSize, search, dateFrom, dateTo, minMs]);
 
-  const filtered = (rows || []).filter(r => !search ||
-    [r.typename, r.messagename, r.primaryentity].some(v => (v || "").toLowerCase().includes(search.toLowerCase())));
+  const filtered = rows || [];   // filtering is server-side now
+  const anyFilter = !!(search.trim() || dateFrom || dateTo || (parseInt(minMs, 10) > 0) || onlyErrors);
+  const resetFilters = () => { setSearch(""); setDateFrom(""); setDateTo(""); setMinMs(""); setOnlyErrors(false); };
 
   const exportCsv = () => {
     const esc = (v) => { let s = String(v ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -79,7 +118,13 @@ function PluginTraces({ bp, orgFeatures }) {
       {orgFeatures?.pluginTraceSetting===0&&<div style={{ padding: "10px 14px", background: C.yw + "14", border: `1px solid ${C.yw}44`, borderRadius: 8, color: C.yw, fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}>⚠ {t("featuregate.traces_off")}</div>}
       <div style={{ fontSize: 12, color: C.txd, marginBottom: 10, lineHeight: 1.6 }}>{t("ops.traces_hint")}</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("ops.traces_search")} style={inp({ fontSize: 13, maxWidth: 260 })} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("ops.traces_search")} style={inp({ fontSize: 13, maxWidth: 240 })} />
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title={t("ops.date_from")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
+          <span style={{ color: C.txd }}>→</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title={t("ops.date_to")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
+        </span>
+        <input type="number" min="0" value={minMs} onChange={e => setMinMs(e.target.value)} placeholder={t("ops.min_ms")} title={t("ops.min_ms")} style={inp({ width: 96, fontSize: 12, padding: "5px 8px" })} />
         <label style={{ fontSize: 12.5, color: C.txm, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
           <input type="checkbox" checked={onlyErrors} onChange={e => setOnlyErrors(e.target.checked)} style={{ accentColor: C.rd }} />
           {t("ops.only_exceptions")}
@@ -88,6 +133,7 @@ function PluginTraces({ bp, orgFeatures }) {
           <option value={100}>100 {t("ops.per_page")}</option><option value={250}>250 {t("ops.per_page")}</option><option value={500}>500 {t("ops.per_page")}</option><option value={1000}>1000 {t("ops.per_page")}</option>
         </select>
         <button onClick={load} style={bt(null, { fontSize: 12 })}>↻</button>
+        {anyFilter && <button onClick={resetFilters} style={bt(null, { fontSize: 12 })} title={t("ops.reset")}>✕</button>}
         {filtered.length > 0 && <button onClick={exportCsv} style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>}
       </div>
       {loading && <div style={{ textAlign: "center", marginTop: 24 }}><Spin s={18} /></div>}
@@ -140,7 +186,7 @@ function PluginTraces({ bp, orgFeatures }) {
   );
 }
 
-function SystemJobs({ bp, isAdmin }) {
+function SystemJobs({ bp, isAdmin, theme }) {
   const [filterId, setFilterId] = useState("failed");
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -152,16 +198,32 @@ function SystemJobs({ bp, isAdmin }) {
   const [pageSize, setPageSize] = useState(100);
   const [nextLink, setNextLink] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const JOB_SELECT = "asyncoperationid,name,operationtype,statecode,statuscode,startedon,completedon,createdon,retrycount,friendlymessage";
+
+  // asyncoperation can be huge, so search uses startswith(name,…) — sargable/indexable, unlike
+  // contains() (a leading-wildcard LIKE scan). Combined with the status chip + date range, the
+  // server set stays small.
+  const buildFilter = (fid) => {
+    const parts = [];
+    const f = JOB_FILTERS.find(x => x.id === fid);
+    if (f?.filter) parts.push(`(${f.filter})`);
+    const s = search.trim();
+    if (s) parts.push(`startswith(name,'${odEsc(s)}')`);
+    parts.push(...dateConds("createdon", dateFrom, dateTo));
+    return parts.join(" and ");
+  };
 
   const load = async (fid = filterId) => {
     setLoading(true); setError(""); setSelected(new Set()); setActResults(null); setExpanded(null);
     try {
-      const f = JOB_FILTERS.find(x => x.id === fid);
       // maxpagesize (not $top) → server-driven paging with a nextLink for "Load more".
       const opts = { orderby: "createdon desc", maxpagesize: String(pageSize), select: JOB_SELECT };
-      if (f?.filter) opts.filter = f.filter;
+      const filter = buildFilter(fid);
+      if (filter) opts.filter = filter;
       const data = await bridge.query("asyncoperations", opts);
       setRows(data?.records || []);
       setNextLink(data?.nextLink || null);
@@ -178,7 +240,20 @@ function SystemJobs({ bp, isAdmin }) {
     } catch (e) { setError(e.message); }
     setLoadingMore(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filterId, pageSize]);
+  // Immediate first load; later filter changes debounced (350 ms) so the name search doesn't fire
+  // a query per keystroke.
+  // Status chips load immediately (primary interaction); the name search & dates are debounced so
+  // typing doesn't fire a query per keystroke. filterId is intentionally NOT a dep — the chip's
+  // onClick calls load(fid) directly, avoiding a double request.
+  const firstRef = useRef(true);
+  useEffect(() => {
+    if (firstRef.current) { firstRef.current = false; load(); return; }
+    const id = setTimeout(() => load(), 350);
+    return () => clearTimeout(id);
+    /* eslint-disable-next-line */
+  }, [pageSize, search, dateFrom, dateTo]);
+  const anyFilter = !!(search.trim() || dateFrom || dateTo);
+  const resetFilters = () => { setSearch(""); setDateFrom(""); setDateTo(""); };
 
   // Cancel = statecode 3 / statuscode 32; Resume = statecode 0 (from Suspended).
   const act = async (verb) => {
@@ -209,7 +284,7 @@ function SystemJobs({ bp, isAdmin }) {
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
         {JOB_FILTERS.map(f => (
-          <button key={f.id} onClick={() => setFilterId(f.id)}
+          <button key={f.id} onClick={() => { setFilterId(f.id); load(f.id); }}
             style={{ padding: "4px 12px", fontSize: 12, borderRadius: 12, cursor: "pointer", fontWeight: 600, border: `1px solid ${filterId === f.id ? C.vi : C.bd}`, background: filterId === f.id ? C.vi + "22" : "transparent", color: filterId === f.id ? C.tx : C.txm }}>
             {t(f.label)}
           </button>
@@ -218,6 +293,13 @@ function SystemJobs({ bp, isAdmin }) {
         <select value={pageSize} onChange={e => setPageSize(+e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
           <option value={100}>100 {t("ops.per_page")}</option><option value={250}>250 {t("ops.per_page")}</option><option value={500}>500 {t("ops.per_page")}</option><option value={1000}>1000 {t("ops.per_page")}</option>
         </select>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("ops.jobs_search")} style={inp({ fontSize: 12, maxWidth: 200, padding: "5px 8px" })} />
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title={t("ops.date_from")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
+          <span style={{ color: C.txd }}>→</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title={t("ops.date_to")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
+        </span>
+        {anyFilter && <button onClick={resetFilters} style={bt(null, { fontSize: 12 })} title={t("ops.reset")}>✕</button>}
         {selected.size > 0 && !acting && isAdmin && (
           <>
             <button onClick={() => act("cancel")} style={bt(null, { fontSize: 12, color: C.rd, borderColor: C.rd + "66" })}>⏹ {t("ops.cancel_jobs")} ({[...selected].filter(id => CANCELABLE(rows.find(j => j.asyncoperationid === id) || {})).length})</button>
@@ -295,7 +377,7 @@ export default function SystemOps({ bp, orgInfo, theme, permissions, orgFeatures
           </button>
         ))}
       </div>
-      {panel === "traces" ? <PluginTraces bp={bp} orgFeatures={orgFeatures} /> : <SystemJobs bp={bp} isAdmin={isAdmin} />}
+      {panel === "traces" ? <PluginTraces bp={bp} orgFeatures={orgFeatures} theme={theme} /> : <SystemJobs bp={bp} isAdmin={isAdmin} theme={theme} />}
     </div>
   );
 }

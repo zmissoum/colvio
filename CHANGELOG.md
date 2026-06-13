@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.22] — 2026-06-13
+### Added (System Ops: date & search filters — server-side)
+- **Plugin Traces**: date range (From/To), a duration filter (min ms), and the text search (plug-in / message / entity) now all run **server-side** — they query the whole table, not just the loaded pages. The trace table is auto-purged after ~24h so `contains()` stays cheap.
+- **System Jobs**: a **name search** (using `startswith` — index-friendly, deliberately not `contains()` which would force a full `LIKE '%…%'` scan on a potentially huge asyncoperation table) plus a date range. Status chips still load instantly.
+- **No perf/UX cost**: text inputs are **debounced (350 ms)** so typing never fires a request per keystroke; date ranges only narrow the result set; status chips stay immediate; a ✕ resets all filters. Native date pickers follow the light/dark theme.
+
 ## [1.11.21] — 2026-06-13
 ### Changed (System Ops: pagination — no more hard cap)
 - **Plugin Traces and System Jobs now paginate** instead of being capped (Traces maxed at Top 200, Jobs were hard-wired to 100). Both use Dataverse server-driven paging (`Prefer: odata.maxpagesize` + `@odata.nextLink`): pick a page size (100/250/500/1000) and a **"Load more"** button appends the next page until the list is exhausted. A footer shows how many are loaded and whether more remain. Everything stays loaded so the search box spans all fetched rows, and CSV export covers them all.
