@@ -153,6 +153,7 @@ export default {
   "recyclebin.subtitle": "Consultez et restaurez les enregistrements supprim\u00e9s de Dataverse \u2014 une vraie restauration c\u00f4t\u00e9 serveur, pas une copie.",
   "recyclebin.disabled_title": "La corbeille Dataverse n'est pas activ\u00e9e sur cet environnement",
   "recyclebin.disabled_body": "Un administrateur peut l'activer dans le centre d'administration Power Platform :\nG\u00e9rer \u2192 Environnements \u2192 (votre environnement) \u2192 Param\u00e8tres \u2192 Produit \u2192 Fonctionnalit\u00e9s \u2192 \u00ab Conserver les enregistrements Dataverse supprim\u00e9s \u00bb (1-30 jours), puis patienter ~30 minutes que le job d'activation se termine.\nImportant : seuls les enregistrements supprim\u00e9s APR\u00c8S l'activation pourront \u00eatre restaur\u00e9s.",
+  "recyclebin.supported_only": "Seules les {n} tables activées pour la restauration sur cet environnement sont affichées.",
   "recyclebin.enabled_label": "Corbeille activ\u00e9e",
   "recyclebin.retention": "r\u00e9tention",
   "recyclebin.days": "jours",
