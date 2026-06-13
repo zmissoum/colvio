@@ -32,23 +32,37 @@ function PluginTraces({ bp, orgFeatures }) {
   const [error, setError] = useState("");
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [search, setSearch] = useState("");
-  const [top, setTop] = useState(100);
+  const [pageSize, setPageSize] = useState(100);
+  const [nextLink, setNextLink] = useState(null);   // @odata.nextLink → another page exists
+  const [loadingMore, setLoadingMore] = useState(false);
   const [expanded, setExpanded] = useState(null);
 
+  const SELECT = "plugintracelogid,typename,messagename,primaryentity,mode,operationtype,exceptiondetails,messageblock,performanceexecutionduration,depth,correlationid,createdon";
+
   const load = async () => {
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setExpanded(null);
     try {
-      const opts = {
-        orderby: "createdon desc", top: String(top),
-        select: "plugintracelogid,typename,messagename,primaryentity,mode,operationtype,exceptiondetails,messageblock,performanceexecutionduration,depth,correlationid,createdon",
-      };
+      // maxpagesize (not $top) → server-driven paging: returns one page + a nextLink when there's more.
+      const opts = { orderby: "createdon desc", maxpagesize: String(pageSize), select: SELECT };
       if (onlyErrors) opts.filter = "exceptiondetails ne null";
       const data = await bridge.query("plugintracelogs", opts);
       setRows(data?.records || []);
-    } catch (e) { setError(e.message); }
+      setNextLink(data?.nextLink || null);
+    } catch (e) { setError(e.message); setRows([]); setNextLink(null); }
     setLoading(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [onlyErrors, top]);
+  // Append the next page (follow @odata.nextLink) — keeps everything loaded so search spans all rows.
+  const loadMore = async () => {
+    if (!nextLink || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await bridge.query(nextLink, {});
+      setRows(prev => [...(prev || []), ...(data?.records || [])]);
+      setNextLink(data?.nextLink || null);
+    } catch (e) { setError(e.message); }
+    setLoadingMore(false);
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [onlyErrors, pageSize]);
 
   const filtered = (rows || []).filter(r => !search ||
     [r.typename, r.messagename, r.primaryentity].some(v => (v || "").toLowerCase().includes(search.toLowerCase())));
@@ -70,8 +84,8 @@ function PluginTraces({ bp, orgFeatures }) {
           <input type="checkbox" checked={onlyErrors} onChange={e => setOnlyErrors(e.target.checked)} style={{ accentColor: C.rd }} />
           {t("ops.only_exceptions")}
         </label>
-        <select value={top} onChange={e => setTop(+e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
-          <option value={50}>Top 50</option><option value={100}>Top 100</option><option value={200}>Top 200</option>
+        <select value={pageSize} onChange={e => setPageSize(+e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
+          <option value={100}>100 {t("ops.per_page")}</option><option value={250}>250 {t("ops.per_page")}</option><option value={500}>500 {t("ops.per_page")}</option><option value={1000}>1000 {t("ops.per_page")}</option>
         </select>
         <button onClick={load} style={bt(null, { fontSize: 12 })}>↻</button>
         {filtered.length > 0 && <button onClick={exportCsv} style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>}
@@ -116,6 +130,10 @@ function PluginTraces({ bp, orgFeatures }) {
               })}</tbody>
             </table>
           </div>
+          <div style={{ padding: "6px 10px", borderTop: `1px solid ${C.bd}`, fontSize: 11, color: C.txd, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span>{(rows || []).length} {t("ops.loaded")}{nextLink ? "" : ` · ${t("ops.all_loaded")}`}</span>
+            {nextLink && <button onClick={loadMore} disabled={loadingMore} style={bt(null, { fontSize: 12 })}>{loadingMore ? <><Spin s={11} /> …</> : <>↓ {t("ops.load_more")}</>}</button>}
+          </div>
         </div>
       )}
     </div>
@@ -131,22 +149,36 @@ function SystemJobs({ bp, isAdmin }) {
   const [acting, setActing] = useState(null);  // {done,total,verb}
   const [actResults, setActResults] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [pageSize, setPageSize] = useState(100);
+  const [nextLink, setNextLink] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const JOB_SELECT = "asyncoperationid,name,operationtype,statecode,statuscode,startedon,completedon,createdon,retrycount,friendlymessage";
 
   const load = async (fid = filterId) => {
-    setLoading(true); setError(""); setSelected(new Set()); setActResults(null);
+    setLoading(true); setError(""); setSelected(new Set()); setActResults(null); setExpanded(null);
     try {
       const f = JOB_FILTERS.find(x => x.id === fid);
-      const opts = {
-        orderby: "createdon desc", top: "100",
-        select: "asyncoperationid,name,operationtype,statecode,statuscode,startedon,completedon,createdon,retrycount,friendlymessage",
-      };
+      // maxpagesize (not $top) → server-driven paging with a nextLink for "Load more".
+      const opts = { orderby: "createdon desc", maxpagesize: String(pageSize), select: JOB_SELECT };
       if (f?.filter) opts.filter = f.filter;
       const data = await bridge.query("asyncoperations", opts);
       setRows(data?.records || []);
-    } catch (e) { setError(e.message); }
+      setNextLink(data?.nextLink || null);
+    } catch (e) { setError(e.message); setRows([]); setNextLink(null); }
     setLoading(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filterId]);
+  const loadMore = async () => {
+    if (!nextLink || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await bridge.query(nextLink, {});
+      setRows(prev => [...(prev || []), ...(data?.records || [])]);
+      setNextLink(data?.nextLink || null);
+    } catch (e) { setError(e.message); }
+    setLoadingMore(false);
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filterId, pageSize]);
 
   // Cancel = statecode 3 / statuscode 32; Resume = statecode 0 (from Suspended).
   const act = async (verb) => {
@@ -183,6 +215,9 @@ function SystemJobs({ bp, isAdmin }) {
           </button>
         ))}
         <button onClick={() => load()} style={bt(null, { fontSize: 12 })}>↻</button>
+        <select value={pageSize} onChange={e => setPageSize(+e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
+          <option value={100}>100 {t("ops.per_page")}</option><option value={250}>250 {t("ops.per_page")}</option><option value={500}>500 {t("ops.per_page")}</option><option value={1000}>1000 {t("ops.per_page")}</option>
+        </select>
         {selected.size > 0 && !acting && isAdmin && (
           <>
             <button onClick={() => act("cancel")} style={bt(null, { fontSize: 12, color: C.rd, borderColor: C.rd + "66" })}>⏹ {t("ops.cancel_jobs")} ({[...selected].filter(id => CANCELABLE(rows.find(j => j.asyncoperationid === id) || {})).length})</button>
@@ -234,6 +269,10 @@ function SystemJobs({ bp, isAdmin }) {
                 );
               })}</tbody>
             </table>
+          </div>
+          <div style={{ padding: "6px 10px", borderTop: `1px solid ${C.bd}`, fontSize: 11, color: C.txd, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span>{(rows || []).length} {t("ops.loaded")}{nextLink ? "" : ` · ${t("ops.all_loaded")}`}</span>
+            {nextLink && <button onClick={loadMore} disabled={loadingMore} style={bt(null, { fontSize: 12 })}>{loadingMore ? <><Spin s={11} /> …</> : <>↓ {t("ops.load_more")}</>}</button>}
           </div>
         </div>
       )}

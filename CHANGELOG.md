@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.21] — 2026-06-13
+### Changed (System Ops: pagination — no more hard cap)
+- **Plugin Traces and System Jobs now paginate** instead of being capped (Traces maxed at Top 200, Jobs were hard-wired to 100). Both use Dataverse server-driven paging (`Prefer: odata.maxpagesize` + `@odata.nextLink`): pick a page size (100/250/500/1000) and a **"Load more"** button appends the next page until the list is exhausted. A footer shows how many are loaded and whether more remain. Everything stays loaded so the search box spans all fetched rows, and CSV export covers them all.
+### Internal
+- `dvRequest` now appends `odata.include-annotations` to a caller-supplied `Prefer` instead of overwriting it (so maxpagesize and formatted values travel together); the `query` bridge call accepts a `maxpagesize` option.
+
 ## [1.11.20] — 2026-06-13
 ### Fixed (Translations: language names · Solutions: component types & names)
 - **Translation Manager — language columns showed raw codes** ("LCID 2070", "LCID 3082") for any language outside a short hard-coded list. The map now covers the full set of Dataverse-provisionable languages, so 2070 → Portuguese (Portugal), 3082 → Spanish, plus ~40 others (with the easy-to-confuse pairs labelled: Portuguese Brazil 1046 vs Portugal 2070, Spanish 3082 vs legacy 1034, Chinese Simplified 2052 vs Traditional 1028). Unknown codes still fall back to "LCID n".
