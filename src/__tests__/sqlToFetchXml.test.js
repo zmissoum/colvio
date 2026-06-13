@@ -37,9 +37,26 @@ describe("Basic SELECT", () => {
 
 // ── TOP / DISTINCT ────────────────────────────────────────────
 describe("TOP and DISTINCT", () => {
-  it("TOP N sets count attribute", () => {
+  it("TOP N sets top attribute (hard cap, not a page size)", () => {
     const fx = sql("SELECT TOP 10 name FROM account");
-    expect(fx).toContain('count="10"');
+    expect(fx).toContain('top="10"');
+    expect(fx).not.toContain('count=');   // count would paginate the whole table
+  });
+
+  it("trailing TOP after ORDER BY is honored", () => {
+    // Colvio's own templates put TOP at the end — it must not be silently dropped.
+    const fx = sql("SELECT name, createdon FROM account WHERE statecode = 0 ORDER BY name ASC TOP 100");
+    expect(fx).toContain('top="100"');
+  });
+
+  it("trailing TOP without ORDER BY", () => {
+    const fx = sql("SELECT name FROM account WHERE statecode = 0 TOP 25");
+    expect(fx).toContain('top="25"');
+  });
+
+  it("TOP is capped at the platform max of 5000", () => {
+    const fx = sql("SELECT TOP 100000 name FROM account");
+    expect(fx).toContain('top="5000"');
   });
 
   it("DISTINCT sets distinct attribute", () => {
@@ -49,7 +66,7 @@ describe("TOP and DISTINCT", () => {
 
   it("TOP + DISTINCT combined", () => {
     const fx = sql("SELECT DISTINCT TOP 5 name FROM account");
-    expect(fx).toContain('count="5"');
+    expect(fx).toContain('top="5"');
     expect(fx).toContain('distinct="true"');
   });
 });
@@ -282,7 +299,7 @@ describe("Real-world queries", () => {
       WHERE statecode = 0 AND revenue > 1000000 AND name LIKE '%corp%'
       ORDER BY revenue DESC
     `);
-    expect(fx).toContain('count="50"');
+    expect(fx).toContain('top="50"');
     expect(fx).toContain('operator="like"');
     expect(fx).toContain('descending="true"');
   });
