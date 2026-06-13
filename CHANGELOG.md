@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.9] — 2026-06-12
+### Fixed (full-project code review)
+- **Rollback now covers UPSERT-created records.** UPSERT rows that *create* a record return HTTP 201 (tagged CREATED) but their GUID was never captured from the `OData-EntityId` header — only `batchCreate` did. So "Rollback created records" after an upsert silently skipped exactly those records. The upsert batch parser now captures the created GUID too.
+- **Owner lookups no longer mis-bind on throttling.** The user-vs-team probe treated a transient 429/5xx exactly like a clean 404, so a throttled *team* GUID could be bound to `/systemusers` and fail per row. It now distinguishes "not found" from "couldn't check": unresolved-by-throttling rows are reported as a clear per-row error ("re-run to retry") instead of being silently mis-owned.
+- **Defense-in-depth: same-org host check in `dvRequest`.** Any absolute URL (e.g. an `@odata.nextLink`) is now verified to target the user's own org host at the single request chokepoint. Panel messages already can't be forged (`background.js` checks `sender.id`, no `externally_connectable`), so this isn't an exploitable path — it just guarantees no current or future caller can make the privileged content script fetch an off-org host.
+- **Show All Data** validates the record id from a pasted D365 URL as a real GUID (like the other input forms) — a garbled URL now fails fast instead of building a malformed OData path.
+- **System Ops**: the "select all" jobs checkbox no longer renders checked on an empty table.
+- **Data Explorer**: lookup links are only rendered for genuine GUID values (and the entity name is URL-encoded), avoiding broken `main.aspx` links for alias/virtual-entity projections.
+- **Change History**: a missing audit timestamp renders "—" instead of "Invalid Date".
+
+The review confirmed the security posture is sound: no XSS / `innerHTML` / `eval` anywhere, CSV exports all carry the formula-injection guard, the message trust boundary is enforced, and the OData "query builder" surface is the user querying their own data with their own session — by design, not an injection vuln.
+
 ## [1.11.8] — 2026-06-12
 ### Changed (org-feature detection + performance pass)
 - **Org-feature gates, everywhere.** One consolidated probe per session (`organization.isauditenabled`, `plugintracelogsetting`, recycle-bin config — 2 GETs, cached 10 min) now feeds the whole UI: when a Dataverse feature is disabled on the environment, its tab is **dimmed with a ● badge** ("Feature not enabled on this org") and the module shows a clear banner explaining the feature is not usable via Colvio **and the exact admin-center path to enable it**. Gated: Recycle Bin (bin setting), Login History + record Change History (auditing), Plugin Traces (trace logging Off). Unknown status (no read rights) never dims — fail-open, the module's own errors guide instead.

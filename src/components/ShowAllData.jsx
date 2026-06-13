@@ -34,10 +34,16 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
     const trimmed=input.trim();
     const guidMatch=trimmed.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     if(guidMatch) return {id:guidMatch[0],entity:null};
+    const GUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     try {
       const url=new URL(trimmed);
       const params=new URLSearchParams(url.search);
-      if(params.get("etn")&&params.get("id")) return {entity:params.get("etn"),id:params.get("id").replace(/[{}]/g,"")};
+      if(params.get("etn")&&params.get("id")){
+        // Validate the id is a real GUID — like the bare-GUID and slash branches do — so a
+        // garbled URL fails fast with a clear message instead of interpolating junk into the OData path.
+        const id=params.get("id").replace(/[{}]/g,"");
+        if(GUID_RE.test(id)) return {entity:params.get("etn"),id};
+      }
       const hashMatch=url.hash.match(/\/(\w+)\/([0-9a-f-]{36})/i);
       if(hashMatch) return {entity:hashMatch[1],id:hashMatch[2]};
     }catch{}
