@@ -40,7 +40,12 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
 
   useEffect(() => {
     bridge.recycleBinStatus().then(setStatus);
-    bridge.getEntities().then(list => { if (list?.length) setEntities(list); }).catch(() => {});
+    // getEntities returns {logical, display, entitySet} — map to the {l, d, p} shape this UI uses
+    // (same mapping MetadataBrowser applies). Without it, e.l/e.d are undefined → "()" in the
+    // picker and "Invalid logicalName: undefined" on query.
+    bridge.getEntities().then(list => {
+      if (list?.length) setEntities(list.map(e => ({ l: e.logical, d: e.display, p: e.entitySet || e.logical + "s" })).sort((a, b) => (a.d || "").localeCompare(b.d || "")));
+    }).catch(() => {});
   }, []);
 
   const loadDeleted = async (ent) => {

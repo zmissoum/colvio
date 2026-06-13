@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.12] — 2026-06-12
+### Fixed
+- **Recycle Bin: the table picker was empty/unusable.** `getEntities()` returns `{logical, display, entitySet}`, but the Recycle Bin used the list without mapping it to the `{l, d}` shape every other module applies — so every entry rendered as "()" and selecting one sent `undefined` as the table name ("Invalid logicalName: undefined"). Now mapped (and sorted) like the Metadata Browser. The table list and restore flow work again.
+
 ## [1.11.11] — 2026-06-12
 ### Fixed
 - **Change History: the "User" column is now populated.** The audit query didn't `$select` `_userid_value`, so the timeline showed who-did-it as blank. Added it (formatted user name resolved via the annotations Colvio already requests on reads). Found during the post-1.11 Microsoft-compliance + regression verification (10/11 PASS; this was the one data-completeness gap — 0 API-correctness or security regressions).
