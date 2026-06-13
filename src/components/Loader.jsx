@@ -582,7 +582,9 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     // unique GUID (systemusers first, then teams) so the bind targets the right entity set —
     // previously team GUIDs were always bound to /systemusers and failed per row.
     const ownerSetCache={}; // guid -> "systemusers" | "teams"
+    const ownerErrored=new Set(); // guids whose type couldn't be probed (transient error, not a clean 404)
     const isOwnerLk=(lk)=>lk.entity==="owner"||lk.entity==="principal"||(lk.nav||"").toLowerCase()==="ownerid";
+    const isNotFound=(e)=>/404|does not exist|0x80040217/i.test((e&&e.message)||"");
     {
       const ownerDirect=lookups.filter(lk=>lk.mode==="direct"&&lk.csv&&isOwnerLk(lk));
       if(ownerDirect.length){
@@ -592,7 +594,14 @@ export default function Loader({bp,orgInfo,theme,permissions}){
           let doneO=0,nextO=0;
           const probeOne=async(g)=>{
             try{ await bridge.query(`systemusers(${g})`,{select:"systemuserid"}); ownerSetCache[g]="systemusers"; }
-            catch{ try{ await bridge.query(`teams(${g})`,{select:"teamid"}); ownerSetCache[g]="teams"; }catch{ /* unknown — falls back to entitySetFor */ } }
+            catch(e1){
+              // Only a definitive 404 means "not a user, try team". A transient error (429/5xx/
+              // network) must NOT make us guess — otherwise a throttled team GUID gets bound to
+              // /systemusers and silently fails per row.
+              if(!isNotFound(e1)){ ownerErrored.add(g); }
+              else{ try{ await bridge.query(`teams(${g})`,{select:"teamid"}); ownerSetCache[g]="teams"; }
+                    catch(e2){ if(!isNotFound(e2)) ownerErrored.add(g); /* else: neither user nor team — leave unresolved */ } }
+            }
             doneO++; if(doneO%20===0) setLoadProgress({done:doneO,total:guids.length,current:`Resolving owner type ${doneO}/${guids.length}...`});
           };
           // 5-way pool: owner probes are independent reads, well under the 30 req/s budget.
@@ -695,7 +704,14 @@ export default function Loader({bp,orgInfo,theme,permissions}){
             continue;
           }
           if(lk.mode==="direct"){
-            const ownerSet=isOwnerLk(lk)?ownerSetCache[String(val).trim().toLowerCase()]:null;
+            const gkey=isOwnerLk(lk)?String(val).trim().toLowerCase():null;
+            // Owner type couldn't be probed (transient throttling) — error the row rather than
+            // guess /systemusers and silently mis-own a team-owned record.
+            if(gkey&&ownerErrored.has(gkey)){
+              const msg=`Owner type unresolved for ${lk.csv}="${val}" (org was throttling) — re-run to retry`;
+              errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break;
+            }
+            const ownerSet=gkey?ownerSetCache[gkey]:null;
             rec[`${lk.nav}@odata.bind`]=`/${ownerSet||entitySetFor(lk.entity)}(${val})`;
           } else if(isAltKeyBind(lk)){
             // Alt-key direct binding — Dataverse resolves server-side. Empty fb=skip/null already

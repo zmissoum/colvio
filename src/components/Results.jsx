@@ -158,8 +158,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     const targetEntity = entityGet(r, f);
     const orgUrl = orgInfo?.orgUrl;
 
-    if (disp !== undefined && disp !== null && targetEntity && raw && orgUrl) {
-      const link = `${orgUrl}/main.aspx?etn=${targetEntity}&id=${raw}&pagetype=entityrecord`;
+    // Only build a record link when raw is a real GUID (mirrors the string branch below) — a
+    // non-GUID lookup value (alias projection, virtual entity) would otherwise yield a broken link.
+    const isGuid = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    if (disp !== undefined && disp !== null && targetEntity && isGuid(raw) && orgUrl) {
+      const link = `${orgUrl}/main.aspx?etn=${encodeURIComponent(targetEntity)}&id=${raw}&pagetype=entityrecord`;
       return (<span style={{display:"inline-flex",alignItems:"center",gap:4}}>
         <span>{String(disp)}</span>
         <a href={link} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{fontSize:10,color:C.vi,textDecoration:"none"}} title={`Open ${targetEntity} in D365`}>↗</a>

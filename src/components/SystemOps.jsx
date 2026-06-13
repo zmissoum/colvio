@@ -206,7 +206,7 @@ function SystemJobs({ bp, isAdmin }) {
           <div style={{ maxHeight: 480, overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead><tr style={{ background: C.bg, position: "sticky", top: 0, zIndex: 1 }}>
-                <th style={{ ...ths(), width: 28 }}><input type="checkbox" checked={selected.size === rows.length} onChange={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map(j => j.asyncoperationid)))} style={{ accentColor: C.vi }} /></th>
+                <th style={{ ...ths(), width: 28 }}><input type="checkbox" checked={rows.length > 0 && selected.size === rows.length} onChange={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map(j => j.asyncoperationid)))} style={{ accentColor: C.vi }} /></th>
                 <th style={ths()}>{t("ops.col_job")}</th><th style={ths()}>Type</th><th style={ths()}>{t("ops.col_status")}</th>
                 <th style={ths()}>{t("ops.col_created")}</th><th style={ths()}>Retry</th>
               </tr></thead>

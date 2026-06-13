@@ -83,6 +83,16 @@
     const ctx = d365Context || extractContext();
     if (!ctx) throw new Error("D365 context not detected");
     const url = path.startsWith("http") ? path : `${ctx.clientUrl}/api/data/${ctx.apiVersion}/${path}`;
+    // Defense-in-depth chokepoint: any absolute URL (e.g. an @odata.nextLink) MUST target the
+    // user's own org host. Panel messages already can't be forged (background.js checks sender.id,
+    // no externally_connectable), but this guarantees no caller — now or later — can make the
+    // privileged content script fetch an off-org host with the user's session.
+    if (path.startsWith("http")) {
+      let host, base;
+      try { host = new URL(url).hostname; base = new URL(ctx.clientUrl).hostname; }
+      catch { throw new Error("Invalid request URL"); }
+      if (host !== base) throw new Error(`Refusing request to ${host}: not your D365 org host (${base})`);
+    }
     const headers = {
       "Accept": "application/json",
       "OData-MaxVersion": "4.0",
@@ -693,8 +703,14 @@
                 if (!statusMatch) continue;
                 const status = parseInt(statusMatch[1], 10);
                 const rowIdx = batchOffset + i; // 1-based row index within the full items array
-                if (status === 204 || status === 201) {
-                  log.push({ row: rowIdx, status: status === 201 ? "CREATED" : "UPSERTED" });
+                if (status === 201) {
+                  // Upsert that CREATED a record — capture its GUID (like batchCreate) so the
+                  // post-run Rollback can delete it. Without this, upsert-created records are
+                  // tagged CREATED but never enter the rollback list.
+                  const idMatch = block.match(/OData-EntityId:[^(]*\(([0-9a-f-]{36})\)/i);
+                  log.push({ row: rowIdx, status: "CREATED", id: idMatch ? idMatch[1] : "" });
+                } else if (status === 204) {
+                  log.push({ row: rowIdx, status: "UPSERTED" });
                 } else {
                   const msgMatch = block.match(/"message":"([^"]{0,300})"/);
                   log.push({ row: rowIdx, status: "ERROR", msg: msgMatch ? msgMatch[1] : `HTTP ${status}` });

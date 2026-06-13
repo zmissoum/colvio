@@ -96,7 +96,7 @@ export default function AuditHistory({ recordId, orgFeatures }) {
                       style={{ borderBottom: `1px solid ${C.bd}33`, cursor: "pointer", background: isEx ? C.vi + "11" : "transparent" }}
                       onMouseEnter={e => { if (!isEx) e.currentTarget.style.background = C.sfh; }}
                       onMouseLeave={e => { if (!isEx) e.currentTarget.style.background = "transparent"; }}>
-                      <td style={{ ...tds, whiteSpace: "nowrap" }}>{isEx ? "▾" : "▸"} {new Date(a.createdon).toLocaleString()}</td>
+                      <td style={{ ...tds, whiteSpace: "nowrap" }}>{isEx ? "▾" : "▸"} {a.createdon && !isNaN(new Date(a.createdon).getTime()) ? new Date(a.createdon).toLocaleString() : "—"}</td>
                       <td style={tds}>{who}</td>
                       <td style={tds}><span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, background: C.cy + "22", color: C.cy, fontWeight: 600 }}>{action}</span></td>
                     </tr>
