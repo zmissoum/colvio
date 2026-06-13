@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.11] — 2026-06-12
+### Fixed
+- **Change History: the "User" column is now populated.** The audit query didn't `$select` `_userid_value`, so the timeline showed who-did-it as blank. Added it (formatted user name resolved via the annotations Colvio already requests on reads). Found during the post-1.11 Microsoft-compliance + regression verification (10/11 PASS; this was the one data-completeness gap — 0 API-correctness or security regressions).
+
 ## [1.11.10] — 2026-06-12
 ### Fixed (rollback transparency)
 - **The Rollback panel now reports records it cannot reach.** A created record whose GUID wasn't returned (rare `OData-EntityId` miss, or the serial-fallback path that creates via single PATCH) was silently absent from the rollback list. The panel now counts those rows and shows a clear warning ("N created record(s) had no GUID returned and cannot be rolled back here — delete them manually if needed"), and the panel appears even when *every* created GUID was un-captured, so the user is never told rollback succeeded when it didn't.

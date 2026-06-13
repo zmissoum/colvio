@@ -1504,7 +1504,7 @@
             validateGuid(params.id);
             const topA = Math.min(Math.max(parseInt(params.top, 10) || 50, 1), 200);
             const trail = await dvRequest("GET",
-              `audits?$filter=_objectid_value eq ${params.id}&$orderby=createdon desc&$top=${topA}&$select=auditid,action,operation,createdon`);
+              `audits?$filter=_objectid_value eq ${params.id}&$orderby=createdon desc&$top=${topA}&$select=auditid,action,operation,createdon,_userid_value`);
             result = trail?.value || [];
             break;
           }
