@@ -103,9 +103,13 @@
 
     const isWrite = method === "POST" || method === "PATCH" || method === "DELETE" || method === "PUT";
 
-    // For reads: request formatted values. For writes: nothing special.
+    // For reads: request formatted values. For writes: nothing special. Append to (not clobber)
+    // any caller-supplied Prefer — e.g. odata.maxpagesize for server-driven paging — so both
+    // travel together.
     if (!isWrite && !path.includes("EntityDefinitions")) {
-      headers["Prefer"] = 'odata.include-annotations="*"';
+      headers["Prefer"] = headers["Prefer"]
+        ? `${headers["Prefer"]},odata.include-annotations="*"`
+        : 'odata.include-annotations="*"';
     }
 
     // Timeout: 25s for writes, 60s for reads (roles/privileges can be large)
@@ -329,9 +333,15 @@
             }
             if (ps.length) path += "?" + ps.join("&");
 
+            // Server-driven paging: a maxpagesize Prefer caps the page and makes Dataverse return
+            // an @odata.nextLink for the next page (used by System Ops "Load more").
+            const pageHeader = params.options?.maxpagesize
+              ? { Prefer: `odata.maxpagesize=${Math.min(Math.max(parseInt(params.options.maxpagesize, 10) || 100, 1), 5000)}` }
+              : null;
+
             let data;
             try {
-              data = await dvRequest("GET", path);
+              data = await dvRequest("GET", path, null, pageHeader);
             } catch (queryErr) {
               // Safety net: if 400 with "Could not find a property", retry without $select
               if (queryErr.message?.includes("400") && queryErr.message?.includes("property") && params.options?.select) {
@@ -344,7 +354,7 @@
                   if (params.options?.expand) fps.push(`$expand=${params.options.expand}`);
                 }
                 if (fps.length) fallbackPath += "?" + fps.join("&");
-                data = await dvRequest("GET", fallbackPath);
+                data = await dvRequest("GET", fallbackPath, null, pageHeader);
               } else {
                 throw queryErr;
               }
