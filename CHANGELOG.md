@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.23] — 2026-06-13
+### Added (Security Audit: list users assigned to a role)
+- A role's detail panel now has two sub-tabs — **Privileges** and **Users** — so you can see *who* actually has the role, not just the count. The Users list shows name, email, business unit, access mode (a badge flags app / non-interactive accounts), and enabled/disabled status, with a filter box and its own CSV export. It's loaded lazily (only when the Users tab is opened) so clicking through roles stays instant. A note clarifies the list is for this role instance / business unit — the same-named role in another BU can have different members.
+
 ## [1.11.22] — 2026-06-13
 ### Added (System Ops: date & search filters — server-side)
 - **Plugin Traces**: date range (From/To), a duration filter (min ms), and the text search (plug-in / message / entity) now all run **server-side** — they query the whole table, not just the loaded pages. The trace table is auto-purged after ~24h so `contains()` stays cheap.
