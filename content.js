@@ -1311,11 +1311,23 @@
 
           case "getEntityMetadata": {
             validateName(params.logicalName, 'logicalName');
+            // Only simple, universally-selectable EntityMetadata properties here. The managed
+            // property CanBeDeleted is NOT $select-able on every org/API version ("Could not find
+            // a property named 'CanBeDeleted'"), so it must never be in the core query.
             const meta = await dvRequest("GET",
-              `EntityDefinitions(LogicalName='${params.logicalName}')?$select=CanBeDeleted,DisplayName,PrimaryNameAttribute,PrimaryIdAttribute,EntitySetName`
+              `EntityDefinitions(LogicalName='${params.logicalName}')?$select=DisplayName,PrimaryNameAttribute,PrimaryIdAttribute,EntitySetName`
             );
+            let canBeDeleted = true;
+            if (params.withCanDelete) {
+              // Best-effort, opt-in (bulk delete pre-check). A failure must not break the call —
+              // default to allowed; the server enforces the real CanBeDeleted on the delete itself.
+              try {
+                const m2 = await dvRequest("GET", `EntityDefinitions(LogicalName='${params.logicalName}')?$select=CanBeDeleted`);
+                canBeDeleted = m2?.CanBeDeleted?.Value ?? true;
+              } catch { /* property unavailable — leave canBeDeleted=true */ }
+            }
             result = {
-              canBeDeleted: meta?.CanBeDeleted?.Value ?? true,
+              canBeDeleted,
               displayName: meta?.DisplayName?.UserLocalizedLabel?.Label || params.logicalName,
               primaryName: meta?.PrimaryNameAttribute || "name",
               primaryId: meta?.PrimaryIdAttribute || params.logicalName + "id",
