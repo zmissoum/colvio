@@ -113,7 +113,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
   },[record,fieldSearch,showEmpty,showCustomOnly]);
 
   return(
-    <div style={{padding:bp.mobile?12:20,maxWidth:900,margin:"0 auto"}}>
+    <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1600,margin:"0 auto"}}>
       <h2 style={{fontSize:16,fontWeight:700,marginBottom:4,display:"flex",alignItems:"center",gap:8}}><I.Eye/> Show All Data</h2>
       <p style={{color:C.txm,fontSize:14,marginBottom:12}}>Paste a D365 record URL or enter entity/GUID.</p>
 
@@ -171,7 +171,10 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
           </div>
 
           <div style={{...crd({overflow:"hidden"})}}>
-            <div style={{display:"flex",flexDirection:"column"}}>
+            {/* Responsive field grid: 1 column on narrow screens, auto-fills 2+ on wider ones
+                (each column ≥440px) so a 400-field record needs far less vertical scrolling.
+                The 1px grid gap over a border-colored background draws clean separators. */}
+            <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr":"repeat(auto-fill,minmax(440px,1fr))",gap:1,background:C.bd}}>
               {filteredFields.map((f,i)=>{
                 const empty=f.value===null||f.value===undefined||f.value==="";
                 const isLookup=f.t==="Lookup";
@@ -186,9 +189,9 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
                 const valColor=empty?C.txd:isLookup?C.vil:f.value==="Active"?C.gn:f.value==="Inactive"?C.rd:C.tx;
                 const d365Link=(isLookup&&!empty&&f.rawValue&&orgInfo?.orgUrl&&f.target)?`${orgInfo.orgUrl}/main.aspx?etn=${f.target}&id=${f.rawValue}&pagetype=entityrecord`:null;
                 return(
-                  <div key={f.l} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"7px 12px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer"}}
+                  <div key={f.l} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"7px 12px",background:C.sf,cursor:"pointer"}}
                     onMouseEnter={e=>e.currentTarget.style.background=C.sfh}
-                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                    onMouseLeave={e=>e.currentTarget.style.background=C.sf}
                     onClick={()=>cp(String(f.value||""),`val-${i}`)}>
                     <div style={{width:bp.mobile?140:220,flexShrink:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:4}}>

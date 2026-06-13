@@ -104,7 +104,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const cp=(t,k)=>{copyText(t);setCopied(k);setTimeout(()=>setCopied(""),1000);};
 
   if(mbPanel==="diff") return(
-    <div style={{padding:bp.mobile?12:20,maxWidth:1000,margin:"0 auto"}}>
+    <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1500,margin:"0 auto"}}>
       <div style={{display:"flex",gap:6,marginBottom:14,alignItems:"center"}}>
         <button onClick={()=>setMbPanel("browser")} style={bt(null,{fontSize:12})}>← {t("schemadiff.back")}</button>
         <h2 style={{fontSize:16,fontWeight:700,margin:0}}>⇄ {t("schemadiff.title")}</h2>

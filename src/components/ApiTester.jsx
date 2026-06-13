@@ -214,7 +214,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   };
 
   return (
-    <div style={{ padding: bp.mobile ? 10 : 16, maxWidth: 1200, margin: "0 auto" }}>
+    <div style={{ padding: bp.mobile ? 10 : 16, maxWidth: bp.mobile ? "100%" : 1500, margin: "0 auto" }}>
       {/* Method + URL bar */}
       <div style={{ ...crd({ padding: 10, borderColor: loadFlash ? C.cy : C.bd, boxShadow: loadFlash ? `0 0 0 2px ${C.cy}44` : "none", transition: "border-color .2s ease, box-shadow .2s ease" }), marginBottom: 10 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "stretch", flexWrap: bp.mobile ? "wrap" : "nowrap" }}>

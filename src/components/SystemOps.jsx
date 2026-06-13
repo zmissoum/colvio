@@ -245,7 +245,7 @@ export default function SystemOps({ bp, orgInfo, theme, permissions, orgFeatures
   const [panel, setPanel] = useState("jobs");
   const isAdmin = permissions?.canBypassPlugins === true; // job cancel/resume needs write on asyncoperation — sysadmin proxy
   return (
-    <div style={{ padding: bp.mobile ? 12 : 20, maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ padding: bp.mobile ? 12 : 20, maxWidth: bp.mobile ? "100%" : 1500, margin: "0 auto" }}>
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}><I.Zap /> {t("ops.title")}</h2>
       <p style={{ color: C.txm, fontSize: 14, marginBottom: 12 }}>{t("ops.subtitle")}</p>
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
