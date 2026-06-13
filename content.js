@@ -1108,7 +1108,32 @@
               name: null,
             }));
 
-            // Batch-resolve display names per component type
+            // Batch-resolve display names per component type. Metadata-backed types (Entity,
+            // OptionSet, Relationship) use the metadata API; everything else is a plain record
+            // resolved by id against its owning table. componenttype codes follow Microsoft's
+            // solutioncomponent enumeration — getting them wrong points at the wrong table and the
+            // name silently falls back to the GUID, which is exactly what used to happen for Web
+            // Resources (61), Roles (20), App modules (80), etc.
+            const recResolver = (es, idF, nameF) => ids =>
+              dvRequest("GET", `${es}?$select=${idF},${nameF}&$filter=${ids.map(id=>`${idF} eq ${id}`).join(" or ")}`).then(d => {
+                const m = {}; (d.value||[]).forEach(e => { const k = String(e[idF]||"").toLowerCase(); if (k) m[k] = e[nameF] || ""; }); return m;
+              });
+            // componenttype → [entitySet, idField, nameField]
+            const REC = {
+              20:["roles","roleid","name"], 24:["systemforms","formid","name"],
+              26:["savedqueries","savedqueryid","name"], 29:["workflows","workflowid","name"],
+              31:["reports","reportid","name"], 36:["templates","templateid","title"],
+              37:["contracttemplates","contracttemplateid","name"], 39:["mailmergetemplates","mailmergetemplateid","name"],
+              44:["duplicaterules","duplicateruleid","name"], 59:["savedqueryvisualizations","savedqueryvisualizationid","name"],
+              60:["systemforms","formid","name"], 61:["webresourceset","webresourceid","name"],
+              62:["sitemaps","sitemapid","sitemapname"], 63:["connectionroles","connectionroleid","name"],
+              65:["hierarchyrules","hierarchyruleid","name"], 70:["fieldsecurityprofiles","fieldsecurityprofileid","name"],
+              80:["appmodules","appmoduleid","name"], 90:["plugintypes","plugintypeid","name"],
+              91:["pluginassemblies","pluginassemblyid","name"], 92:["sdkmessageprocessingsteps","sdkmessageprocessingstepid","name"],
+              95:["serviceendpoints","serviceendpointid","name"], 152:["slas","slaid","name"],
+              161:["mobileofflineprofiles","mobileofflineprofileid","name"], 300:["canvasapps","canvasappid","name"],
+              371:["connectors","connectorid","name"], 380:["environmentvariabledefinitions","environmentvariabledefinitionid","displayname"],
+            };
             const resolvers = {
               1:  ids => dvRequest("GET", `EntityDefinitions?$select=MetadataId,DisplayName,LogicalName&$filter=${ids.map(id=>`MetadataId eq ${id}`).join(" or ")}`).then(d => {
                 const m = {}; (d.value||[]).forEach(e => { m[e.MetadataId.toLowerCase()] = e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName; }); return m;
@@ -1116,37 +1141,11 @@
               9:  ids => dvRequest("GET", `GlobalOptionSetDefinitions?$select=MetadataId,Name`).then(d => {
                 const m = {}; (d.value||[]).forEach(e => { if(ids.includes(e.MetadataId.toLowerCase())) m[e.MetadataId.toLowerCase()] = e.Name; }); return m;
               }),
-              26: ids => dvRequest("GET", `savedqueries?$select=savedqueryid,name&$filter=${ids.map(id=>`savedqueryid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.savedqueryid.toLowerCase()] = e.name; }); return m;
-              }),
-              60: ids => dvRequest("GET", `webresourceset?$select=webresourceid,name&$filter=${ids.map(id=>`webresourceid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.webresourceid.toLowerCase()] = e.name; }); return m;
-              }),
-              91: ids => dvRequest("GET", `plugintypes?$select=plugintypeid,name&$filter=${ids.map(id=>`plugintypeid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.plugintypeid.toLowerCase()] = e.name; }); return m;
-              }),
-              92: ids => dvRequest("GET", `pluginassemblies?$select=pluginassemblyid,name&$filter=${ids.map(id=>`pluginassemblyid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.pluginassemblyid.toLowerCase()] = e.name; }); return m;
-              }),
-              95: ids => dvRequest("GET", `sdkmessageprocessingsteps?$select=sdkmessageprocessingstepid,name&$filter=${ids.map(id=>`sdkmessageprocessingstepid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.sdkmessageprocessingstepid.toLowerCase()] = e.name; }); return m;
-              }),
-              63: ids => dvRequest("GET", `roles?$select=roleid,name&$filter=${ids.map(id=>`roleid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.roleid.toLowerCase()] = e.name; }); return m;
-              }),
-              59: ids => dvRequest("GET", `savedqueryvisualizations?$select=savedqueryvisualizationid,name&$filter=${ids.map(id=>`savedqueryvisualizationid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.savedqueryvisualizationid.toLowerCase()] = e.name; }); return m;
-              }),
-              62: ids => dvRequest("GET", `connectionroles?$select=connectionroleid,name&$filter=${ids.map(id=>`connectionroleid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.connectionroleid.toLowerCase()] = e.name; }); return m;
-              }),
-              300: ids => dvRequest("GET", `canvasapps?$select=canvasappid,name&$filter=${ids.map(id=>`canvasappid eq ${id}`).join(" or ")}`).then(d => {
-                const m = {}; (d.value||[]).forEach(e => { m[e.canvasappid.toLowerCase()] = e.name; }); return m;
-              }),
               10: ids => dvRequest("GET", `RelationshipDefinitions?$select=MetadataId,SchemaName`).then(d => {
                 const m = {}; (d.value||[]).forEach(e => { if(ids.includes(e.MetadataId.toLowerCase())) m[e.MetadataId.toLowerCase()] = e.SchemaName; }); return m;
               }),
             };
+            for (const [tp, def] of Object.entries(REC)) resolvers[tp] = recResolver(def[0], def[1], def[2]);
 
             // Group objectIds by type and resolve in parallel
             const byType = {};
@@ -1160,8 +1159,9 @@
             await Promise.all(Object.entries(byType).map(async ([type, ids]) => {
               try {
                 // Split into batches of 15 to avoid URL too long
-                // Type 10 (Relationship) fetches all and filters client-side, no batching needed
-                if (String(type) === "10") {
+                // Types 9 (OptionSet) & 10 (Relationship) hit the metadata API, which can't filter
+                // by `or` on MetadataId — they fetch the full set once and filter client-side.
+                if (String(type) === "9" || String(type) === "10") {
                   const map = await resolvers[type](ids);
                   Object.assign(nameMap, map);
                   return;
@@ -1206,7 +1206,11 @@
           // ── Translations ──
           case "getOrgLanguages": {
             const data = await dvRequest("GET", "RetrieveAvailableLanguages");
-            const LANG_NAMES = {1033:"English",1036:"French",1031:"German",1034:"Spanish",1040:"Italian",1046:"Portuguese",1043:"Dutch",1041:"Japanese",1028:"Chinese (Traditional)",2052:"Chinese (Simplified)",1042:"Korean",1049:"Russian",1055:"Turkish",1045:"Polish",1029:"Czech",1030:"Danish",1035:"Finnish",1044:"Norwegian",1053:"Swedish",1025:"Arabic"};
+            // Full set of Dataverse-provisionable MUI languages (LCID → name). Anything outside
+            // this list still falls back to "LCID <code>" rather than crashing. Note the easy
+            // confusions: 1046 Portuguese (Brazil) vs 2070 Portuguese (Portugal); 3082 Spanish
+            // (modern) vs 1034 Spanish (legacy sort); 2052 Chinese (Simplified) vs 1028 (Traditional).
+            const LANG_NAMES = {1025:"Arabic",1026:"Bulgarian",1027:"Catalan",1028:"Chinese (Traditional)",1029:"Czech",1030:"Danish",1031:"German",1032:"Greek",1033:"English",1034:"Spanish (legacy)",1035:"Finnish",1036:"French",1037:"Hebrew",1038:"Hungarian",1040:"Italian",1041:"Japanese",1042:"Korean",1043:"Dutch",1044:"Norwegian",1045:"Polish",1046:"Portuguese (Brazil)",1048:"Romanian",1049:"Russian",1050:"Croatian",1051:"Slovak",1053:"Swedish",1054:"Thai",1055:"Turkish",1057:"Indonesian",1058:"Ukrainian",1060:"Slovenian",1061:"Estonian",1062:"Latvian",1063:"Lithuanian",1066:"Vietnamese",1069:"Basque",1081:"Hindi",1086:"Malay",1087:"Kazakh",1110:"Galician",2052:"Chinese (Simplified)",2070:"Portuguese (Portugal)",3076:"Chinese (Hong Kong)",3082:"Spanish"};
             const codes = data?.LocaleIds || [];
             result = codes.map(c => ({ code: c, name: LANG_NAMES[c] || `LCID ${c}` }));
             break;
