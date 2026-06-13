@@ -125,7 +125,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     const count=selected.size;
     const entityName=res.entity?.l;
     try{
-      const meta=await bridge.getEntityMetadata(entityName);
+      const meta=await bridge.getEntityMetadata(entityName,true);
       if(!meta.canBeDeleted){
         alert(`Entity "${meta.displayName}" does not allow deletion. The CanBeDeleted property is set to false.`);
         return;

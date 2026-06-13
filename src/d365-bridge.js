@@ -309,9 +309,11 @@ export const bridge = {
     return { deleted: ids.length, errors: [] };
   },
 
-  async getEntityMetadata(logicalName) {
+  // withCanDelete: also fetch the CanBeDeleted managed property (best-effort; only the bulk-delete
+  // pre-check needs it). Left off elsewhere so a non-selectable CanBeDeleted can't 400 the call.
+  async getEntityMetadata(logicalName, withCanDelete = false) {
     if (!isExtension) return { canBeDeleted: true, displayName: logicalName };
-    return callD365("getEntityMetadata", { logicalName });
+    return callD365("getEntityMetadata", { logicalName, withCanDelete });
   },
 
   // CHUNK = 100 matches content.js's HTTP $batch size, giving one progress update

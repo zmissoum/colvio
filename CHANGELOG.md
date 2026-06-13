@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.13] — 2026-06-12
+### Fixed
+- **Recycle Bin: selecting a table failed with "Could not find a property named 'CanBeDeleted'".** The shared entity-metadata query `$select`ed `CanBeDeleted`, a managed property that isn't selectable on every org/API version. The core query now requests only universally-selectable properties (display name, primary name/id, entity set); `CanBeDeleted` is fetched separately, best-effort and opt-in (only the Explorer bulk-delete pre-check asks for it), so a non-selectable property can never break the metadata call. Recycle Bin (and any other metadata consumer) works regardless. The org-level "recycle bin enabled" detection was already correct (the green banner) — this was a per-table metadata issue, not the activation check.
+
 ## [1.11.12] — 2026-06-12
 ### Fixed
 - **Recycle Bin: the table picker was empty/unusable.** `getEntities()` returns `{logical, display, entitySet}`, but the Recycle Bin used the list without mapping it to the `{l, d}` shape every other module applies — so every entry rendered as "()" and selecting one sent `undefined` as the table name ("Invalid logicalName: undefined"). Now mapped (and sorted) like the Metadata Browser. The table list and restore flow work again.
