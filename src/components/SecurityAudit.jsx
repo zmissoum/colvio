@@ -59,6 +59,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [loadingCount, setLoadingCount] = useState(false);
   const [privFilter, setPrivFilter] = useState("all"); // all, org, sensitive
   const [feedback, setFeedback] = useState("");
+  const [detailTab, setDetailTab] = useState("privileges"); // privileges | users
+  const [users, setUsers] = useState(null);          // lazy — loaded when the Users tab opens
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
   const selectGen = useRef(0);
 
   // Load all roles on mount
@@ -81,6 +85,9 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     setPrivileges([]);
     setUserCount(null);
     setPrivFilter("all");
+    setDetailTab("privileges");
+    setUsers(null);
+    setUserSearch("");
     setError("");
 
     // Load privileges (usually the slower one)
@@ -100,6 +107,41 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     }).catch(() => {
       if (selectGen.current === gen) { setUserCount(null); setLoadingCount(false); }
     });
+  };
+
+  // The full user list is loaded lazily — only when the Users tab is first opened — so clicking
+  // through roles stays snappy (we already have the count for the badge).
+  const openUsersTab = () => {
+    setDetailTab("users");
+    if (users !== null || loadingUsers || !selRole) return;
+    const gen = selectGen.current;
+    setLoadingUsers(true);
+    bridge.getRoleUsers(selRole.id).then(list => {
+      if (selectGen.current !== gen) return;
+      setUsers(list || []);
+      setLoadingUsers(false);
+    }).catch(e => {
+      if (selectGen.current === gen) { setError(e.message); setUsers([]); setLoadingUsers(false); }
+    });
+  };
+
+  const shownUsers = useMemo(() => {
+    if (!users) return [];
+    const s = userSearch.trim().toLowerCase();
+    if (!s) return users;
+    return users.filter(u => [u.name, u.email, u.bu, u.domain].some(v => (v || "").toLowerCase().includes(s)));
+  }, [users, userSearch]);
+
+  const exportUsersCSV = () => {
+    if (!selRole || !users?.length) return;
+    const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
+    const esc = (v) => { const x = safe(String(v ?? "")); return x.includes(",") || x.includes('"') ? `"${x.replace(/"/g, '""')}"` : x; };
+    const headers = ["name", "email", "businessUnit", "accessMode", "status", "domain"];
+    const rows = users.map(u => [u.name, u.email, u.bu, u.accessMode, u.disabled ? "Disabled" : "Enabled", u.domain].map(esc).join(","));
+    const csv = "﻿" + headers.join(",") + "\n" + rows.join("\n");
+    dl(csv, "text/csv;charset=utf-8", expName(`security_role_${selRole.name.replace(/\s+/g, "_")}_users`, "csv"));
+    setFeedback(`CSV downloaded (${users.length} users)`);
+    setTimeout(() => setFeedback(""), 2000);
   };
 
   // Stats for selected role
@@ -211,6 +253,14 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
               )}
             </div>
 
+            {/* Sub-tabs: Privileges | Users */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 12, borderBottom: `1px solid ${C.bd}` }}>
+              {[["privileges", `Privileges${privStats.total ? ` (${privStats.total})` : ""}`], ["users", `Users${userCount != null ? ` (${userCount})` : ""}`]].map(([k, label]) => (
+                <button key={k} onClick={() => k === "users" ? openUsersTab() : setDetailTab("privileges")} style={{ padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: "transparent", borderBottom: `2px solid ${detailTab === k ? C.cy : "transparent"}`, color: detailTab === k ? C.tx : C.txm, marginBottom: -1 }}>{label}</button>
+              ))}
+            </div>
+
+            {detailTab === "privileges" && (<>
             {/* Privilege filters */}
             <div style={{ display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap" }}>
               {[["all", `All (${privStats.total})`], ["org", `Org-level (${privStats.org})`], ["sensitive", `Sensitive (${privStats.sensitive})`]].map(([k, label]) => (
@@ -245,6 +295,45 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                     );
                   })}
                 </div>
+              </div>
+            )}
+            </>)}
+
+            {detailTab === "users" && (
+              <div>
+                {loadingUsers && users === null && <div style={{ textAlign: "center", marginTop: 20 }}><Spin s={16} /> Loading users...</div>}
+                {users && users.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No users are assigned to this role (in this business unit).</div>}
+                {users && users.length > 0 && (
+                  <>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users (name, email, BU)…" style={inp({ fontSize: 13, maxWidth: 280 })} />
+                      <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{users.length}</span>
+                      <button onClick={exportUsersCSV} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                    </div>
+                    <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 92px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                        <span>Name</span><span>Email</span><span>Business Unit</span><span>Status</span>
+                      </div>
+                      <div style={{ maxHeight: 500, overflow: "auto" }}>
+                        {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match this filter</div>}
+                        {shownUsers.map((u, i) => (
+                          <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 92px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.name}>
+                              {u.name}
+                              {u.accessModeCode !== 0 && u.accessMode && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.vi + "22", color: C.vi, fontWeight: 700, marginLeft: 6 }}>{u.accessMode}</span>}
+                            </span>
+                            <span style={{ color: C.txm, ...mono, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.email || u.domain}>{u.email || u.domain || "—"}</span>
+                            <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.bu}>{u.bu || "—"}</span>
+                            <span>{u.disabled ? <Badge label="Disabled" color={C.rd} /> : <Badge label="Enabled" color={C.gn} />}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.txd, marginTop: 8, lineHeight: 1.6 }}>
+                      Members of this role instance (this business unit). The same-named role in another business unit can have different members.
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>

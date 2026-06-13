@@ -1514,6 +1514,26 @@
             break;
           }
 
+          case "getRoleUsers": {
+            // The actual users assigned to THIS role instance (one business unit). Same N:N
+            // association the count uses (systemuserroles_association), just with user details.
+            validateGuid(params.roleId);
+            const data = await dvRequest("GET",
+              `roles(${params.roleId})/systemuserroles_association?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value`
+            );
+            result = (data.value || []).map(u => ({
+              id: u.systemuserid,
+              name: u.fullname || u.domainname || u.systemuserid,
+              email: u.internalemailaddress || "",
+              domain: u.domainname || "",
+              disabled: !!u.isdisabled,
+              accessMode: u["accessmode@OData.Community.Display.V1.FormattedValue"] || "",
+              accessModeCode: u.accessmode,
+              bu: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+            })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            break;
+          }
+
           case "probe": {
             // Lightweight permission probe — returns true if endpoint is accessible
             await dvRequest("GET", params.url);
