@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.18] — 2026-06-13
+### Fixed (SQL Explorer: TOP semantics + paging-cookie 400)
+- **`TOP n` now actually limits the result.** Two bugs compounded: (1) the parser only recognized `TOP` right after `SELECT`, so the suffix form Colvio's own templates use (`… ORDER BY name ASC TOP 100`) was silently dropped; (2) when `TOP` *was* read it mapped to FetchXML `count` (a page size), so the query paginated through the entire table n-at-a-time instead of stopping. `TOP` is now parsed in either position and emitted as FetchXML `top` (a hard cap that disables paging), capped at the platform max of 5000.
+- **No more "Paging Cookie And Query Do Not Match. The counts are not equal." (HTTP 400) on page 2.** The pagination loop used to re-encode the Web API paging cookie back into the fetchXml, which is brittle and triggered that error. It now pages by page **number** only and uses the cookie's *presence* purely as the "more pages remain" signal — the documented, reliable approach. Queries with no `TOP` still fetch every page; queries with `TOP n` return exactly n and never paginate.
+
 ## [1.11.17] — 2026-06-13
 ### Changed (Recycle Bin: pagination + full-screen layout)
 - **True pagination** replaces the old "Top N" cap (max was 2000). The bin is now read one page at a time via FetchXML `count`+`page`, with **← Prev / Page N / Next →** controls and a page-size selector (100/250/500/1000 per page). Only the current page lives in the DOM, so a mass ETL delete of **hundreds of thousands** of records is browsable without ever loading everything — "Next" is enabled only when the server returns a paging cookie (more pages exist). The deleted-by audit lookup follows the page (best-effort; deep/old pages may show "—").

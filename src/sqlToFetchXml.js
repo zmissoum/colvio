@@ -179,6 +179,12 @@ export function parseSqlToAst(sql) {
     } while (peek()?.type === "COMMA" && next());
   }
 
+  // Trailing TOP. Standard SQL is "SELECT TOP n ..." (handled above), but Colvio's own
+  // templates/placeholder and many users write it as a suffix: "... ORDER BY name ASC TOP 100".
+  // Without this the limit is silently dropped → the query falls back to the 5000-row default
+  // page and starts paginating (which then surfaced the paging-cookie error). Catch it here.
+  if (ast.top == null && kw("TOP")) { next(); ast.top = parseInt(next().value, 10); }
+
   return ast;
 
   // ── WHERE expression parser (recursive descent) ──
@@ -306,7 +312,10 @@ export function astToFetchXml(ast) {
   const lines = [];
   const fetchAttrs = [];
 
-  if (ast.top) fetchAttrs.push(`count="${ast.top}"`);
+  // SQL TOP n = "at most n rows" → FetchXML `top` (a hard cap that DISABLES paging), NOT
+  // `count` (which is only a page size and would paginate through the WHOLE table n-at-a-time).
+  // `top` is capped at 5000 by the platform; for more, omit TOP and let the explorer page-fetch.
+  if (ast.top) fetchAttrs.push(`top="${Math.min(ast.top, 5000)}"`);
   if (ast.distinct) fetchAttrs.push(`distinct="true"`);
   if (ast.aggregate) fetchAttrs.push(`aggregate="true"`);
 
