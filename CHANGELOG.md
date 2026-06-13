@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.24] — 2026-06-13
+### Fixed (Security Audit: role members missing across business units)
+- **Roles that clearly had users showed none (and the user count was wrong).** A security role exists as one copy per business unit, and a user is assigned the copy in *their* BU — but Colvio was only reading the root-BU copy, so every member sitting in a child business unit was invisible. The user count and the Users list now gather **every copy of the role** (matched via `parentrootroleid`) and union the members, deduplicated by user. The Business Unit column shows where each member sits. Degrades to the previous single-copy behaviour if the copies can't be enumerated.
+
 ## [1.11.23] — 2026-06-13
 ### Added (Security Audit: list users assigned to a role)
 - A role's detail panel now has two sub-tabs — **Privileges** and **Users** — so you can see *who* actually has the role, not just the count. The Users list shows name, email, business unit, access mode (a badge flags app / non-interactive accounts), and enabled/disabled status, with a filter box and its own CSV export. It's loaded lazily (only when the Users tab is opened) so clicking through roles stays instant. A note clarifies the list is for this role instance / business unit — the same-named role in another BU can have different members.

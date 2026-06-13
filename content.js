@@ -1505,32 +1505,59 @@
             break;
           }
 
+          // A security role exists as ONE COPY PER BUSINESS UNIT (child copies share
+          // _parentrootroleid_value with the root copy). A user is assigned the copy in THEIR own
+          // BU — so looking only at the selected (root-BU) copy misses every member in other BUs.
+          // Both handlers below first gather all copies of the role, then union their members.
           case "getRoleUserCount": {
-            validateGuid(params.roleId);
-            const data = await dvRequest("GET",
-              `roles(${params.roleId})/systemuserroles_association?$select=systemuserid&$count=true`
-            );
-            result = { count: (data.value || []).length };
+            const rootC = params.rootId || params.roleId;
+            validateGuid(rootC);
+            let instC = [rootC];
+            try {
+              const inst = await dvRequest("GET", `roles?$select=roleid&$filter=_parentrootroleid_value eq ${rootC} or roleid eq ${rootC}`);
+              const ids = (inst.value || []).map(r => r.roleid).filter(Boolean);
+              if (ids.length) instC = [...new Set(ids.map(s => s.toLowerCase()))];
+            } catch {}
+            const usersC = new Set();
+            await Promise.all(instC.map(async id => {
+              try {
+                const d = await dvRequest("GET", `roles(${id})/systemuserroles_association?$select=systemuserid`);
+                (d.value || []).forEach(u => u.systemuserid && usersC.add(String(u.systemuserid).toLowerCase()));
+              } catch {}
+            }));
+            result = { count: usersC.size };
             break;
           }
 
           case "getRoleUsers": {
-            // The actual users assigned to THIS role instance (one business unit). Same N:N
-            // association the count uses (systemuserroles_association), just with user details.
-            validateGuid(params.roleId);
-            const data = await dvRequest("GET",
-              `roles(${params.roleId})/systemuserroles_association?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value`
-            );
-            result = (data.value || []).map(u => ({
-              id: u.systemuserid,
-              name: u.fullname || u.domainname || u.systemuserid,
-              email: u.internalemailaddress || "",
-              domain: u.domainname || "",
-              disabled: !!u.isdisabled,
-              accessMode: u["accessmode@OData.Community.Display.V1.FormattedValue"] || "",
-              accessModeCode: u.accessmode,
-              bu: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
-            })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            const rootU = params.rootId || params.roleId;
+            validateGuid(rootU);
+            let instU = [rootU];
+            try {
+              const inst = await dvRequest("GET", `roles?$select=roleid&$filter=_parentrootroleid_value eq ${rootU} or roleid eq ${rootU}`);
+              const ids = (inst.value || []).map(r => r.roleid).filter(Boolean);
+              if (ids.length) instU = [...new Set(ids.map(s => s.toLowerCase()))];
+            } catch {}
+            const map = {};
+            await Promise.all(instU.map(async id => {
+              try {
+                const d = await dvRequest("GET", `roles(${id})/systemuserroles_association?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value`);
+                (d.value || []).forEach(u => {
+                  const k = String(u.systemuserid || "").toLowerCase();
+                  if (k && !map[k]) map[k] = {
+                    id: u.systemuserid,
+                    name: u.fullname || u.domainname || u.systemuserid,
+                    email: u.internalemailaddress || "",
+                    domain: u.domainname || "",
+                    disabled: !!u.isdisabled,
+                    accessMode: u["accessmode@OData.Community.Display.V1.FormattedValue"] || "",
+                    accessModeCode: u.accessmode,
+                    bu: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                  };
+                });
+              } catch {}
+            }));
+            result = Object.values(map).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
             break;
           }
 
