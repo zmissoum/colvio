@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.17] — 2026-06-13
+### Changed (Recycle Bin: pagination + full-screen layout)
+- **True pagination** replaces the old "Top N" cap (max was 2000). The bin is now read one page at a time via FetchXML `count`+`page`, with **← Prev / Page N / Next →** controls and a page-size selector (100/250/500/1000 per page). Only the current page lives in the DOM, so a mass ETL delete of **hundreds of thousands** of records is browsable without ever loading everything — "Next" is enabled only when the server returns a paging cookie (more pages exist). The deleted-by audit lookup follows the page (best-effort; deep/old pages may show "—").
+- **Layout now fills the screen**: the table grows to the viewport height (`calc(100vh - 300px)`) instead of a fixed 460 px, and the container widened from 1000 → 1500 px so all eight columns fit without horizontal scrolling on a normal window (narrow side-panel still scrolls as a fallback). The footer shows page / count / "more pages available".
+
 ## [1.11.16] — 2026-06-12
 ### Added (Recycle Bin: ownership & deletion columns)
 - The deleted-records list now shows **Created by**, **Modified by** (standard ownership lookups on the retained record, resolved to user names) and **Deleted by / Deleted on**. "Deleted by/on" isn't stored on the bin record — Colvio pulls it from the **audit log** (the delete event) with a single best-effort query per load: it fills in when auditing is enabled for the table, and shows "—" otherwise (never blocks the list). The table scrolls horizontally and the Id is truncated (full value on hover).

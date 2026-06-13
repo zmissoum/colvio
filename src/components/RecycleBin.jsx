@@ -31,7 +31,9 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [entity, setEntity] = useState(null);          // {l, d}
-  const [top, setTop] = useState(100);
+  const [pageSize, setPageSize] = useState(250);       // rows per page (count attribute)
+  const [page, setPage] = useState(1);                 // current 1-based page
+  const [moreRecords, setMoreRecords] = useState(false); // server reports a paging cookie ⇒ more pages
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState(null);              // deleted records
   const [meta, setMeta] = useState(null);              // {primaryName, primaryId, entitySet, displayName}
@@ -56,8 +58,9 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     bridge.recycleBinTables().then(list => { if (Array.isArray(list) && list.length) setSupported(new Set(list)); }).catch(() => {});
   }, []);
 
-  const loadDeleted = async (ent, topVal = top, searchVal = recordSearch) => {
+  const loadDeleted = async (ent, pageVal = page, sizeVal = pageSize, searchVal = recordSearch) => {
     setLoading(true); setError(""); setRows(null); setSelected(new Set()); setResults(null); setDeletedBy(null);
+    setPage(pageVal);
     try {
       const m = await bridge.getEntityMetadata(ent.l);
       setMeta(m);
@@ -70,9 +73,11 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
         filterXml = `<filter><condition attribute='${m.primaryName}' operator='like' value='%${esc}%' /></filter>`;
       }
       // datasource='bin' is the documented (and only) Web API way to read the recycle bin.
-      // createdby/modifiedby are standard ownership lookups on the retained record (formatted
-      // names come back via the include-annotations Prefer header dvRequest adds on reads).
-      const xml = `<fetch top='${topVal}' datasource='bin'><entity name='${ent.l}'>` +
+      // count+page walks the bin one page at a time — a mass ETL delete of hundreds of thousands
+      // of rows never loads in full; only the current page lives in the DOM. createdby/modifiedby
+      // are ownership lookups on the retained record (formatted names via the include-annotations
+      // Prefer header dvRequest adds on reads).
+      const xml = `<fetch count='${sizeVal}' page='${pageVal}' datasource='bin'><entity name='${ent.l}'>` +
         `<attribute name='${m.primaryId}' /><attribute name='${m.primaryName}' />` +
         `<attribute name='createdby' /><attribute name='createdon' />` +
         `<attribute name='modifiedby' /><attribute name='modifiedon' />` +
@@ -81,9 +86,11 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
       const data = await bridge.executeFetchXml(xml);
       const records = data?.records || [];
       setRows(records);
+      setMoreRecords(!!data?.moreRecords);   // paging cookie present ⇒ at least one more page exists
       // "Deleted by / on" isn't on the bin record — pull it from the audit log (best-effort,
-      // one query, non-blocking). Blank columns if auditing is off or the table isn't audited.
-      if (records.length) bridge.recordsDeletedBy(ent.l, Math.max(records.length, 100)).then(map => { if (map) setDeletedBy(map); }).catch(() => {});
+      // one query, non-blocking). Most-recent deletes ⇒ aligns with page 1; deep pages may show
+      // "—". Blank columns if auditing is off or the table isn't audited.
+      if (records.length) bridge.recordsDeletedBy(ent.l, Math.min(Math.max(sizeVal * 4, 200), 5000)).then(map => { if (map) setDeletedBy(map); }).catch(() => {});
     } catch (e) {
       setError(e.message || String(e));
     }
@@ -108,7 +115,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     setResults(out);
     setRestoring(null);
     // Refresh: restored records leave the bin.
-    if (out.some(r => r.ok)) loadDeleted(entity);
+    if (out.some(r => r.ok)) loadDeleted(entity, page);
   };
 
   const filtered = entities
@@ -117,7 +124,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
   const fmtDate = (v) => v ? new Date(v).toLocaleString() : "";
 
   return (
-    <div style={{ padding: bp.mobile ? 12 : 20, maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ padding: bp.mobile ? 12 : 20, maxWidth: bp.mobile ? "100%" : 1500, margin: "0 auto" }}>
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}><I.Trash /> {t("recyclebin.title")}</h2>
       <p style={{ color: C.txm, fontSize: 14, marginBottom: 14 }}>{t("recyclebin.subtitle")}</p>
 
@@ -145,7 +152,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
               {pickerOpen && !entity && (
                 <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 6, marginTop: 4, maxHeight: 240, overflow: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.4)" }}>
                   {filtered.slice(0, 50).map(e => (
-                    <button key={e.l} onClick={() => { setEntity(e); setSearch(""); setRecordSearch(""); setPickerOpen(false); loadDeleted(e, top, ""); }}
+                    <button key={e.l} onClick={() => { setEntity(e); setSearch(""); setRecordSearch(""); setPickerOpen(false); loadDeleted(e, 1, pageSize, ""); }}
                       style={{ width: "100%", textAlign: "left", padding: "7px 10px", border: "none", cursor: "pointer", background: "transparent", color: C.tx, fontSize: 13 }}
                       onMouseEnter={ev => ev.currentTarget.style.background = C.sfh} onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
                       {e.d || e.l} <span style={{ color: C.txd, ...mono, fontSize: 11 }}>({e.l})</span>
@@ -155,12 +162,21 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
               )}
             </div>
             {entity && <input value={recordSearch} onChange={e => setRecordSearch(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") loadDeleted(entity); }}
+              onKeyDown={e => { if (e.key === "Enter") loadDeleted(entity, 1); }}
               placeholder={t("recyclebin.search_records")} style={inp({ fontSize: 13, maxWidth: 200 })} />}
-            <select value={top} onChange={e => { const v = +e.target.value; setTop(v); if (entity) loadDeleted(entity, v); }} style={inp({ width: "auto", fontSize: 13, padding: "6px 10px" })}>
-              <option value={100}>Top 100</option><option value={500}>Top 500</option><option value={1000}>Top 1000</option><option value={2000}>Top 2000</option>
+            <select value={pageSize} onChange={e => { const v = +e.target.value; setPageSize(v); if (entity) loadDeleted(entity, 1, v); }} style={inp({ width: "auto", fontSize: 13, padding: "6px 10px" })}>
+              <option value={100}>100 {t("recyclebin.per_page")}</option><option value={250}>250 {t("recyclebin.per_page")}</option><option value={500}>500 {t("recyclebin.per_page")}</option><option value={1000}>1000 {t("recyclebin.per_page")}</option>
             </select>
-            {entity && <button onClick={() => loadDeleted(entity)} style={bt(null, { fontSize: 12 })}>↻ {t("recyclebin.refresh")}</button>}
+            {entity && rows && !loading && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <button onClick={() => page > 1 && loadDeleted(entity, page - 1)} disabled={page <= 1}
+                  style={bt(null, { fontSize: 12, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? "default" : "pointer" })}>← {t("recyclebin.prev")}</button>
+                <span style={{ fontSize: 12, color: C.txm, fontWeight: 600 }}>{t("recyclebin.page")} {page}</span>
+                <button onClick={() => moreRecords && loadDeleted(entity, page + 1)} disabled={!moreRecords}
+                  style={bt(null, { fontSize: 12, opacity: !moreRecords ? 0.4 : 1, cursor: !moreRecords ? "default" : "pointer" })}>{t("recyclebin.next")} →</button>
+              </span>
+            )}
+            {entity && <button onClick={() => loadDeleted(entity, page)} style={bt(null, { fontSize: 12 })}>↻ {t("recyclebin.refresh")}</button>}
             {selected.size > 0 && !restoring && (
               <button onClick={doRestore} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`, { fontSize: 13, fontWeight: 700 })}>
                 ♻ {t("recyclebin.restore")} ({selected.size})
@@ -191,7 +207,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
             rows.length === 0
               ? <div style={{ textAlign: "center", color: C.txd, marginTop: 30, fontSize: 13 }}>{t("recyclebin.empty")}</div>
               : <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
-                <div style={{ maxHeight: 460, overflow: "auto" }}>
+                <div style={{ maxHeight: bp.mobile ? 420 : "calc(100vh - 300px)", minHeight: 260, overflow: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, whiteSpace: "nowrap" }}>
                     <thead><tr style={{ background: C.bg, position: "sticky", top: 0, zIndex: 1 }}>
                       <th style={{ ...ths(), width: 30 }}>
@@ -229,8 +245,9 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
                     })}</tbody>
                   </table>
                 </div>
-                <div style={{ padding: "6px 10px", borderTop: `1px solid ${C.bd}`, fontSize: 11, color: C.txd }}>
-                  {rows.length} {t("recyclebin.deleted_records")} · {t("recyclebin.footer_hint")}
+                <div style={{ padding: "6px 10px", borderTop: `1px solid ${C.bd}`, fontSize: 11, color: C.txd, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <span>{t("recyclebin.page")} {page} · {rows.length} {t("recyclebin.deleted_records")} · {moreRecords ? t("recyclebin.more_available") : t("recyclebin.end_of_list")}</span>
+                  <span>{t("recyclebin.footer_hint")}</span>
                 </div>
               </div>
           )}
