@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.31] — 2026-06-14
+### Changed (Help: compact masonry layout)
+- The Help cards now use a **tight masonry layout** (CSS columns): cards pack together with no vertical gaps and fill the full width, auto-fitting as many ~340px columns as the screen allows (1 on mobile, 3-5 on a wide monitor). Fixes the uneven "wall of gaps" the row-major grid produced with very different card lengths.
+
 ## [1.11.30] — 2026-06-14
 ### Changed (Help: full-width row-major grid)
 - The Help cards now use a full-width responsive **grid that fills row by row** (auto-fitting as many ~340px columns as the screen allows — 2 on a narrow panel, 4-5 on a wide monitor), replacing the centered two-column masonry that left wide empty margins and flowed column-by-column.
