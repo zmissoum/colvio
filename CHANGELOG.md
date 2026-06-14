@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.37] — 2026-06-14
+### Changed (Loader: searchable Target-entity in Parent Lookups)
+- The "Target entity" field in each Parent Lookup is now a **searchable autocomplete** (like the main entity picker) instead of a free-text box: type a few letters and it suggests matching tables by display name or logical name; pick one and its lookup fields/alt-keys load automatically. You can still type a logical name directly.
+
 ## [1.11.36] — 2026-06-14
 ### Fixed (Help: "Restart onboarding tour" no longer abandons a running import)
 - "Restart onboarding tour" reloads the Colvio panel — which would silently kill a Data Loader import in progress. The Loader now reports its busy state to the app, and the restart-tour action asks for confirmation when an import is running ("…reloads Colvio and abandons the import — continue?") instead of reloading blindly. (Switching tabs is already safe since 1.11.35; this closes the one in-app action that still forced a reload.)

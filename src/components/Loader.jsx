@@ -15,6 +15,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[entitySearch,setEntitySearch]=useState("");
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
   const entityPickerRef=useRef(null);
+  const[lkEntOpen,setLkEntOpen]=useState(null); // index of the lookup row whose Target-entity autocomplete is open
 
   const parseData=(text)=>{
     const sep=detectSep(text);
@@ -1132,8 +1133,28 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                         :<input value={lk.d365f} onChange={e=>{const u=[...lookups];u[i]={...lk,d365f:e.target.value};setLookups(u);}} placeholder={lk.entity?"loading fields...":"set Target entity first"} style={inp({fontSize:13,...mono})}/>
                       }
                     </div>);})()}
-                    <div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>Target entity</label>
-                      <input value={lk.entity} onChange={e=>{const u=[...lookups];u[i]={...lk,entity:e.target.value};setLookups(u);}} placeholder="account" style={inp({fontSize:13,...mono})}/>
+                    <div style={{position:"relative"}}><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>Target entity</label>
+                      <input value={lk.entity}
+                        onChange={e=>{const u=[...lookups];u[i]={...lk,entity:e.target.value};setLookups(u);setLkEntOpen(i);}}
+                        onFocus={()=>setLkEntOpen(i)}
+                        onBlur={()=>setTimeout(()=>setLkEntOpen(o=>o===i?null:o),120)}
+                        onKeyDown={e=>{if(e.key==="Escape")setLkEntOpen(null);}}
+                        placeholder="search a table (account, contact…)" style={inp({fontSize:13,...mono})}/>
+                      {lkEntOpen===i&&(()=>{
+                        const q=(lk.entity||"").trim().toLowerCase();
+                        const matches=(q?entityList.filter(e=>(e.l||"").toLowerCase().includes(q)||(e.d||"").toLowerCase().includes(q)):entityList).slice(0,50);
+                        if(!matches.length) return null;
+                        return <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:20,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,marginTop:2,maxHeight:240,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
+                          {matches.map(e=>(
+                            <button key={e.l} onMouseDown={ev=>ev.preventDefault()}
+                              onClick={()=>{const u=[...lookups];u[i]={...lk,entity:e.l};setLookups(u);setLkEntOpen(null);}}
+                              style={{width:"100%",textAlign:"left",padding:"6px 10px",border:"none",cursor:"pointer",background:lk.entity===e.l?C.sfa:"transparent",color:C.tx,fontSize:13}}
+                              onMouseEnter={ev=>ev.currentTarget.style.background=C.sfh} onMouseLeave={ev=>ev.currentTarget.style.background=lk.entity===e.l?C.sfa:"transparent"}>
+                              {e.d||e.l} <span style={{color:C.txd,...mono,fontSize:11}}>({e.l})</span>
+                            </button>
+                          ))}
+                        </div>;
+                      })()}
                     </div>
                     <div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>Nav. property</label>
                       {targetLookups.length>0
