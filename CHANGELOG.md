@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.26] — 2026-06-14
+### Added (Data Explorer: query tabs)
+- **The Data Explorer now has browser-style query tabs.** Open several queries at once (+ New), switch between them, double-click to rename, ✕ to close. Each tab keeps its own full state — entity, mode (Builder/OData/FetchXML/SQL), fields, filters, and **its results** — so you run them one at a time and flip between tabs to compare. Same proven pattern as the API Tester's request tabs: each tab is an independent Explorer instance kept mounted, and only the visible tab reacts to the Ctrl+Enter run shortcut. (Note: each open tab holds its result set in memory, so with the new "All" default, very large result sets across many tabs use more memory.)
+
 ## [1.11.25] — 2026-06-14
 ### Changed (Data Explorer: builder defaults to All, not 50)
 - The visual query **builder now defaults its LIMIT to "All"** instead of 50 — an export tool should return everything by default (auto-paginated), and you can still drop the limit for a quick preview. Also fixed a restore bug where a saved query whose limit was "All" (0) snapped back to 50 on reload (`?? 0` instead of `|| 50`). Other result views were already cap-free: Recycle Bin and System Ops paginate ("Load more"), Users & Licenses and Metadata load everything; Login History keeps its "Last N" timeline depths (50–500) since it's a per-user audit timeline, not a bulk export.

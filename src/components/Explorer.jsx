@@ -9,7 +9,7 @@ import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
 import Results from "./Results.jsx";
 
-export default function Explorer({bp,addHistory,orgInfo,theme}){
+export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const isLive = orgInfo?.isExtension;
   const[ent,setEnt]=useState(null);
   const[es,setEs]=useState("");
@@ -817,7 +817,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
 
   const stopFetch = () => { fetchAbort.current = true; };
 
-  useKeyboard("Enter",()=>{if(ent&&!loading&&!loadingFields)run();},[ent,sf,filterGroups,groupLogic,lim,qm,rq,fxml,sqlQ,loading,loadingFields]);
+  // Gate on `active`: every query tab keeps its Explorer mounted, so without this guard Ctrl+Enter
+  // would fire run() on every hidden tab at once. Only the visible tab should execute.
+  useKeyboard("Enter",()=>{if(active&&ent&&!loading&&!loadingFields)run();},[active,ent,sf,filterGroups,groupLogic,lim,qm,rq,fxml,sqlQ,loading,loadingFields]);
 
   return(
     <div style={{display:"flex",height:"100%",flexDirection:bp.mobile?"column":"row"}}>
