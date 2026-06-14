@@ -3,7 +3,9 @@ import { C, I, crd, bt, inp } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 const Section=({icon,titleKey,bodyKey})=>(
-  <div style={{...crd({padding:"14px 18px",marginBottom:10})}}>
+  // inline-block + break-inside:avoid → cards flow into the multi-column masonry layout
+  // without ever being split across a column boundary.
+  <div style={{...crd({padding:"14px 18px",marginBottom:12}),breakInside:"avoid",WebkitColumnBreakInside:"avoid",display:"inline-block",width:"100%",verticalAlign:"top",boxSizing:"border-box"}}>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
       <span style={{color:C.cy}}>{icon}</span>
       <span style={{fontWeight:700,fontSize:15}}>{t(titleKey)}</span>
@@ -48,7 +50,7 @@ export default function HelpTab({bp,onShowShortcuts,onRestartTour,theme}){
   // Filter on translated title + body so the search works in both locales.
   const visible=needle?SECTIONS.filter(s=>(t(s.titleKey)+" "+t(s.bodyKey)).toLowerCase().includes(needle)):SECTIONS;
   return(
-    <div style={{padding:bp.mobile?12:24,maxWidth:700,margin:"0 auto"}}>
+    <div style={{padding:bp.mobile?12:24,maxWidth:bp.mobile?"100%":1120,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
         <div style={{width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${C.vi},${C.cy})`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:18}}>?</div>
         <div>
@@ -57,12 +59,15 @@ export default function HelpTab({bp,onShowShortcuts,onRestartTour,theme}){
         </div>
       </div>
 
-      <div style={{position:"relative",marginBottom:14}}>
+      <div style={{position:"relative",marginBottom:14,maxWidth:bp.mobile?"100%":460}}>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder={t("help.search_placeholder")} style={inp({fontSize:13,padding:"8px 12px 8px 32px"})}/>
         <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.txd}}><I.Search s={14}/></span>
       </div>
 
-      {visible.map(s=><Section key={s.titleKey} icon={s.icon} titleKey={s.titleKey} bodyKey={s.bodyKey}/>)}
+      {/* Masonry-style card wall: 2 columns on desktop, 1 on mobile. */}
+      <div style={{columnCount:bp.mobile?1:2,columnGap:14}}>
+        {visible.map(s=><Section key={s.titleKey} icon={s.icon} titleKey={s.titleKey} bodyKey={s.bodyKey}/>)}
+      </div>
       {visible.length===0&&<div style={{color:C.txd,fontSize:13,textAlign:"center",padding:20}}>{t("help.search_empty")}</div>}
 
       <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
