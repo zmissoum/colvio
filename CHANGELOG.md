@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.29] — 2026-06-14
+### Changed (Help: two-column card layout)
+- The Help tab now lays its feature cards out in a **responsive two-column masonry** (one column on mobile) and uses the full width, instead of a single tall stack — far less scrolling to find a module. The search box and header stay at a comfortable width.
+
 ## [1.11.28] — 2026-06-14
 ### Docs
 - **In-app Help refreshed (EN + FR)** to cover everything shipped in 1.11.16→27: query tabs + "All" default in the Data Explorer, the Show All Data multi-column grid, Recycle Bin ownership columns + pagination, System Ops pagination + server-side filters, Security Audit "who holds this role" (across all business units), the corrected/expanded solution component types, full language-name coverage in Translations, and SQL TOP behavior.
