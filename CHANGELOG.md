@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.27] — 2026-06-14
+### Changed (Query / Request tabs: inline rename)
+- Renaming a query tab (Data Explorer) or request tab (API Tester) is now **inline** — double-click the tab title and it turns into an editable field (Enter to save, Esc to cancel, click away to commit), instead of the old browser prompt dialog. Discoverable and clean.
+
 ## [1.11.26] — 2026-06-14
 ### Added (Data Explorer: query tabs)
 - **The Data Explorer now has browser-style query tabs.** Open several queries at once (+ New), switch between them, double-click to rename, ✕ to close. Each tab keeps its own full state — entity, mode (Builder/OData/FetchXML/SQL), fields, filters, and **its results** — so you run them one at a time and flip between tabs to compare. Same proven pattern as the API Tester's request tabs: each tab is an independent Explorer instance kept mounted, and only the visible tab reacts to the Ctrl+Enter run shortcut. (Note: each open tab holds its result set in memory, so with the new "All" default, very large result sets across many tabs use more memory.)

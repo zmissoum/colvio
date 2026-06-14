@@ -10,6 +10,11 @@ export default function ApiTesterTabs(props) {
   const seq = useRef(1);
   const [tabs, setTabs] = useState([{ id: 1, label: "Request 1" }]);
   const [active, setActive] = useState(1);
+  const [editingId, setEditingId] = useState(null);  // tab being renamed inline
+  const [draft, setDraft] = useState("");
+
+  const startEdit = (tab) => { setEditingId(tab.id); setDraft(tab.label); };
+  const commitEdit = () => { if (editingId != null) { renameTab(editingId, draft.trim()); setEditingId(null); } };
 
   const addTab = () => {
     seq.current += 1;
@@ -45,7 +50,7 @@ export default function ApiTesterTabs(props) {
             <div
               key={t.id}
               onClick={() => setActive(t.id)}
-              onDoubleClick={() => { const v = window.prompt("Rename tab", t.label); if (v != null) renameTab(t.id, v.trim()); }}
+              onDoubleClick={() => startEdit(t)}
               title="Click to switch · double-click to rename"
               style={{
                 display: "flex", alignItems: "center", gap: 6,
@@ -60,8 +65,21 @@ export default function ApiTesterTabs(props) {
                 maxWidth: 200,
               }}
             >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</span>
-              {tabs.length > 1 && (
+              {editingId === t.id ? (
+                <input
+                  autoFocus
+                  value={draft}
+                  onChange={e => setDraft(e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  onBlur={commitEdit}
+                  onKeyDown={e => { if (e.key === "Enter") commitEdit(); else if (e.key === "Escape") setEditingId(null); }}
+                  onFocus={e => e.target.select()}
+                  style={{ width: 120, fontSize: 12, padding: "1px 4px", border: `1px solid ${C.vi}`, borderRadius: 3, background: C.bg, color: C.tx, outline: "none" }}
+                />
+              ) : (
+                <span onDoubleClick={() => startEdit(t)} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</span>
+              )}
+              {editingId !== t.id && tabs.length > 1 && (
                 <span
                   onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
                   title="Close tab"
