@@ -692,10 +692,19 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       existCheck=await resolveExistingKeys(entitySet,uKey.d,isPKupd,uniqueKeyVals,keyIsNumeric,deltaSelect);
     }
 
-    setLoadProgress({done:0,total,current:"Preparing records..."});
+    // Build phase: this loop is SYNCHRONOUS, so without yielding the "Preparing…" message never
+    // paints and the user sees a frozen "0" before the first batch. Show the count and yield to the
+    // browser up front, then refresh it every 25k rows. done stays 0 — the progress BAR represents
+    // writes, and nothing is written yet during preparation.
+    setLoadProgress({done:0,total,current:`Preparing ${(total||rows.length).toLocaleString()} records — no writes yet…`});
+    await new Promise(r=>setTimeout(r,0));
 
     for(let i=0;i<rows.length;i++){
       const row=rows[i];
+      if(i && i%25000===0){
+        setLoadProgress({done:0,total,current:`Preparing ${i.toLocaleString()} / ${total.toLocaleString()} records…`});
+        await new Promise(r=>setTimeout(r,0));
+      }
       const rec={};
 
       try{
