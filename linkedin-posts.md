@@ -302,37 +302,37 @@ Which one would you actually use first? 👇
 
 ---
 
-## Post 12 — Security Audit: who *actually* has this role? (+ the polish wave)
+## Post 12 — Security visibility, one click away (+ the polish wave)
 
-> Publish once the latest build (1.11.24) is approved on the Chrome Web Store. Link to the store in the FIRST COMMENT, not the body. Strong angle for the admin / security audience — pairs well with Post 5.
+> Publish once the latest build (1.11.24) is approved on the Chrome Web Store. Link to the store in the FIRST COMMENT, not the body. HONEST framing — positions on convenience (zero-setup, in-browser, all-in-one), NOT on "nobody else does this". Seeing role members is already common (Power Platform admin center Membership page, XrmToolBox plugins, Level Up, FetchXML, PowerShell), and the native admin center already handles business units via the "parent security roles only" toggle. Do NOT claim Colvio uniquely solves the BU case — that was a Colvio bug fixed to reach parity. Pairs well with Post 5.
 
-Quick question for D365 admins: open any security role. Can you instantly see *who* has it?
+Most D365 admins already have ways to see who holds a security role — the Power Platform admin center, an XrmToolBox plugin, a FetchXML query, PowerShell. They all work.
 
-Most tools show you the privileges. Few show you the people. And the ones that do usually get one thing wrong — business units.
+What they share: a detour. Install a desktop tool and set up a connection. Or leave your record, open the admin center, pick the environment, drill into Settings → Users + permissions.
 
-Here's the gotcha: in Dataverse, a security role isn't a single object. It's copied into every business unit, and a user is assigned the copy in THEIR unit. So a tool that reads only the root copy shows an empty role — when it actually has 50 members sitting in child BUs.
+Colvio's bet is simpler: that answer should be one click away, on the org you're already looking at.
 
-Colvio's Security Audit now answers "who can do this?", not just "what does this allow?":
+Open any security role in Colvio — free, in-browser, zero setup — and you get:
 
-🛡 Lists every user holding a role — name, email, business unit, status
-🌐 Aggregates across ALL business-unit copies, deduplicated — no hidden members
-⚠️ Flags app / non-interactive (service) accounts hiding in your roles
-📥 Filter + CSV export, loaded only when you open the tab so clicking through roles stays instant
+🛡 Its privileges — readable labels, depth, sensitive-privilege flags
+👥 Its members — name, email, business unit, status
+🌐 Rolled up across every business-unit copy of the role, deduplicated
 
-While we were in there, a whole wave of depth + polish shipped too 👇
+(Worth knowing: a role is copied per business unit, so members can sit in child BUs. In the admin center you'd switch off "parent security roles only" to see them — Colvio just aggregates them for you.)
 
-♻️ Recycle Bin — now shows who deleted / created / modified each record, and paginates through mass deletes (hundreds of thousands of rows) without choking
-⚡ System Ops — real pagination + server-side date & name/text search on system jobs and plug-in traces
-🔎 SQL Explorer — TOP n now actually limits the result (and the page-2 "paging cookie" error is gone)
-📦 Solution Explorer — components show real names instead of "Type 150" and raw GUIDs
-🌐 Translation Manager — every Dataverse language resolves now (no more bare "LCID 3082")
-🖥️ Responsive UI — Show All Data on a multi-column grid, every tab uses the full screen, far less scrolling
+And a wave of polish shipped alongside it 👇
 
-Still free. Still open source (MIT). Still 100% local — your session, your security roles, nothing ever leaves the browser.
+♻️ Recycle Bin — who deleted / created / modified each record + pagination through mass deletes
+⚡ System Ops — pagination + date & text search on system jobs and plug-in traces
+🔎 SQL Explorer — TOP n limits correctly now
+📦 Solution Explorer — real component names instead of "Type 150"
+🌐 Translation Manager — every Dataverse language resolves now
 
-How confident are you that you know who holds your most powerful roles? 👇
+Free. Open source (MIT). 100% local — your session, your roles, nothing ever leaves the browser.
 
-#Dynamics365 #Dataverse #Security #D365 #PowerPlatform #CRM #OpenSource #Governance #MSDyn365
+What's your go-to today for "who can do this?" in D365 — admin center, XrmToolBox, or something else? 👇
+
+#Dynamics365 #Dataverse #Security #D365 #PowerPlatform #CRM #OpenSource
 
 ---
 
