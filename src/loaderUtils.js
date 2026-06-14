@@ -102,6 +102,17 @@ export function applyTransform(val, transform, optionMap) {
   }
 }
 
+// Default match key for UPSERT / UPDATE / DELETE. Prefers the first registered alternate key over
+// the primary key. The CSV column is auto-paired ONLY when a header actually matches the key name
+// (case-insensitive) — it must NEVER fall back to the first column: doing so silently matched on the
+// wrong column, which fails as 404 in UPDATE-only and, far worse, creates mass duplicates in UPSERT
+// (no match on the wrong column → "create"). An unmatched key returns c:"" so the UI warns instead.
+export function defaultMatchKey(altKeys, pkField, headers) {
+  const d = (altKeys && altKeys[0]) || pkField || "";
+  const c = (headers || []).find(h => String(h).toLowerCase() === String(d).toLowerCase()) || "";
+  return { d, c };
+}
+
 // Abstract / polymorphic owner-like targets that can't be bound directly.
 export const ABSTRACT_ENTITY_SETS = { owner: "systemusers", principal: "systemusers" };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey } from "../loaderUtils.js";
 
 describe("parseDelimited (RFC-4180)", () => {
   it("splits simple comma rows", () => {
@@ -109,4 +109,28 @@ describe("deltaEqual (delta mode)", () => {
     expect(deltaEqual("2026-06-13T00:00:00Z", "2026-06-14T00:00:00Z")).toBe(false));
   it("plain strings", () => expect(deltaEqual("Acme", "Acme")).toBe(true));
   it("changed string", () => expect(deltaEqual("Acme", "Acme Corp")).toBe(false));
+});
+
+describe("defaultMatchKey", () => {
+  it("prefers the first alternate key over the PK", () => {
+    const r = defaultMatchKey(["fou_sapnumber", "other_key"], "productid", ["x"]);
+    expect(r.d).toBe("fou_sapnumber");
+  });
+  it("falls back to the PK when there are no alt-keys", () => {
+    expect(defaultMatchKey([], "productid", ["productid"]).d).toBe("productid");
+  });
+  it("auto-pairs the CSV column when a header matches the key name (case-insensitive)", () => {
+    expect(defaultMatchKey(["productnumber"], "productid", ["ProductNumber", "name"]).c).toBe("ProductNumber");
+  });
+  // REGRESSION (v1.10.13→1.11.32): when no header matches the key, the CSV column must be EMPTY —
+  // it must NEVER fall back to the first column (that silently matched on the wrong column → 404s,
+  // or duplicate creation in UPSERT). Empty c makes the UI warn instead.
+  it("leaves the CSV column empty when no header matches the key (never grabs the first column)", () => {
+    const r = defaultMatchKey(["fou_sapcustomernumber"], "productid", ["CORE_SAP_Number__c", "Org"]);
+    expect(r.d).toBe("fou_sapcustomernumber");
+    expect(r.c).toBe("");
+  });
+  it("handles empty/missing inputs without throwing", () => {
+    expect(defaultMatchKey(undefined, "accountid", undefined)).toEqual({ d: "accountid", c: "" });
+  });
 });

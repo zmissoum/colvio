@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
 
 export default function Loader({bp,orgInfo,theme,permissions}){
@@ -952,12 +952,11 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Import mode</label>
               <div style={{display:"flex",gap:10,marginBottom:6,flexWrap:"wrap"}}>
                 {(()=>{
-                  // Default key picker shared by UPSERT and UPDATE — prefer an alt-key over the PK.
-                  // Default key picker: prefer an alt-key over the PK, and only auto-fill the CSV
-                  // column when one actually matches the key name. Falling back to the first CSV
-                  // column (old behavior) silently matched on the wrong column — leave it empty so
-                  // the "key has no CSV column" warning fires and the user picks the right one.
-                  const ensureKey=()=>{ if(uKey.d) return; const pk=target+"id"; const defaultKey=targetAltKeys[0]||pk; const matchingCol=csvData.h.find(h=>h.toLowerCase()===defaultKey.toLowerCase()); setUKey({d:defaultKey,c:matchingCol||""}); };
+                  // Default key picker — pure, unit-tested (loaderUtils.defaultMatchKey): prefers an
+                  // alt-key over the PK and only auto-pairs a CSV column when one matches the key
+                  // name. It never falls back to the first column (the v1.10.13→1.11.32 trap that
+                  // silently matched on the wrong column); an unmatched key leaves c:"" so the UI warns.
+                  const ensureKey=()=>{ if(uKey.d) return; setUKey(defaultMatchKey(targetAltKeys,target+"id",csvData.h)); };
                   return (<>
                     <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
                       <input type="radio" checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
