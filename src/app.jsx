@@ -291,7 +291,10 @@ export default function App(){
           {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
-          {tab==="loader"&&<ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary>}
+          {/* Loader stays MOUNTED (display toggle, like Explorer) so switching nav tabs during an
+              import never unmounts it — the run keeps its progress, log and result, and you can
+              come back to Cancel or Rollback. Conditional rendering would lose all of that. */}
+          <div style={{display:tab==="loader"?"block":"none",height:"100%"}}><ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary></div>
           {tab==="recyclebin"&&<ErrorBoundary><RecycleBin bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="ops"&&<ErrorBoundary><SystemOps bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}

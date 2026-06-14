@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.35] — 2026-06-14
+### Fixed (Loader: switching tabs / reloading no longer loses a running import)
+- The Data Loader is now **kept mounted** (like the Explorer) while you use the app, so switching to another Colvio tab during an import no longer unmounts it — the run keeps its **progress, live log, result and Rollback button**, and you can switch back to watch it, Cancel, or roll back. Before, navigating away unmounted the component: the write loop kept running in the background but you lost all visibility (and could accidentally start a second import on the fresh mount).
+- Added a **"Leave site?" guard** (beforeunload) that fires only while an import is in flight, so accidentally closing or reloading the Colvio panel mid-run prompts a confirmation instead of silently abandoning the run (which would leave it without a result or rollback).
+
 ## [1.11.34] — 2026-06-14
 ### Internal (Loader: regression-test the match-key default)
 - Extracted the UPSERT/UPDATE/DELETE default-key logic into a pure, unit-tested helper (`loaderUtils.defaultMatchKey`) and added 5 tests — including the regression that bit 1.11.33: when no CSV header matches the key name, the column must be left empty (never silently fall back to the first column). 223 tests total.

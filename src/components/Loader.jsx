@@ -161,6 +161,7 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   const[suppressDuplicates,setSuppressDuplicates]=useState(false);
   const[bypassSyncLogic,setBypassSyncLogic]=useState(false);
   const loadAbort=useRef(false);
+  const runningRef=useRef(false);   // true while a real/dry run is executing (step 4, no result yet)
   const[liveEntities,setLiveEntities]=useState([]);
 
   // ── Mapping templates ────────────────────────────────────────────────
@@ -226,6 +227,16 @@ export default function Loader({bp,orgInfo,theme,permissions}){
     document.addEventListener("keydown",onKey);
     return()=>document.removeEventListener("keydown",onKey);
   },[showTemplates]);
+
+  // Warn before the panel is closed/reloaded mid-import (browser "Leave site?" prompt). The driving
+  // loop lives in this page, so reloading it would abandon a run with no result and no rollback.
+  // step===4 (Run) with no result yet = a run is in flight; the result step clears it.
+  useEffect(()=>{ runningRef.current = (step===4 && !result); },[step,result]);
+  useEffect(()=>{
+    const h=(e)=>{ if(runningRef.current){ e.preventDefault(); e.returnValue=""; } };
+    window.addEventListener("beforeunload",h);
+    return()=>window.removeEventListener("beforeunload",h);
+  },[]);
 
   // Close the entity picker when clicking outside, pressing Escape, or losing focus.
   useEffect(()=>{
