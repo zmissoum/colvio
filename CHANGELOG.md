@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.25] — 2026-06-14
+### Changed (Data Explorer: builder defaults to All, not 50)
+- The visual query **builder now defaults its LIMIT to "All"** instead of 50 — an export tool should return everything by default (auto-paginated), and you can still drop the limit for a quick preview. Also fixed a restore bug where a saved query whose limit was "All" (0) snapped back to 50 on reload (`?? 0` instead of `|| 50`). Other result views were already cap-free: Recycle Bin and System Ops paginate ("Load more"), Users & Licenses and Metadata load everything; Login History keeps its "Last N" timeline depths (50–500) since it's a per-user audit timeline, not a bulk export.
+
 ## [1.11.24] — 2026-06-13
 ### Fixed (Security Audit: role members missing across business units)
 - **Roles that clearly had users showed none (and the user count was wrong).** A security role exists as one copy per business unit, and a user is assigned the copy in *their* BU — but Colvio was only reading the root-BU copy, so every member sitting in a child business unit was invisible. The user count and the Users list now gather **every copy of the role** (matched via `parentrootroleid`) and union the members, deduplicated by user. The Business Unit column shows where each member sits. Degrades to the previous single-copy behaviour if the copies can't be enumerated.
