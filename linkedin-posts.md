@@ -336,6 +336,34 @@ What's your go-to today for "who can do this?" in D365 — admin center, XrmTool
 
 ---
 
+## Post 13 — Query tabs: run several Dataverse queries side by side
+
+> Publish once 1.11.27 is approved on the Chrome Web Store. Link in the FIRST COMMENT. HONEST framing — this UX is openly borrowed from Salesforce Inspector (credit it, don't claim invention). Ties to Post 2 (the SF → D365 tooling gap), strong for the ex-Salesforce audience.
+
+If you came to Dynamics 365 from Salesforce, you probably miss one specific thing from Salesforce Inspector: query tabs.
+
+Open several queries at once. Tweak one, run it. Switch to another, run that. Compare. No re-typing, no losing your place.
+
+That workflow just landed in Colvio's Data Explorer — free, in your browser.
+
+🗂 Multiple query tabs — open as many as you want (+ New)
+🔀 Each tab fully independent — its own table, filters, and results
+✍️ Rename tabs inline (double-click), close with ✕
+🧰 Works in all four query modes — Builder, OData, FetchXML, SQL — mix and match across tabs (Tab 1 in SQL, Tab 2 in the visual Builder…)
+▶️ Run them one at a time and flip between tabs to compare
+
+Same Colvio principles: no setup, no account, no install. Your D365 session, your security roles, everything stays local.
+
+A small thing that changes how you work — exploring data stops being one-query-at-a-time.
+
+(And the Explorer now returns all rows by default — drop the limit when you just want a quick preview.)
+
+What's the one Salesforce Inspector habit you wish you had on Dynamics 365? 👇
+
+#Dynamics365 #Dataverse #Salesforce #D365 #PowerPlatform #CRM #OpenSource #SalesforceInspector
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
