@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.36] — 2026-06-14
+### Fixed (Help: "Restart onboarding tour" no longer abandons a running import)
+- "Restart onboarding tour" reloads the Colvio panel — which would silently kill a Data Loader import in progress. The Loader now reports its busy state to the app, and the restart-tour action asks for confirmation when an import is running ("…reloads Colvio and abandons the import — continue?") instead of reloading blindly. (Switching tabs is already safe since 1.11.35; this closes the one in-app action that still forced a reload.)
+
 ## [1.11.35] — 2026-06-14
 ### Fixed (Loader: switching tabs / reloading no longer loses a running import)
 - The Data Loader is now **kept mounted** (like the Explorer) while you use the app, so switching to another Colvio tab during an import no longer unmounts it — the run keeps its **progress, live log, result and Rollback button**, and you can switch back to watch it, Cancel, or roll back. Before, navigating away unmounted the component: the write loop kept running in the background but you lost all visibility (and could accidentally start a second import on the fresh mount).

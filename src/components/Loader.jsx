@@ -4,7 +4,7 @@ import Tooltip from "./Tooltip.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
 
-export default function Loader({bp,orgInfo,theme,permissions}){
+export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // Speed boosters require prvBypassCustomPlugins — granted by the System Administrator
   // role. Hidden entirely for non-admin users so they don't see a feature they can't use.
   // `permissions` may be null briefly during connect — boosters stay hidden until the
@@ -231,7 +231,8 @@ export default function Loader({bp,orgInfo,theme,permissions}){
   // Warn before the panel is closed/reloaded mid-import (browser "Leave site?" prompt). The driving
   // loop lives in this page, so reloading it would abandon a run with no result and no rollback.
   // step===4 (Run) with no result yet = a run is in flight; the result step clears it.
-  useEffect(()=>{ runningRef.current = (step===4 && !result); },[step,result]);
+  // Report "busy" up to the app so page-reloading actions (e.g. Restart onboarding tour) can guard.
+  useEffect(()=>{ const busy=(step===4 && !result); runningRef.current=busy; onBusyChange?.(busy); },[step,result,onBusyChange]);
   useEffect(()=>{
     const h=(e)=>{ if(runningRef.current){ e.preventDefault(); e.returnValue=""; } };
     window.addEventListener("beforeunload",h);

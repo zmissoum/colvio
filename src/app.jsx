@@ -129,6 +129,7 @@ export default function App(){
   const[showShortcuts,setShowShortcuts]=useState(false);
   const[showPalette,setShowPalette]=useState(false);
   const[orgFeatures,setOrgFeatures]=useState(null); // org-level switches: audit, traces, recycle bin
+  const[loaderBusy,setLoaderBusy]=useState(false);  // true while a Data Loader import is running
   const bp=useBP();
   useKeyboard("/",()=>setShowShortcuts(s=>!s),[]);
   useKeyboard("k",()=>setShowPalette(s=>!s),[]);
@@ -294,7 +295,7 @@ export default function App(){
           {/* Loader stays MOUNTED (display toggle, like Explorer) so switching nav tabs during an
               import never unmounts it — the run keeps its progress, log and result, and you can
               come back to Cancel or Rollback. Conditional rendering would lose all of that. */}
-          <div style={{display:tab==="loader"?"block":"none",height:"100%"}}><ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions}/></ErrorBoundary></div>
+          <div style={{display:tab==="loader"?"block":"none",height:"100%"}}><ErrorBoundary><Loader bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions} onBusyChange={setLoaderBusy}/></ErrorBoundary></div>
           {tab==="recyclebin"&&<ErrorBoundary><RecycleBin bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="ops"&&<ErrorBoundary><SystemOps bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="graph"&&<ErrorBoundary><RelationshipGraph bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
@@ -303,7 +304,7 @@ export default function App(){
           {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo} theme={theme} canPublish={permissions?.canPublish!==false}/></ErrorBoundary>}
           {tab==="licenses"&&<ErrorBoundary><UserLicenseMonitor bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="security"&&<ErrorBoundary><SecurityAudit bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
+          {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{if(loaderBusy&&!window.confirm("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?"))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>
       <style>{`
