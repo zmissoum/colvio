@@ -3,7 +3,9 @@ import { C, I, crd, bt, inp } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 const Section=({icon,titleKey,bodyKey})=>(
-  <div style={{...crd({padding:"14px 18px"}),boxSizing:"border-box"}}>
+  // Masonry column item: never split across a column boundary; marginBottom is the vertical gap
+  // between stacked cards (column-gap only spaces columns horizontally).
+  <div style={{...crd({padding:"14px 18px",marginBottom:14}),boxSizing:"border-box",breakInside:"avoid",WebkitColumnBreakInside:"avoid",display:"inline-block",width:"100%",verticalAlign:"top"}}>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
       <span style={{color:C.cy}}>{icon}</span>
       <span style={{fontWeight:700,fontSize:15}}>{t(titleKey)}</span>
@@ -62,10 +64,10 @@ export default function HelpTab({bp,onShowShortcuts,onRestartTour,theme}){
         <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.txd}}><I.Search s={14}/></span>
       </div>
 
-      {/* Card grid — fills the full width row by row, auto-fitting as many ~340px columns as the
-          screen allows (2 on a narrow panel, 4-5 on a wide monitor). alignItems:start keeps each
-          card at its natural height instead of stretching to the tallest in the row. */}
-      <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr":"repeat(auto-fill,minmax(340px,1fr))",gap:14,alignItems:"start"}}>
+      {/* Masonry (CSS columns): cards pack tightly with NO vertical gaps, filling the full width.
+          column-width auto-fits as many ~340px columns as the screen allows (1 on mobile,
+          3-5 on a wide monitor). Reading order is top-to-bottom per column. */}
+      <div style={{...(bp.mobile?{columnCount:1}:{columnWidth:340}),columnGap:14}}>
         {visible.map(s=><Section key={s.titleKey} icon={s.icon} titleKey={s.titleKey} bodyKey={s.bodyKey}/>)}
       </div>
       {visible.length===0&&<div style={{color:C.txd,fontSize:13,textAlign:"center",padding:20}}>{t("help.search_empty")}</div>}
