@@ -25,7 +25,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
   const[sqlQ,setSqlQ]=useState("");
   const[sqlFx,setSqlFx]=useState("");
   const[showSqlFx,setShowSqlFx]=useState(false);
-  const[lim,setLim]=useState(50);
+  const[lim,setLim]=useState(0);   // 0 = All (no $top) — an export tool should return everything by default; lower it for a quick preview
   const[showList,setShowList]=useState(true);
   const[savedQueries,setSavedQueries]=useState([]);
   const qImportRef=useRef(null);
@@ -93,7 +93,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme}){
         setSf(q.fields||[]);
         setFilterGroups(q.filterGroups||[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
         setGroupLogic(q.groupLogic||"and");
-        setLim(q.limit||50);
+        setLim(q.limit ?? 0);   // ?? not || so a saved "All" (0) survives restore instead of snapping back to a number
         if(q.qm){setQm(q.qm);if(q.qm==="odata"&&q.query)setRq(q.query);}
         if(q.fxml){setFxml(q.fxml);}
       };
