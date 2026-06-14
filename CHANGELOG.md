@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.32] — 2026-06-14
+### Changed (Help: organized into category tabs)
+- The Help tab now groups its cards into **category tabs** — All · Query & Export · Data Loader · Admin & Governance · Solutions & Schema · Tips & Troubleshooting — each showing a count, so you jump straight to the area you need instead of scrolling one long list. Search still spans every category (the tabs hide while a search is active). EN + FR.
+
 ## [1.11.31] — 2026-06-14
 ### Changed (Help: compact masonry layout)
 - The Help cards now use a **tight masonry layout** (CSS columns): cards pack together with no vertical gaps and fill the full width, auto-fitting as many ~340px columns as the screen allows (1 on mobile, 3-5 on a wide monitor). Fixes the uneven "wall of gaps" the row-major grid produced with very different card lengths.
