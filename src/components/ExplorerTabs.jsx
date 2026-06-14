@@ -1,0 +1,94 @@
+import { useState, useRef } from "react";
+import Explorer from "./Explorer.jsx";
+import { C, mono } from "../shared.jsx";
+
+// Multi-tab wrapper around Explorer (like a browser's tabs, or Salesforce Inspector's query tabs).
+// Each tab keeps its own <Explorer/> instance MOUNTED, inactive ones hidden via display:none, so
+// every tab preserves its full query + result state. You build several queries side by side and
+// run them one at a time to compare. Mirrors ApiTesterTabs — zero changes to Explorer beyond an
+// `active` flag (so only the visible tab reacts to the Ctrl+Enter run shortcut).
+export default function ExplorerTabs(props) {
+  const seq = useRef(1);
+  const [tabs, setTabs] = useState([{ id: 1, label: "Query 1" }]);
+  const [active, setActive] = useState(1);
+
+  const addTab = () => {
+    seq.current += 1;
+    const id = seq.current;
+    setTabs(t => [...t, { id, label: `Query ${t.length + 1}` }]);
+    setActive(id);
+  };
+
+  const closeTab = (id) => {
+    setTabs(t => {
+      if (t.length <= 1) return t; // always keep at least one tab
+      const idx = t.findIndex(x => x.id === id);
+      const next = t.filter(x => x.id !== id);
+      if (active === id) {
+        const fallback = next[Math.min(idx, next.length - 1)];
+        setActive(fallback.id);
+      }
+      return next;
+    });
+  };
+
+  const renameTab = (id, label) => {
+    setTabs(t => t.map(x => x.id === id ? { ...x, label: label || x.label } : x));
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Tab bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 8px 0", borderBottom: `1px solid ${C.bd}`, flexWrap: "wrap", flexShrink: 0 }}>
+        {tabs.map(t => {
+          const isActive = t.id === active;
+          return (
+            <div
+              key={t.id}
+              onClick={() => setActive(t.id)}
+              onDoubleClick={() => { const v = window.prompt("Rename tab", t.label); if (v != null) renameTab(t.id, v.trim()); }}
+              title="Click to switch · double-click to rename"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "5px 10px", cursor: "pointer",
+                borderRadius: "6px 6px 0 0",
+                background: isActive ? C.sfa : "transparent",
+                border: `1px solid ${isActive ? C.bd : "transparent"}`,
+                borderBottom: isActive ? `1px solid ${C.sfa}` : `1px solid transparent`,
+                marginBottom: -1,
+                color: isActive ? C.tx : C.txm,
+                fontSize: 12, fontWeight: isActive ? 600 : 400,
+                maxWidth: 200,
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</span>
+              {tabs.length > 1 && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
+                  title="Close tab"
+                  style={{ color: C.txd, fontSize: 13, lineHeight: 1, padding: "0 2px", borderRadius: 3 }}
+                  onMouseEnter={e => { e.currentTarget.style.color = C.rd; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = C.txd; }}
+                >✕</span>
+              )}
+            </div>
+          );
+        })}
+        <button
+          onClick={addTab}
+          title="New query tab"
+          style={{ padding: "4px 10px", marginLeft: 2, marginBottom: 2, background: "transparent", border: `1px dashed ${C.bd}`, borderRadius: 5, color: C.cy, cursor: "pointer", fontSize: 12, fontWeight: 600, ...mono }}
+        >+ New</button>
+      </div>
+
+      {/* One Explorer per tab — only the active one is visible; the rest keep their state (and results) alive */}
+      <div style={{ flex: 1, overflow: "auto" }}>
+        {tabs.map(t => (
+          <div key={t.id} style={{ display: t.id === active ? "block" : "none", height: "100%" }}>
+            <Explorer {...props} active={t.id === active} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
