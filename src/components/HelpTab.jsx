@@ -3,9 +3,7 @@ import { C, I, crd, bt, inp } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 const Section=({icon,titleKey,bodyKey})=>(
-  // inline-block + break-inside:avoid → cards flow into the multi-column masonry layout
-  // without ever being split across a column boundary.
-  <div style={{...crd({padding:"14px 18px",marginBottom:12}),breakInside:"avoid",WebkitColumnBreakInside:"avoid",display:"inline-block",width:"100%",verticalAlign:"top",boxSizing:"border-box"}}>
+  <div style={{...crd({padding:"14px 18px"}),boxSizing:"border-box"}}>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
       <span style={{color:C.cy}}>{icon}</span>
       <span style={{fontWeight:700,fontSize:15}}>{t(titleKey)}</span>
@@ -50,7 +48,7 @@ export default function HelpTab({bp,onShowShortcuts,onRestartTour,theme}){
   // Filter on translated title + body so the search works in both locales.
   const visible=needle?SECTIONS.filter(s=>(t(s.titleKey)+" "+t(s.bodyKey)).toLowerCase().includes(needle)):SECTIONS;
   return(
-    <div style={{padding:bp.mobile?12:24,maxWidth:bp.mobile?"100%":1120,margin:"0 auto"}}>
+    <div style={{padding:bp.mobile?12:24,maxWidth:bp.mobile?"100%":"none",margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
         <div style={{width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${C.vi},${C.cy})`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:18}}>?</div>
         <div>
@@ -64,8 +62,10 @@ export default function HelpTab({bp,onShowShortcuts,onRestartTour,theme}){
         <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.txd}}><I.Search s={14}/></span>
       </div>
 
-      {/* Masonry-style card wall: 2 columns on desktop, 1 on mobile. */}
-      <div style={{columnCount:bp.mobile?1:2,columnGap:14}}>
+      {/* Card grid — fills the full width row by row, auto-fitting as many ~340px columns as the
+          screen allows (2 on a narrow panel, 4-5 on a wide monitor). alignItems:start keeps each
+          card at its natural height instead of stretching to the tallest in the row. */}
+      <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr":"repeat(auto-fill,minmax(340px,1fr))",gap:14,alignItems:"start"}}>
         {visible.map(s=><Section key={s.titleKey} icon={s.icon} titleKey={s.titleKey} bodyKey={s.bodyKey}/>)}
       </div>
       {visible.length===0&&<div style={{color:C.txd,fontSize:13,textAlign:"center",padding:20}}>{t("help.search_empty")}</div>}

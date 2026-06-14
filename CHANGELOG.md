@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.30] — 2026-06-14
+### Changed (Help: full-width row-major grid)
+- The Help cards now use a full-width responsive **grid that fills row by row** (auto-fitting as many ~340px columns as the screen allows — 2 on a narrow panel, 4-5 on a wide monitor), replacing the centered two-column masonry that left wide empty margins and flowed column-by-column.
+
 ## [1.11.29] — 2026-06-14
 ### Changed (Help: two-column card layout)
 - The Help tab now lays its feature cards out in a **responsive two-column masonry** (one column on mobile) and uses the full width, instead of a single tall stack — far less scrolling to find a module. The search box and header stay at a comfortable width.
