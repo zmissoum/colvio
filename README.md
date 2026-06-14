@@ -23,7 +23,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 ## Features
 
 ### Data Explorer
-- **Query Builder** — visual SELECT, WHERE (AND/OR groups, 14 operators), EXPAND (parent + child), LIMIT
+- **Query tabs** — open several queries at once like browser tabs; each tab is fully independent (its own table, mode, filters, results), so you run them one at a time and switch to compare; rename inline (double-click), close with ✕
+- **Query Builder** — visual SELECT, WHERE (AND/OR groups, 14 operators), EXPAND (parent + child), LIMIT (defaults to **All** — lower it for a quick preview)
 - **FetchXML mode** — textarea with 3 templates (simple, inner join, aggregation) + paging cookie pagination
 - **OData mode** — raw OData URL editing
 - **Column sorting** — click any header to sort ASC/DESC
@@ -50,8 +51,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Show All Data
 - Auto-detect current record from D365 tab
-- Card layout: Logical Name, label, type, value
-- Clickable lookup links, copy individual fields or full JSON
+- Responsive **multi-column grid** that fills the screen (even 400+ field records stay readable): Logical Name, label, type, value
+- Filter columns, toggle empty/custom-only, clickable lookup links, copy a single field or full JSON
 
 ### Metadata Browser
 - Browse entities, fields, OptionSets by category
@@ -87,6 +88,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **List & restore deleted records** — true server-side restore via Dataverse "keep deleted records" (queried with FetchXML `datasource='bin'`, restored with the platform `Restore` action)
 - Detects whether the feature is enabled (retention days shown) and explains how to enable it
 - Every Microsoft limitation surfaced in plain words (pre-enablement deletes, virtual/elastic/solution tables, >600-column tables, cascade ordering, key conflicts)
+- Shows **who deleted** each record (from the audit log, best-effort) plus **who created / last modified** it; **paginates** through large bins (page size + Prev/Next) and searches deleted records by name server-side
 
 ### Record Change History
 - In Show All Data: the **audit timeline** of any record (who, when, which action) with click-to-expand **field-level diffs** (old → new, formatted values)
@@ -95,6 +97,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 ### System Ops
 - **System Jobs monitor** — quick filters for failed / waiting / in-progress jobs, bulk **Cancel** and **Resume** with the documented state transitions (admin-gated)
 - **Plugin Trace viewer** — exceptions highlighted, full trace text, duration warnings, CSV export; enablement and the 24h auto-purge documented in-UI
+- Both panels **paginate** (page size + Load more, no hard cap) with **server-side filters**: date range on both, name search on jobs, text + minimum-duration on traces
 
 ### Schema snapshot & diff
 - Export the org schema as JSON, load a snapshot from another environment and get a **ranked diff** (missing tables/columns, type mismatches) with CSV export — deployment prep in two clicks
@@ -116,11 +119,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Solution Explorer
 - Browse solutions and components grouped by type
-- **13 component types resolved to display names** (Entity, Attribute, OptionSet, Relationship, View, Chart, Web Resource, Plugin Type/Assembly, SDK Step, Security Role, Connection Role, Canvas App)
+- **40+ component types resolved to display names** against Microsoft's official enumeration (Entity, Attribute, OptionSet, View, Web Resource, Security Role, Email Template, Model-driven App, Environment Variable, SLA, Routing/Convert Rule, Plugin Type/Assembly, SDK Step, Canvas App…); each component's name resolved per type instead of a raw GUID
 - Managed/Unmanaged badges, component counts
 
 ### Translation Manager
-- View and edit field labels across multiple languages inline
+- View and edit field labels across multiple languages inline — each language shown with its proper name (full Dataverse language coverage, no raw LCID codes)
 - Non-renameable fields locked as read-only (🔒 icon)
 - Export/Import CSV for bulk translation workflows
 - Save changes + auto-publish entity
@@ -144,6 +147,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Sensitive privilege detection** — 30+ critical privileges flagged (delete, assign role, export, audit, publish)
 - Filter by: All / Org-level only / Sensitive only
 - User count per role, CSV export
+- **Users sub-tab** — lists exactly who holds the role (name, email, business unit, status), aggregated across **every business-unit copy** of the role and deduplicated so members in child BUs are never missed, with service-account flags; CSV export on both privileges and members
 
 ### Login History
 - User search, login/logout audit timeline

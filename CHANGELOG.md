@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.28] — 2026-06-14
+### Docs
+- **In-app Help refreshed (EN + FR)** to cover everything shipped in 1.11.16→27: query tabs + "All" default in the Data Explorer, the Show All Data multi-column grid, Recycle Bin ownership columns + pagination, System Ops pagination + server-side filters, Security Audit "who holds this role" (across all business units), the corrected/expanded solution component types, full language-name coverage in Translations, and SQL TOP behavior.
+- README and the Chrome Web Store listing updated to match.
+
 ## [1.11.27] — 2026-06-14
 ### Changed (Query / Request tabs: inline rename)
 - Renaming a query tab (Data Explorer) or request tab (API Tester) is now **inline** — double-click the tab title and it turns into an editable field (Enter to save, Esc to cancel, click away to commit), instead of the old browser prompt dialog. Discoverable and clean.
