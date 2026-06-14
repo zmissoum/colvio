@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.33] — 2026-06-14
+### Fixed (Loader: match key no longer silently grabs the wrong CSV column)
+- When you switch to UPSERT/UPDATE/DELETE, the Loader auto-fills the match key with the table's first alternate key (a convenience). It used to also auto-pick the **first CSV column** for that key's value when no column name matched — which silently matched on the wrong column (e.g. a product code landing in a "SAP customer number" key → every row 404s). Now the CSV column is only auto-filled when one actually matches the key name; otherwise it's left empty so the existing "key has no CSV column" warning prompts you to pick the right one. The match key itself is still shown in the Preview banner ("matched on …") — change it there if it isn't the one you want.
+
 ## [1.11.32] — 2026-06-14
 ### Changed (Help: organized into category tabs)
 - The Help tab now groups its cards into **category tabs** — All · Query & Export · Data Loader · Admin & Governance · Solutions & Schema · Tips & Troubleshooting — each showing a count, so you jump straight to the area you need instead of scrolling one long list. Search still spans every category (the tabs hide while a search is active). EN + FR.

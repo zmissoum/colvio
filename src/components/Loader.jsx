@@ -953,7 +953,11 @@ export default function Loader({bp,orgInfo,theme,permissions}){
               <div style={{display:"flex",gap:10,marginBottom:6,flexWrap:"wrap"}}>
                 {(()=>{
                   // Default key picker shared by UPSERT and UPDATE — prefer an alt-key over the PK.
-                  const ensureKey=()=>{ if(uKey.d) return; const pk=target+"id"; const defaultKey=targetAltKeys[0]||pk; const matchingCol=csvData.h.find(h=>h.toLowerCase()===defaultKey.toLowerCase()); setUKey({d:defaultKey,c:matchingCol||csvData.h[0]||""}); };
+                  // Default key picker: prefer an alt-key over the PK, and only auto-fill the CSV
+                  // column when one actually matches the key name. Falling back to the first CSV
+                  // column (old behavior) silently matched on the wrong column — leave it empty so
+                  // the "key has no CSV column" warning fires and the user picks the right one.
+                  const ensureKey=()=>{ if(uKey.d) return; const pk=target+"id"; const defaultKey=targetAltKeys[0]||pk; const matchingCol=csvData.h.find(h=>h.toLowerCase()===defaultKey.toLowerCase()); setUKey({d:defaultKey,c:matchingCol||""}); };
                   return (<>
                     <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
                       <input type="radio" checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
