@@ -364,6 +364,36 @@ What's the one Salesforce Inspector habit you wish you had on Dynamics 365? 👇
 
 ---
 
+## Post 14 — The bulk-load safety net (Data Loader)
+
+> Publish once approved on the Chrome Web Store. Link in the FIRST COMMENT. HONEST framing — bulk-load tools already exist (native import wizard, XrmToolBox, KingswaySoft, Power Automate). Position on the in-browser + zero-setup + dry-run/rollback/update-only safety-net combo, NOT "nobody else loads data". Strong for the migration / consultant audience; ties to Post 2 (SF migration) and Post 6 (data quality).
+
+Bulk-loading data into Dynamics 365 is one of the most nerve-wracking things a consultant does.
+
+One wrong column mapping. One bad lookup. One UPDATE that quietly creates duplicates instead of updating. And you're explaining to the client why there are 4,000 phantom contacts in production.
+
+So we built Colvio's Data Loader around one idea: see what will happen before it happens — and be able to undo it.
+
+🔍 Dry run — simulate the ENTIRE import (parsing, transforms, lookup resolution, existence checks) with zero writes. Row by row: would create / would update / would fail / would delete. Catch the broken mapping before it ships.
+
+↩️ Rollback — a real run keeps the exact GUIDs it created. One typed confirmation deletes precisely those records — nothing else.
+
+🔒 UPDATE that never creates — strict update via the native If-Match header: a missing key fails the row, it never silently inserts. No more accidental duplicates from a bad key.
+
+Δ Delta mode — fetches current values and sends only the fields that actually changed; unchanged rows are skipped, so re-running a sync doesn't churn modifiedon or the audit trail.
+
+📋 Live per-row log — every row with its status, the exact Dataverse error, and the exact request sent. No guessing why row 2,317 failed.
+
+CSV / Excel, ~3-4k records/sec via multipart $batch, automatic 429 retry, and a Cancel that actually stops everything. Free, in-browser, no setup.
+
+The boring features — dry run, rollback, a log you can trust — are the ones that save your weekend.
+
+What's the worst data-load mistake you've made (or narrowly avoided)? 👇
+
+#Dynamics365 #Dataverse #DataMigration #D365 #PowerPlatform #CRM #OpenSource #ETL
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
