@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.34] — 2026-06-14
+### Internal (Loader: regression-test the match-key default)
+- Extracted the UPSERT/UPDATE/DELETE default-key logic into a pure, unit-tested helper (`loaderUtils.defaultMatchKey`) and added 5 tests — including the regression that bit 1.11.33: when no CSV header matches the key name, the column must be left empty (never silently fall back to the first column). 223 tests total.
+
 ## [1.11.33] — 2026-06-14
 ### Fixed (Loader: match key no longer silently grabs the wrong CSV column)
 - When you switch to UPSERT/UPDATE/DELETE, the Loader auto-fills the match key with the table's first alternate key (a convenience). It used to also auto-pick the **first CSV column** for that key's value when no column name matched — which silently matched on the wrong column (e.g. a product code landing in a "SAP customer number" key → every row 404s). Now the CSV column is only auto-filled when one actually matches the key name; otherwise it's left empty so the existing "key has no CSV column" warning prompts you to pick the right one. The match key itself is still shown in the Preview banner ("matched on …") — change it there if it isn't the one you want.
