@@ -329,6 +329,12 @@ export default {
   "help.restart_tour": "Restart onboarding tour",
   "help.search_placeholder": "Search the help (e.g. upsert, picklist, 429, export...)",
   "help.search_empty": "No help topic matches your search.",
+  "help.cat_all": "All",
+  "help.cat_query": "Query & Export",
+  "help.cat_loader": "Data Loader",
+  "help.cat_admin": "Admin & Governance",
+  "help.cat_schema": "Solutions & Schema",
+  "help.cat_general": "Tips & Troubleshooting",
   // Shortcuts
   "shortcuts.title": "Keyboard Shortcuts",
   "shortcuts.execute": "Execute query",

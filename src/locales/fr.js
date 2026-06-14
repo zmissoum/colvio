@@ -316,6 +316,12 @@ export default {
   "help.restart_tour": "Relancer le tour d'introduction",
   "help.search_placeholder": "Rechercher dans l'aide (ex. upsert, picklist, 429, export...)",
   "help.search_empty": "Aucune rubrique ne correspond à votre recherche.",
+  "help.cat_all": "Tout",
+  "help.cat_query": "Requête & Export",
+  "help.cat_loader": "Chargement",
+  "help.cat_admin": "Admin & Gouvernance",
+  "help.cat_schema": "Solutions & Schéma",
+  "help.cat_general": "Astuces & Dépannage",
   // Shortcuts
   "shortcuts.title": "Raccourcis clavier",
   "shortcuts.execute": "Ex\u00e9cuter la requ\u00eate",
