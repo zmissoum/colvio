@@ -26,6 +26,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[sqlFx,setSqlFx]=useState("");
   const[showSqlFx,setShowSqlFx]=useState(false);
   const[lim,setLim]=useState(0);   // 0 = All (no $top) — an export tool should return everything by default; lower it for a quick preview
+  const[orderBy,setOrderBy]=useState({f:"",dir:"asc"}); // server-side $orderby for the Builder (field + direction)
   const[showList,setShowList]=useState(true);
   const[savedQueries,setSavedQueries]=useState([]);
   const qImportRef=useRef(null);
@@ -79,7 +80,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
   const doSaveQuery=(name)=>{
     if(!name||!ent) return;
-    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),limit:lim,qm,fxml,savedAt:new Date().toISOString()};
+    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,savedAt:new Date().toISOString()};
     const updated=[q,...savedQueries.filter(s=>s.name!==name)].slice(0,20);
     setSavedQueries(updated);
     if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_saved_queries:updated});
@@ -94,6 +95,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         setFilterGroups(q.filterGroups||[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
         setGroupLogic(q.groupLogic||"and");
         setLim(q.limit ?? 0);   // ?? not || so a saved "All" (0) survives restore instead of snapping back to a number
+        setOrderBy(q.orderBy&&q.orderBy.f?{f:q.orderBy.f,dir:q.orderBy.dir==="desc"?"desc":"asc"}:{f:"",dir:"asc"});
         if(q.qm){setQm(q.qm);if(q.qm==="odata"&&q.query)setRq(q.query);}
         if(q.fxml){setFxml(q.fxml);}
       };
@@ -255,6 +257,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     if(exClauses.length)ps.push(`$expand=${exClauses.join(",")}`);
     const gf=buildGroupFilter();
     if(gf) ps.push(`$filter=${gf}`);
+    if(orderBy.f)ps.push(`$orderby=${getOdataName(orderBy.f)} ${orderBy.dir}`);
     if(lim>0)ps.push(`$top=${lim}`);
     return ps.length?q+"?"+ps.join("&"):q;
   };
@@ -465,6 +468,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(expandClauses.length)ps.push(`$expand=${expandClauses.join(",")}`);
       const gf2=buildGroupFilter();
       if(gf2) ps.push(`$filter=${gf2}`);
+      if(orderBy.f)ps.push(`$orderby=${getOdataName(orderBy.f)} ${orderBy.dir}`);
       if(lim>0)ps.push(`$top=${lim}`);
       return ps.length?q+"?"+ps.join("&"):q;
     };
@@ -730,6 +734,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(expandClauses.length)opts.expand=expandClauses.join(",");
       const gf3=buildGroupFilter();
       if(gf3) opts.filter=gf3;
+      if(orderBy.f)opts.orderby=`${getOdataName(orderBy.f)} ${orderBy.dir}`;
       if(lim>0)opts.top=String(lim);
       const data=await bridge.query(ent.p,opts);
       if(!data?.records) return;
@@ -1045,6 +1050,18 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                 <select value={lim} onChange={e=>setLim(+e.target.value)} style={inp({width:"auto",fontSize:12,padding:"3px 6px"})}>{[10,25,50,100,200,500,1000,5000].map(n=><option key={n} value={n}>{n}</option>)}<option value={0}>All</option></select>
                 {lim===0&&<span style={{fontSize:11,color:C.yw}}>⚠ may be slow</span>}
                 {lim===0&&expands.length>0&&<span style={{fontSize:11,color:C.or}}>⚠ D365 limits results with $expand</span>}
+              </div>
+
+              {/* Server-side ORDER BY ($orderby) — sorts the whole result/export, not just the loaded page. */}
+              <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:C.vi,fontWeight:700,minWidth:44,...mono}}>ORDER</span>
+                <select value={orderBy.f} onChange={e=>setOrderBy({...orderBy,f:e.target.value})} style={inp({width:"auto",fontSize:12,padding:"3px 6px"})}>
+                  <option value="">(none)</option>
+                  {fields.map(f=><option key={f.l} value={f.l}>{f.l}</option>)}
+                </select>
+                {orderBy.f&&<select value={orderBy.dir} onChange={e=>setOrderBy({...orderBy,dir:e.target.value})} style={inp({width:"auto",fontSize:12,padding:"3px 6px",color:C.cy})}>
+                  <option value="asc">ASC ↑</option><option value="desc">DESC ↓</option>
+                </select>}
               </div>
             </div>}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8,gap:6,flexWrap:"wrap"}}>
