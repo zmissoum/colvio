@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.39] — 2026-06-14
+### Added (Data Explorer Builder: ORDER BY)
+- The visual query **Builder now has an ORDER BY** control — pick a field and ASC/DESC. It adds a server-side `$orderby`, so the **whole result/export is sorted** (not just the loaded page like header-click sorting). It's saved with the query, and shows in the copied OData URL.
+
 ## [1.11.38] — 2026-06-14
 ### Changed (Loader: visible "Preparing…" phase before sending)
 - On big imports the run used to sit at a frozen "0 / N records" for several seconds before anything moved — the per-row build loop is synchronous and the existing "Preparing records…" message never got a chance to paint. It now yields to the browser so the message shows, displays the **record count**, and refreshes a **"Preparing X / N records…"** counter every 25k rows. The progress bar stays at 0 during this phase on purpose — nothing is written until preparation finishes (no global existence check runs in plain UPDATE/UPSERT unless you opt in, dry-run, or use delta mode).
