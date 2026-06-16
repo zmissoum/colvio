@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.43] — 2026-06-14
+### Fixed (Security Audit: role members timed out on roles spanning many BUs)
+- Loading a role's members could fail with "Timeout after 30s — action: getRoleUsers" on big roles that exist in many business units, and the UI then misleadingly showed "No users are assigned to this role." Three fixes: (1) getRoleUsers/getRoleUserCount now get the 5-minute timeout (they fan out one query per business-unit copy of the role, not a single call); (2) those per-copy queries run with **bounded concurrency (pool of 6)** instead of firing all at once, which used to 429-storm orgs with many BUs; (3) a load failure now shows a clear **error with a Retry button** (and only shows "No users assigned" when the role genuinely has none).
+
 ## [1.11.42] — 2026-06-14
 ### Added (Security Audit & Business Units: Enabled/Disabled user filter)
 - Both the **Security Audit** Users sub-tab (role members) and the **Business Units** members list now have an **All / Enabled / Disabled** filter (defaults to All — same as before). The CSV export respects the active filter, so you can export, say, only the enabled members of a role or a business unit.
