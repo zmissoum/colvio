@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.46] — 2026-06-14
+### Added (Excel export next to every CSV button)
+- Every CSV export now has a native **Excel (.xlsx)** button beside it — better for business users (real typed cells, column widths, no separator/encoding/formula-injection issues). Added across Business Units (this-BU and sub-tree), Security Audit (privileges + role members), Users & Licenses, Login History, System Ops (plug-in traces) and Metadata Browser (fields data-dictionary + OptionSets). Both formats share one `exportTable` helper; xlsx stays lazy-loaded (only fetched when you click an Excel button).
+
 ## [1.11.45] — 2026-06-14
 ### Fixed (Security Audit: "roleId is not defined" when opening a role's Users)
 - 1.11.44 switched the bridge's getRoleUsers signature to take a role name but left its body still passing the old `{ roleId, rootId }` — a ReferenceError ("roleId is not defined") that broke the Users sub-tab while the count badge (correctly updated) still worked. It now passes `{ roleName }`.

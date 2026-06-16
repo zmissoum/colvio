@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, ths, tds, dl, expName } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 // System Ops — two admin panels:
@@ -106,11 +106,10 @@ function PluginTraces({ bp, orgFeatures, theme }) {
   const anyFilter = !!(search.trim() || dateFrom || dateTo || (parseInt(minMs, 10) > 0) || onlyErrors);
   const resetFilters = () => { setSearch(""); setDateFrom(""); setDateTo(""); setMinMs(""); setOnlyErrors(false); };
 
-  const exportCsv = () => {
-    const esc = (v) => { let s = String(v ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
-    const head = ["createdon", "typename", "messagename", "primaryentity", "mode", "duration_ms", "exception"].join(",");
-    const lines = filtered.map(r => [r.createdon, r.typename, r.messagename, r.primaryentity, r["mode" + FMT] || r.mode, r.performanceexecutionduration, (r.exceptiondetails || "").substring(0, 500)].map(esc).join(","));
-    dl("﻿" + [head, ...lines].join("\n"), "text/csv;charset=utf-8", expName("plugin_traces", "csv", true));
+  const exportCsv = (format = "csv") => {
+    const headers = ["createdon", "typename", "messagename", "primaryentity", "mode", "duration_ms", "exception"];
+    const rows = filtered.map(r => [r.createdon, r.typename, r.messagename, r.primaryentity, r["mode" + FMT] || r.mode, r.performanceexecutionduration, (r.exceptiondetails || "").substring(0, 500)]);
+    exportTable(headers, rows, "plugin_traces", format, "Plugin Traces", true);
   };
 
   return (
@@ -134,7 +133,8 @@ function PluginTraces({ bp, orgFeatures, theme }) {
         </select>
         <button onClick={load} style={bt(null, { fontSize: 12 })}>↻</button>
         {anyFilter && <button onClick={resetFilters} style={bt(null, { fontSize: 12 })} title={t("ops.reset")}>✕</button>}
-        {filtered.length > 0 && <button onClick={exportCsv} style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>}
+        {filtered.length > 0 && <button onClick={() => exportCsv("csv")} style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>}
+        {filtered.length > 0 && <button onClick={() => exportCsv("xlsx")} style={bt(null, { fontSize: 12 })}><I.Download /> Excel</button>}
       </div>
       {loading && <div style={{ textAlign: "center", marginTop: 24 }}><Spin s={18} /></div>}
       {error && <div style={{ color: C.rd, fontSize: 13, ...crd({ padding: 12 }) }}>{error}{error.includes("privilege") || error.includes("403") ? ` — ${t("ops.traces_priv_hint")}` : ""}</div>}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -92,14 +92,11 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
     return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
   };
 
-  const exportCSV = () => {
-    const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
-    const esc = (v) => { const s = safe(String(v || "")); return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s; };
+  const exportCSV = (format = "csv") => {
     const headers = ["fullname", "email", "disabled", "accessMode", "calType", "businessUnit", "title", "createdOn"];
-    const rows = users.map(u => [u.fullname, u.email, u.disabled ? "Yes" : "No", u.accessModeLabel, u.calTypeLabel, u.buName, u.title, u.createdOn].map(esc).join(","));
-    const csv = "\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
-    dl(csv, "text/csv;charset=utf-8", expName("d365_users_licenses","csv"));
-    setFeedback(`CSV downloaded (${users.length} users)`);
+    const rows = users.map(u => [u.fullname, u.email, u.disabled ? "Yes" : "No", u.accessModeLabel, u.calTypeLabel, u.buName, u.title, u.createdOn]);
+    exportTable(headers, rows, "d365_users_licenses", format, "Users");
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${users.length} users)`);
     setTimeout(() => setFeedback(""), 2000);
   };
 
@@ -146,7 +143,8 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
           ))}
         </div>
         <div style={{ padding: "8px 10px", borderTop: `1px solid ${C.bd}`, display: "flex", gap: 6, alignItems: "center" }}>
-          <button onClick={exportCSV} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> {t("licenses.export_csv")}</button>
+          <button onClick={() => exportCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> {t("licenses.export_csv")}</button>
+          <button onClick={() => exportCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
           {feedback && <span style={{ fontSize: 11, color: C.gn }}>{feedback}</span>}
         </div>
       </div>

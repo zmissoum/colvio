@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, dl, expName, copyText, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, exportTable, copyText, isTrulyCustom } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import SchemaDiff from "./SchemaDiff.jsx";
@@ -17,24 +17,22 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
 
   // Export ALL field metadata for the selected entity as a single CSV.
   // Includes logical/display names, OData column name (for $select), type, required/custom flags.
-  const exportAllFields=()=>{
+  const exportAllFields=(format="csv")=>{
     if(!selEnt||!fields.length)return;
-    const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-    const rows=["﻿Logical Name,Display Name,OData Name,Type,Required,Custom"];
-    for(const f of fields){
-      rows.push([esc(f.l),esc(f.d),esc(f.o||f.l),esc(displayType(f.t)),f.req?"Yes":"No",f.cust?"Yes":"No"].join(","));
-    }
-    dl(rows.join("\n"),"text/csv;charset=utf-8",expName(`${selEnt.l}_fields`,"csv"));
+    const headers=["Logical Name","Display Name","OData Name","Type","Required","Custom"];
+    const rows=fields.map(f=>[f.l,f.d,f.o||f.l,displayType(f.t),f.req?"Yes":"No",f.cust?"Yes":"No"]);
+    exportTable(headers,rows,`${selEnt.l}_fields`,format,"Fields");
   };
 
   // Export ALL OptionSet values for the selected entity as a single CSV
-  const exportAllOptionSets=async()=>{
+  const exportAllOptionSets=async(format="csv")=>{
     if(!selEnt||!fields.length||exportingOS)return;
     setExportingOS(true);
     try{
       const osFields=fields.filter(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status");
       if(!osFields.length){setExportingOS(false);return;}
-      const rows=["\uFEFFField Logical Name,Field Label,Field Type,Value,Label,Description"];
+      const headers=["Field Logical Name","Field Label","Field Type","Value","Label","Description"];
+      const rows=[];
       for(const f of osFields){
         let vals=optionSetData[f.l];
         if(!vals){
@@ -42,12 +40,11 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
         }
         if(vals&&vals.length){
           for(const o of vals){
-            const esc=v=>`"${String(v||"").replace(/"/g,'""')}"`;
-            rows.push(`${esc(f.l)},${esc(f.d)},${esc(displayType(f.t))},${o.value},${esc(o.label)},${esc(o.description)}`);
+            rows.push([f.l,f.d,displayType(f.t),o.value,o.label,o.description]);
           }
         }
       }
-      if(rows.length>1) dl(rows.join("\n"),"text/csv;charset=utf-8",expName(`${selEnt.l}_all_optionsets`,"csv"));
+      if(rows.length) exportTable(headers,rows,`${selEnt.l}_all_optionsets`,format,"OptionSets");
     }catch{}finally{setExportingOS(false);}
   };
   useEffect(()=>{if(!showPicklist)return;const h=e=>{if(e.key==="Escape")setShowPicklist(null);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[showPicklist]);
@@ -148,8 +145,8 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
               </div>
               <span style={{fontSize:12,color:C.txd,background:C.bg,padding:"3px 10px",borderRadius:4}}>{selEnt.cat}</span>
               {loadingFields?<Spin s={12}/>:<span style={{fontSize:13,color:C.txm}}>{fields.length} columns</span>}
-              {!loadingFields&&fields.length>0&&<><button onClick={exportAllFields} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Export All Fields</button><Tooltip text={t("help.fields_export")}/></>}
-              {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={exportAllOptionSets} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><Tooltip text={t("help.optionset_export")}/></>}
+              {!loadingFields&&fields.length>0&&<><button onClick={()=>exportAllFields("csv")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Export All Fields</button><button onClick={()=>exportAllFields("xlsx")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Excel</button><Tooltip text={t("help.fields_export")}/></>}
+              {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={()=>exportAllOptionSets("csv")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><button onClick={()=>exportAllOptionSets("xlsx")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Excel</>}</button><Tooltip text={t("help.optionset_export")}/></>}
             </div>
 
             <div style={{marginBottom:10}}><input value={fieldSearch} onChange={e=>setFieldSearch(e.target.value)} placeholder="Filter columns..." style={inp({fontSize:13,maxWidth:300})}/></div>
@@ -190,7 +187,8 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                         {opts.length>0&&<span style={{fontSize:12,color:C.txm}}>{opts.length} values</span>}
                       </div>
                       <div style={{display:"flex",gap:6}}>
-                        {opts.length>0&&<button onClick={()=>{const csv=opts.map(o=>`${o.value},"${(o.label||"").replace(/"/g,'""')}","${(o.description||"").replace(/"/g,'""')}"`).join("\n");dl("\uFEFF"+"Value,Label,Description\n"+csv,"text/csv;charset=utf-8",expName(`${field.l}_optionset`,"csv"));cp("","opts");}} style={bt(null,{fontSize:12})}><I.Download/> {copied==="opts"?"✓ Downloaded":"Export CSV"}</button>}
+                        {opts.length>0&&<button onClick={()=>{exportTable(["Value","Label","Description"],opts.map(o=>[o.value,o.label,o.description]),`${field.l}_optionset`,"csv","OptionSet");cp("","opts");}} style={bt(null,{fontSize:12})}><I.Download/> {copied==="opts"?"✓ Downloaded":"Export CSV"}</button>}
+                        {opts.length>0&&<button onClick={()=>{exportTable(["Value","Label","Description"],opts.map(o=>[o.value,o.label,o.description]),`${field.l}_optionset`,"xlsx","OptionSet");cp("","opts");}} style={bt(null,{fontSize:12})}><I.Download/> {copied==="opts"?"✓ Downloaded":"Excel"}</button>}
                         <button onClick={()=>setShowPicklist(null)} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:4,fontSize:16}}>✕</button>
                       </div>
                     </div>

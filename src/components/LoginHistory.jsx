@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
@@ -93,13 +93,13 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
     return sessions.reverse();
   },[history]);
 
-  const copyAll=()=>{
-    const esc=(v)=>{let s=String(v||"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
-    const csv=["Date,Time,Action,Access Type,Operation,Session Info,Additional Info",...history.map(h=>{
+  const copyAll=(format="csv")=>{
+    const headers=["Date","Time","Action","Access Type","Operation","Session Info","Additional Info"];
+    const rows=history.map(h=>{
       const d=new Date(h.date);
-      return [d.toLocaleDateString("en-US"),d.toLocaleTimeString("en-US"),h.action,h.accessType||"",h.operation||"",h.changedata||"",h.info||""].map(esc).join(",");
-    })].join("\n");
-    dl("\uFEFF"+csv,"text/csv;charset=utf-8",expName(`login_history_${selectedUser?.fullname?.replace(/\s+/g,"_")||"export"}`,"csv"));
+      return [d.toLocaleDateString("en-US"),d.toLocaleTimeString("en-US"),h.action,h.accessType||"",h.operation||"",h.changedata||"",h.info||""];
+    });
+    exportTable(headers,rows,`login_history_${selectedUser?.fullname?.replace(/\s+/g,"_")||"export"}`,format,"Login History");
   };
 
   return(
@@ -163,7 +163,8 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>{setSelectedUser(null);setHistory([]);setSearch("");setError("");}} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.txm}}>Change</button>
               <button onClick={()=>selectUser(selectedUser)} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.cy}}>Refresh</button>
-              {history.length>0&&<button onClick={copyAll} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.gn}44`,borderRadius:4,cursor:"pointer",background:C.gn+"22",color:C.gn,display:"flex",alignItems:"center",gap:4}}><I.Download/> Export CSV</button>}
+              {history.length>0&&<button onClick={()=>copyAll("csv")} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.gn}44`,borderRadius:4,cursor:"pointer",background:C.gn+"22",color:C.gn,display:"flex",alignItems:"center",gap:4}}><I.Download/> Export CSV</button>}
+              {history.length>0&&<button onClick={()=>copyAll("xlsx")} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.gn}44`,borderRadius:4,cursor:"pointer",background:C.gn+"22",color:C.gn,display:"flex",alignItems:"center",gap:4}}><I.Download/> Excel</button>}
             </div>
           </div>
 
