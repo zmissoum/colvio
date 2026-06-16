@@ -394,6 +394,36 @@ What's the worst data-load mistake you've made (or narrowly avoided)? 👇
 
 ---
 
+## Post 15 — See who's in every business unit
+
+> Publish once approved on the Chrome Web Store. Link in the FIRST COMMENT. HONEST framing — BU + user info is available natively (Power Platform admin center) and via XrmToolBox / PowerShell / FetchXML. Position on the in-browser tree + members + scoped CSV export, NOT "nobody else does this". Governance angle; pairs with Post 12 (Security Audit) and Post 5.
+
+Quick D365 governance question: can you see, right now, who sits in each of your business units — and pull the full member list of a BU plus everything beneath it?
+
+You can in the admin center, one BU at a time, with some clicking. Or a FetchXML query. Or PowerShell.
+
+Colvio just added a Business Units tab that puts it one click away, in your browser:
+
+🌳 The full BU hierarchy as a tree, each with its user count
+👥 Click a BU → its members (name, email, access mode, status)
+📥 Export to CSV — just that BU, or that BU plus every sub-BU beneath it (with a Business Unit column per user)
+
+It rounds out a governance trio:
+
+🛡 Security Audit — who holds which role (across all BUs)
+👤 Users & Licenses — every user, access mode, last login, unused licenses
+🌳 Business Units — the org structure and who's where
+
+Free, in-browser, no setup, no account. Your session, your security roles, everything stays local.
+
+Sometimes the hardest governance question isn't "what can they do" — it's "who is actually where."
+
+How do you map your org's business-unit structure today — admin center, a script, or something else? 👇
+
+#Dynamics365 #Dataverse #D365 #PowerPlatform #CRM #Governance #OpenSource #Security
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
