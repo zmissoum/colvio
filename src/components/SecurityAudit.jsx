@@ -63,6 +63,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [users, setUsers] = useState(null);          // lazy — loaded when the Users tab opens
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [userStatus, setUserStatus] = useState("all"); // all | enabled | disabled
   const selectGen = useRef(0);
 
   // Load all roles on mount
@@ -126,22 +127,24 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     });
   };
 
+  const passStatus = (u) => userStatus === "all" || (userStatus === "enabled" ? !u.disabled : !!u.disabled);
   const shownUsers = useMemo(() => {
     if (!users) return [];
     const s = userSearch.trim().toLowerCase();
-    if (!s) return users;
-    return users.filter(u => [u.name, u.email, u.bu, u.domain].some(v => (v || "").toLowerCase().includes(s)));
-  }, [users, userSearch]);
+    return users.filter(u => passStatus(u) && (!s || [u.name, u.email, u.bu, u.domain].some(v => (v || "").toLowerCase().includes(s))));
+    // eslint-disable-next-line
+  }, [users, userSearch, userStatus]);
 
   const exportUsersCSV = () => {
     if (!selRole || !users?.length) return;
+    const list = users.filter(passStatus);   // export respects the Enabled/Disabled filter
     const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
     const esc = (v) => { const x = safe(String(v ?? "")); return x.includes(",") || x.includes('"') ? `"${x.replace(/"/g, '""')}"` : x; };
     const headers = ["name", "email", "businessUnit", "accessMode", "status", "domain"];
-    const rows = users.map(u => [u.name, u.email, u.bu, u.accessMode, u.disabled ? "Disabled" : "Enabled", u.domain].map(esc).join(","));
+    const rows = list.map(u => [u.name, u.email, u.bu, u.accessMode, u.disabled ? "Disabled" : "Enabled", u.domain].map(esc).join(","));
     const csv = "﻿" + headers.join(",") + "\n" + rows.join("\n");
     dl(csv, "text/csv;charset=utf-8", expName(`security_role_${selRole.name.replace(/\s+/g, "_")}_users`, "csv"));
-    setFeedback(`CSV downloaded (${users.length} users)`);
+    setFeedback(`CSV downloaded (${list.length} users)`);
     setTimeout(() => setFeedback(""), 2000);
   };
 
@@ -307,7 +310,12 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                 {users && users.length > 0 && (
                   <>
                     <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users (name, email, BU)…" style={inp({ fontSize: 13, maxWidth: 280 })} />
+                      <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users (name, email, BU)…" style={inp({ fontSize: 13, maxWidth: 240 })} />
+                      <div style={{ display: "flex", border: `1px solid ${C.bd}`, borderRadius: 5, overflow: "hidden" }}>
+                        {[["all", "All"], ["enabled", "Enabled"], ["disabled", "Disabled"]].map(([k, lbl]) => (
+                          <button key={k} onClick={() => setUserStatus(k)} style={{ padding: "4px 9px", fontSize: 11, border: "none", cursor: "pointer", background: userStatus === k ? C.cy + "22" : "transparent", color: userStatus === k ? C.cy : C.txm, fontWeight: userStatus === k ? 600 : 400 }}>{lbl}</button>
+                        ))}
+                      </div>
                       <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{users.length}</span>
                       <button onClick={exportUsersCSV} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
                     </div>
