@@ -23,6 +23,7 @@ import ShortcutsPanel from "./components/ShortcutsPanel.jsx";
 import OnboardingTour from "./components/OnboardingTour.jsx";
 import HelpTab from "./components/HelpTab.jsx";
 import UserLicenseMonitor from "./components/UserLicenseMonitor.jsx";
+import BusinessUnits from "./components/BusinessUnits.jsx";
 import SecurityAudit from "./components/SecurityAudit.jsx";
 import SchemaViewer from "./components/SchemaViewer.jsx";
 
@@ -201,6 +202,7 @@ export default function App(){
     {id:"translations",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
     {id:"ops",label:t("nav.ops"),desc:t("nav.ops.desc"),icon:<I.Zap/>,requires:"canReadAllUsers"},
     {id:"licenses",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
+    {id:"bu",label:t("nav.bu"),desc:t("nav.bu.desc"),icon:<I.Link/>,requires:"canReadAllUsers"},
     {id:"security",label:t("nav.security"),desc:t("nav.security.desc"),icon:<I.Shield/>,requires:"canReadAllUsers"},
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
@@ -303,6 +305,7 @@ export default function App(){
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo} theme={theme} canPublish={permissions?.canPublish!==false}/></ErrorBoundary>}
           {tab==="licenses"&&<ErrorBoundary><UserLicenseMonitor bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="bu"&&<ErrorBoundary><BusinessUnits bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="security"&&<ErrorBoundary><SecurityAudit bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{if(loaderBusy&&!window.confirm("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?"))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
