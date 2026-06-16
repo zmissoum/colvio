@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 
 // Business Units — the org's BU hierarchy with the users assigned to each. Users are grouped by
 // their _businessunitid_value (every user sits in exactly one BU). Read-only.
@@ -105,16 +105,14 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
   const hasSub = subUsers.length > selUsers.length;
 
   // scope: "this" = direct members of the selected BU; "subtree" = it + all sub-BUs (BU column kept).
-  const exportUsers = (scope) => {
+  const exportUsers = (scope, format = "csv") => {
     if (!selBu) return;
     const base = scope === "subtree" ? subUsers : selUsers.map(u => ({ ...u, _bu: selBu.name }));
     const list = base.filter(passStatus);   // export respects the Enabled/Disabled filter
     if (!list.length) return;
-    const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
-    const esc = (v) => { const x = safe(String(v ?? "")); return x.includes(",") || x.includes('"') ? `"${x.replace(/"/g, '""')}"` : x; };
     const headers = ["name", "email", "title", "accessMode", "calType", "status", "businessUnit"];
-    const rows = list.map(u => [u.fullname, u.email, u.title, u.accessModeLabel || u.accessMode, u.calTypeLabel || u.calType, u.disabled ? "Disabled" : "Enabled", u._bu || selBu.name].map(esc).join(","));
-    dl("﻿" + headers.join(",") + "\n" + rows.join("\n"), "text/csv;charset=utf-8", expName(`bu_${selBu.name.replace(/\s+/g, "_")}${scope === "subtree" ? "_subtree" : ""}_users`, "csv"));
+    const rows = list.map(u => [u.fullname, u.email, u.title, u.accessModeLabel || u.accessMode, u.calTypeLabel || u.calType, u.disabled ? "Disabled" : "Enabled", u._bu || selBu.name]);
+    exportTable(headers, rows, `bu_${selBu.name.replace(/\s+/g, "_")}${scope === "subtree" ? "_subtree" : ""}_users`, format, "Users");
   };
 
   const Badge = ({ label, color }) => (
@@ -166,7 +164,7 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
             {selUsers.length === 0
               ? <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>
                   No users are directly assigned to this business unit.
-                  {hasSub && <div style={{ marginTop: 10 }}><button onClick={() => exportUsers("subtree")} style={bt(C.cy, { fontSize: 12 })}><I.Download /> Export {subUsers.length.toLocaleString()} users from sub-BUs (CSV)</button></div>}
+                  {hasSub && <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}><button onClick={() => exportUsers("subtree", "csv")} style={bt(C.cy, { fontSize: 12 })}><I.Download /> Export {subUsers.length.toLocaleString()} users from sub-BUs (CSV)</button><button onClick={() => exportUsers("subtree", "xlsx")} style={bt(C.cy, { fontSize: 12 })}><I.Download /> Excel</button></div>}
                 </div>
               : <>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -177,8 +175,10 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
                     ))}
                   </div>
                   <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{selUsers.length}</span>
-                  <button onClick={() => exportUsers("this")} title="Export the direct members of this BU" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV (this BU)</button>
-                  {hasSub && <button onClick={() => exportUsers("subtree")} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px" })}><I.Download /> + sub-BUs ({subUsers.length.toLocaleString()})</button>}
+                  <button onClick={() => exportUsers("this", "csv")} title="Export the direct members of this BU" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV (this BU)</button>
+                  <button onClick={() => exportUsers("this", "xlsx")} title="Export the direct members of this BU to Excel" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel (this BU)</button>
+                  {hasSub && <button onClick={() => exportUsers("subtree", "csv")} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px" })}><I.Download /> + sub-BUs ({subUsers.length.toLocaleString()})</button>}
+                  {hasSub && <button onClick={() => exportUsers("subtree", "xlsx")} title="Export this BU plus every sub-BU beneath it to Excel" style={bt(null, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel + sub-BUs</button>}
                 </div>
                 <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 90px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>

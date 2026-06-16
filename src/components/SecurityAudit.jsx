@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, dl, expName } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -138,16 +138,13 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     // eslint-disable-next-line
   }, [users, userSearch, userStatus]);
 
-  const exportUsersCSV = () => {
+  const exportUsersCSV = (format = "csv") => {
     if (!selRole || !users?.length) return;
     const list = users.filter(passStatus);   // export respects the Enabled/Disabled filter
-    const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
-    const esc = (v) => { const x = safe(String(v ?? "")); return x.includes(",") || x.includes('"') ? `"${x.replace(/"/g, '""')}"` : x; };
     const headers = ["name", "email", "businessUnit", "accessMode", "status", "domain"];
-    const rows = list.map(u => [u.name, u.email, u.bu, u.accessMode, u.disabled ? "Disabled" : "Enabled", u.domain].map(esc).join(","));
-    const csv = "﻿" + headers.join(",") + "\n" + rows.join("\n");
-    dl(csv, "text/csv;charset=utf-8", expName(`security_role_${selRole.name.replace(/\s+/g, "_")}_users`, "csv"));
-    setFeedback(`CSV downloaded (${list.length} users)`);
+    const rows = list.map(u => [u.name, u.email, u.bu, u.accessMode, u.disabled ? "Disabled" : "Enabled", u.domain]);
+    exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}_users`, format, "Users");
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${list.length} users)`);
     setTimeout(() => setFeedback(""), 2000);
   };
 
@@ -181,15 +178,12 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
 
   const isSensitive = (name) => SENSITIVE_PRIVS.has(name?.toLowerCase());
 
-  const exportCSV = () => {
+  const exportCSV = (format = "csv") => {
     if (!selRole || !privileges.length) return;
-    const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
-    const esc = (v) => { const s = safe(String(v || "")); return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s; };
     const headers = ["privilege", "label", "depth", "depthLabel", "isOrg", "isSensitive"];
-    const rows = privileges.map(p => [p.name, formatPrivName(p.name), p.depth, p.depthLabel, p.isOrg ? "Yes" : "No", isSensitive(p.name) ? "Yes" : "No"].map(esc).join(","));
-    const csv = "\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
-    dl(csv, "text/csv;charset=utf-8", expName(`security_role_${selRole.name.replace(/\s+/g, "_")}`, "csv"));
-    setFeedback(`CSV downloaded (${privileges.length} privileges)`);
+    const rows = privileges.map(p => [p.name, formatPrivName(p.name), p.depth, p.depthLabel, p.isOrg ? "Yes" : "No", isSensitive(p.name) ? "Yes" : "No"]);
+    exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}`, format, "Privileges");
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${privileges.length} privileges)`);
     setTimeout(() => setFeedback(""), 2000);
   };
 
@@ -243,7 +237,8 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={exportCSV} disabled={loadingPriv} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: loadingPriv ? 0.5 : 1 })}><I.Download /> CSV</button>
+                  <button onClick={() => exportCSV("csv")} disabled={loadingPriv} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: loadingPriv ? 0.5 : 1 })}><I.Download /> CSV</button>
+                  <button onClick={() => exportCSV("xlsx")} disabled={loadingPriv} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: loadingPriv ? 0.5 : 1 })}><I.Download /> Excel</button>
                 </div>
               </div>
               {feedback && <span style={{ fontSize: 11, color: C.gn }}>{feedback}</span>}
@@ -324,7 +319,8 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                         ))}
                       </div>
                       <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{users.length}</span>
-                      <button onClick={exportUsersCSV} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                      <button onClick={() => exportUsersCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                      <button onClick={() => exportUsersCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
                     </div>
                     <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 92px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>

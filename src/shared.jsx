@@ -110,6 +110,25 @@ export function dl(c,t,n){const b=new Blob([c],{type:t});const u=URL.createObjec
 // Standard export filename: <base>_<YYYYMMDD>.<ext> (local date). withTime adds _HHMMSS for
 // files exported several times a day (run logs) so they don't collide.
 export function expName(base,ext,withTime=false){const d=new Date();const p=(n)=>String(n).padStart(2,"0");const ymd=`${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;const hms=withTime?`_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`:"";return `${base}_${ymd}${hms}.${ext}`;}
+// Unified table export — CSV or native XLSX from the same data. `rows` = array of value-arrays
+// (raw values, header order). XLSX gives business users real typed cells (no separator/encoding or
+// formula-injection issues) and column widths; CSV keeps the formula-injection guard + BOM. xlsx is
+// lazy-loaded only when exporting to .xlsx. withTime adds _HHMMSS so same-day exports don't collide.
+export async function exportTable(headers,rows,baseName,format="csv",sheetName="Sheet1",withTime=false){
+  if(format==="xlsx"){
+    const m=await import("xlsx");const XLSX=m.utils?m:(m.default||m);
+    const aoa=[headers,...rows.map(r=>r.map(v=>v==null?"":(typeof v==="object"?JSON.stringify(v):v)))];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=headers.map(h=>({wch:Math.max(String(h).length,12)}));
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,(String(sheetName).replace(/[\\/?*[\]:]/g," ").substring(0,31))||"Sheet1");
+    XLSX.writeFile(wb,expName(baseName,"xlsx",withTime));
+  }else{
+    const esc=(v)=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
+    const csv="﻿"+[headers,...rows].map(r=>r.map(esc).join(",")).join("\n");
+    dl(csv,"text/csv;charset=utf-8",expName(baseName,"csv",withTime));
+  }
+}
 export function Spin({s=14}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid ${C.txd}44`,borderTopColor:C.tx,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>;}
 export function copyText(t){navigator.clipboard?.writeText(String(t));}
 
