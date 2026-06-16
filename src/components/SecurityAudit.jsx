@@ -62,6 +62,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [detailTab, setDetailTab] = useState("privileges"); // privileges | users
   const [users, setUsers] = useState(null);          // lazy — loaded when the Users tab opens
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersErr, setUsersErr] = useState("");      // distinct from "genuinely empty"
   const [userSearch, setUserSearch] = useState("");
   const [userStatus, setUserStatus] = useState("all"); // all | enabled | disabled
   const selectGen = useRef(0);
@@ -88,6 +89,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     setPrivFilter("all");
     setDetailTab("privileges");
     setUsers(null);
+    setUsersErr("");
     setUserSearch("");
     setError("");
 
@@ -118,12 +120,13 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     if (users !== null || loadingUsers || !selRole) return;
     const gen = selectGen.current;
     setLoadingUsers(true);
+    setUsersErr("");
     bridge.getRoleUsers(selRole.id, selRole.rootId).then(list => {
       if (selectGen.current !== gen) return;
-      setUsers(list || []);
-      setLoadingUsers(false);
+      setUsers(list || []); setLoadingUsers(false);
     }).catch(e => {
-      if (selectGen.current === gen) { setError(e.message); setUsers([]); setLoadingUsers(false); }
+      // Leave users null (not []) so a Retry re-fetches; show the error instead of "no members".
+      if (selectGen.current === gen) { setUsersErr(e.message || "Failed to load users"); setUsers(null); setLoadingUsers(false); }
     });
   };
 
@@ -305,9 +308,13 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
 
             {detailTab === "users" && (
               <div>
-                {loadingUsers && users === null && <div style={{ textAlign: "center", marginTop: 20 }}><Spin s={16} /> Loading users...</div>}
-                {users && users.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No users are assigned to this role (in this business unit).</div>}
-                {users && users.length > 0 && (
+                {loadingUsers && <div style={{ textAlign: "center", marginTop: 20 }}><Spin s={16} /> Loading users… (large roles span every business unit, this can take a moment)</div>}
+                {!loadingUsers && usersErr && <div style={{ ...crd({ padding: 14, borderColor: C.rd + "66" }), color: C.rd, fontSize: 13 }}>
+                  Couldn't load the members: {usersErr.includes("Timeout") ? "the request timed out — this role exists in many business units." : usersErr}
+                  <button onClick={() => { setUsersErr(""); openUsersTab(); }} style={{ ...bt(null, { fontSize: 12, marginLeft: 10 }) }}>↻ Retry</button>
+                </div>}
+                {!loadingUsers && !usersErr && users && users.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No users are assigned to this role.</div>}
+                {!loadingUsers && !usersErr && users && users.length > 0 && (
                   <>
                     <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
                       <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users (name, email, BU)…" style={inp({ fontSize: 13, maxWidth: 240 })} />
