@@ -93,8 +93,8 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
   };
 
   const exportCSV = (format = "csv") => {
-    const headers = ["fullname", "email", "disabled", "accessMode", "calType", "businessUnit", "title", "createdOn"];
-    const rows = users.map(u => [u.fullname, u.email, u.disabled ? "Yes" : "No", u.accessModeLabel, u.calTypeLabel, u.buName, u.title, u.createdOn]);
+    const headers = ["fullname", "email", "disabled", "accessMode", "calType", "businessUnit", "title", "manager", "phone", "mobile", "createdOn"];
+    const rows = users.map(u => [u.fullname, u.email, u.disabled ? "Yes" : "No", u.accessModeLabel, u.calTypeLabel, u.buName, u.title, u.manager, u.phone, u.mobile, u.createdOn]);
     exportTable(headers, rows, "d365_users_licenses", format, "Users");
     setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${users.length} users)`);
     setTimeout(() => setFeedback(""), 2000);
@@ -166,6 +166,9 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 13 }}>
                 <div><span style={{ color: C.txd }}>{t("licenses.bu")}:</span> <span style={{ fontWeight: 500 }}>{selUser.buName || "—"}</span></div>
                 <div><span style={{ color: C.txd }}>Title:</span> <span style={{ fontWeight: 500 }}>{selUser.title || "—"}</span></div>
+                <div><span style={{ color: C.txd }}>Manager:</span> <span style={{ fontWeight: 500 }}>{selUser.manager || "—"}</span></div>
+                <div><span style={{ color: C.txd }}>Phone:</span> <span style={{ fontWeight: 500 }}>{selUser.phone || "—"}</span></div>
+                <div><span style={{ color: C.txd }}>Mobile:</span> <span style={{ fontWeight: 500 }}>{selUser.mobile || "—"}</span></div>
                 <div><span style={{ color: C.txd }}>{t("licenses.access_mode")}:</span> <span style={{ fontWeight: 500 }}>{selUser.accessModeLabel}</span></div>
                 <div><span style={{ color: C.txd }}>{t("licenses.cal_type")}:</span> <span style={{ fontWeight: 500 }}>{selUser.calTypeLabel}</span></div>
                 <div><span style={{ color: C.txd }}>{t("licenses.created")}:</span> <span style={{ fontWeight: 500, ...mono }}>{selUser.createdOn ? new Date(selUser.createdOn).toLocaleDateString() : "—"}</span></div>

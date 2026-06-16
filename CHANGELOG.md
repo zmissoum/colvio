@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.47] — 2026-06-16
+### Added (more user fields from Dataverse)
+- User views now surface **Manager**, **Business phone** and **Mobile** (in addition to **Job title**) — pulled from the Dataverse `systemuser` record (`parentsystemuserid`, `address1_telephone1`, `mobilephone`, `title`). Shown in the Users & Licenses detail card; job title also appears as a sub-line under each name in Business Units and Security-Audit role-member tables (phone/mobile on hover). All four columns are included in every CSV/Excel export of those lists.
+- Note: these come from Dataverse, not directly from Entra ID. Pure-Entra attributes such as **department** are not mirrored onto `systemuser` by default and live in Microsoft Graph, which Colvio (a zero-setup, Dataverse-session tool) does not call. If your org syncs a custom department field onto `systemuser`, it can be surfaced too.
+
 ## [1.11.46] — 2026-06-14
 ### Added (Excel export next to every CSV button)
 - Every CSV export now has a native **Excel (.xlsx)** button beside it — better for business users (real typed cells, column widths, no separator/encoding/formula-injection issues). Added across Business Units (this-BU and sub-tree), Security Audit (privileges + role members), Users & Licenses, Login History, System Ops (plug-in traces) and Metadata Browser (fields data-dictionary + OptionSets). Both formats share one `exportTable` helper; xlsx stays lazy-loaded (only fetched when you click an Excel button).

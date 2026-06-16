@@ -141,8 +141,8 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const exportUsersCSV = (format = "csv") => {
     if (!selRole || !users?.length) return;
     const list = users.filter(passStatus);   // export respects the Enabled/Disabled filter
-    const headers = ["name", "email", "businessUnit", "accessMode", "status", "domain"];
-    const rows = list.map(u => [u.name, u.email, u.bu, u.accessMode, u.disabled ? "Disabled" : "Enabled", u.domain]);
+    const headers = ["name", "email", "title", "manager", "phone", "mobile", "businessUnit", "accessMode", "status", "domain"];
+    const rows = list.map(u => [u.name, u.email, u.title, u.manager, u.phone, u.mobile, u.bu, u.accessMode, u.disabled ? "Disabled" : "Enabled", u.domain]);
     exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}_users`, format, "Users");
     setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${list.length} users)`);
     setTimeout(() => setFeedback(""), 2000);
@@ -330,11 +330,14 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                         {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match this filter</div>}
                         {shownUsers.map((u, i) => (
                           <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 92px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.name}>
-                              {u.name}
-                              {u.accessModeCode !== 0 && u.accessMode && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.vi + "22", color: C.vi, fontWeight: 700, marginLeft: 6 }}>{u.accessMode}</span>}
+                            <span style={{ minWidth: 0, overflow: "hidden" }} title={u.title ? `${u.name} — ${u.title}` : u.name}>
+                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {u.name}
+                                {u.accessModeCode !== 0 && u.accessMode && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.vi + "22", color: C.vi, fontWeight: 700, marginLeft: 6 }}>{u.accessMode}</span>}
+                              </span>
+                              {u.title && <span style={{ display: "block", fontSize: 10, color: C.txd, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.title}</span>}
                             </span>
-                            <span style={{ color: C.txm, ...mono, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.email || u.domain}>{u.email || u.domain || "—"}</span>
+                            <span style={{ color: C.txm, ...mono, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.phone || u.mobile ? `${u.email || u.domain || ""}${u.phone ? " · ☎ " + u.phone : ""}${u.mobile ? " · 📱 " + u.mobile : ""}` : (u.email || u.domain)}>{u.email || u.domain || "—"}</span>
                             <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.bu}>{u.bu || "—"}</span>
                             <span>{u.disabled ? <Badge label="Disabled" color={C.rd} /> : <Badge label="Enabled" color={C.gn} />}</span>
                           </div>
