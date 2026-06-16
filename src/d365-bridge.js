@@ -713,7 +713,7 @@ export const bridge = {
       { id: "u3", name: "Svc Integration", email: "", domain: "app\\svcint", disabled: false, accessMode: "Non-interactive", accessModeCode: 4, bu: "Contoso" },
       { id: "u4", name: "Old Account", email: "old@contoso.com", domain: "contoso\\old", disabled: true, accessMode: "Read-Write", accessModeCode: 0, bu: "Sales US" },
     ];
-    return callD365("getRoleUsers", { roleId, rootId });
+    return callD365("getRoleUsers", { roleName });
   },
 
   async getManyToManyRelationships(logicalName) {

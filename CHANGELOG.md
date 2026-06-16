@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.45] — 2026-06-14
+### Fixed (Security Audit: "roleId is not defined" when opening a role's Users)
+- 1.11.44 switched the bridge's getRoleUsers signature to take a role name but left its body still passing the old `{ roleId, rootId }` — a ReferenceError ("roleId is not defined") that broke the Users sub-tab while the count badge (correctly updated) still worked. It now passes `{ roleName }`.
+
 ## [1.11.44] — 2026-06-14
 ### Changed (Security Audit: role members in ONE query — no more per-BU fan-out)
 - Reworked how a role's members are fetched: instead of one query per business-unit copy of the role (which timed out on big multi-BU roles), Colvio now starts from `systemusers` and filters by the role with a single `any()` lambda — `systemusers?$filter=systemuserroles_association/any(o:o/name eq '<role>')` — returning every member with their business unit in **one paged query**, regardless of how many BUs the role spans. The count badge uses the same filter with `$count`. (Caveat: it matches by role name; if two genuinely-different roles share a name this slightly over-matches — role names are effectively unique in practice.)
