@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.40] — 2026-06-14
+### Added (new module: Business Units)
+- New **Business Units** tab: the org's BU **hierarchy** (indented tree, with a search) and the **users per BU**. Pick a BU to list its direct members (name, email, access mode / CAL type, enabled/disabled) with a filter and CSV export; each BU shows its user count in the tree. Reads `businessunits` + the existing all-users fetch, grouped by `_businessunitid_value`. Admin-gated (needs read on all users), read-only. Complements Security Audit (who holds a role) and Users & Licenses.
+
 ## [1.11.39] — 2026-06-14
 ### Added (Data Explorer Builder: ORDER BY)
 - The visual query **Builder now has an ORDER BY** control — pick a field and ASC/DESC. It adds a server-side `$orderby`, so the **whole result/export is sorted** (not just the loaded page like header-click sorting). It's saved with the query, and shows in the copied OData URL.

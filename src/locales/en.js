@@ -123,6 +123,8 @@ export default {
   "sidebar.search_placeholder": "Search entity, column, record...",
   // Help tab
   "nav.licenses": "Users & Licenses",
+  "nav.bu": "Business Units",
+  "nav.bu.desc": "Org hierarchy & members",
   "nav.licenses.desc": "Monitor users, roles, CAL types",
   "licenses.loading": "Loading users...",
   "licenses.all": "All",

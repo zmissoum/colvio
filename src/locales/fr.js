@@ -108,6 +108,8 @@ export default {
   "sidebar.search_placeholder": "Rechercher entit\u00e9, colonne, record...",
   // User & License Monitor
   "nav.licenses": "Utilisateurs & Licences",
+  "nav.bu": "Business Units",
+  "nav.bu.desc": "Hiérarchie & membres",
   "nav.licenses.desc": "Surveiller utilisateurs, rôles, licences",
   "licenses.loading": "Chargement des utilisateurs...",
   "licenses.all": "Tous",
