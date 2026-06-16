@@ -1354,7 +1354,7 @@
           case "getAllUsers": {
             const ACCESS_MODES = { 0: "Read-Write", 1: "Admin", 2: "Read", 3: "Support", 4: "Non-Interactive", 5: "Delegated Admin" };
             const CAL_TYPES = { 0: "Full", 1: "Admin", 2: "Basic", 3: "Device Full", 4: "Device Basic", 5: "Essential", 6: "Device Essential", 7: "Enterprise", 8: "Device Enterprise", 9: "Sales", 10: "Service", 11: "Field Service", 12: "Project Service" };
-            const fields = "systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value";
+            const fields = "systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value,address1_telephone1,mobilephone,_parentsystemuserid_value";
             const mapUser = (u) => ({
               id: u.systemuserid,
               fullname: u.fullname || "",
@@ -1367,6 +1367,9 @@
               buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
               buId: u._businessunitid_value || "",
               title: u.title || "",
+              manager: u["_parentsystemuserid_value@OData.Community.Display.V1.FormattedValue"] || "",
+              phone: u.address1_telephone1 || "",
+              mobile: u.mobilephone || "",
               createdOn: u.createdon,
             });
             // Cursor-based pagination: fetch in batches ordered by systemuserid,
@@ -1524,7 +1527,7 @@
             if (!nameU) { result = []; break; }
             const escU = nameU.replace(/'/g, "''");
             const map = {};
-            let url = `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value&$filter=systemuserroles_association/any(o:o/name eq '${escU}')&$orderby=fullname asc`;
+            let url = `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value,title,address1_telephone1,mobilephone,_parentsystemuserid_value&$filter=systemuserroles_association/any(o:o/name eq '${escU}')&$orderby=fullname asc`;
             while (url) {
               const d = await dvRequest("GET", url);
               (d.value || []).forEach(u => {
@@ -1538,6 +1541,10 @@
                   accessMode: u["accessmode@OData.Community.Display.V1.FormattedValue"] || "",
                   accessModeCode: u.accessmode,
                   bu: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                  title: u.title || "",
+                  manager: u["_parentsystemuserid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                  phone: u.address1_telephone1 || "",
+                  mobile: u.mobilephone || "",
                 };
               });
               const nl = d["@odata.nextLink"];

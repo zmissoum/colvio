@@ -110,8 +110,8 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
     const base = scope === "subtree" ? subUsers : selUsers.map(u => ({ ...u, _bu: selBu.name }));
     const list = base.filter(passStatus);   // export respects the Enabled/Disabled filter
     if (!list.length) return;
-    const headers = ["name", "email", "title", "accessMode", "calType", "status", "businessUnit"];
-    const rows = list.map(u => [u.fullname, u.email, u.title, u.accessModeLabel || u.accessMode, u.calTypeLabel || u.calType, u.disabled ? "Disabled" : "Enabled", u._bu || selBu.name]);
+    const headers = ["name", "email", "title", "manager", "phone", "mobile", "accessMode", "calType", "status", "businessUnit"];
+    const rows = list.map(u => [u.fullname, u.email, u.title, u.manager, u.phone, u.mobile, u.accessModeLabel || u.accessMode, u.calTypeLabel || u.calType, u.disabled ? "Disabled" : "Enabled", u._bu || selBu.name]);
     exportTable(headers, rows, `bu_${selBu.name.replace(/\s+/g, "_")}${scope === "subtree" ? "_subtree" : ""}_users`, format, "Users");
   };
 
@@ -188,8 +188,11 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
                     {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match this filter</div>}
                     {shownUsers.map((u, i) => (
                       <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 90px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.fullname}>{u.fullname || "(no name)"}</span>
-                        <span style={{ color: C.txm, ...mono, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.email}>{u.email || "—"}</span>
+                        <span style={{ minWidth: 0, overflow: "hidden" }} title={u.title ? `${u.fullname} — ${u.title}` : u.fullname}>
+                          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.fullname || "(no name)"}</span>
+                          {u.title && <span style={{ display: "block", fontSize: 10, color: C.txd, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.title}</span>}
+                        </span>
+                        <span style={{ color: C.txm, ...mono, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.phone || u.mobile ? `${u.email}${u.phone ? " · ☎ " + u.phone : ""}${u.mobile ? " · 📱 " + u.mobile : ""}` : u.email}>{u.email || "—"}</span>
                         <span style={{ color: C.txm, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.accessModeLabel || u.accessMode}{u.calTypeLabel ? ` · ${u.calTypeLabel}` : ""}</span>
                         <span>{u.disabled ? <Badge label="Disabled" color={C.rd} /> : <Badge label="Enabled" color={C.gn} />}</span>
                       </div>
