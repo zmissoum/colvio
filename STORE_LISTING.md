@@ -66,6 +66,9 @@ Monitor ALL D365 users — Access Mode, CAL Type, Business Unit, security roles,
 Security Audit
 Review all security roles and their privileges. Readable labels (prvDeleteAccount becomes Delete · Account), depth badges (User/BU/Org), sensitive privilege flags (30+ critical privileges highlighted). Filter by Org-level or Sensitive. A Users sub-tab lists exactly who holds each role — name, email, business unit, status — aggregated across every business-unit copy of the role and deduplicated, so members sitting in child business units are never missed. Service / non-interactive accounts are flagged. Filter and CSV export on both privileges and members.
 
+Business Units
+Browse the org's business-unit hierarchy as an indented tree and see the users in each BU. Pick a BU to list its direct members (name, email, access mode / CAL type, status) with a filter, and export to CSV — either just this BU's members, or this BU plus every sub-BU beneath it (the export keeps a Business Unit column). Each BU shows its direct user count in the tree. Read-only.
+
 Login History
 User login/logout audit timeline from D365 audit logs. Session duration, access type stats, CSV export.
 
@@ -119,7 +122,7 @@ ROLE-BASED ACCESS
 
 Some modules require elevated D365 permissions and are automatically hidden for non-admin users:
 Available to all users: Data Explorer, API Tester, Show All Data, Metadata Browser, Data Loader, Relationship Graph, Schema, Help
-Requires System Administrator or System Customizer: Solution Explorer, Translation Manager, Login History, Users & Licenses, Security Audit
+Requires System Administrator or System Customizer: Solution Explorer, Translation Manager, Login History, Users & Licenses, Business Units, Security Audit
 Colvio detects your permissions at startup and only shows the tabs you can access. No error screens, no confusion.
 
 SUPPORTED REGIONS

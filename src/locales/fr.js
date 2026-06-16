@@ -307,6 +307,8 @@ export default {
   "help.logins_body": "Recherchez un utilisateur D365 et consultez son historique de connexion/d\u00e9connexion. Dur\u00e9e de session, statistiques et export CSV.",
   "help.licenses_title": "Utilisateurs & Licences",
   "help.licenses_body": "Surveillez tous les utilisateurs D365 : mode d'acc\u00e8s, type CAL, BU, r\u00f4les de s\u00e9curit\u00e9 et derni\u00e8re connexion. Identifiez les licences inutilis\u00e9es. Export CSV complet.",
+  "help.bu_title": "Business Units",
+  "help.bu_body": "Parcourez la hi\u00e9rarchie des business units (arbre indent\u00e9) et les utilisateurs de chaque BU. Choisissez une BU pour lister ses membres directs \u2014 nom, e-mail, mode d'acc\u00e8s / CAL, activ\u00e9/d\u00e9sactiv\u00e9 \u2014 avec un filtre. Export CSV au choix : juste les membres de cette BU, ou cette BU plus toutes les sous-BU (l'export garde une colonne Business Unit). Chaque BU affiche son nombre de membres directs dans l'arbre. Lecture seule ; n\u00e9cessite l'acc\u00e8s en lecture \u00e0 tous les utilisateurs.",
   "help.security_title": "Audit de s\u00e9curit\u00e9",
   "help.security_body": "Consultez tous les r\u00f4les de s\u00e9curit\u00e9 et leurs privil\u00e8ges. Labels lisibles, badges de profondeur (User/BU/Org) et 30+ privil\u00e8ges sensibles signal\u00e9s. Filtrez par Org-level ou Sensible.\nUn sous-onglet Users liste exactement qui d\u00e9tient le r\u00f4le \u2014 nom, e-mail, business unit, statut \u2014 agr\u00e9g\u00e9 sur toutes les copies du r\u00f4le (une par business unit) et d\u00e9dupliqu\u00e9, pour ne jamais manquer les membres des BU filles. Les comptes de service / non-interactifs sont signal\u00e9s. Export CSV sur les privil\u00e8ges et sur les membres.",
   "help.sql_title": "Mode SQL",
