@@ -21,6 +21,7 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState(null);            // selected BU id
   const [userSearch, setUserSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // all | enabled | disabled
 
   useEffect(() => {
     let cancelled = false;
@@ -74,10 +75,12 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
 
   const selBu = bus?.find(b => b.id === sel);
   const selUsers = usersByBu[sel] || [];
+  const passStatus = (u) => statusFilter === "all" || (statusFilter === "enabled" ? !u.disabled : !!u.disabled);
   const shownUsers = useMemo(() => {
     const s = userSearch.trim().toLowerCase();
-    return s ? selUsers.filter(u => [u.fullname, u.email, u.title].some(v => (v || "").toLowerCase().includes(s))) : selUsers;
-  }, [selUsers, userSearch]);
+    return selUsers.filter(u => passStatus(u) && (!s || [u.fullname, u.email, u.title].some(v => (v || "").toLowerCase().includes(s))));
+    // eslint-disable-next-line
+  }, [selUsers, userSearch, statusFilter]);
 
   const totalUsers = useMemo(() => Object.values(usersByBu).reduce((a, arr) => a + arr.length, 0), [usersByBu]);
   const cnt = (id) => (usersByBu[id] || []).length;
@@ -104,7 +107,8 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
   // scope: "this" = direct members of the selected BU; "subtree" = it + all sub-BUs (BU column kept).
   const exportUsers = (scope) => {
     if (!selBu) return;
-    const list = scope === "subtree" ? subUsers : selUsers.map(u => ({ ...u, _bu: selBu.name }));
+    const base = scope === "subtree" ? subUsers : selUsers.map(u => ({ ...u, _bu: selBu.name }));
+    const list = base.filter(passStatus);   // export respects the Enabled/Disabled filter
     if (!list.length) return;
     const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
     const esc = (v) => { const x = safe(String(v ?? "")); return x.includes(",") || x.includes('"') ? `"${x.replace(/"/g, '""')}"` : x; };
@@ -166,7 +170,12 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
                 </div>
               : <>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users…" style={inp({ fontSize: 13, maxWidth: 260 })} />
+                  <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users…" style={inp({ fontSize: 13, maxWidth: 220 })} />
+                  <div style={{ display: "flex", border: `1px solid ${C.bd}`, borderRadius: 5, overflow: "hidden" }}>
+                    {[["all", "All"], ["enabled", "Enabled"], ["disabled", "Disabled"]].map(([k, lbl]) => (
+                      <button key={k} onClick={() => setStatusFilter(k)} style={{ padding: "4px 9px", fontSize: 11, border: "none", cursor: "pointer", background: statusFilter === k ? C.cy + "22" : "transparent", color: statusFilter === k ? C.cy : C.txm, fontWeight: statusFilter === k ? 600 : 400 }}>{lbl}</button>
+                    ))}
+                  </div>
                   <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{selUsers.length}</span>
                   <button onClick={() => exportUsers("this")} title="Export the direct members of this BU" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV (this BU)</button>
                   {hasSub && <button onClick={() => exportUsers("subtree")} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px" })}><I.Download /> + sub-BUs ({subUsers.length.toLocaleString()})</button>}

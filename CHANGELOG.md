@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.42] — 2026-06-14
+### Added (Security Audit & Business Units: Enabled/Disabled user filter)
+- Both the **Security Audit** Users sub-tab (role members) and the **Business Units** members list now have an **All / Enabled / Disabled** filter (defaults to All — same as before). The CSV export respects the active filter, so you can export, say, only the enabled members of a role or a business unit.
+
 ## [1.11.41] — 2026-06-14
 ### Added (Business Units: scoped CSV export + docs)
 - The Business Units module's user export now offers a **scope choice**: export just the **direct members** of the selected BU, or **this BU plus every sub-BU beneath it** (the sub-tree export keeps a Business Unit column per user, deduplicated). The header shows both the direct count and the "incl. sub-BUs" count, and the sub-tree export works even when the selected BU has no direct members.
