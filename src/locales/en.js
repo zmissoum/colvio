@@ -320,6 +320,8 @@ export default {
   "help.logins_body": "Search for any D365 user and view their login/logout audit timeline. See session duration, access stats, and export as CSV.",
   "help.licenses_title": "Users & Licenses",
   "help.licenses_body": "Monitor all D365 users: Access Mode, CAL Type, Business Unit, security roles, and last login date. Identify unused licenses (disabled users, users who never logged in). Full CSV export.",
+  "help.bu_title": "Business Units",
+  "help.bu_body": "Browse the org's business-unit hierarchy (indented tree) and the users in each BU. Pick a BU to list its direct members — name, email, access mode / CAL type, enabled/disabled — with a filter. Export to CSV either just this BU's members, or this BU plus every sub-BU beneath it (the export keeps a Business Unit column). Each BU shows its direct user count in the tree. Read-only; needs read access to all users.",
   "help.security_title": "Security Audit",
   "help.security_body": "Review all security roles and their privileges. Readable labels, depth badges (User/BU/Org), and 30+ sensitive privileges flagged. Filter by Org-level or Sensitive.\nA Users sub-tab lists exactly who holds the role — name, email, business unit, status — aggregated across every business-unit copy of the role and deduplicated, so members in child business units are never missed. Service / non-interactive accounts are flagged. CSV export on both privileges and members.",
   "help.sql_title": "SQL Mode",

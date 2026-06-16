@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.41] — 2026-06-14
+### Added (Business Units: scoped CSV export + docs)
+- The Business Units module's user export now offers a **scope choice**: export just the **direct members** of the selected BU, or **this BU plus every sub-BU beneath it** (the sub-tree export keeps a Business Unit column per user, deduplicated). The header shows both the direct count and the "incl. sub-BUs" count, and the sub-tree export works even when the selected BU has no direct members.
+- Documented the new module everywhere — in-app Help (EN + FR), README, and the Chrome Web Store listing.
+
 ## [1.11.40] — 2026-06-14
 ### Added (new module: Business Units)
 - New **Business Units** tab: the org's BU **hierarchy** (indented tree, with a search) and the **users per BU**. Pick a BU to list its direct members (name, email, access mode / CAL type, enabled/disabled) with a filter and CSV export; each BU shows its user count in the tree. Reads `businessunits` + the existing all-users fetch, grouped by `_businessunitid_value`. Admin-gated (needs read on all users), read-only. Complements Security Audit (who holds a role) and Users & Licenses.

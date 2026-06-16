@@ -149,6 +149,12 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - User count per role, CSV export
 - **Users sub-tab** — lists exactly who holds the role (name, email, business unit, status), aggregated across **every business-unit copy** of the role and deduplicated so members in child BUs are never missed, with service-account flags; CSV export on both privileges and members
 
+### Business Units
+- **BU hierarchy** as an indented tree (search), each with its **direct user count** and a disabled badge
+- Pick a BU to list its **direct members** — name, email, access mode / CAL type, enabled/disabled — with a filter
+- **CSV export with scope choice**: just this BU's members, or **this BU + every sub-BU beneath it** (the export keeps a Business Unit column); even works when the BU itself has no direct members
+- Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated, read-only
+
 ### Login History
 - User search, login/logout audit timeline
 - Session duration calculation, access type breakdown, CSV export

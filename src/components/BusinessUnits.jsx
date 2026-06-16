@@ -82,13 +82,35 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
   const totalUsers = useMemo(() => Object.values(usersByBu).reduce((a, arr) => a + arr.length, 0), [usersByBu]);
   const cnt = (id) => (usersByBu[id] || []).length;
 
-  const exportUsers = () => {
-    if (!selBu || !selUsers.length) return;
+  // Subtree = the selected BU + every BU beneath it. Used for the "incl. sub-BUs" count/export.
+  const childMap = useMemo(() => {
+    const m = {};
+    (bus || []).forEach(b => { if (b.parentId) (m[b.parentId] = m[b.parentId] || []).push(b.id); });
+    return m;
+  }, [bus]);
+  const subUsers = useMemo(() => {
+    if (!sel) return [];
+    const nameOf = (bid) => (bus || []).find(b => b.id === bid)?.name || "";
+    const stack = [sel], seenBu = new Set(), seenU = new Set(), arr = [];
+    while (stack.length) {
+      const x = stack.pop(); if (seenBu.has(x)) continue; seenBu.add(x);
+      (usersByBu[x] || []).forEach(u => { if (!seenU.has(u.id)) { seenU.add(u.id); arr.push({ ...u, _bu: nameOf(x) }); } });
+      (childMap[x] || []).forEach(c => stack.push(c));
+    }
+    return arr;
+  }, [sel, childMap, usersByBu, bus]);
+  const hasSub = subUsers.length > selUsers.length;
+
+  // scope: "this" = direct members of the selected BU; "subtree" = it + all sub-BUs (BU column kept).
+  const exportUsers = (scope) => {
+    if (!selBu) return;
+    const list = scope === "subtree" ? subUsers : selUsers.map(u => ({ ...u, _bu: selBu.name }));
+    if (!list.length) return;
     const safe = (v) => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
     const esc = (v) => { const x = safe(String(v ?? "")); return x.includes(",") || x.includes('"') ? `"${x.replace(/"/g, '""')}"` : x; };
     const headers = ["name", "email", "title", "accessMode", "calType", "status", "businessUnit"];
-    const rows = selUsers.map(u => [u.fullname, u.email, u.title, u.accessModeLabel || u.accessMode, u.calTypeLabel || u.calType, u.disabled ? "Disabled" : "Enabled", selBu.name].map(esc).join(","));
-    dl("﻿" + headers.join(",") + "\n" + rows.join("\n"), "text/csv;charset=utf-8", expName(`bu_${selBu.name.replace(/\s+/g, "_")}_users`, "csv"));
+    const rows = list.map(u => [u.fullname, u.email, u.title, u.accessModeLabel || u.accessMode, u.calTypeLabel || u.calType, u.disabled ? "Disabled" : "Enabled", u._bu || selBu.name].map(esc).join(","));
+    dl("﻿" + headers.join(",") + "\n" + rows.join("\n"), "text/csv;charset=utf-8", expName(`bu_${selBu.name.replace(/\s+/g, "_")}${scope === "subtree" ? "_subtree" : ""}_users`, "csv"));
   };
 
   const Badge = ({ label, color }) => (
@@ -130,19 +152,24 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
             <div style={{ ...crd({ padding: "16px 20px" }), marginBottom: 14 }}>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{selBu.name}</div>
               <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
-                <Badge label={`${selUsers.length} user${selUsers.length !== 1 ? "s" : ""}`} color={C.vi} />
+                <Badge label={`${selUsers.length} direct`} color={C.vi} />
+                {hasSub && <Badge label={`${subUsers.length} incl. sub-BUs`} color={C.cy} />}
                 {selBu.disabled && <Badge label="Disabled" color={C.rd} />}
                 {selBu.parentId && bus && <span style={{ fontSize: 12, color: C.txd }}>parent: {bus.find(p => p.id === selBu.parentId)?.name || "—"}</span>}
               </div>
             </div>
 
             {selUsers.length === 0
-              ? <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No users are assigned to this business unit.</div>
+              ? <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>
+                  No users are directly assigned to this business unit.
+                  {hasSub && <div style={{ marginTop: 10 }}><button onClick={() => exportUsers("subtree")} style={bt(C.cy, { fontSize: 12 })}><I.Download /> Export {subUsers.length.toLocaleString()} users from sub-BUs (CSV)</button></div>}
+                </div>
               : <>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users…" style={inp({ fontSize: 13, maxWidth: 260 })} />
                   <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{selUsers.length}</span>
-                  <button onClick={exportUsers} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                  <button onClick={() => exportUsers("this")} title="Export the direct members of this BU" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV (this BU)</button>
+                  {hasSub && <button onClick={() => exportUsers("subtree")} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px" })}><I.Download /> + sub-BUs ({subUsers.length.toLocaleString()})</button>}
                 </div>
                 <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 90px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
