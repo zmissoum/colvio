@@ -102,9 +102,9 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
       if (selectGen.current === gen) { setError(e.message); setLoadingPriv(false); }
     });
 
-    // Load user count in parallel (independent). Pass rootId so the count spans every business-unit
-    // copy of the role, not just the selected one.
-    bridge.getRoleUserCount(role.id, role.rootId).then(uc => {
+    // Load user count in parallel (independent). By role NAME — one any() lambda query over
+    // systemusers spans every business-unit copy of the role (they all share the name).
+    bridge.getRoleUserCount(role.name).then(uc => {
       if (selectGen.current !== gen) return;
       setUserCount(uc?.count ?? 0);
       setLoadingCount(false);
@@ -121,7 +121,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     const gen = selectGen.current;
     setLoadingUsers(true);
     setUsersErr("");
-    bridge.getRoleUsers(selRole.id, selRole.rootId).then(list => {
+    bridge.getRoleUsers(selRole.name).then(list => {
       if (selectGen.current !== gen) return;
       setUsers(list || []); setLoadingUsers(false);
     }).catch(e => {

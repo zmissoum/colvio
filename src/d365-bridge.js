@@ -701,12 +701,12 @@ export const bridge = {
     return callD365("getRolePrivileges", { roleId });
   },
 
-  async getRoleUserCount(roleId, rootId) {
+  async getRoleUserCount(roleName) {
     if (!isExtension) return { count: Math.floor(Math.random() * 50) + 1 };
-    return callD365("getRoleUserCount", { roleId, rootId });
+    return callD365("getRoleUserCount", { roleName });
   },
 
-  async getRoleUsers(roleId, rootId) {
+  async getRoleUsers(roleName) {
     if (!isExtension) return [
       { id: "u1", name: "Alice Martin", email: "alice.martin@contoso.com", domain: "contoso\\alice", disabled: false, accessMode: "Read-Write", accessModeCode: 0, bu: "Contoso" },
       { id: "u2", name: "Bruno Lefebvre", email: "bruno.lefebvre@contoso.com", domain: "contoso\\bruno", disabled: false, accessMode: "Read-Write", accessModeCode: 0, bu: "Sales EU" },

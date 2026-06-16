@@ -1505,70 +1505,44 @@
             break;
           }
 
-          // A security role exists as ONE COPY PER BUSINESS UNIT (child copies share
-          // _parentrootroleid_value with the root copy). A user is assigned the copy in THEIR own
-          // BU — so looking only at the selected (root-BU) copy misses every member in other BUs.
-          // Both handlers below first gather all copies of the role, then union their members.
+          // A security role exists as one copy PER BUSINESS UNIT, all copies sharing the same NAME
+          // (children link to the root via parentrootroleid). Instead of fanning out one query per
+          // copy (slow + 429-storms orgs with many BUs), we start from systemusers and filter by the
+          // role with an any() lambda on the user↔role N:N — ONE paged query, each user's BU included.
+          // (Role names are effectively unique; if two unrelated roles share a name this over-matches.)
           case "getRoleUserCount": {
-            const rootC = params.rootId || params.roleId;
-            validateGuid(rootC);
-            let instC = [rootC];
-            try {
-              const inst = await dvRequest("GET", `roles?$select=roleid&$filter=_parentrootroleid_value eq ${rootC} or roleid eq ${rootC}`);
-              const ids = (inst.value || []).map(r => r.roleid).filter(Boolean);
-              if (ids.length) instC = [...new Set(ids.map(s => s.toLowerCase()))];
-            } catch {}
-            // Bounded concurrency (pool of 6): firing one request per BU copy all at once would
-            // 429-storm an org with many business units and blow the timeout.
-            const usersC = new Set();
-            let ci = 0;
-            const cWorker = async () => {
-              while (ci < instC.length) {
-                const id = instC[ci++];
-                try {
-                  const d = await dvRequest("GET", `roles(${id})/systemuserroles_association?$select=systemuserid`);
-                  (d.value || []).forEach(u => u.systemuserid && usersC.add(String(u.systemuserid).toLowerCase()));
-                } catch {}
-              }
-            };
-            await Promise.all(Array.from({ length: Math.min(6, instC.length || 1) }, cWorker));
-            result = { count: usersC.size };
+            const nameC = String(params.roleName || "");
+            if (!nameC) { result = { count: 0 }; break; }
+            const escC = nameC.replace(/'/g, "''");
+            const d = await dvRequest("GET", `systemusers?$select=systemuserid&$top=1&$count=true&$filter=systemuserroles_association/any(o:o/name eq '${escC}')`);
+            result = { count: d["@odata.count"] != null ? d["@odata.count"] : (d.value || []).length };
             break;
           }
 
           case "getRoleUsers": {
-            const rootU = params.rootId || params.roleId;
-            validateGuid(rootU);
-            let instU = [rootU];
-            try {
-              const inst = await dvRequest("GET", `roles?$select=roleid&$filter=_parentrootroleid_value eq ${rootU} or roleid eq ${rootU}`);
-              const ids = (inst.value || []).map(r => r.roleid).filter(Boolean);
-              if (ids.length) instU = [...new Set(ids.map(s => s.toLowerCase()))];
-            } catch {}
+            const nameU = String(params.roleName || "");
+            if (!nameU) { result = []; break; }
+            const escU = nameU.replace(/'/g, "''");
             const map = {};
-            let ui = 0;
-            const uWorker = async () => {
-              while (ui < instU.length) {
-                const id = instU[ui++];
-                try {
-                  const d = await dvRequest("GET", `roles(${id})/systemuserroles_association?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value`);
-                  (d.value || []).forEach(u => {
-                    const k = String(u.systemuserid || "").toLowerCase();
-                    if (k && !map[k]) map[k] = {
-                      id: u.systemuserid,
-                      name: u.fullname || u.domainname || u.systemuserid,
-                      email: u.internalemailaddress || "",
-                      domain: u.domainname || "",
-                      disabled: !!u.isdisabled,
-                      accessMode: u["accessmode@OData.Community.Display.V1.FormattedValue"] || "",
-                      accessModeCode: u.accessmode,
-                      bu: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
-                    };
-                  });
-                } catch {}
-              }
-            };
-            await Promise.all(Array.from({ length: Math.min(6, instU.length || 1) }, uWorker));
+            let url = `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value&$filter=systemuserroles_association/any(o:o/name eq '${escU}')&$orderby=fullname asc`;
+            while (url) {
+              const d = await dvRequest("GET", url);
+              (d.value || []).forEach(u => {
+                const k = String(u.systemuserid || "").toLowerCase();
+                if (k && !map[k]) map[k] = {
+                  id: u.systemuserid,
+                  name: u.fullname || u.domainname || u.systemuserid,
+                  email: u.internalemailaddress || "",
+                  domain: u.domainname || "",
+                  disabled: !!u.isdisabled,
+                  accessMode: u["accessmode@OData.Community.Display.V1.FormattedValue"] || "",
+                  accessModeCode: u.accessmode,
+                  bu: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                };
+              });
+              const nl = d["@odata.nextLink"];
+              url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
             result = Object.values(map).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
             break;
           }

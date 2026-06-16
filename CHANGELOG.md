@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.44] — 2026-06-14
+### Changed (Security Audit: role members in ONE query — no more per-BU fan-out)
+- Reworked how a role's members are fetched: instead of one query per business-unit copy of the role (which timed out on big multi-BU roles), Colvio now starts from `systemusers` and filters by the role with a single `any()` lambda — `systemusers?$filter=systemuserroles_association/any(o:o/name eq '<role>')` — returning every member with their business unit in **one paged query**, regardless of how many BUs the role spans. The count badge uses the same filter with `$count`. (Caveat: it matches by role name; if two genuinely-different roles share a name this slightly over-matches — role names are effectively unique in practice.)
+
 ## [1.11.43] — 2026-06-14
 ### Fixed (Security Audit: role members timed out on roles spanning many BUs)
 - Loading a role's members could fail with "Timeout after 30s — action: getRoleUsers" on big roles that exist in many business units, and the UI then misleadingly showed "No users are assigned to this role." Three fixes: (1) getRoleUsers/getRoleUserCount now get the 5-minute timeout (they fan out one query per business-unit copy of the role, not a single call); (2) those per-copy queries run with **bounded concurrency (pool of 6)** instead of firing all at once, which used to 429-storm orgs with many BUs; (3) a load failure now shows a clear **error with a Retry button** (and only shows "No users assigned" when the role genuinely has none).
