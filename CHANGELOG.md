@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.48] — 2026-06-16
+### Fixed (faster, clearer connect)
+- The panel no longer lingers on the static "Open any Dynamics 365 page… Demo Mode" screen while it connects. During auto-connect it now shows a proper **"Connecting to <org>…"** spinner.
+- First paint is no longer blocked behind the permission probes. `checkPermissions()` (4 network round-trips: audit / solutions / users / admin) is now raced against a 2.5 s timeout: if the probes win you get exact permissions with no flash; if a cold tab/slow org makes them lag, Colvio connects immediately (fail-open) and tightens the read-gated tabs the moment the probe lands. This removes the occasional ~10 s blank-looking wait on open.
+
 ## [1.11.47] — 2026-06-16
 ### Added (more user fields from Dataverse)
 - User views now surface **Manager**, **Business phone** and **Mobile** (in addition to **Job title**) — pulled from the Dataverse `systemuser` record (`parentsystemuserid`, `address1_telephone1`, `mobilephone`, `title`). Shown in the Users & Licenses detail card; job title also appears as a sub-line under each name in Business Units and Security-Audit role-member tables (phone/mobile on hover). All four columns are included in every CSV/Excel export of those lists.

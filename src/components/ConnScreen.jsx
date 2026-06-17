@@ -1,7 +1,7 @@
 import { C, I, Spin, crd, bt } from "../shared.jsx";
 import { t } from "../i18n.js";
 
-export default function ConnScreen({onConnect,connecting,bp}){
+export default function ConnScreen({onConnect,connecting,bp,orgName}){
   return(
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",padding:bp.mobile?16:40}}>
       <div style={{width:"100%",maxWidth:440,textAlign:"center"}}>
@@ -16,7 +16,7 @@ export default function ConnScreen({onConnect,connecting,bp}){
           {connecting?(
             <div style={{padding:20}}>
               <Spin s={24}/>
-              <p style={{color:C.txm,fontSize:14,marginTop:12}}>{t("conn.connecting")}</p>
+              <p style={{color:C.txm,fontSize:14,marginTop:12}}>{orgName ? `Connecting to ${orgName}…` : t("conn.connecting")}</p>
             </div>
           ):(
             <div>

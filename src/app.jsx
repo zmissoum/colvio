@@ -158,18 +158,38 @@ export default function App(){
         isExtension: true,
       };
       setOrgInfo(info);
-      // Probe permissions BEFORE showing tabs — no flash of restricted content
-      bridge.checkPermissions().then(perms => {
+      setConnecting(true); // show "Connecting to <org>…" (not the manual/Demo connect screen) while probing
+
+      // First paint normally waits on checkPermissions() so restricted tabs never flash. But a
+      // cold tab / slow org can make that probe take several seconds, leaving the user staring at
+      // the connect screen. So we race it against a short timeout: if the probe wins we get exact
+      // permissions (no flash); if the timeout wins we connect fail-open NOW and tighten the
+      // permissions as soon as the probe lands. Admins (the common case) hold every probed
+      // privilege, so fail-open === real perms and nothing flashes regardless.
+      const FAIL_OPEN = { canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canPublish: true };
+      let settled = false;
+      const go = (perms) => {
+        if (settled) return;
+        settled = true;
         setPermissions(perms);
+        setConnecting(false);
         setConnected(true);
         // Deferred, cached, non-blocking: publish privilege (3 chained calls) and the
         // org-feature switches must never delay the first paint of the tab bar.
         bridge.checkPublishPrivilege().then(canPublish => setPermissions(p => ({ ...p, canPublish }))).catch(() => {});
         bridge.getOrgFeatures().then(setOrgFeatures).catch(() => {});
+      };
+      const timer = setTimeout(() => go(FAIL_OPEN), 2500);
+      bridge.checkPermissions().then(perms => {
+        clearTimeout(timer);
+        if (settled) {
+          // Probe landed after we already connected fail-open → tighten the read gates, but
+          // preserve the deferred canPublish (checkPublishPrivilege may have refined it already).
+          setPermissions(p => ({ ...p, canReadAudit: perms.canReadAudit, canReadSolutions: perms.canReadSolutions, canReadAllUsers: perms.canReadAllUsers, canBypassPlugins: perms.canBypassPlugins }));
+        } else go(perms);
       }).catch(() => {
-        // If probes fail entirely, show all tabs (fail-open, D365 will still enforce server-side)
-        setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canPublish: true });
-        setConnected(true);
+        clearTimeout(timer);
+        go(FAIL_OPEN); // probes failed entirely → show all tabs, D365 still enforces server-side
       });
     }
   }, []);
@@ -186,7 +206,7 @@ export default function App(){
     }, 1500);
   };
 
-  if(!connected) return (<ConnScreen onConnect={handleManualConnect} connecting={connecting} bp={bp}/>);
+  if(!connected) return (<ConnScreen onConnect={handleManualConnect} connecting={connecting} bp={bp} orgName={orgInfo?.orgName}/>);
 
   const allTabs=[
     {id:"explorer",label:t("nav.explorer"),desc:t("nav.explorer.desc"),icon:<I.Search/>},
