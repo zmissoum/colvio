@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair } from "../loaderUtils.js";
 
 describe("parseDelimited (RFC-4180)", () => {
   it("splits simple comma rows", () => {
@@ -132,5 +132,26 @@ describe("defaultMatchKey", () => {
   });
   it("handles empty/missing inputs without throwing", () => {
     expect(defaultMatchKey(undefined, "accountid", undefined)).toEqual({ d: "accountid", c: "" });
+  });
+});
+
+describe("migrationOverridePair (migration mode audit override)", () => {
+  it("maps createdon to overriddencreatedon (createdon is not directly writable)", () => {
+    expect(migrationOverridePair("createdon", "2019-03-12T00:00:00Z")).toEqual({ key: "overriddencreatedon", value: "2019-03-12T00:00:00Z" });
+  });
+  it("passes overriddencreatedon through unchanged", () => {
+    expect(migrationOverridePair("overriddencreatedon", "2019-03-12T00:00:00Z")).toEqual({ key: "overriddencreatedon", value: "2019-03-12T00:00:00Z" });
+  });
+  it("writes modifiedon directly", () => {
+    expect(migrationOverridePair("modifiedon", "2020-01-01T08:00:00Z")).toEqual({ key: "modifiedon", value: "2020-01-01T08:00:00Z" });
+  });
+  it("binds createdby to a systemuser via @odata.bind", () => {
+    expect(migrationOverridePair("createdby", "00000000-0000-0000-0000-000000000001")).toEqual({ key: "createdby@odata.bind", value: "/systemusers(00000000-0000-0000-0000-000000000001)" });
+  });
+  it("binds modifiedby to a systemuser and trims whitespace", () => {
+    expect(migrationOverridePair("modifiedby", " 00000000-0000-0000-0000-000000000002 ")).toEqual({ key: "modifiedby@odata.bind", value: "/systemusers(00000000-0000-0000-0000-000000000002)" });
+  });
+  it("is case-insensitive on the field name", () => {
+    expect(migrationOverridePair("CreatedBy", "00000000-0000-0000-0000-000000000003").key).toBe("createdby@odata.bind");
   });
 });
