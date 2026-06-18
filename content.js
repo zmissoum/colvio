@@ -244,9 +244,18 @@
 
           case "getFields": {
             validateName(params.logicalName, 'logicalName');
-            const raw = await dvRequest("GET",
-              `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes`
-            );
+            // Base attribute metadata + the typed String/Memo casts — MaxLength/Format live only on
+            // those typed metadata, not on the base AttributeMetadata. The casts are best-effort: if
+            // an org/version rejects them, fields still return (without lengths).
+            const [raw, strMeta, memoMeta] = await Promise.all([
+              dvRequest("GET", `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes`),
+              dvRequest("GET", `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes/Microsoft.Dynamics.CRM.StringAttributeMetadata?$select=LogicalName,MaxLength,Format`).catch(() => ({ value: [] })),
+              dvRequest("GET", `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes/Microsoft.Dynamics.CRM.MemoAttributeMetadata?$select=LogicalName,MaxLength,Format`).catch(() => ({ value: [] })),
+            ]);
+            const lenMap = {};
+            for (const a of [...(strMeta.value || []), ...(memoMeta.value || [])]) {
+              lenMap[a.LogicalName] = { maxLength: typeof a.MaxLength === "number" ? a.MaxLength : null, format: a.Format || null };
+            }
 
             result = (raw.value || [])
               .filter(a => {
@@ -288,6 +297,9 @@
                   // fields out of CREATE/UPDATE mapping (they 400 per row otherwise).
                   validForCreate: a.IsValidForCreate !== false,
                   validForUpdate: a.IsValidForUpdate !== false,
+                  // MaxLength/Format (String + Memo only) — fuels the Loader pre-flight length check.
+                  maxLength: lenMap[logicalName]?.maxLength ?? null,
+                  format: lenMap[logicalName]?.format ?? null,
                 };
               });
             break;

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.50] — 2026-06-17
+### Added (Data Loader — pre-flight length check)
+- The Data Loader now warns **before** you run when a mapped column's values exceed the target field's MaxLength — the usual failure when migrating HTML into a rich-text field (verbose markup blows past the limit → a 400 per row). The pre-flight panel shows, per field: the max length, how many rows exceed it, and the longest value found. `getFields` now returns `maxLength`/`format` for String + Memo attributes (fetched via typed metadata casts, best-effort, cached 1 h). The whole-file scan is memoized so it only re-runs when the data/mapping/metadata change.
+
 ## [1.11.49] — 2026-06-17
 ### Added (Data Loader — Migration mode)
 - New opt-in **Migration mode** on the Data Loader lets a migration preserve original audit values when creating records. When enabled (and only in pure CREATE — no upsert/update key, not delete), you can map `createdon` (→ `overriddencreatedon`), `modifiedon`, `createdby` and `modifiedby`. createdby/modifiedby take a systemuser GUID and are bound automatically via `@odata.bind`; createdon is translated to `overriddencreatedon` (the only writable created-date attribute). Requires the **prvOverrideCreatedOnCreatedBy** privilege at runtime.
