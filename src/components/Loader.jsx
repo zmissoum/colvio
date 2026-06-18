@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair } from "../loaderUtils.js";
@@ -285,6 +285,30 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[targetAltKeys,setTargetAltKeys]=useState([]); // alt-keys on the load target entity (single-attribute keys only)
   const[loadingFields,setLoadingFields]=useState(false);
   const fieldGen=useRef(0); // generation counter to discard stale field fetches
+
+  // Pre-flight length check — flag mapped text fields whose CSV values exceed the column MaxLength
+  // (the classic failure when migrating HTML / rich text). Memoized so the row scan only re-runs when
+  // the data, mapping or field metadata change — not on every render.
+  const lengthWarnings=useMemo(()=>{
+    if(deleteMode||!csvData.r.length||!targetFieldsMeta.length) return [];
+    const checks=[];
+    for(const m of maps){
+      if(!m.d365||m.skip) continue;
+      const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
+      const max=meta&&typeof meta.maxLength==="number"?meta.maxLength:null;
+      if(max) checks.push({field:m.d365,col:m.csv,max,count:0,maxFound:0});
+    }
+    if(!checks.length) return [];
+    for(const row of csvData.r){
+      for(const c of checks){
+        const v=row[c.col];
+        if(v==null) continue;
+        const len=String(v).length;
+        if(len>c.max){ c.count++; if(len>c.maxFound) c.maxFound=len; }
+      }
+    }
+    return checks.filter(c=>c.count>0);
+  },[csvData.r,maps,targetFieldsMeta,deleteMode]);
 
   useEffect(()=>{
     if(!isLive||!target){setTargetLookups([]);setTargetAltKeys([]);setTargetFieldsMeta([]);return;}
@@ -1268,6 +1292,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               const isUpdateMode=uKey.d&&updateOnly;
               const nonWritable=maps.filter(m=>{if(!m.d365||m.skip)return false;if(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase()))return false;const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);if(!meta)return false;return isUpdateMode?(meta.validForUpdate===false):(meta.validForCreate===false);}).map(m=>m.d365);
               if(nonWritable.length) warnings.push({k:"ro",t:`${nonWritable.length} field${nonWritable.length>1?"s":""} not writable in ${isUpdateMode?"UPDATE":"CREATE/UPSERT"}: ${nonWritable.slice(0,5).join(", ")}${nonWritable.length>5?` +${nonWritable.length-5}`:""} — calculated/rollup/read-only fields will fail per row. Unmap them.`});
+            }
+            // Mapped text values longer than the target field MaxLength → 400 per row (the classic
+            // failure when migrating HTML into a rich-text field). Pre-computed over the whole file.
+            for(const lw of lengthWarnings){
+              warnings.push({k:"len_"+lw.field,t:`"${lw.field}" max length is ${lw.max.toLocaleString()}, but ${lw.count.toLocaleString()} row${lw.count>1?"s":""} exceed it (longest: ${lw.maxFound.toLocaleString()} chars) — those rows will fail with a 400. Increase the field length, or trim/clean the value (common when migrating HTML / rich text).`});
             }
             if(!warnings.length) return null;
             return (<div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
