@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.51] — 2026-06-17
+### Fixed (Explorer Builder — filtering on Owner / primary-key fields)
+- Filtering or selecting an **Owner** field (e.g. `ownerid`) in the Builder no longer throws `HTTP 400: A binary operator with incompatible types was detected … 'Microsoft.Dynamics.CRM.principal' and 'Edm.String'`. Owner is a polymorphic lookup: it must be queried as `_ownerid_value` with an **unquoted GUID**, but it wasn't recognised as a lookup. `getFields` now maps Owner (like Lookup/Customer) to `_<name>_value`, and the filter builder emits the unquoted GUID for Owner **and** Uniqueidentifier (primary-key) fields instead of `ownerid eq 'guid'`.
+
 ## [1.11.50] — 2026-06-17
 ### Added (Data Loader — pre-flight length check)
 - The Data Loader now warns **before** you run when a mapped column's values exceed the target field's MaxLength — the usual failure when migrating HTML into a rich-text field (verbose markup blows past the limit → a 400 per row). The pre-flight panel shows, per field: the max length, how many rows exceed it, and the longest value found. `getFields` now returns `maxLength`/`format` for String + Memo attributes (fetched via typed metadata casts, best-effort, cached 1 h). The whole-file scan is memoized so it only re-runs when the data/mapping/metadata change.

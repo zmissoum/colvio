@@ -283,7 +283,10 @@
               .map(a => {
                 const aType = a.AttributeType || "String";
                 const logicalName = a.LogicalName;
-                const odataName = (aType === "Lookup" || aType === "Customer")
+                // Lookup / Customer / Owner are all single-valued lookups → the queryable column is
+                // _<name>_value (Owner is the polymorphic principal type; missing it made ownerid
+                // resolve to the raw nav property → "incompatible types principal/String" on filter).
+                const odataName = (aType === "Lookup" || aType === "Customer" || aType === "Owner")
                   ? `_${logicalName}_value`
                   : logicalName;
                 return {
