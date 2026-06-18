@@ -1,6 +1,18 @@
 // Pure, dependency-free helpers used by the Data Loader. Extracted so they can be unit-tested
 // (the component itself isn't easily testable). No React, no DOM, no network.
 
+// Migration mode — map an overridable audit field + value to the exact Web API key/value to send
+// on a CREATE (POST). createdby/modifiedby are systemuser lookups → @odata.bind; createdon maps to
+// overriddencreatedon (the only writable created-date attribute — setting createdon directly is a
+// no-op in Dataverse); modifiedon / overriddencreatedon are written as direct values. Requires the
+// prvOverrideCreatedOnCreatedBy privilege at runtime.
+export function migrationOverridePair(logical, value) {
+  const ln = String(logical || "").toLowerCase();
+  if (ln === "createdby" || ln === "modifiedby") return { key: `${ln}@odata.bind`, value: `/systemusers(${String(value).trim()})` };
+  if (ln === "createdon" || ln === "overriddencreatedon") return { key: "overriddencreatedon", value };
+  return { key: ln, value };
+}
+
 // RFC-4180 delimited parser — handles quoted fields, embedded delimiters/newlines, and ""
 // escaping. Preserves every value as its exact string (no number coercion → leading zeros and
 // SAP-style codes survive). Returns an array of string arrays.

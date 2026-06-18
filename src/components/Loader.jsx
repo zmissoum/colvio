@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
+
+// System / audit fields the loader never writes by default (platform-managed or write-protected).
+// Migration mode re-enables a small allowlist so a data migration can preserve original audit values.
+const SYS_FIELDS=["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"];
+const MIGRATION_FIELDS=["createdon","overriddencreatedon","modifiedon","createdby","modifiedby"];
 
 export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // Speed boosters require prvBypassCustomPlugins — granted by the System Administrator
@@ -16,6 +21,20 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[entityPickerOpen,setEntityPickerOpen]=useState(false);
   const entityPickerRef=useRef(null);
   const[lkEntOpen,setLkEntOpen]=useState(null); // index of the lookup row whose Target-entity autocomplete is open
+
+  // ── Migration mode (opt-in) — preserve original created-on/by audit fields on CREATE ──────────
+  const[migrationMode,setMigrationMode]=useState(false);
+  // Override of created-on/by only works at create time. Pure create = no upsert key, not delete.
+  const isPureCreate=!deleteMode&&!uKey.d;
+  const migrationActive=migrationMode&&isPureCreate;
+  // A field is a stripped system/audit field UNLESS migration mode is active and it's allowlisted.
+  const isSystemField=(logical)=>{const ln=String(logical||"").toLowerCase();if(migrationActive&&MIGRATION_FIELDS.includes(ln))return false;return SYS_FIELDS.includes(ln);};
+  // createdby/modifiedby are systemuser lookups → @odata.bind; createdon → overriddencreatedon (the
+  // only writable created-date field); modifiedon is written directly.
+  const emitMigrationField=(rec,logical,val)=>{const p=migrationOverridePair(logical,val);rec[p.key]=p.value;};
+  // Turning migration mode ON auto-maps any still-unmapped CSV column whose header matches an
+  // override field, so the user doesn't have to retype it.
+  useEffect(()=>{if(!migrationMode)return;setMaps(prev=>prev.map(m=>{if(m.d365||m.skip)return m;const lc=String(m.csv||"").toLowerCase();return MIGRATION_FIELDS.includes(lc)?{...m,d365:lc}:m;}));},[migrationMode]);
 
   const parseData=(text)=>{
     const sep=detectSep(text);
@@ -465,7 +484,6 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // used to enrich the post-import log. Mirrors doLoad's record-building so what's shown matches
   // what was sent. Resolve-mode lookup GUIDs aren't retained after the run, so those bind values
   // show a placeholder. Reconstructed on demand (not stored per row) to stay memory-safe on big loads.
-  const REQ_SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
   // Shared live-log writer for all batch modes — enriches each result with its CSV row, appends to
   // the full-log ref, and updates the bounded display buffer + counts. (Was copy-pasted ×3.)
   const pushBatchLog=(newLog,rowMap,rows)=>{
@@ -494,11 +512,15 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const rec={};
     for(const m of maps){
       if(!m.d365||m.skip) continue;
-      if(REQ_SYSTEM_FIELDS.has(m.d365.toLowerCase())) continue;
+      if(isSystemField(m.d365)) continue;
       const rawVal=row[m.csv];
       if(rawVal===undefined||rawVal===null||rawVal==="") continue;
       const val=applyTransform(rawVal,m.transform,optionMapsRef.current[m.d365]);
-      if(val!==null&&val!==undefined&&val!=="") rec[m.d365]=val;
+      if(val!==null&&val!==undefined&&val!==""){
+        const lc=m.d365.toLowerCase();
+        if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,val);
+        else rec[m.d365]=val;
+      }
     }
     for(const lk of lookups){
       if(!lk.csv||!lk.nav) continue;
@@ -531,8 +553,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     createdIdsRef.current=[];createdMissingIdRef.current=0;setRollback(null);setRollbackConfirm("");
     const launchedAt=new Date();setStartedAt(launchedAt);setExpandedLog(null);
     const rows=csvData.r;
-    const SYSTEM_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
-    const activeMaps=maps.filter(m=>m.d365 && !m.skip && !SYSTEM_FIELDS.has(m.d365.toLowerCase()));
+    const activeMaps=maps.filter(m=>m.d365 && !m.skip && !isSystemField(m.d365));
     const total=rows.length;
     let created=0,updated=0,skipped=0;
     const errors=[];
@@ -713,7 +734,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const rawVal = row[m.csv];
           if(rawVal === undefined || rawVal === null || rawVal === "") continue;
           const val=applyTransform(rawVal,m.transform,optionMaps[m.d365]);
-          if(val!==null && val!==undefined && val!=="") rec[m.d365]=val;
+          if(val!==null && val!==undefined && val!==""){
+            const lc=m.d365.toLowerCase();
+            if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,val);
+            else rec[m.d365]=val;
+          }
           else if((m.transform==="picklist"||m.transform==="statecode") && optionMaps[m.d365]){
             // Transform returned null with a loaded option map → unmatched label (numeric values
             // and known labels never return null). Track it instead of dropping silently.
@@ -1069,7 +1094,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             <div style={{overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:460}}>
               <thead><tr style={{background:C.bg}}><th style={ths()}>CSV</th><th style={{...ths(),width:24}}></th><th style={ths()}>D365</th><th style={ths()}>Transform</th><th style={ths()}>Preview</th><th style={{...ths(),width:24}}></th></tr></thead>
               <tbody>{maps.map((m,i)=>{
-                const isSystem=m.skip||["createdon","modifiedon","createdby","modifiedby","versionnumber"].includes(m.d365?.toLowerCase());
+                const isSystem=m.skip||(["createdon","modifiedon","createdby","modifiedby","versionnumber","overriddencreatedon"].includes(m.d365?.toLowerCase())&&!(migrationActive&&MIGRATION_FIELDS.includes(m.d365?.toLowerCase())));
                 const isPicklist=["statecode","statuscode"].includes(m.d365?.toLowerCase()) || m.transform==="statecode"||m.transform==="picklist";
                 const skipLabel=m.isPK?"🔑 primary key (UPSERT)":m.isLookup?"🔗 lookup (step 3)":"system (ignored)";
                 const skipColor=m.isPK?C.cy:m.isLookup?C.lv:C.yw;
@@ -1241,7 +1266,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             // Non-writable fields mapped for the chosen mode (calculated/rollup/read-only → 400 per row)
             if(!deleteMode){
               const isUpdateMode=uKey.d&&updateOnly;
-              const nonWritable=maps.filter(m=>{if(!m.d365||m.skip)return false;const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);if(!meta)return false;return isUpdateMode?(meta.validForUpdate===false):(meta.validForCreate===false);}).map(m=>m.d365);
+              const nonWritable=maps.filter(m=>{if(!m.d365||m.skip)return false;if(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase()))return false;const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);if(!meta)return false;return isUpdateMode?(meta.validForUpdate===false):(meta.validForCreate===false);}).map(m=>m.d365);
               if(nonWritable.length) warnings.push({k:"ro",t:`${nonWritable.length} field${nonWritable.length>1?"s":""} not writable in ${isUpdateMode?"UPDATE":"CREATE/UPSERT"}: ${nonWritable.slice(0,5).join(", ")}${nonWritable.length>5?` +${nonWritable.length-5}`:""} — calculated/rollup/read-only fields will fail per row. Unmap them.`});
             }
             if(!warnings.length) return null;
@@ -1315,6 +1340,22 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             </div>
           </div>
           )}
+
+          {/* Migration mode — override created-on/by at CREATE time (preserve original audit values) */}
+          <div style={{...crd({padding:12,borderColor:migrationMode?C.vi+"55":C.bd}),marginBottom:12}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+              <input type="checkbox" checked={migrationMode} onChange={e=>setMigrationMode(e.target.checked)} style={{accentColor:C.vi}}/>
+              <span>🕰️ Migration mode — keep original created/modified audit fields</span>
+              <Tooltip text="Lets you map createdon (→ overriddencreatedon), modifiedon, createdby and modifiedby so migrated records keep their original audit values. Works ONLY on create (no upsert/update key, not delete). Requires the prvOverrideCreatedOnCreatedBy privilege ('Override Created On or Created By during Data Import') — without it Dataverse ignores or rejects these values."/>
+            </label>
+            {migrationMode&&(
+              <div style={{fontSize:11,marginTop:8,padding:"6px 8px",borderRadius:4,lineHeight:1.6,...(migrationActive?{color:C.vi,background:C.vi+"11",border:`1px solid ${C.vi}33`}:{color:C.yw,background:C.yw+"11",border:`1px solid ${C.yw}33`})}}>
+                {migrationActive
+                  ?<>✓ Active. Map <code style={{...mono,fontSize:11}}>createdon</code> (→ overriddencreatedon), <code style={{...mono,fontSize:11}}>modifiedon</code>, <code style={{...mono,fontSize:11}}>createdby</code>, <code style={{...mono,fontSize:11}}>modifiedby</code>. createdby/modifiedby take a systemuser GUID (bound automatically). Requires the <code style={{...mono,fontSize:11}}>prvOverrideCreatedOnCreatedBy</code> privilege.</>
+                  :<>⚠ Applies to pure CREATE only. Remove the UPSERT/UPDATE key and turn off Delete — with a key set, these audit fields are stripped as usual.</>}
+              </div>
+            )}
+          </div>
 
           {/* Save the current mapping + lookups + key as a reusable template for this entity */}
           <div style={{...crd({padding:"8px 12px"}),marginBottom:12,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>

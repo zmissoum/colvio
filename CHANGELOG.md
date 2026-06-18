@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.49] — 2026-06-17
+### Added (Data Loader — Migration mode)
+- New opt-in **Migration mode** on the Data Loader lets a migration preserve original audit values when creating records. When enabled (and only in pure CREATE — no upsert/update key, not delete), you can map `createdon` (→ `overriddencreatedon`), `modifiedon`, `createdby` and `modifiedby`. createdby/modifiedby take a systemuser GUID and are bound automatically via `@odata.bind`; createdon is translated to `overriddencreatedon` (the only writable created-date attribute). Requires the **prvOverrideCreatedOnCreatedBy** privilege at runtime.
+- Default behaviour is unchanged: outside Migration mode, all system/audit fields (createdon, createdby, modifiedon, modifiedby, owning*, versionnumber, …) are stripped on every load mode exactly as before. The toggle shows a clear warning + privilege note, and reverts to stripping the moment an upsert/update key is set. Pure mapping logic extracted to `migrationOverridePair()` with 6 regression tests (229 total).
+
 ## [1.11.48] — 2026-06-16
 ### Fixed (faster, clearer connect)
 - The panel no longer lingers on the static "Open any Dynamics 365 page… Demo Mode" screen while it connects. During auto-connect it now shows a proper **"Connecting to <org>…"** spinner.
