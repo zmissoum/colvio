@@ -299,7 +299,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       return `${odataField} ${op} '${escaped}'`; // fallback to quoted string if not a valid number
     }
 
-    if (fType === "Lookup" || fType === "Customer") {
+    // Lookup / Customer / Owner (polymorphic principal) and the Uniqueidentifier primary key are all
+    // compared by GUID — unquoted in OData. Owner/Uniqueidentifier were missing → "incompatible types"
+    // 400 (e.g. ownerid eq 'guid'). getOdataName already maps these to the _value column.
+    if (fType === "Lookup" || fType === "Customer" || fType === "Owner" || fType === "Uniqueidentifier") {
       // Security: validate GUID format to prevent OData injection
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())) return `${odataField} ${op} ${val.trim()}`;
       return `${odataField} ${op} '${escaped}'`; // fallback
