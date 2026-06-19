@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
 
 // System / audit fields the loader never writes by default (platform-managed or write-protected).
@@ -162,6 +162,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const LIVE_LOG_BUFFER=2000; // rows kept in React state for live display
   const[liveLog,setLiveLog]=useState({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
   const fullLog=useRef([]);
+  // Prep-loop log entries (skipped lookups, prep errors, cancellations) of the last full run — kept so
+  // a retry pass (which only re-runs batch rows) can still show them in the result.
+  const prepLogRef=useRef([]);
   // GUIDs of records created by the last real run (from OData-EntityId) — enables Rollback.
   const createdIdsRef=useRef([]);
   const createdMissingIdRef=useRef(0); // CREATED rows whose GUID wasn't captured → not rollback-able
@@ -569,12 +572,19 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
 
   // dry=true → full simulation: parse, transforms, lookup resolution, existence classification —
   // ZERO writes. Reports what WOULD happen (create/update/fail/delete) row by row.
-  const doLoad=async(dry=false)=>{
+  const doLoad=async(dry=false,opts={})=>{
+    const retrySet=opts.retrySet||null;        // Set of original row indices (csvRowNumber-2) to re-run
+    const isRetry=!!retrySet;
+    const prevResult=opts.prevResult||null;
     setStep(4);setResult(null);
     loadAbort.current=false;setCancelling(false);
     setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
-    fullLog.current=[];
-    createdIdsRef.current=[];createdMissingIdRef.current=0;setRollback(null);setRollbackConfirm("");
+    if(!isRetry){
+      // A retry keeps the prior log + created-IDs (rollback must still cover the first pass);
+      // retryFailed() has already stripped the old error entries for the rows being retried.
+      fullLog.current=[];
+      createdIdsRef.current=[];createdMissingIdRef.current=0;setRollback(null);setRollbackConfirm("");
+    }
     const launchedAt=new Date();setStartedAt(launchedAt);setExpandedLog(null);
     const rows=csvData.r;
     const activeMaps=maps.filter(m=>m.d365 && !m.skip && !isSystemField(m.d365));
@@ -712,6 +722,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
 
     const entitySet = entitySetFor(target);
     const startTime=Date.now();
+    // Retry passes use gentler concurrency/chunk so a re-run after a throttle/timeout doesn't
+    // immediately re-trip the same limit.
+    const effThreads=isRetry?Math.max(1,Math.floor(threads/2)):threads;
+    const effChunk=isRetry?Math.min(batchSize,50):batchSize;
     const createRecords=[];
     const upsertItems=[];
     // Parallel index maps: createRecords[k] / upsertItems[k] correspond to rows[createRowMap[k]] / rows[upsertRowMap[k]].
@@ -745,6 +759,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     await new Promise(r=>setTimeout(r,0));
 
     for(let i=0;i<rows.length;i++){
+      if(retrySet&&!retrySet.has(i)) continue; // retry pass: only re-run the previously-failed rows
       const row=rows[i];
       if(i && i%25000===0){
         setLoadProgress({done:0,total,current:`Preparing ${i.toLocaleString()} / ${total.toLocaleString()} records…`});
@@ -893,7 +908,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         const res=await bridge.batchCreate(entitySet,createRecords,p=>{
           setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (CREATE) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,createRowMap,rows);
-        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
+        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
         created=res.created||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
         if(res.aborted){const remaining=createRecords.length-created;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
@@ -909,7 +924,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
           setLoadProgress({done:createRecords.length+p.done,total:total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,upsertRowMap,rows);
-        },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic,updateOnly});
+        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic,updateOnly});
         updated=res.updated||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
         if(res.aborted){const remaining=upsertItems.length-updated;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
@@ -920,15 +935,52 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
 
     const elapsed=((Date.now()-startTime)/1000).toFixed(1);
     const wasCancelled=loadAbort.current;
-    // Final log = real per-row batch results (from fullLog ref) + prep-loop entries (skipped lookups, cancellations).
-    // Capped to keep the result-panel table renderable; full data is available via "Export current log".
+    // Prep-loop entries (skipped lookups, prep errors, cancellations) live outside fullLog. Keep the
+    // ORIGINAL run's prep entries so a later retry pass (which only re-runs batch rows) still shows them.
+    if(!isRetry) prepLogRef.current=logEntries.slice();
+    const prepLog=isRetry?prepLogRef.current:logEntries;
+    // Final log = prep entries + real per-row batch results (from fullLog ref). Capped for rendering.
     const batchLog=fullLog.current.map(e=>({row:e.csvRowNumber,status:e.status,detail:e.status==="ERROR"?(e.msg||"Batch error"):"OK",d365Id:""}));
-    const combinedLog=[...logEntries,...batchLog];
+    const combinedLog=[...prepLog,...batchLog];
     const resultLog=combinedLog.length>5000?combinedLog.slice(0,5000):combinedLog;
     const optionWarnings=Object.entries(unmatchedOpts).map(([field,set])=>({field,labels:[...set].slice(0,10)})).filter(w=>w.labels.length);
-    setResult({created,updated,errors,skipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date(),optionWarnings});
+    // Retry candidates — derived from the (updated) fullLog: every ERROR row that maps to a CSV line.
+    // Transient ones (timeouts/throttle/5xx/deadlock) are the safe default; the rest are data/
+    // permission errors a blind retry won't fix.
+    const seenIdx=new Set();const retryAll=[];const retryTransient=[];
+    for(const e of fullLog.current){
+      if(e.status!=="ERROR"||!(e.csvRowNumber>=2)) continue;
+      const idx=e.csvRowNumber-2; if(seenIdx.has(idx)) continue; seenIdx.add(idx);
+      retryAll.push(idx); if(isTransientError(e.msg)) retryTransient.push(idx);
+    }
+    // Cumulative counts/errors when this was a retry pass (the retried rows were previously errors, so
+    // adding this pass's successes can't double-count). Errors are re-derived from the authoritative
+    // fullLog + preserved prep entries + this pass's batch-level (row 0) failures.
+    const fCreated=isRetry?(prevResult?.created||0)+created:created;
+    const fUpdated=isRetry?(prevResult?.updated||0)+updated:updated;
+    const fSkipped=isRetry?(prevResult?.skipped||0):skipped;
+    const fErrors=isRetry
+      ? [...fullLog.current.filter(e=>e.status==="ERROR"&&e.csvRowNumber>=2).map(e=>({row:e.csvRowNumber,msg:e.msg,payload:""})),
+         ...prepLog.filter(e=>e.status==="ERROR").map(e=>({row:e.row,msg:e.detail,payload:""})),
+         ...errors.filter(e=>!(e.row>=2))]
+      : errors;
+    const retryInfo=isRetry?{attempted:retrySet.size,succeeded:created+updated,stillFailing:Math.max(0,retrySet.size-(created+updated)),transientOnly:!!opts.transientOnly}:null;
+    setResult({created:fCreated,updated:fUpdated,errors:fErrors,skipped:fSkipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date(),optionWarnings,retryAll,retryTransient,retryInfo});
     setLoadProgress({done:total,total,current:wasCancelled?"Cancelled":"Done"});
     setCancelling(false);
+  };
+
+  // Re-run only the previously-failed rows. transientOnly=true (default) limits to timeouts / throttle /
+  // 5xx / deadlocks — the errors a retry can actually fix; false re-runs every failed row (use after you
+  // fixed something org-side, e.g. granted a privilege or raised a field length).
+  const retryFailed=(transientOnly=true)=>{
+    if(!result||result.dryRun||result.mode==="delete") return;
+    const idxs=transientOnly?(result.retryTransient||[]):(result.retryAll||[]);
+    if(!idxs.length) return;
+    const retrySet=new Set(idxs);
+    // Drop the old error entries for these rows so the fresh pass replaces them.
+    fullLog.current=fullLog.current.filter(e=>!(e.csvRowNumber>=2&&retrySet.has(e.csvRowNumber-2)));
+    doLoad(false,{retrySet,prevResult:result,transientOnly});
   };
   const steps=[{l:"Source",i:"📄"},{l:"Mapping",i:"🔗"},{l:"Lookups",i:"🔍"},{l:"Preview",i:"👁"},{l:"Run",i:"🚀"}];
 
@@ -1564,6 +1616,28 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               {rollback?.done&&(
                 <div style={{...crd({padding:"10px 12px",background:(rollback.failed?C.rd:C.gn)+"0c",borderColor:(rollback.failed?C.rd:C.gn)+"55"}),maxWidth:560,margin:"0 auto 14px",fontSize:13,color:rollback.failed?C.rd:C.gn,fontWeight:600}}>
                   {rollback.error?`Rollback failed: ${rollback.error}`:`↩ Rollback finished — ${rollback.deleted.toLocaleString()} deleted${rollback.failed?`, ${rollback.failed} failed`:""} (of ${rollback.total.toLocaleString()}).`}
+                </div>
+              )}
+
+              {!result.dryRun&&result.mode!=="delete"&&(result.retryAll?.length>0)&&(
+                <div style={{...crd({padding:"12px 14px",background:C.cy+"0c",borderColor:C.cy+"55"}),maxWidth:560,margin:"0 auto 14px"}}>
+                  {result.retryInfo&&(
+                    <div style={{fontSize:12.5,color:result.retryInfo.stillFailing?C.yw:C.gn,fontWeight:600,marginBottom:8}}>
+                      🔁 Retry: {result.retryInfo.succeeded.toLocaleString()} of {result.retryInfo.attempted.toLocaleString()} succeeded{result.retryInfo.stillFailing?` · ${result.retryInfo.stillFailing.toLocaleString()} still failing`:" 🎉"}.
+                    </div>
+                  )}
+                  <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Some rows failed — retry the ones that might be transient?</div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    {result.retryTransient?.length>0&&(
+                      <button onClick={()=>retryFailed(true)} style={bt(`linear-gradient(135deg,${C.cy},${C.vi})`,{fontSize:13})}>🔁 Retry {result.retryTransient.length.toLocaleString()} transient error{result.retryTransient.length>1?"s":""}</button>
+                    )}
+                    {result.retryAll.length>(result.retryTransient?.length||0)&&(
+                      <button onClick={()=>retryFailed(false)} style={bt(null,{fontSize:12})}>Retry all {result.retryAll.length.toLocaleString()} failed</button>
+                    )}
+                  </div>
+                  <div style={{fontSize:11,color:C.txd,marginTop:8,lineHeight:1.6}}>
+                    <b style={{color:C.cy}}>Transient</b> = timeouts, throttling (429), 5xx, deadlocks — safe to retry as-is (gentler concurrency, rollback still covers everything). The rest are usually data/permission errors (400/403/404) where a retry fails the same way — fix the data or re-import for those.
+                  </div>
                 </div>
               )}
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.52] — 2026-06-19
+### Added (Data Loader — retry failed rows)
+- After a load with errors, the result screen now offers **🔁 Retry transient errors (N)** — re-runs only the rows whose failure is likely transient (timeouts, aborts, throttling/429, 5xx, SQL deadlocks, network blips) classified by a new pure `isTransientError()` helper. A secondary **Retry all failed** covers the rest (use after fixing something org-side). The retry re-runs at gentler concurrency/chunk so it doesn't re-trip the same limit, keeps the original log + created-IDs so **rollback still covers everything**, merges the counts (successes add up, errors shrink), and shows a "44 of 47 succeeded · 3 still failing" banner. Deterministic 400/403/404 (bad data, no privilege, not found) are intentionally NOT offered for transient retry — a blind retry would fail the same way. +6 tests (235 total).
+
 ## [1.11.51] — 2026-06-17
 ### Fixed (Explorer Builder — filtering on Owner / primary-key fields)
 - Filtering or selecting an **Owner** field (e.g. `ownerid`) in the Builder no longer throws `HTTP 400: A binary operator with incompatible types was detected … 'Microsoft.Dynamics.CRM.principal' and 'Edm.String'`. Owner is a polymorphic lookup: it must be queried as `_ownerid_value` with an **unquoted GUID**, but it wasn't recognised as a lookup. `getFields` now maps Owner (like Lookup/Customer) to `_<name>_value`, and the filter builder emits the unquoted GUID for Owner **and** Uniqueidentifier (primary-key) fields instead of `ownerid eq 'guid'`.
