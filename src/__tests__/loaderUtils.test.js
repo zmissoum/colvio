@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError } from "../loaderUtils.js";
 
 describe("parseDelimited (RFC-4180)", () => {
   it("splits simple comma rows", () => {
@@ -153,5 +153,40 @@ describe("migrationOverridePair (migration mode audit override)", () => {
   });
   it("is case-insensitive on the field name", () => {
     expect(migrationOverridePair("CreatedBy", "00000000-0000-0000-0000-000000000003").key).toBe("createdby@odata.bind");
+  });
+});
+
+describe("isTransientError (retry classification)", () => {
+  it("flags timeouts and aborts as transient", () => {
+    expect(isTransientError("Timeout after 300s — action: batchCreate")).toBe(true);
+    expect(isTransientError("The operation was aborted")).toBe(true);
+    expect(isTransientError("signal is aborted without reason")).toBe(true);
+  });
+  it("flags throttling / service protection as transient", () => {
+    expect(isTransientError("HTTP 429: Too Many Requests")).toBe(true);
+    expect(isTransientError("Number of requests exceeded the limit of 6000 over time window")).toBe(true);
+    expect(isTransientError("0x80072321 service protection limit")).toBe(true);
+  });
+  it("flags 5xx and SQL deadlocks as transient", () => {
+    expect(isTransientError("HTTP 503: Service Unavailable")).toBe(true);
+    expect(isTransientError("HTTP 504: gateway timeout")).toBe(true);
+    expect(isTransientError("Transaction was deadlocked on lock resources")).toBe(true);
+    expect(isTransientError("Generic SQL error")).toBe(true);
+  });
+  it("flags network blips as transient", () => {
+    expect(isTransientError("Failed to fetch")).toBe(true);
+    expect(isTransientError("ECONNRESET")).toBe(true);
+  });
+  it("does NOT flag deterministic data/permission errors", () => {
+    expect(isTransientError("HTTP 400: A value exceeds the maximum length of 504 characters")).toBe(false);
+    expect(isTransientError("HTTP 400: incompatible types principal and Edm.String")).toBe(false);
+    expect(isTransientError("HTTP 404: entity not found")).toBe(false);
+    expect(isTransientError("Duplicate record detected")).toBe(false);
+    expect(isTransientError("A required field is missing")).toBe(false);
+  });
+  it("handles empty/nullish input", () => {
+    expect(isTransientError("")).toBe(false);
+    expect(isTransientError(null)).toBe(false);
+    expect(isTransientError(undefined)).toBe(false);
   });
 });

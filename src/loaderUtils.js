@@ -13,6 +13,23 @@ export function migrationOverridePair(logical, value) {
   return { key: ln, value };
 }
 
+// Classify a per-row load error as TRANSIENT (worth retrying as-is) vs deterministic. Transient =
+// timeouts / aborts, throttling (429 / service-protection limits), 5xx, SQL deadlocks/locks, network
+// blips. Deterministic 400/403/404 (bad data, no privilege, not found) are NOT matched — a blind
+// retry sends the same payload and fails identically. Patterns avoid bare 3-digit numbers (a "max 504
+// chars" length error must not read as a 504 gateway timeout) by anchoring 5xx/429 on "HTTP <code>".
+export function isTransientError(msg) {
+  const s = String(msg || "").toLowerCase();
+  if (!s) return false;
+  return (
+    /timeout|timed out|\baborted?\b|operation was aborted/.test(s) ||
+    /http 429|too many requests|service protection|0x8007232[123]|number of requests|request limit|throttl|re-run to retry/.test(s) ||
+    /http 50[234]|service unavailable|bad gateway|gateway timeout/.test(s) ||
+    /deadlock|generic sql error|lock request time/.test(s) ||
+    /failed to fetch|network error|connection reset|econnreset|socket hang up/.test(s)
+  );
+}
+
 // RFC-4180 delimited parser — handles quoted fields, embedded delimiters/newlines, and ""
 // escaping. Preserves every value as its exact string (no number coercion → leading zeros and
 // SAP-style codes survive). Returns an array of string arrays.
