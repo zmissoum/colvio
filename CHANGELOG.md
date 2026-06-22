@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.54] — 2026-06-19
+### Added (Explorer results — client-side filter + filtered export)
+- The query-results toolbar now has a **Filter results** search box that filters the already-loaded rows live (no re-query) across every selected column, matching the displayed value (label for lookups/option-sets). The header count shows "X of Y records" while filtered, with a no-match state and a clear-filter shortcut. Typing stays smooth on large result sets (useDeferredValue).
+- **Every export and copy now honours the active filter + sort** — CSV/XLSX/JSON download and Excel/CSV/JSON copy emit exactly the rows currently shown, and Select-all selects the filtered rows. So you can narrow thousands of rows to the ones you want and export just those.
+
 ## [1.11.53] — 2026-06-19
 ### Fixed (Data Loader — switching target entity left stale key/mode/mappings)
 - Changing the target entity now resets the **match key** and **load mode**. Previously the key persisted across entities, so an alternate key chosen for one entity (e.g. `fou_sapcustomernumber`) carried over to the next and drove every row to "No existing record … UPDATE only → 404". On a real entity switch Colvio now clears `uKey`, UPDATE/UPSERT/DELETE mode, delta, verify-existence and the delete confirmation, and once the new entity's metadata loads it drops any field mapping whose target doesn't exist on the new entity (valid mappings like name→name and statecode/statuscode transforms are kept).
