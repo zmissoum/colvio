@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
@@ -10,13 +10,15 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const[bulkUpdating,setBulkUpdating]=useState(false);
   const[confirmModal,setConfirmModal]=useState(null); // {msg,onOk}
   const[sortDir,setSortDir]=useState("asc");
-  // Reset sort/selection when query changes (different entity or query string)
+  const[search,setSearch]=useState("");          // client-side filter over the already-loaded rows
+  const deferredSearch=useDeferredValue(search);  // keeps typing smooth on large result sets
+  // Reset sort/selection/filter when query changes (different entity or query string)
   const prevQuery=useRef(null);
   useEffect(()=>{
     const qKey=res?.query;
     if(qKey!==prevQuery.current){
       prevQuery.current=qKey;
-      setSortField(null);setSortDir("asc");setSelected(new Set());setBulkUpdate(null);
+      setSortField(null);setSortDir("asc");setSelected(new Set());setBulkUpdate(null);setSearch("");
     }
   },[res?.query]);
   const doBulkUpdate=()=>{
@@ -79,17 +81,29 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     }
   };
   const toggleSort=(f)=>{if(sortField===f){setSortDir(d=>d==="asc"?"desc":"asc");}else{setSortField(f);setSortDir("asc");}};
-  const sortedData=useMemo(()=>{
-    if(!sortField) return res.data;
+  // Client-side filter over the already-loaded rows — no re-query. Matches the displayed value
+  // (label for lookups/option-sets, else raw) of ANY selected column, case-insensitive.
+  const filteredData=useMemo(()=>{
+    const q=deferredSearch.trim().toLowerCase();
+    if(!q) return res.data;
     const dk2=(f)=>res.odataFieldMap?.[f]||f;
-    return [...res.data].sort((a,b)=>{
+    return res.data.filter(r=>res.fields.some(f=>{
+      const k=dk2(f);const v=r[k+"__display"]??r[k];
+      if(v==null) return false;
+      return String(typeof v==="object"?JSON.stringify(v):v).toLowerCase().includes(q);
+    }));
+  },[res.data,res.fields,res.odataFieldMap,deferredSearch]);
+  const sortedData=useMemo(()=>{
+    if(!sortField) return filteredData;
+    const dk2=(f)=>res.odataFieldMap?.[f]||f;
+    return [...filteredData].sort((a,b)=>{
       let va=a[dk2(sortField)+"__display"]??a[dk2(sortField)]??"";
       let vb=b[dk2(sortField)+"__display"]??b[dk2(sortField)]??"";
       if(typeof va==="number"&&typeof vb==="number") return sortDir==="asc"?va-vb:vb-va;
       va=String(va).toLowerCase();vb=String(vb).toLowerCase();
       return sortDir==="asc"?va.localeCompare(vb):vb.localeCompare(va);
     });
-  },[res.data,sortField,sortDir]);
+  },[filteredData,sortField,sortDir,res.odataFieldMap]);
   const[cp,setCp]=useState(null);
   const[copyFeedback,setCopyFeedback]=useState("");
   const[selected,setSelected]=useState(new Set());
@@ -105,8 +119,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   };
   const toggleSel=(id)=>setSelected(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
   const toggleAll=()=>{
-    if(selected.size===res.data.length){setSelected(new Set());}
-    else{setSelected(new Set(res.data.map(r=>getRecordId(r)).filter(Boolean)));}
+    if(selected.size===sortedData.length){setSelected(new Set());}
+    else{setSelected(new Set(sortedData.map(r=>getRecordId(r)).filter(Boolean)));}
   };
   const executeDelete=async()=>{
     setDeleting(true);
@@ -192,12 +206,13 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const safeVal=(v)=>/^[=+\-@\t\r]/.test(v)?"'"+v:v;
   const escCSV=(v)=>{const s=safeVal(v);return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
   const escTSV=(v)=>{const s=safeVal(v);return s.includes("\t")||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
-  const toCSV=()=>"\uFEFF"+[res.fields.join(","),...res.data.map(r=>res.fields.map(f=>escCSV(expVal(r,f))).join(","))].join("\n");
-  const toTSV=()=>[res.fields.join("\t"),...res.data.map(r=>res.fields.map(f=>escTSV(expVal(r,f))).join("\t"))].join("\n");
-  const toJSON=()=>JSON.stringify(res.data.map(r=>{const o={};res.fields.forEach(f=>{o[f]=bestGet(r,f)??null;});return o;}),null,2);
+  // Exports honour the active filter + sort: they emit exactly the rows currently shown (sortedData).
+  const toCSV=()=>"\uFEFF"+[res.fields.join(","),...sortedData.map(r=>res.fields.map(f=>escCSV(expVal(r,f))).join(","))].join("\n");
+  const toTSV=()=>[res.fields.join("\t"),...sortedData.map(r=>res.fields.map(f=>escTSV(expVal(r,f))).join("\t"))].join("\n");
+  const toJSON=()=>JSON.stringify(sortedData.map(r=>{const o={};res.fields.forEach(f=>{o[f]=bestGet(r,f)??null;});return o;}),null,2);
 
   const showFeedback=(msg)=>{setCopyFeedback(msg);setTimeout(()=>setCopyFeedback(""),2000);};
-  const n=res.data.length;
+  const n=sortedData.length;
   const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows)`);};
   const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
   const copyJSON=()=>{copyText(toJSON());showFeedback(`${t("results.json_copied")} (${n} rows)`);};
@@ -210,7 +225,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       // stays inert text (unlike CSV) — no formula-injection guard needed. Wrapping in
       // safeVal(String(...)) turned every number into a text cell (SUM()=0) and put a visible
       // apostrophe on negatives.
-      const wsData=[res.fields,...res.data.map(r=>res.fields.map(f=>{const v=bestGet(r,f);return v==null?"":(typeof v==="object"?JSON.stringify(v):v);}))];
+      const wsData=[res.fields,...sortedData.map(r=>res.fields.map(f=>{const v=bestGet(r,f);return v==null?"":(typeof v==="object"?JSON.stringify(v):v);}))];
       const ws=XLSX.utils.aoa_to_sheet(wsData);
       ws["!cols"]=res.fields.map(f=>({wch:Math.max(f.length,12)}));
       const wb=XLSX.utils.book_new();
@@ -232,17 +247,24 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       <div style={{borderBottom:`1px solid ${C.bd}`,background:C.sf,padding:"6px 12px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:13,color:C.gn,fontWeight:600}}>{res.data.length.toLocaleString()} records</span>
+            <span style={{fontSize:13,color:C.gn,fontWeight:600}}>{search.trim()&&filteredData.length!==res.data.length?`${filteredData.length.toLocaleString()} of ${res.data.length.toLocaleString()}`:res.data.length.toLocaleString()} records</span>
             {res.fetching&&<span style={{fontSize:11,color:C.cy,background:C.cy+"22",padding:"2px 8px",borderRadius:3,display:"inline-flex",alignItems:"center",gap:4}}><Spin s={8}/> {res.data.length>=5000?`page ${Math.ceil(res.data.length/5000)+1}...`:"loading..."}</span>}
             {res.fetching&&<button onClick={onStop} style={{padding:"1px 8px",fontSize:11,border:`1px solid ${C.rd}44`,borderRadius:3,cursor:"pointer",background:C.rd+"22",color:C.rd,fontWeight:600}}>■ Stop</button>}
             {!res.fetching&&<span style={{fontSize:11,color:C.txd}}>· {res.elapsed}</span>}
             {res.fetching&&<span style={{fontSize:11,color:C.txd}}>{res.elapsed}</span>}
           </div>
-          {copyFeedback && (
-            <span style={{fontSize:13,color:C.gn,fontWeight:600,display:"flex",alignItems:"center",gap:4,animation:"fadeIn .2s"}}>
-              ✓ {copyFeedback}
-            </span>
-          )}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {copyFeedback && (
+              <span style={{fontSize:13,color:C.gn,fontWeight:600,display:"flex",alignItems:"center",gap:4,animation:"fadeIn .2s"}}>
+                ✓ {copyFeedback}
+              </span>
+            )}
+            <div style={{position:"relative",width:bp.mobile?150:220}}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filter results…" title="Filter the loaded rows (no re-query). Export honours the filter." style={{width:"100%",boxSizing:"border-box",padding:"4px 24px 4px 26px",fontSize:12,background:C.bg,border:`1px solid ${search?C.cy:C.bd}`,borderRadius:4,color:C.tx,outline:"none"}}/>
+              <span style={{position:"absolute",left:7,top:"50%",transform:"translateY(-50%)",color:C.txd,pointerEvents:"none",display:"flex"}}><I.Search s={12}/></span>
+              {search&&<button onClick={()=>setSearch("")} title="Clear filter" style={{position:"absolute",right:5,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:15,lineHeight:1}}>×</button>}
+            </div>
+          </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:C.txd,fontWeight:600,textTransform:"uppercase",letterSpacing:".5px",marginRight:2}}>Copy</span>
@@ -302,9 +324,14 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
           <button onClick={onStop} style={{padding:"3px 10px",fontSize:12,border:`1px solid ${C.rd}44`,borderRadius:4,cursor:"pointer",background:C.rd+"22",color:C.rd}}>Stop</button>
         </div>
       )}
-      {!res.fetching && res.data.length > 0 && (
+      {!res.fetching && res.data.length>0 && sortedData.length===0 && (
+        <div style={{padding:"14px 16px",textAlign:"center",color:C.txd,fontSize:13,borderTop:`1px solid ${C.bd}`}}>
+          No results match "{search}" — <button onClick={()=>setSearch("")} style={{background:"none",border:"none",color:C.cy,cursor:"pointer",fontSize:13,textDecoration:"underline",padding:0}}>clear filter</button>
+        </div>
+      )}
+      {!res.fetching && res.data.length > 0 && sortedData.length>0 && (
         <div style={{padding:"6px 16px",textAlign:"center",color:C.txd,fontSize:12,borderTop:`1px solid ${C.bd}`}}>
-          {res.data.length} records — loading complete
+          {search.trim()&&filteredData.length!==res.data.length?`${filteredData.length.toLocaleString()} of ${res.data.length.toLocaleString()} records shown (filtered)`:`${res.data.length.toLocaleString()} records — loading complete`}
         </div>
       )}
 
