@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.53] — 2026-06-19
+### Fixed (Data Loader — switching target entity left stale key/mode/mappings)
+- Changing the target entity now resets the **match key** and **load mode**. Previously the key persisted across entities, so an alternate key chosen for one entity (e.g. `fou_sapcustomernumber`) carried over to the next and drove every row to "No existing record … UPDATE only → 404". On a real entity switch Colvio now clears `uKey`, UPDATE/UPSERT/DELETE mode, delta, verify-existence and the delete confirmation, and once the new entity's metadata loads it drops any field mapping whose target doesn't exist on the new entity (valid mappings like name→name and statecode/statuscode transforms are kept).
+
 ## [1.11.52] — 2026-06-19
 ### Added (Data Loader — retry failed rows)
 - After a load with errors, the result screen now offers **🔁 Retry transient errors (N)** — re-runs only the rows whose failure is likely transient (timeouts, aborts, throttling/429, 5xx, SQL deadlocks, network blips) classified by a new pure `isTransientError()` helper. A secondary **Retry all failed** covers the rest (use after fixing something org-side). The retry re-runs at gentler concurrency/chunk so it doesn't re-trip the same limit, keeps the original log + created-IDs so **rollback still covers everything**, merges the counts (successes add up, errors shrink), and shows a "44 of 47 succeeded · 3 still failing" banner. Deterministic 400/403/404 (bad data, no privilege, not found) are intentionally NOT offered for transient retry — a blind retry would fail the same way. +6 tests (235 total).

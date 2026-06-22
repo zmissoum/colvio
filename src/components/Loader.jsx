@@ -288,6 +288,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[targetAltKeys,setTargetAltKeys]=useState([]); // alt-keys on the load target entity (single-attribute keys only)
   const[loadingFields,setLoadingFields]=useState(false);
   const fieldGen=useRef(0); // generation counter to discard stale field fetches
+  const prevTargetRef=useRef(target);  // detect a REAL entity switch (vs initial mount / same value)
+  const remapPendingRef=useRef(false); // re-validate field mappings once the new entity's metadata loads
 
   // Pre-flight length check — flag mapped text fields whose CSV values exceed the column MaxLength
   // (the classic failure when migrating HTML / rich text). Memoized so the row scan only re-runs when
@@ -332,6 +334,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     }).finally(()=>{if(fieldGen.current===gen)setLoadingFields(false);});
   },[isLive,target]);
 
+  // Switching the target entity must NOT carry over the previous entity's match key / mode — a stale
+  // alternate key (e.g. another entity's fou_sapcustomernumber) would otherwise drive every row to a
+  // "no existing record" 404. Reset the key + mode flags on a real entity change, and flag the field
+  // mappings for re-validation against the new entity's metadata (handled once it loads, below).
+  useEffect(()=>{
+    if(prevTargetRef.current===target) return; // initial mount / re-selecting the same entity
+    prevTargetRef.current=target;
+    setUKey({d:"",c:""});setUpdateOnly(false);setDeltaMode(false);setDeleteMode(false);setDeleteConfirm("");setVerifyExists(false);
+    remapPendingRef.current=true;
+  },[target]);
+
   // Lookup-type field logical names — these can ONLY be set via @odata.bind, not direct mapping.
   // Auto-skipping them prevents Dataverse 400 errors when CSV columns happen to match lookup field names.
   const lookupFieldSet = (() => {
@@ -364,6 +377,26 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       return changed ? updated : prev;
     });
   }, [targetFieldsMeta]);
+
+  // After an entity switch, drop any field mapping whose target doesn't exist on the new entity (it
+  // belonged to the old one and would 400 per row). Valid mappings (e.g. name→name) survive; the
+  // statecode/statuscode transforms are kept. Runs once, when the new entity's metadata has loaded.
+  useEffect(()=>{
+    if(!remapPendingRef.current||!targetFieldsMeta.length) return;
+    remapPendingRef.current=false;
+    const valid=new Set(targetFieldsMeta.map(f=>(f.logical||f.l||"").toLowerCase()));
+    setMaps(prev=>{
+      let changed=false;
+      const updated=prev.map(m=>{
+        if(!m.d365||m.skip) return m;
+        const low=m.d365.toLowerCase();
+        if(low==="statecode"||low==="statuscode"||valid.has(low)) return m;
+        changed=true;
+        return {...m,d365:""};
+      });
+      return changed?updated:prev;
+    });
+  },[targetFieldsMeta]);
 
   // Find lookup metadata matching a CSV column. Handles dot-notation (e.g.
   // "fou_accountextension.fou_sapcustomernumber") and OData _logicalname_value
