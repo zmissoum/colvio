@@ -467,10 +467,19 @@ export const bridge = {
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
-        const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey });
-        agg.deleted += r?.deleted || 0;
-        const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
-        const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        let chunkErrors, chunkLog;
+        try {
+          const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey });
+          agg.deleted += r?.deleted || 0;
+          chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+          chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        } catch (e) {
+          // One chunk failing (timeout / network / content-script error) must NOT abort the whole
+          // delete — log its rows as per-row errors and carry on with the next chunks.
+          const msg = e?.message || String(e);
+          chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
+          chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
+        }
         if (chunkErrors.length) agg.errors.push(...chunkErrors);
         if (chunkLog.length) agg.log.push(...chunkLog);
         processedRecords += slice.length;
