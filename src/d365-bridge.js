@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isLongOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRoleUsers" || action === "getRoleUserCount";
-    const timeoutMs = isLongOp ? 300000 : 30000;
+    const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) { settled = true; reject(new Error(`Timeout after ${timeoutMs/1000}s — action: ${action}`)); }
     }, timeoutMs);
@@ -374,10 +374,20 @@ export const bridge = {
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
-        const r = await callD365("batchCreate", { entitySet, records: slice, ...bypass });
-        agg.created += r?.created || 0;
-        const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
-        const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        let chunkErrors, chunkLog;
+        try {
+          const r = await callD365("batchCreate", { entitySet, records: slice, ...bypass });
+          agg.created += r?.created || 0;
+          chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+          chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        } catch (e) {
+          // One chunk failing (a 600s timeout, network drop, content-script error) must NOT abort the
+          // whole load — record its rows as per-row errors (logged + retryable) and carry on with the
+          // next chunks. Previously an unhandled chunk rejection killed the entire batch.
+          const msg = e?.message || String(e);
+          chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
+          chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
+        }
         if (chunkErrors.length) agg.errors.push(...chunkErrors);
         if (chunkLog.length) agg.log.push(...chunkLog);
         processedRecords += slice.length;
@@ -414,10 +424,20 @@ export const bridge = {
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
-        const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, ...bypass });
-        agg.updated += r?.updated || 0;
-        const chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
-        const chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        let chunkErrors, chunkLog;
+        try {
+          const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, ...bypass });
+          agg.updated += r?.updated || 0;
+          chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+          chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        } catch (e) {
+          // One chunk failing (a 600s timeout, network drop, content-script error) must NOT abort the
+          // whole load — record its rows as per-row errors (logged + retryable; a timeout classifies as
+          // transient so the retry card offers exactly these rows) and carry on with the next chunks.
+          const msg = e?.message || String(e);
+          chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
+          chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
+        }
         if (chunkErrors.length) agg.errors.push(...chunkErrors);
         if (chunkLog.length) agg.log.push(...chunkLog);
         processedRecords += slice.length;
