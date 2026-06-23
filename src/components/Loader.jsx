@@ -244,7 +244,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     setShowTemplates(false);
   };
 
-  const entityTemplates=templates.filter(t=>t.entity===target);
+  const entityTemplates=useMemo(()=>templates.filter(t=>t.entity===target),[templates,target]);
 
   // Escape closes the templates dropdown.
   useEffect(()=>{
@@ -350,7 +350,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
 
   // Lookup-type field logical names — these can ONLY be set via @odata.bind, not direct mapping.
   // Auto-skipping them prevents Dataverse 400 errors when CSV columns happen to match lookup field names.
-  const lookupFieldSet = (() => {
+  const lookupFieldSet = useMemo(() => {
     const s = new Set();
     for (const f of targetFieldsMeta) {
       const t = f.type || f.t;
@@ -359,7 +359,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       }
     }
     return s;
-  })();
+  }, [targetFieldsMeta]);
 
   // Retroactive: when metadata arrives after the CSV was parsed, demote any auto-mapped
   // entries that point to a lookup-type field. Their value belongs in the Parent Lookups
@@ -492,6 +492,59 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       return rec[idKey];
     }
     return null;
+  };
+
+  // Batched lookup resolver — mirrors resolveExistingKeys: resolve many key values at once via
+  // OR-filter chunks of 80 (concurrency 6), instead of one sequential query PER unique value (the old
+  // N+1 that fired ~50k requests before the first write on a high-cardinality migration). Returns
+  // { found: Map<normValue, guid>, errored: Set<normValue> } so the caller keeps the
+  // resolved / genuine-not-found / query-failed distinction the fallback handling relies on.
+  const resolveLookupBatch = async (lk, values) => {
+    const found = new Map();
+    const errored = new Set();
+    if (!lk.entity || !lk.d365f || !values.length) return { found, errored };
+    const set = entitySetFor(lk.entity);
+    const fkey = lk.d365f;
+    const fkeyLow = fkey.toLowerCase();
+    const norm = (v) => String(v).trim().toLowerCase();
+    const pkOf = (rec) => {
+      const idKey = Object.keys(rec).find(k => k.endsWith("id") && !k.includes("@") && k.toLowerCase() !== fkeyLow) || `${lk.entity}id`;
+      return rec[idKey];
+    };
+    const CHUNK = 80;
+    const chunks = [];
+    for (let i = 0; i < values.length; i += CHUNK) chunks.push(values.slice(i, i + CHUNK));
+    let nextIdx = 0, done = 0;
+    const queryChunk = async (slice) => {
+      const filter = slice.map(v => `${fkey} eq '${String(v).replace(/'/g, "''")}'`).join(" or ");
+      const data = await bridge.query(set, { filter, select: fkey, top: String(slice.length) });
+      for (const rec of (data?.records || [])) {
+        const kv = rec[fkey]; const g = pkOf(rec);
+        if (kv != null && g) found.set(norm(kv), g);
+      }
+    };
+    const CONC = Math.min(6, chunks.length || 1);
+    const worker = async () => {
+      while (true) {
+        if (loadAbort.current) return;
+        const idx = nextIdx++;
+        if (idx >= chunks.length) return;
+        const slice = chunks[idx];
+        try { await queryChunk(slice); }
+        catch {
+          // One malformed value poisons the OR-filter → per-value fallback for this chunk only.
+          for (const v of slice) {
+            if (loadAbort.current) return;
+            try { const g = await resolveLookup(lk, v); if (g) found.set(norm(v), g); }
+            catch { errored.add(norm(v)); }
+          }
+        }
+        done += slice.length;
+        setLoadProgress({ done: Math.min(done, values.length), total: values.length, current: `Resolving lookups ${lk.entity} (${Math.min(done, values.length).toLocaleString()}/${values.length.toLocaleString()})...` });
+      }
+    };
+    await Promise.all(Array.from({ length: CONC }, () => worker()));
+    return { found, errored };
   };
 
   // UPDATE-only hard guarantee: query which key values actually EXIST before writing, so a
@@ -725,15 +778,15 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(isAltKeyBind(lk)) continue; // alt-key path: bind directly via /entity(field='value'), skip pre-resolve
       if(!lk.csv||!lk.entity||!lk.d365f) continue;
       const uniqueVals=[...new Set(rows.map(r=>r[lk.csv]).filter(Boolean))];
-      setLoadProgress({done:0,total,current:`Resolving lookups ${lk.entity} (${uniqueVals.length} values)...`});
+      setLoadProgress({done:0,total:uniqueVals.length,current:`Resolving lookups ${lk.entity} (${uniqueVals.length.toLocaleString()} values)...`});
+      const {found,errored}=await resolveLookupBatch(lk,uniqueVals);
+      const nrm=(v)=>String(v).trim().toLowerCase();
       for(const val of uniqueVals){
-        try{
-          const guid=await resolveLookup(lk,val);
-          lookupCache[`${lk.entity}.${lk.d365f}.${val}`]=guid; // string = found, null = genuine not-found
-        }catch(e){
-          // Transient failure (network/403/500) — mark distinctly so rows aren't mislabelled "not found".
-          lookupCache[`${lk.entity}.${lk.d365f}.${val}`]={__resolveError:(e&&e.message)||"lookup query failed"};
-        }
+        const key=`${lk.entity}.${lk.d365f}.${val}`;
+        const nv=nrm(val);
+        if(found.has(nv)) lookupCache[key]=found.get(nv);                 // string GUID = resolved
+        else if(errored.has(nv)) lookupCache[key]={__resolveError:"lookup query failed"}; // query failed (not mislabelled "not found")
+        else lookupCache[key]=null;                                       // genuine not-found
       }
     }
 
@@ -968,8 +1021,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           pushBatchLog(p.newLog,upsertRowMap,rows);
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic,updateOnly});
         updated=res.updated||0;
+        created+=res.created||0; // upsert that created (201) → count toward Created, matching the log + rollback set
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
-        if(res.aborted){const remaining=upsertItems.length-updated;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
+        if(res.aborted){const remaining=upsertItems.length-(updated+(res.created||0));logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch UPSERT failed: ${e.message}`,payload:""});
       }

@@ -335,8 +335,8 @@ export const bridge = {
     return callD365("getEntityMetadata", { logicalName, withCanDelete });
   },
 
-  // CHUNK = 100 matches content.js's HTTP $batch size, giving one progress update
-  // per Dataverse roundtrip (~100-300ms). Each chunk brings back any errors from
+  // CHUNK chunks the records panel-side; each chunk is one HTTP $batch roundtrip (content.js caps a
+  // single $batch at 500 changesets), giving one progress update per roundtrip. Each chunk brings back errors from
   // its 100 records, so error counts surface in real-time during the run.
   // Chrome's 64 MB IPC limit: 100 records × ~50 KB ≈ 5 MB, well under the cap.
   // shouldAbort is checked between chunks; the in-flight HTTP batch completes
@@ -412,7 +412,7 @@ export const bridge = {
       bypassSyncLogic: !!opts.bypassSyncLogic,
       updateOnly: !!opts.updateOnly,
     };
-    const agg = { updated: 0, errors: [], log: [], aborted: false };
+    const agg = { created: 0, updated: 0, errors: [], log: [], aborted: false };
     const chunks = [];
     for (let i = 0; i < items.length; i += CHUNK) chunks.push({ start: i, slice: items.slice(i, i + CHUNK) });
 
@@ -427,6 +427,7 @@ export const bridge = {
         let chunkErrors, chunkLog;
         try {
           const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, ...bypass });
+          agg.created += r?.created || 0; // upsert-created (201) tracked separately from real updates (204)
           agg.updated += r?.updated || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
           chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));

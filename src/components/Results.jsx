@@ -21,6 +21,13 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       setSortField(null);setSortDir("asc");setSelected(new Set());setBulkUpdate(null);setSearch("");
     }
   },[res?.query]);
+  // Escape closes the confirm modal / bulk-update popover (destructive actions shouldn't be mouse-only).
+  useEffect(()=>{
+    if(!confirmModal&&!bulkUpdate) return;
+    const onKey=(e)=>{ if(e.key==="Escape"){ setConfirmModal(null); setBulkUpdate(null); } };
+    window.addEventListener("keydown",onKey);
+    return ()=>window.removeEventListener("keydown",onKey);
+  },[confirmModal,bulkUpdate]);
   const doBulkUpdate=()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;
     setConfirmModal({msg:`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`,onOk:()=>{setConfirmModal(null);executeBulkUpdate();}});
@@ -56,7 +63,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     if(writeAccessCache.current.has(set)) return writeAccessCache.current.get(set);
     const id=getRecordId(record);
     if(!id) return true;
-    const rights=await bridge.getRecordAccess(set,id);
+    let rights=null;
+    try{ rights=await bridge.getRecordAccess(set,id); }catch{ return true; } // probe failed → fail-open (D365 still enforces on PATCH)
     const ok=rights==null?true:rights.includes("WriteAccess"); // null = undetermined → fail-open
     writeAccessCache.current.set(set,ok);
     if(!ok) showFeedback("Read-only: your security roles don't grant write access on this table");
@@ -308,6 +316,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
             <button onClick={doDelete} disabled={deleting} style={{padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,background:C.rd+"22",border:`1px solid ${C.rd}44`,borderRadius:4,color:C.rd}}>
               {deleting?<Spin s={10}/>:<I.Trash/>} Delete {selected.size}
             </button>
+            {search.trim()&&(()=>{const hid=selected.size-sortedData.filter(r=>selected.has(getRecordId(r))).length;return hid>0?<span style={{fontSize:11,color:C.yw,fontWeight:600}} title="Bulk actions apply to your whole selection, including rows hidden by the active filter.">⚠ {hid} of {selected.size} selected are hidden by the filter</span>:null;})()}
           </>}
         </div>
       </div>
