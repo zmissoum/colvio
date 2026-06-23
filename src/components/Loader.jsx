@@ -935,11 +935,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       return;
     }
 
+    // Rows the prep step filtered out (no matching record / empty key / unchanged in delta) never
+    // reach a batch. The progress bar tracks SENT rows, so its denominator is what's actually sent —
+    // otherwise a 91k-row update matching only 5k records looks like it "stopped at 5k".
+    const sendTotal=createRecords.length+upsertItems.length;
+    const notSent=isRetry?0:Math.max(0,total-sendTotal);
+
     if(createRecords.length>0){
-      setLoadProgress({done:0,total:createRecords.length,current:`Sending ${createRecords.length} records (CREATE)...`});
+      setLoadProgress({done:0,total:sendTotal,current:`Sending ${createRecords.length.toLocaleString()} records (CREATE)...`});
       try{
         const res=await bridge.batchCreate(entitySet,createRecords,p=>{
-          setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (CREATE) ${p.done}/${p.total}...`});
+          setLoadProgress({done:p.done,total:sendTotal,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (CREATE) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,createRowMap,rows);
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
         created=res.created||0;
@@ -951,11 +957,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     }
 
     if(upsertItems.length>0 && !loadAbort.current){
-      setLoadProgress({done:createRecords.length,total:total,current:`Sending ${upsertItems.length} records (${updateOnly?"UPDATE":"UPSERT"})...`});
+      setLoadProgress({done:createRecords.length,total:sendTotal,current:`Sending ${upsertItems.length.toLocaleString()}${notSent>0?` of ${total.toLocaleString()}`:""} records (${updateOnly?"UPDATE":"UPSERT"})${notSent>0?` — ${notSent.toLocaleString()} not eligible`:""}...`});
       try{
         const isPK = uKey.d.toLowerCase() === target + "id";
         const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
-          setLoadProgress({done:createRecords.length+p.done,total:total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
+          setLoadProgress({done:createRecords.length+p.done,total:sendTotal,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,upsertRowMap,rows);
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic,updateOnly});
         updated=res.updated||0;
@@ -999,7 +1005,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       : errors;
     const retryInfo=isRetry?{attempted:retrySet.size,succeeded:created+updated,stillFailing:Math.max(0,retrySet.size-(created+updated)),transientOnly:!!opts.transientOnly}:null;
     setResult({created:fCreated,updated:fUpdated,errors:fErrors,skipped:fSkipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date(),optionWarnings,retryAll,retryTransient,retryInfo});
-    setLoadProgress({done:total,total,current:wasCancelled?"Cancelled":"Done"});
+    setLoadProgress({done:sendTotal,total:sendTotal,current:wasCancelled?"Cancelled":(notSent>0?`Done — ${sendTotal.toLocaleString()} sent, ${notSent.toLocaleString()} not eligible (no matching record / empty key / unchanged — see the log)`:"Done")});
     setCancelling(false);
   };
 

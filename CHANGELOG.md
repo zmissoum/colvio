@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.55] — 2026-06-19
+### Fixed (Data Loader — progress denominator counted input rows, not sent rows)
+- An UPDATE of, say, 91,000 rows that only matches ~5,400 existing records looked like it "stopped at 5,400 / 91,000". Rows the prep step filters out (no matching record in UPDATE-only, empty key, or unchanged in delta mode) never reach a batch, but the progress bar's denominator was the full input count while `done` only counts sent rows. The bar now tracks the rows actually being sent, the send message shows "Sending N of M … — K not eligible", and the completion reads "Done — N sent, K not eligible (no matching record / empty key / unchanged — see the log)". No behavioural change to what's sent; the result screen's Updated/Errors/Skipped breakdown was always correct.
+
 ## [1.11.54] — 2026-06-19
 ### Added (Explorer results — client-side filter + filtered export)
 - The query-results toolbar now has a **Filter results** search box that filters the already-loaded rows live (no re-query) across every selected column, matching the displayed value (label for lookups/option-sets). The header count shows "X of Y records" while filtered, with a no-match state and a clear-filter shortcut. Typing stays smooth on large result sets (useDeferredValue).
