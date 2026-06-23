@@ -170,6 +170,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const createdMissingIdRef=useRef(0); // CREATED rows whose GUID wasn't captured → not rollback-able
   // Rollback run state: null | {running, done, total, deleted, errors}
   const[rollback,setRollback]=useState(null);
+  // Set when a run dies with an uncaught error (outside the batch try/catch) — shows the exact
+  // message on screen instead of a silent stop. null | {message, stack, when}
+  const[loadError,setLoadError]=useState(null);
   const[rollbackConfirm,setRollbackConfirm]=useState("");
   // Option-set label→value maps from the last run — buildRequestForRow needs them so the per-row
   // request details and the log export reconstruct the SAME body doLoad actually sent.
@@ -255,7 +258,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // loop lives in this page, so reloading it would abandon a run with no result and no rollback.
   // step===4 (Run) with no result yet = a run is in flight; the result step clears it.
   // Report "busy" up to the app so page-reloading actions (e.g. Restart onboarding tour) can guard.
-  useEffect(()=>{ const busy=(step===4 && !result); runningRef.current=busy; onBusyChange?.(busy); },[step,result,onBusyChange]);
+  useEffect(()=>{ const busy=(step===4 && !result && !loadError); runningRef.current=busy; onBusyChange?.(busy); },[step,result,loadError,onBusyChange]);
   useEffect(()=>{
     const h=(e)=>{ if(runningRef.current){ e.preventDefault(); e.returnValue=""; } };
     window.addEventListener("beforeunload",h);
@@ -1009,6 +1012,18 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     setCancelling(false);
   };
 
+  // Single entry point for every run (dry / real / retry). Wraps doLoad so an uncaught failure ANYWHERE
+  // in it (prep loop, existence pre-pass, metadata fetch) surfaces the EXACT error on screen instead of
+  // dying as a silent unhandled rejection. The batch try/catch blocks still handle per-batch failures
+  // as logged row errors — this only catches the catastrophic, run-killing ones.
+  const runLoad=(dry=false,opts={})=>{
+    setLoadError(null);
+    Promise.resolve().then(()=>doLoad(dry,opts)).catch(e=>{
+      setLoadError({message:e?.message||String(e),stack:e?.stack||"",when:new Date().toLocaleString()});
+      setCancelling(false);
+    });
+  };
+
   // Re-run only the previously-failed rows. transientOnly=true (default) limits to timeouts / throttle /
   // 5xx / deadlocks — the errors a retry can actually fix; false re-runs every failed row (use after you
   // fixed something org-side, e.g. granted a privilege or raised a field length).
@@ -1019,7 +1034,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const retrySet=new Set(idxs);
     // Drop the old error entries for these rows so the fresh pass replaces them.
     fullLog.current=fullLog.current.filter(e=>!(e.csvRowNumber>=2&&retrySet.has(e.csvRowNumber-2)));
-    doLoad(false,{retrySet,prevResult:result,transientOnly});
+    runLoad(false,{retrySet,prevResult:result,transientOnly});
   };
   const steps=[{l:"Source",i:"📄"},{l:"Mapping",i:"🔗"},{l:"Lookups",i:"🔍"},{l:"Preview",i:"👁"},{l:"Run",i:"🚀"}];
 
@@ -1496,17 +1511,28 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           <div style={{display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}><button onClick={()=>setStep(lookups.length>0?2:1)} style={bt()}>← Back</button><button onClick={()=>{const cfg={d365_entity:target,upsert_key:uKey.d,fields:Object.fromEntries(maps.filter(m=>m.d365).map(m=>[m.csv,m.d365])),lookups:lookups.map(lk=>({source_field:lk.src,d365_target_entity:lk.entity,d365_navigation_property:lk.nav,resolve_by:{csv_column:lk.csv,d365_field:lk.d365f},fallback:lk.fb}))};dl(JSON.stringify(cfg,null,2),"application/json",expName(`load_${target}`,"json"));}} style={bt()}><I.Download/> YAML</button>
             {/* Dry run: full simulation, zero writes — available in every mode (DELETE included,
                 without the typed confirmation since nothing is deleted). */}
-            <button onClick={()=>doLoad(true)} style={bt(null,{borderColor:C.cy,color:C.cy})} title="Simulate the whole run — parsing, transforms, lookups, existence checks — without writing anything">🔍 Dry run</button>
+            <button onClick={()=>runLoad(true)} style={bt(null,{borderColor:C.cy,color:C.cy})} title="Simulate the whole run — parsing, transforms, lookups, existence checks — without writing anything">🔍 Dry run</button>
             {deleteMode
-              ? <button onClick={()=>doLoad(false)} disabled={deleteConfirm.trim().toLowerCase()!==target.toLowerCase()} style={bt(deleteConfirm.trim().toLowerCase()===target.toLowerCase()?`linear-gradient(135deg,${C.rd},${C.rd}cc)`:null,{opacity:deleteConfirm.trim().toLowerCase()===target.toLowerCase()?1:0.5})}>🗑 Delete records</button>
-              : <button onClick={()=>doLoad(false)} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button>}
+              ? <button onClick={()=>runLoad(false)} disabled={deleteConfirm.trim().toLowerCase()!==target.toLowerCase()} style={bt(deleteConfirm.trim().toLowerCase()===target.toLowerCase()?`linear-gradient(135deg,${C.rd},${C.rd}cc)`:null,{opacity:deleteConfirm.trim().toLowerCase()===target.toLowerCase()?1:0.5})}>🗑 Delete records</button>
+              : <button onClick={()=>runLoad(false)} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`)}><I.Zap/> Load</button>}
           </div>
         </div>
       )}
 
       {step===4&&(
         <div style={{padding:"20px 0"}}>
-          {!result?(
+          {loadError&&!result?(
+            <div style={{...crd({padding:"16px 18px",background:C.rd+"0c",borderColor:C.rd+"66"}),maxWidth:700,margin:"0 auto"}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.rd,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>⛔ The import failed — exact error below</div>
+              <div style={{fontSize:13,color:C.tx,marginBottom:10,lineHeight:1.5,...mono,whiteSpace:"pre-wrap",wordBreak:"break-word",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,padding:"8px 10px"}}>{loadError.message}</div>
+              {loadError.stack&&<details style={{marginBottom:10}}><summary style={{fontSize:12,color:C.txd,cursor:"pointer"}}>Technical details (stack trace)</summary><pre style={{margin:"6px 0 0",padding:8,background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,fontSize:11,...mono,color:C.txm,maxHeight:200,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{loadError.stack}</pre></details>}
+              <div style={{fontSize:11,color:C.txd,marginBottom:12,lineHeight:1.6}}>Any records sent before the failure were kept; nothing else was changed.{createdIdsRef.current.length?` ${createdIdsRef.current.length.toLocaleString()} record(s) were created.`:""}{loadError.when?` · ${loadError.when}`:""}</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={()=>{setLoadError(null);setStep(lookups.length>0?2:1);}} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`,{fontSize:13})}>← Back to mapping</button>
+                <button onClick={()=>dl(`Error:\n${loadError.message}\n\nStack:\n${loadError.stack||""}`,"text/plain;charset=utf-8",expName("import_error","txt",true))} style={bt(null,{fontSize:12})}><I.Download/> Save error</button>
+              </div>
+            </div>
+          ):!result?(
             <div>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
                 <Spin s={18}/>
