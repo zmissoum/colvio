@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.57] — 2026-06-19
+### Fixed (Data Loader — retry card was self-contradictory when no failure is transient)
+- When every failed row is deterministic (e.g. 130 "no matching record" 404s), the retry card no longer asks "retry the ones that might be transient?" while offering only "Retry all 130 failed". It now adapts: the heading reads "130 rows failed — these look like data/permission errors, not transient ones", the accent turns amber, the action becomes "Retry all 130 anyway", and the help text explains a retry only helps if you fixed something org-side, otherwise to check the log (usually a wrong/format-mismatched key) and re-import. The transient-retry flow is unchanged when transient failures exist.
+
 ## [1.11.56] — 2026-06-19
 ### Added (Data Loader — show the exact error on a crash)
 - If a run dies with an uncaught error outside the per-batch try/catch (prep loop, existence pre-pass, metadata fetch, etc.) it no longer stops silently with a spinner stuck. Every run (dry / real / retry) now goes through a wrapper that catches the failure and shows the **exact error message** (plus an expandable stack trace) on the run screen, with "← Back to mapping" and "Save error" actions. The busy/before-unload guard is released on crash so the tab isn't stuck. Per-batch failures are still handled as logged row errors as before.

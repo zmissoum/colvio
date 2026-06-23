@@ -1684,27 +1684,39 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 </div>
               )}
 
-              {!result.dryRun&&result.mode!=="delete"&&(result.retryAll?.length>0)&&(
-                <div style={{...crd({padding:"12px 14px",background:C.cy+"0c",borderColor:C.cy+"55"}),maxWidth:560,margin:"0 auto 14px"}}>
+              {!result.dryRun&&result.mode!=="delete"&&(result.retryAll?.length>0)&&(()=>{
+                const tCount=result.retryTransient?.length||0;
+                const aCount=result.retryAll.length;
+                const hasTransient=tCount>0;
+                const accent=hasTransient?C.cy:C.yw; // cyan = retry-friendly; amber = deterministic, retry won't help
+                return (
+                <div style={{...crd({padding:"12px 14px",background:accent+"0c",borderColor:accent+"55"}),maxWidth:560,margin:"0 auto 14px"}}>
                   {result.retryInfo&&(
                     <div style={{fontSize:12.5,color:result.retryInfo.stillFailing?C.yw:C.gn,fontWeight:600,marginBottom:8}}>
                       🔁 Retry: {result.retryInfo.succeeded.toLocaleString()} of {result.retryInfo.attempted.toLocaleString()} succeeded{result.retryInfo.stillFailing?` · ${result.retryInfo.stillFailing.toLocaleString()} still failing`:" 🎉"}.
                     </div>
                   )}
-                  <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Some rows failed — retry the ones that might be transient?</div>
+                  <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>
+                    {hasTransient
+                      ? `${aCount.toLocaleString()} row${aCount>1?"s":""} failed — retry the ${tCount.toLocaleString()} that look transient?`
+                      : `${aCount.toLocaleString()} row${aCount>1?"s":""} failed — these look like data/permission errors, not transient ones.`}
+                  </div>
                   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                    {result.retryTransient?.length>0&&(
-                      <button onClick={()=>retryFailed(true)} style={bt(`linear-gradient(135deg,${C.cy},${C.vi})`,{fontSize:13})}>🔁 Retry {result.retryTransient.length.toLocaleString()} transient error{result.retryTransient.length>1?"s":""}</button>
+                    {hasTransient&&(
+                      <button onClick={()=>retryFailed(true)} style={bt(`linear-gradient(135deg,${C.cy},${C.vi})`,{fontSize:13})}>🔁 Retry {tCount.toLocaleString()} transient error{tCount>1?"s":""}</button>
                     )}
-                    {result.retryAll.length>(result.retryTransient?.length||0)&&(
-                      <button onClick={()=>retryFailed(false)} style={bt(null,{fontSize:12})}>Retry all {result.retryAll.length.toLocaleString()} failed</button>
+                    {aCount>tCount&&(
+                      <button onClick={()=>retryFailed(false)} style={bt(null,{fontSize:12})}>{hasTransient?`Retry all ${aCount.toLocaleString()} failed`:`Retry all ${aCount.toLocaleString()} anyway`}</button>
                     )}
                   </div>
                   <div style={{fontSize:11,color:C.txd,marginTop:8,lineHeight:1.6}}>
-                    <b style={{color:C.cy}}>Transient</b> = timeouts, throttling (429), 5xx, deadlocks — safe to retry as-is (gentler concurrency, rollback still covers everything). The rest are usually data/permission errors (400/403/404) where a retry fails the same way — fix the data or re-import for those.
+                    {hasTransient
+                      ? <><b style={{color:C.cy}}>Transient</b> = timeouts, throttling (429), 5xx, deadlocks — safe to retry as-is (gentler concurrency, rollback still covers everything). The rest are usually data/permission errors (400/403/404) where a retry fails the same way — fix the data or re-import for those.</>
+                      : <>A retry sends the same data, so these will fail the same way — <b style={{color:C.yw}}>unless you already fixed something org-side</b> (a missing record, a privilege, a field length). Otherwise check the error log below: most are likely <i>"no matching record"</i> (wrong / format-mismatched key) or a validation error — fix the data and re-import.</>}
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {result.optionWarnings&&result.optionWarnings.length>0&&(
                 <div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
