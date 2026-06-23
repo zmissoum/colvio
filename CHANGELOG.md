@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.59] — 2026-06-19
+### Fixed (Data Loader — chunk isolation now covers all modes incl. DELETE)
+- UPDATE was already covered by the v1.11.58 fix — it runs through the same `batchUpsert` path (only difference is the `If-Match: *` header), so the 600 s timeout and per-chunk isolation already applied. This release extends the same per-chunk try/catch to the bulk-DELETE worker (`batchDeleteKeyed`), which still had the unprotected per-chunk call: a single timed-out delete chunk no longer aborts the whole delete; its rows are logged as per-row errors and the rest continues. All three batch workers (create / upsert+update / delete) are now consistent.
+
 ## [1.11.58] — 2026-06-19
 ### Fixed (Data Loader — one timed-out chunk aborted the whole load)
 - A single chunk timing out (`Batch UPSERT failed: Timeout after 300s`) used to reject the entire batch operation, throwing away every remaining chunk and reporting one opaque row-0 error. Now each chunk is isolated: if its request fails (timeout, network drop, content-script error) its rows are logged as **per-row errors with the exact message** and the load **carries on with the next chunks**. Because a timeout classifies as transient, those exact rows are offered on the retry card. Also raised the per-chunk batch timeout from 300s to 600s to give heavily-throttled orgs / the serial-PATCH fallback more headroom before a chunk is marked failed.
