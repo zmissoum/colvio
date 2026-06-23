@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.58] — 2026-06-19
+### Fixed (Data Loader — one timed-out chunk aborted the whole load)
+- A single chunk timing out (`Batch UPSERT failed: Timeout after 300s`) used to reject the entire batch operation, throwing away every remaining chunk and reporting one opaque row-0 error. Now each chunk is isolated: if its request fails (timeout, network drop, content-script error) its rows are logged as **per-row errors with the exact message** and the load **carries on with the next chunks**. Because a timeout classifies as transient, those exact rows are offered on the retry card. Also raised the per-chunk batch timeout from 300s to 600s to give heavily-throttled orgs / the serial-PATCH fallback more headroom before a chunk is marked failed.
+
 ## [1.11.57] — 2026-06-19
 ### Fixed (Data Loader — retry card was self-contradictory when no failure is transient)
 - When every failed row is deterministic (e.g. 130 "no matching record" 404s), the retry card no longer asks "retry the ones that might be transient?" while offering only "Retry all 130 failed". It now adapts: the heading reads "130 rows failed — these look like data/permission errors, not transient ones", the accent turns amber, the action becomes "Retry all 130 anyway", and the help text explains a retry only helps if you fixed something org-side, otherwise to check the log (usually a wrong/format-mismatched key) and re-import. The transient-retry flow is unchanged when transient failures exist.
