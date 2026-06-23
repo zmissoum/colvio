@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.56] — 2026-06-19
+### Added (Data Loader — show the exact error on a crash)
+- If a run dies with an uncaught error outside the per-batch try/catch (prep loop, existence pre-pass, metadata fetch, etc.) it no longer stops silently with a spinner stuck. Every run (dry / real / retry) now goes through a wrapper that catches the failure and shows the **exact error message** (plus an expandable stack trace) on the run screen, with "← Back to mapping" and "Save error" actions. The busy/before-unload guard is released on crash so the tab isn't stuck. Per-batch failures are still handled as logged row errors as before.
+
 ## [1.11.55] — 2026-06-19
 ### Fixed (Data Loader — progress denominator counted input rows, not sent rows)
 - An UPDATE of, say, 91,000 rows that only matches ~5,400 existing records looked like it "stopped at 5,400 / 91,000". Rows the prep step filters out (no matching record in UPDATE-only, empty key, or unchanged in delta mode) never reach a batch, but the progress bar's denominator was the full input count while `done` only counts sent rows. The bar now tracks the rows actually being sent, the send message shows "Sending N of M … — K not eligible", and the completion reads "Done — N sent, K not eligible (no matching record / empty key / unchanged — see the log)". No behavioural change to what's sent; the result screen's Updated/Errors/Skipped breakdown was always correct.
