@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.60] — 2026-06-19
+### Fixed (code-audit hardening — logic, perf, web/D365 best practices)
+- **Loader result counts (UPSERT):** Created vs Updated are now counted separately end-to-end (content.js → bridge → result card), so a mixed upsert no longer reports "Updated: 1000" while the rollback offers to delete the 300 it actually created. The card now matches the log and the rollback set.
+- **`int` transform data corruption:** `"1,000"` was silently parsed to `1` (the comma stopped `parseInt`); now thousands separators are stripped (`"1,000"`/`"1 000"` → 1000), a trailing fraction is truncated, and non-numeric input is rejected to null instead of a silent partial parse. +5 regression tests.
+- **Results grid identity:** VirtualTable rows are keyed by record id instead of position, so inline-edit and selection no longer visually jump to the wrong record after sort+filter.
+- **Batch cancel:** the per-row serial-PATCH fallback now checks the abort flag mid-chunk, so Cancel stops it (and reduces orphaned writes when a chunk falls back under throttling).
+- **Lookup resolution N+1:** resolve-mode lookups now batch via OR-filter chunks of 80 with concurrency 6 (like the existence check) instead of one query per unique value — a high-cardinality migration no longer fires tens of thousands of sequential requests before the first write.
+- **Explorer large exports:** paginated fetches throttle the results re-render (paint every 5 pages, force on column changes) so the filter/sort memos don't recompute over the whole growing set on every page.
+- **Resilience & hygiene:** ErrorBoundary now logs the caught error + component stack; inline-edit write-access probe fails open on a probe error; Results' confirm/bulk modals close on Escape; a "N selected are hidden by the filter" warning before bulk actions; control chars stripped from role-name OData filters; `lookupFieldSet`/`entityTemplates` memoized; the global search box now opens the Ctrl+K palette (was inert).
+- **Edge / packaging:** `minimum_chrome_version: 102` added; panel CSP `connect-src` widened to the US-Gov and China Dataverse hosts. (No code changes were required for Edge — the same package is Edge-Add-ons-ready; this is forward-proofing.)
+
 ## [1.11.59] — 2026-06-19
 ### Fixed (Data Loader — chunk isolation now covers all modes incl. DELETE)
 - UPDATE was already covered by the v1.11.58 fix — it runs through the same `batchUpsert` path (only difference is the `If-Match: *` header), so the 600 s timeout and per-chunk isolation already applied. This release extends the same per-chunk try/catch to the bulk-DELETE worker (`batchDeleteKeyed`), which still had the unprotected per-chunk call: a single timed-out delete chunk no longer aborts the whole delete; its rows are logged as per-row errors and the rest continues. All three batch workers (create / upsert+update / delete) are now consistent.

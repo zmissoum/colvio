@@ -73,9 +73,10 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
           {startIdx > 0 && <tr style={{height:offsetY}}><td colSpan={fields.length+1}/></tr>}
           {data.slice(startIdx, endIdx).map((r, vi) => {
             const i = startIdx + vi;
+            const recId = getRecordId(r) ?? i; // stable identity → inline-edit/selection survive sort+filter (was positional key={i})
             const isFocused = i === focusedRow;
             return (
-              <tr key={i} style={{height:ROW_H,borderBottom:`1px solid ${C.bd}`,background:isFocused?C.sfa:"transparent"}}
+              <tr key={recId} style={{height:ROW_H,borderBottom:`1px solid ${C.bd}`,background:isFocused?C.sfa:"transparent"}}
                 onMouseEnter={e=>{if(!isFocused)e.currentTarget.style.background=C.sfh;}}
                 onMouseLeave={e=>{if(!isFocused)e.currentTarget.style.background="transparent";}}>
                 <td style={{...tds,color:C.txd,fontSize:12,position:"sticky",left:0,background:selected.has(getRecordId(r))?C.vid:isFocused?C.sfa:C.bg,zIndex:1,display:"flex",alignItems:"center",gap:4}}>
@@ -84,12 +85,12 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
                   {orgInfo?.orgUrl&&entityName&&getRecordId(r)&&<a href={`${orgInfo.orgUrl}/main.aspx?etn=${entityName}&id=${getRecordId(r)}&pagetype=entityrecord`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:C.vi,textDecoration:"none",fontSize:10,lineHeight:1}} title="Open in D365">{"\u2197"}</a>}
                 </td>
                 {fields.map(f => {
-                  const k=`${i}-${f}`;
-                  const isEd=editing&&editing.row===i&&editing.field===f;
+                  const k=`${recId}-${f}`;
+                  const isEd=editing&&editing.rowId===recId&&editing.field===f;
                   return (
                     <td key={f} style={{...tds,maxWidth:220,cursor:"pointer",background:isEd?C.sfa:undefined}}
                       onClick={()=>!isEd&&copy(bestGet(r,f),k)}
-                      onDoubleClick={async()=>{if(onInlineEdit&&!f.includes(".")){if(onBeforeEdit&&!(await onBeforeEdit(r)))return;const raw=rawGet(r,f);setEditing({row:i,field:f,value:raw!=null?String(raw):"",record:r});}}}
+                      onDoubleClick={async()=>{if(onInlineEdit&&!f.includes(".")){if(onBeforeEdit&&!(await onBeforeEdit(r)))return;const raw=rawGet(r,f);setEditing({rowId:recId,field:f,value:raw!=null?String(raw):"",record:r});}}}
                       title={isEd?"Enter=save | Esc=cancel":"Click=copy | Dbl-click=edit"}>
                       {isEd?(
                         <input ref={editRef} value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})}

@@ -293,7 +293,7 @@ export default function App(){
           {bp.mobile&&<button onClick={()=>setSideOpen(true)} style={{background:"none",border:"none",color:C.txm,cursor:"pointer",padding:4}}><I.Menu/></button>}
           {/* Global search */}
           <div style={{flex:1,maxWidth:400,position:"relative"}}>
-            <input placeholder={t("sidebar.search_placeholder")} style={{width:"100%",padding:"5px 10px 5px 30px",background:C.sfh,border:"none",borderRadius:6,color:C.tx,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            <input readOnly placeholder={t("sidebar.search_placeholder")} onFocus={()=>setShowPalette(true)} onClick={()=>setShowPalette(true)} title="Open the command palette (Ctrl+K)" style={{width:"100%",padding:"5px 10px 5px 30px",background:C.sfh,border:"none",borderRadius:6,color:C.tx,fontSize:13,outline:"none",boxSizing:"border-box",cursor:"pointer"}}/>
             <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:C.txd}}><I.Search s={13}/></span>
           </div>
           <div style={{flex:1}}/>

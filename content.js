@@ -634,6 +634,7 @@
                 } else {
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
+                    if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                     try {
                       await dvRequest("POST", entitySet, buildClean(chunk[i]));
                       results.created++;
@@ -648,6 +649,7 @@
               } catch (batchErr) {
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
+                  if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                   try {
                     await dvRequest("POST", entitySet, buildClean(chunk[i]));
                     results.created++;
@@ -669,7 +671,7 @@
             const entitySet = params.entitySet;
             const keyField = params.keyField;
             const isPrimaryKey = params.isPrimaryKey || false;
-            const results = { updated: 0, errors: [], log: [] };
+            const results = { created: 0, updated: 0, errors: [], log: [] };
             const STRIP = new Set(["createdon","modifiedon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
             validateEntitySet(entitySet);
             validateName(keyField, 'keyField');
@@ -783,6 +785,10 @@
                   for (const entry of chunkLog) {
                     if (entry.status === "ERROR") {
                       results.errors.push({ row: entry.row, msg: entry.msg || "Batch error", payload: "" });
+                    } else if (entry.status === "CREATED") {
+                      // Upsert that CREATED a record (201) — counted separately from real updates so the
+                      // result card's Created/Updated split matches the log + the rollback set.
+                      results.created++;
                     } else {
                       results.updated++;
                     }
@@ -799,6 +805,7 @@
                   // Batch endpoint failed entirely — fall back to serial PATCH for this chunk
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
+                    if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                     try {
                       await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), params.updateOnly ? { "If-Match": "*" } : null);
                       results.updated++;
@@ -814,6 +821,7 @@
                 // Network/transport failure — same fallback
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
+                  if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                   try {
                     await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), params.updateOnly ? { "If-Match": "*" } : null);
                     results.updated++;
@@ -915,6 +923,7 @@
                 } else {
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
+                    if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                     try { await dvRequest("DELETE", buildPath(chunk[i])); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                     catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                   }
@@ -922,6 +931,7 @@
               } catch (batchErr) {
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
+                  if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                   try { await dvRequest("DELETE", buildPath(chunk[i])); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                   catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                 }
@@ -1531,7 +1541,7 @@
           case "getRoleUserCount": {
             const nameC = String(params.roleName || "");
             if (!nameC) { result = { count: 0 }; break; }
-            const escC = nameC.replace(/'/g, "''");
+            const escC = nameC.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''"); // strip control chars then quote-escape
             const d = await dvRequest("GET", `systemusers?$select=systemuserid&$top=1&$count=true&$filter=systemuserroles_association/any(o:o/name eq '${escC}')`);
             result = { count: d["@odata.count"] != null ? d["@odata.count"] : (d.value || []).length };
             break;
@@ -1540,7 +1550,7 @@
           case "getRoleUsers": {
             const nameU = String(params.roleName || "");
             if (!nameU) { result = []; break; }
-            const escU = nameU.replace(/'/g, "''");
+            const escU = nameU.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''"); // strip control chars then quote-escape
             const map = {};
             let url = `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value,title,address1_telephone1,mobilephone,_parentsystemuserid_value&$filter=systemuserroles_association/any(o:o/name eq '${escU}')&$orderby=fullname asc`;
             while (url) {

@@ -91,7 +91,14 @@ export function applyTransform(val, transform, optionMap) {
       return null;
     }
     case "boolean": return low === "true" || low === "1" || low === "oui" || low === "yes";
-    case "int": { const n = parseInt(String(val).replace(/[\s ]/g, ""), 10); return isNaN(n) ? null : n; }
+    case "int": {
+      // Strip whitespace (incl. NBSP/narrow-NBSP) and thousands-grouping commas, THEN require a clean
+      // number - avoids parseInt silent partial parse: "1,000"->1 (comma stops parse), "12abc"->12;
+      // now "1,000"/"1 000"->1000 and garbage -> null.
+      const s = String(val).trim().replace(/[\s  ]/g, "").replace(/,/g, "");
+      if (!/^[+-]?\d+(\.\d+)?$/.test(s)) return null;
+      return Math.trunc(parseFloat(s));
+    }
     case "float": {
       let s = String(val).trim().replace(/[\s ]/g, "");
       if (s.includes(",") && s.includes(".")) {

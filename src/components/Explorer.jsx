@@ -539,12 +539,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             if(!pageData?.records?.length)break;
             allRecords=[...allRecords,...pageData.records];
             hasMore=!!pageData.pagingCookie;
-            setRes(prev=>({...prev,data:allRecords,count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            // Throttle the data re-render (every 5 pages) so the Results memos don't recompute over the
+            // whole accumulating set on every page; count/progress still update each page.
+            const paint=!hasMore||page%5===0;
+            setRes(prev=>({...prev,...(paint?{data:allRecords}:{}),count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e){
             setError(`Page ${page}: ${e.message}`);break;
           }
         }
-        setRes(prev=>({...prev,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        setRes(prev=>({...prev,data:allRecords,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
         // ── Client-side aggregation fallback (50k limit) ──
         if(e.message&&(e.message.includes("50000")||e.message.includes("having")||e.message.includes("Having"))&&activeFxml.includes("aggregate")){
@@ -716,12 +719,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             for(const row of pageClean)for(const k of Object.keys(row)){if(!colSet.has(k)){colSet.add(k);newCols=true;}}
             if(newCols){const updatedFields=[...colSet].filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity"));headerFields.length=0;headerFields.push(...updatedFields);updatedFields.forEach(f=>{odataFieldMap[f]=f;});}
             nextLink=pageData.nextLink||null;
-            setRes(prev=>({...prev,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            const paint=!nextLink||pageNum%5===0||newCols; // throttle data re-render; force a paint when columns change
+            setRes(prev=>({...prev,fields:headerFields,odataFieldMap,...(paint?{data:allRecords}:{}),count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(pageErr){
             setError(`Page ${pageNum}: ${pageErr.message}`);break;
           }
         }
-        setRes(prev=>({...prev,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        setRes(prev=>({...prev,data:allRecords,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
         setError(e.message);setLoading(false);
       }
@@ -770,8 +774,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           const pageClean = pageData.records.map(cleanRecord);
           allRecords = [...allRecords, ...pageClean];
           // Discover new columns when using auto-detect (allSelected fallback path)
+          let newCols = false;
           if (!(validSf.length > 0 && !allSelected)) {
-            let newCols = false;
             for (const row of pageClean) for (const k of Object.keys(row)) { if (!builderColSet.has(k)) { builderColSet.add(k); newCols = true; } }
             if (newCols) {
               const updated = [...builderColSet].filter(k=>!k.endsWith("__display")&&!k.endsWith("__entity")&&!k.includes("."));
@@ -783,7 +787,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             }
           }
           nextLink = pageData.nextLink || null;
-          setRes(prev => ({...prev, fields: headerFields, odataFieldMap, data: allRecords, count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+          const paint = !nextLink || pageNum%5===0 || newCols; // throttle data re-render; force a paint when columns change
+          setRes(prev => ({...prev, fields: headerFields, odataFieldMap, ...(paint?{data:allRecords}:{}), count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         } catch (pageErr) {
           if (pageErr.message?.includes("401") || pageErr.message?.includes("SESSION_EXPIRED")) {
             setError("Session expired — refresh D365 (F5) then click ⚡ again");
@@ -795,7 +800,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if (hasExpand && ent.c && allRecords.length < ent.c * 0.9) {
         setError(`⚠ ${allRecords.length} records retrieved out of ${ent.c} — D365 limits results with $expand. Remove expand to get all records, then enrich in a second query.`);
       }
-      setRes(prev => ({...prev, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+      setRes(prev => ({...prev, data: allRecords, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
     } catch(e) {
       if(e.message?.includes("401") || e.message?.includes("SESSION_EXPIRED")) {
         setError("Session expired — refresh D365 (F5) then click ⚡ again");
