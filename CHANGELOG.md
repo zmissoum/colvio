@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.64] — 2026-06-19
+### Fixed (scenario audit — batch A: wrong exports, stale state, dead-ends)
+- **Exports now honour the on-screen filter** in Security Audit (role privileges) and Users & Licenses — they used to export the full set even when a filter showed only a few rows.
+- **Recycle Bin no longer claims "disabled" when the status is merely unknown** (probe failed or insufficient privilege) — it now says it couldn't be determined instead of asserting it's off.
+- **Explorer: switching the target entity clears the raw OData/FetchXML/SQL query text** — you can no longer accidentally run the previous entity's query against the newly-selected table.
+- **Explorer: closing a query tab mid-fetch now stops its paging loop** (was leaking an orphaned fetch + setState on an unmounted tab).
+- **Explorer: saved queries now persist and restore the OData and SQL query text** (previously an OData/SQL saved query came back blank); restoring a query whose table no longer exists now shows a clear message.
+- **Data Loader: lookups are reset when the target entity changes** — a lookup configured for the old entity can no longer bind wrongly on the new one.
+
 ## [1.11.63] — 2026-06-19
 ### Fixed (second-pass audit — data integrity, correctness, robustness)
 - **Wrong-record edit/delete when the primary key isn't selected:** the results grid derived a row's id by scanning for the first GUID, which could pick a lookup value (`_ownerid_value`, `_parentcustomerid_value`). Inline-edit / bulk-update / DELETE could then target the wrong record. Now lookup `_*_value` columns and annotations are excluded; a non-PK GUID is only a last resort.
