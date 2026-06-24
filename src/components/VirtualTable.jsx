@@ -22,6 +22,10 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
 
   const onScroll = useCallback((e) => setScrollTop(e.target.scrollTop), []);
 
+  // Keyboard focus follows position; clamp it when the visible set shrinks (e.g. a filter applied)
+  // so the highlight / Enter-to-select can't point past the end of the now-shorter list.
+  useEffect(() => { setFocusedRow(f => (f >= data.length ? -1 : f)); }, [data.length]);
+
   const onKeyDown = useCallback((e) => {
     if (editing) return; // Don't interfere with inline editing
     if (e.key === "ArrowDown") {
@@ -63,7 +67,7 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
         <thead>
           <tr>
             <th style={{...ths(),position:"sticky",left:0,zIndex:2,background:C.sf,minWidth:52,display:"flex",alignItems:"center",gap:4,top:0}}>
-              <input type="checkbox" checked={selected.size>0&&selected.size===data.length} onChange={toggleAll} style={{accentColor:C.vi,cursor:"pointer"}}/>
+              <input type="checkbox" checked={data.length>0&&data.every(r=>selected.has(getRecordId(r)))} onChange={toggleAll} style={{accentColor:C.vi,cursor:"pointer"}}/>
               <span>#</span>
             </th>
             {fields.map(f => (<th key={f} onClick={()=>onSort?.(f)} style={{...ths(),position:"sticky",top:0,zIndex:1,background:C.sf,cursor:"pointer",userSelect:"none"}}><span style={{display:"inline-flex",alignItems:"center",gap:3}}>{f}{sortField===f&&<span style={{fontSize:10,color:C.vi}}>{sortDir==="asc"?"\u25B2":"\u25BC"}</span>}</span></th>))}

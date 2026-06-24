@@ -1616,7 +1616,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               {liveLog.entries.length>0&&(()=>{
                 // The DOM shows the bounded live buffer (newest first). The FULL log lives in fullLog.current
                 // (lightweight) and is what "Export current log" writes — reconstructing columns from csvData.r.
-                const totalProcessed=liveLog.counts.CREATED+liveLog.counts.UPSERTED+liveLog.counts.ERROR;
+                const totalProcessed=liveLog.counts.CREATED+liveLog.counts.UPSERTED+(liveLog.counts.DELETED||0)+liveLog.counts.ERROR;
                 const visibleEntries=liveLog.entries;
                 const exportLiveLog=()=>{
                   const esc=(v)=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
