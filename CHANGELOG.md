@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.61] — 2026-06-19
+### Fixed (Explorer — export filename used the wrong entity in OData/FetchXML/SQL)
+- Running a raw OData, FetchXML or SQL query that targets a different table than the one selected in the Builder named the export after the stale Builder selection (e.g. a `contacts?...` OData query exported as `fou_salesareateam.xlsx`). The result entity is now resolved from the query itself — the entity-set segment for OData, the `<entity name="…">` for FetchXML/SQL (incl. the >50k client-side-aggregation path) — so CSV/XLSX/JSON exports are named after the table you actually queried.
+
 ## [1.11.60] — 2026-06-19
 ### Fixed (code-audit hardening — logic, perf, web/D365 best practices)
 - **Loader result counts (UPSERT):** Created vs Updated are now counted separately end-to-end (content.js → bridge → result card), so a mixed upsert no longer reports "Updated: 1000" while the rollback offers to delete the 300 it actually created. The card now matches the log and the rollback set.
