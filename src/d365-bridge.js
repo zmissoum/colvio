@@ -101,10 +101,18 @@ async function callD365(action, params = {}) {
     let settled = false;
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
-    const isLongOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRoleUsers" || action === "getRoleUserCount";
+    const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRoleUsers" || action === "getRoleUserCount";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
-      if (!settled) { settled = true; reject(new Error(`Timeout after ${timeoutMs/1000}s — action: ${action}`)); }
+      if (!settled) {
+        settled = true;
+        // A batch chunk that blows past the timeout is likely mid serial-PATCH fallback under heavy
+        // throttling. Tell the content script to STOP (batchAborted) so it doesn't keep writing after
+        // we've given up — closes the orphaned-write / double-create-on-retry window.
+        if (isBatchOp && isExtension) { try { chrome.runtime.sendMessage({ __d365InspectorRequest: true, id: ++reqId, action: "abortBatch", params: {}, d365TabId: getD365TabId() }, () => { void chrome.runtime.lastError; }); } catch {} }
+        reject(new Error(`Timeout after ${timeoutMs/1000}s — action: ${action}`));
+      }
     }, timeoutMs);
 
     chrome.runtime.sendMessage(

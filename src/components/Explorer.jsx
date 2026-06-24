@@ -507,19 +507,23 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         const headerFields=Object.keys(firstRec).filter(k=>!k.startsWith("@")&&!k.includes("@")&&k!=="__error");
         const odataFieldMap={};
         headerFields.forEach(f=>{odataFieldMap[f]=f;});
-        let allRecords=[...data.records];
-
-        // Apply HAVING client-side if present
-        if(havingBlock){
+        // HAVING is a client-side post-aggregation filter (FetchXML can't express it server-side).
+        // Apply it to EVERY page, not just the first — a grouped query that pages would otherwise leak
+        // unfiltered rows from page 2 onward.
+        const applyHaving=(recs)=>{
+          if(!havingBlock) return recs;
+          let out=recs;
           const havingRegex=/<condition\s+attribute\s*=\s*"([^"]*)"\s+operator\s*=\s*"([^"]*)"\s+value\s*=\s*"([^"]*)"/gi;
           let hm;
           while((hm=havingRegex.exec(havingBlock[1]))!==null){
             const[,alias,op,val]=hm;const nv=Number(val);
-            allRecords=allRecords.filter(r=>{const v=Number(r[alias])||0;
+            out=out.filter(r=>{const v=Number(r[alias])||0;
               if(op==="ge")return v>=nv;if(op==="gt")return v>nv;if(op==="le")return v<=nv;if(op==="lt")return v<nv;if(op==="eq")return v===nv;if(op==="ne")return v!==nv;return true;
             });
           }
-        }
+          return out;
+        };
+        let allRecords=applyHaving([...data.records]);
 
         // Resolve the entity from the FetchXML/SQL <entity name="…">, not the stale Builder selection,
         // so the export filename matches the queried table.
@@ -541,7 +545,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           try{
             const pageData=await bridge.executeFetchXml(pagedXml);
             if(!pageData?.records?.length)break;
-            allRecords=[...allRecords,...pageData.records];
+            allRecords=[...allRecords,...applyHaving(pageData.records)];
             hasMore=!!pageData.pagingCookie;
             // Throttle the data re-render (every 5 pages) so the Results memos don't recompute over the
             // whole accumulating set on every page; count/progress still update each page.

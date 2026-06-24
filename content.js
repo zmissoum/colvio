@@ -564,12 +564,17 @@
             const parseBatchResponse = (text, batchOffset, chunkLen) => {
               const log = [];
               const blocks = text.split(/Content-Type:\s*application\/http/i);
-              for (let i = 1; i < blocks.length && i <= chunkLen; i++) {
+              for (let i = 1; i < blocks.length; i++) {
                 const block = blocks[i];
                 const statusMatch = block.match(/HTTP\/1\.1\s+(\d{3})/);
                 if (!statusMatch) continue;
                 const status = parseInt(statusMatch[1], 10);
-                const rowIdx = batchOffset + i;
+                // Map each part by its echoed Content-ID (1-based row within the items array), NOT by
+                // ordinal position — robust to a value/error message containing "Content-Type:
+                // application/http" (extra split) or any response reordering. Fall back to position.
+                const cid = parseInt((block.match(/Content-ID:\s*(\d+)/i) || [])[1], 10);
+                const rowIdx = Number.isFinite(cid) ? cid : (batchOffset + i);
+                if (rowIdx < batchOffset + 1 || rowIdx > batchOffset + chunkLen) continue;
                 if (status === 204 || status === 201) {
                   // Capture the created record's GUID (OData-EntityId header) — fuels the
                   // post-import Rollback feature and id display in the log.
@@ -625,10 +630,15 @@
                     }
                     results.log.push(entry);
                   }
-                  if (chunkLog.length < chunk.length) {
-                    for (let i = chunkLog.length; i < chunk.length; i++) {
-                      results.log.push({ row: batch + i + 1, status: "ERROR", msg: "No response received from batch" });
-                      results.errors.push({ row: batch + i + 1, msg: "No response received from batch", payload: "" });
+                  {
+                    // Pad any item with no parsed response. The parser maps by Content-ID, so a gap is
+                    // a SPECIFIC row — pad by row number (seen-set), not by tail position.
+                    const seen = new Set(chunkLog.map(e => e.row));
+                    for (let i = 0; i < chunk.length; i++) {
+                      const rowIdx = batch + i + 1;
+                      if (seen.has(rowIdx)) continue;
+                      results.log.push({ row: rowIdx, status: "ERROR", msg: "No response received from batch" });
+                      results.errors.push({ row: rowIdx, msg: "No response received from batch", payload: "" });
                     }
                   }
                 } else {
@@ -724,12 +734,15 @@
               // Each individual response within the batch starts with "Content-Type: application/http"
               const blocks = text.split(/Content-Type:\s*application\/http/i);
               // First block is the multipart preamble, skip it
-              for (let i = 1; i < blocks.length && i <= chunkLen; i++) {
+              for (let i = 1; i < blocks.length; i++) {
                 const block = blocks[i];
                 const statusMatch = block.match(/HTTP\/1\.1\s+(\d{3})/);
                 if (!statusMatch) continue;
                 const status = parseInt(statusMatch[1], 10);
-                const rowIdx = batchOffset + i; // 1-based row index within the full items array
+                // Map by echoed Content-ID (see batchCreate) — robust to extra splits / reordering.
+                const cid = parseInt((block.match(/Content-ID:\s*(\d+)/i) || [])[1], 10);
+                const rowIdx = Number.isFinite(cid) ? cid : (batchOffset + i);
+                if (rowIdx < batchOffset + 1 || rowIdx > batchOffset + chunkLen) continue;
                 if (status === 201) {
                   // Upsert that CREATED a record — capture its GUID (like batchCreate) so the
                   // post-run Rollback can delete it. Without this, upsert-created records are
@@ -795,10 +808,15 @@
                     results.log.push(entry);
                   }
                   // Pad missing entries (parser couldn't extract — mark as unknown)
-                  if (chunkLog.length < chunk.length) {
-                    for (let i = chunkLog.length; i < chunk.length; i++) {
-                      results.log.push({ row: batch + i + 1, status: "ERROR", msg: "No response received from batch" });
-                      results.errors.push({ row: batch + i + 1, msg: "No response received from batch", payload: "" });
+                  {
+                    // Pad any item with no parsed response. The parser maps by Content-ID, so a gap is
+                    // a SPECIFIC row — pad by row number (seen-set), not by tail position.
+                    const seen = new Set(chunkLog.map(e => e.row));
+                    for (let i = 0; i < chunk.length; i++) {
+                      const rowIdx = batch + i + 1;
+                      if (seen.has(rowIdx)) continue;
+                      results.log.push({ row: rowIdx, status: "ERROR", msg: "No response received from batch" });
+                      results.errors.push({ row: rowIdx, msg: "No response received from batch", payload: "" });
                     }
                   }
                 } else {
@@ -865,12 +883,15 @@
             const parseBatchResponse = (text, batchOffset, chunkLen) => {
               const log = [];
               const blocks = text.split(/Content-Type:\s*application\/http/i);
-              for (let i = 1; i < blocks.length && i <= chunkLen; i++) {
+              for (let i = 1; i < blocks.length; i++) {
                 const block = blocks[i];
                 const statusMatch = block.match(/HTTP\/1\.1\s+(\d{3})/);
                 if (!statusMatch) continue;
                 const status = parseInt(statusMatch[1], 10);
-                const rowIdx = batchOffset + i;
+                // Map by echoed Content-ID (see batchCreate) — robust to extra splits / reordering.
+                const cid = parseInt((block.match(/Content-ID:\s*(\d+)/i) || [])[1], 10);
+                const rowIdx = Number.isFinite(cid) ? cid : (batchOffset + i);
+                if (rowIdx < batchOffset + 1 || rowIdx > batchOffset + chunkLen) continue;
                 if (status === 204 || status === 200) {
                   log.push({ row: rowIdx, status: "DELETED" });
                 } else {
@@ -914,10 +935,15 @@
                     else results.deleted++;
                     results.log.push(entry);
                   }
-                  if (chunkLog.length < chunk.length) {
-                    for (let i = chunkLog.length; i < chunk.length; i++) {
-                      results.log.push({ row: batch + i + 1, status: "ERROR", msg: "No response received from batch" });
-                      results.errors.push({ row: batch + i + 1, msg: "No response received from batch", payload: "" });
+                  {
+                    // Pad any item with no parsed response. The parser maps by Content-ID, so a gap is
+                    // a SPECIFIC row — pad by row number (seen-set), not by tail position.
+                    const seen = new Set(chunkLog.map(e => e.row));
+                    for (let i = 0; i < chunk.length; i++) {
+                      const rowIdx = batch + i + 1;
+                      if (seen.has(rowIdx)) continue;
+                      results.log.push({ row: rowIdx, status: "ERROR", msg: "No response received from batch" });
+                      results.errors.push({ row: rowIdx, msg: "No response received from batch", payload: "" });
                     }
                   }
                 } else {

@@ -120,15 +120,22 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const getRecordId=(r)=>{
     const idKey=`${res.entity.l}id`;
     if(r[idKey]) return r[idKey];
-    for(const[k,v] of Object.entries(r)){
-      if(typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return v;
-    }
+    const isGuid=(v)=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    // NEVER mistake a lookup GUID (_ownerid_value, _parentcustomerid_value…) or an annotation for
+    // the record's own id — otherwise inline-edit / bulk-update / DELETE would target the wrong record.
+    // Prefer a real primary-key-looking column (ends in "id"), then any non-lookup GUID as last resort.
+    const usable=Object.entries(r).filter(([k])=>!k.startsWith("_")&&!k.includes("@"));
+    for(const[k,v] of usable){ if(k.toLowerCase().endsWith("id")&&isGuid(v)) return v; }
+    for(const[,v] of usable){ if(isGuid(v)) return v; }
     return null;
   };
   const toggleSel=(id)=>setSelected(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
   const toggleAll=()=>{
-    if(selected.size===sortedData.length){setSelected(new Set());}
-    else{setSelected(new Set(sortedData.map(r=>getRecordId(r)).filter(Boolean)));}
+    // Additive over the VISIBLE (filtered) rows only — never silently drop rows selected then hidden
+    // by the filter. Toggling selects/deselects what's shown while preserving any hidden selection.
+    const visibleIds=sortedData.map(r=>getRecordId(r)).filter(Boolean);
+    const allVisibleSelected=visibleIds.length>0&&visibleIds.every(id=>selected.has(id));
+    setSelected(prev=>{const s=new Set(prev);visibleIds.forEach(id=>allVisibleSelected?s.delete(id):s.add(id));return s;});
   };
   const executeDelete=async()=>{
     setDeleting(true);

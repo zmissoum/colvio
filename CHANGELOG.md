@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.63] — 2026-06-19
+### Fixed (second-pass audit — data integrity, correctness, robustness)
+- **Wrong-record edit/delete when the primary key isn't selected:** the results grid derived a row's id by scanning for the first GUID, which could pick a lookup value (`_ownerid_value`, `_parentcustomerid_value`). Inline-edit / bulk-update / DELETE could then target the wrong record. Now lookup `_*_value` columns and annotations are excluded; a non-PK GUID is only a last resort.
+- **Double-create on a batch timeout:** when a batch chunk exceeded the 600 s timeout, the panel gave up but the content script kept writing (serial-PATCH fallback) → rows reported as errors may actually have been created → duplicates on retry. The timeout now sends `abortBatch` so the content script stops.
+- **$batch response parsing is now keyed by Content-ID** (echoed per operation) instead of by ordinal position — robust to an error message/value containing the multipart marker or any response reordering; missing responses are padded by the specific missing row, not the tail.
+- **HAVING (aggregate FetchXML) is applied to every page**, not just the first — a grouped query that paginates no longer leaks unfiltered rows.
+- **Select-all is additive over the filtered view** — selecting rows then filtering no longer silently drops the hidden selection; the header checkbox reflects "all visible selected".
+- Keyboard focus row is clamped when the filtered set shrinks; the DELETE live-log "processed" count now includes deleted rows.
+
 ## [1.11.62] — 2026-06-19
 ### Fixed (Data Loader — the Lookups step was unreachable when nothing auto-detected)
 - Lookups are auto-detected only on columns holding a Dataverse GUID. When a CSV's lookup columns hold non-GUID IDs (e.g. Salesforce IDs like `005To000002TH5xIAG` in a SF→D365 migration), 0 lookups were detected and the Lookups step was both skipped and greyed-out — so you couldn't configure them at all. The Lookups step is now always reachable: the stepper item stays clickable, the Mapping step shows a "🔍 Lookups (add) →" button, and the empty Lookups screen explains that a raw Salesforce ID can't bind a Dataverse lookup directly — you add the lookup and resolve it by matching that ID against a field on the target record (alternate key or a migrated "original ID" field).
