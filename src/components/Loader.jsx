@@ -345,6 +345,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(prevTargetRef.current===target) return; // initial mount / re-selecting the same entity
     prevTargetRef.current=target;
     setUKey({d:"",c:""});setUpdateOnly(false);setDeltaMode(false);setDeleteMode(false);setDeleteConfirm("");setVerifyExists(false);
+    setLookups([]); // lookups (nav property + resolve config) belonged to the OLD entity — clear them so they can't bind wrongly on the new one
     remapPendingRef.current=true;
   },[target]);
 

@@ -94,9 +94,9 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
 
   const exportCSV = (format = "csv") => {
     const headers = ["fullname", "email", "disabled", "accessMode", "calType", "businessUnit", "title", "manager", "phone", "mobile", "createdOn"];
-    const rows = users.map(u => [u.fullname, u.email, u.disabled ? "Yes" : "No", u.accessModeLabel, u.calTypeLabel, u.buName, u.title, u.manager, u.phone, u.mobile, u.createdOn]);
+    const rows = filtered.map(u => [u.fullname, u.email, u.disabled ? "Yes" : "No", u.accessModeLabel, u.calTypeLabel, u.buName, u.title, u.manager, u.phone, u.mobile, u.createdOn]); // export the FILTERED + searched view shown on screen
     exportTable(headers, rows, "d365_users_licenses", format, "Users");
-    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${users.length} users)`);
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${filtered.length} users)`);
     setTimeout(() => setFeedback(""), 2000);
   };
 

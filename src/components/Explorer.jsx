@@ -80,7 +80,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
   const doSaveQuery=(name)=>{
     if(!name||!ent) return;
-    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,savedAt:new Date().toISOString()};
+    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,rq,sqlQ,savedAt:new Date().toISOString()};
     const updated=[q,...savedQueries.filter(s=>s.name!==name)].slice(0,20);
     setSavedQueries(updated);
     if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_saved_queries:updated});
@@ -96,10 +96,16 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         setGroupLogic(q.groupLogic||"and");
         setLim(q.limit ?? 0);   // ?? not || so a saved "All" (0) survives restore instead of snapping back to a number
         setOrderBy(q.orderBy&&q.orderBy.f?{f:q.orderBy.f,dir:q.orderBy.dir==="desc"?"desc":"asc"}:{f:"",dir:"asc"});
-        if(q.qm){setQm(q.qm);if(q.qm==="odata"&&q.query)setRq(q.query);}
-        if(q.fxml){setFxml(q.fxml);}
+        // Restore the raw query text for every mode (selEnt cleared them) — OData & SQL were not
+        // persisted before, so a saved OData/SQL query came back blank.
+        if(q.qm) setQm(q.qm);
+        if(q.rq) setRq(q.rq);
+        if(q.fxml) setFxml(q.fxml);
+        if(q.sqlQ) setSqlQ(q.sqlQ);
       };
       selEnt(match);
+    } else {
+      setError(`The saved query's table "${q.entity}" no longer exists on this org.`);
     }
     setShowSaved(false);
   };
@@ -153,6 +159,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setEnt(e);setRes(null);setPicker(false);setError("");
     setFilterGroups([{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
     setExpands([]);setLookups([]);setShowExpandPicker(false);setChildRelsLoaded(false);
+    setRq("");setFxml("");setSqlQ(""); // raw query text belonged to the previous entity — clear it so a switch can't run against the wrong table
     if(bp.mobile)setShowList(false);
     if(isLive){
       setLoadingFields(true);setSf([]);setFields([]);
@@ -342,6 +349,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
 
   const fetchAbort = useRef(false);
+  // Stop the paging loop if this tab is closed/unmounted mid-fetch — otherwise it keeps issuing
+  // bridge.query(nextLink) + setRes on a torn-down component (orphaned network + warnings).
+  useEffect(() => () => { fetchAbort.current = true; }, []);
 
   // Flatten a single object's properties into a clean record, resolving formatted values
   const flattenObj=(obj,prefix)=>{

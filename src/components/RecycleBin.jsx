@@ -130,7 +130,13 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
 
       {status === null && <div style={{ textAlign: "center", marginTop: 40 }}><Spin s={20} /></div>}
 
-      {status && !status.enabled && (
+      {status && !status.enabled && status.unknown && (
+        <div style={{ ...crd({ padding: 16 }) }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.yw, marginBottom: 8 }}>⚠ Recycle-bin status couldn't be determined</div>
+          <div style={{ fontSize: 13, color: C.txm, lineHeight: 1.7 }}>The probe failed or your security roles don't grant access to the recycle-bin configuration — so we can't tell whether it's enabled. This does <b>not</b> mean it's off. Ask an administrator, or check Power Platform admin center → Environment → Settings → Product → Features.</div>
+        </div>
+      )}
+      {status && !status.enabled && !status.unknown && (
         <div style={{ ...crd({ padding: 16 }) }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.yw, marginBottom: 8 }}>⚠ {t("recyclebin.disabled_title")}</div>
           <div style={{ fontSize: 13, color: C.txm, lineHeight: 1.7, whiteSpace: "pre-line" }}>{t("recyclebin.disabled_body")}</div>

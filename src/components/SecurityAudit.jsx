@@ -181,9 +181,9 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const exportCSV = (format = "csv") => {
     if (!selRole || !privileges.length) return;
     const headers = ["privilege", "label", "depth", "depthLabel", "isOrg", "isSensitive"];
-    const rows = privileges.map(p => [p.name, formatPrivName(p.name), p.depth, p.depthLabel, p.isOrg ? "Yes" : "No", isSensitive(p.name) ? "Yes" : "No"]);
+    const rows = filteredPrivs.map(p => [p.name, formatPrivName(p.name), p.depth, p.depthLabel, p.isOrg ? "Yes" : "No", isSensitive(p.name) ? "Yes" : "No"]); // export the FILTERED view, not all privileges
     exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}`, format, "Privileges");
-    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${privileges.length} privileges)`);
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${filteredPrivs.length} privileges)`);
     setTimeout(() => setFeedback(""), 2000);
   };
 
