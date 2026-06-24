@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.62] — 2026-06-19
+### Fixed (Data Loader — the Lookups step was unreachable when nothing auto-detected)
+- Lookups are auto-detected only on columns holding a Dataverse GUID. When a CSV's lookup columns hold non-GUID IDs (e.g. Salesforce IDs like `005To000002TH5xIAG` in a SF→D365 migration), 0 lookups were detected and the Lookups step was both skipped and greyed-out — so you couldn't configure them at all. The Lookups step is now always reachable: the stepper item stays clickable, the Mapping step shows a "🔍 Lookups (add) →" button, and the empty Lookups screen explains that a raw Salesforce ID can't bind a Dataverse lookup directly — you add the lookup and resolve it by matching that ID against a field on the target record (alternate key or a migrated "original ID" field).
+
 ## [1.11.61] — 2026-06-19
 ### Fixed (Explorer — export filename used the wrong entity in OData/FetchXML/SQL)
 - Running a raw OData, FetchXML or SQL query that targets a different table than the one selected in the Builder named the export after the stale Builder selection (e.g. a `contacts?...` OData query exported as `fou_salesareateam.xlsx`). The result entity is now resolved from the query itself — the entity-set segment for OData, the `<entity name="…">` for FetchXML/SQL (incl. the >50k client-side-aggregation path) — so CSV/XLSX/JSON exports are named after the table you actually queried.

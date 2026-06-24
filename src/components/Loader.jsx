@@ -1096,9 +1096,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1400,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:bp.mobile?14:22,flexWrap:"wrap"}}>
         {steps.map((s,i)=>{
-          const lookupsEmpty=i===2&&lookups.length===0&&csvData.h.length>0; // Lookups step with nothing to configure
-          const clickable=i<=step&&!lookupsEmpty;
-          return <div key={i} style={{display:"flex",alignItems:"center"}}><button onClick={()=>clickable&&setStep(i)} title={lookupsEmpty?"No parent lookups detected — step skipped":undefined} style={{display:"flex",alignItems:"center",gap:3,padding:bp.mobile?"4px 6px":"5px 10px",borderRadius:5,cursor:clickable?"pointer":"default",opacity:lookupsEmpty?0.45:1,background:i===step?C.sfa:"transparent",border:`1px solid ${i===step?C.vi:i<step?C.gnd:C.bd}`,fontSize:bp.mobile?10:11,color:i<=step?C.tx:C.txd,fontWeight:i===step?600:400}}><span style={{fontSize:bp.mobile?10:12}}>{i<step?"✅":s.i}</span>{(!bp.mobile||i===step)&&<span>{lookupsEmpty?`${s.l} (none)`:s.l}</span>}</button>{i<4&&<div style={{width:bp.mobile?6:14,height:1,background:i<step?C.gn:C.bd,margin:"0 2px"}}/>}</div>;
+          const lookupsEmpty=i===2&&lookups.length===0&&csvData.h.length>0; // Lookups step: nothing auto-detected
+          const clickable=i<=step; // Lookups stays reachable even when empty — add lookups manually (non-GUID / Salesforce IDs)
+          return <div key={i} style={{display:"flex",alignItems:"center"}}><button onClick={()=>clickable&&setStep(i)} title={lookupsEmpty?"No lookups auto-detected — click to add one manually (e.g. non-GUID / Salesforce IDs)":undefined} style={{display:"flex",alignItems:"center",gap:3,padding:bp.mobile?"4px 6px":"5px 10px",borderRadius:5,cursor:clickable?"pointer":"default",opacity:(lookupsEmpty&&i!==step)?0.55:1,background:i===step?C.sfa:"transparent",border:`1px solid ${i===step?C.vi:i<step?C.gnd:C.bd}`,fontSize:bp.mobile?10:11,color:i<=step?C.tx:C.txd,fontWeight:i===step?600:400}}><span style={{fontSize:bp.mobile?10:12}}>{i<step?"✅":s.i}</span>{(!bp.mobile||i===step)&&<span>{lookupsEmpty?`${s.l} (none)`:s.l}</span>}</button>{i<4&&<div style={{width:bp.mobile?6:14,height:1,background:i<step?C.gn:C.bd,margin:"0 2px"}}/>}</div>;
         })}
       </div>
 
@@ -1303,7 +1303,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               </tr>);})}</tbody>
             </table></div>
           </div>
-          <div style={{display:"flex",justifyContent:"flex-end",marginTop:12,gap:6}}><button onClick={()=>setStep(0)} style={bt()}>← Back</button><button onClick={()=>setStep(lookups.length>0?2:3)} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{lookups.length>0?"Lookups →":"Preview →"}</button></div>
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:12,gap:6}}><button onClick={()=>setStep(0)} style={bt()}>← Back</button>{lookups.length===0&&<button onClick={()=>setStep(2)} style={bt(null)} title="Add a lookup manually — e.g. for non-GUID / Salesforce IDs that weren't auto-detected">🔍 Lookups (add) →</button>}<button onClick={()=>setStep(lookups.length>0?2:3)} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{lookups.length>0?"Lookups →":"Preview →"}</button></div>
         </div>
       )}
 
@@ -1311,7 +1311,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         <div>
           <div style={{...crd({padding:bp.mobile?12:14}),marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}><I.Link/><span style={{fontWeight:600,fontSize:15}}>Parent Lookups</span></div>
-            {lookups.length===0?<div style={{textAlign:"center",padding:"14px 0",color:C.txd}}><p style={{marginBottom:8}}>No parent columns detected.</p><button onClick={()=>setLookups([...lookups,{src:"",csv:"",entity:"",nav:"",d365f:"",fb:"skip",mode:"resolve"}])} style={bt(null,{fontSize:13})}><I.Plus/> Add</button></div>
+            {lookups.length===0?<div style={{textAlign:"center",padding:"14px 0",color:C.txd}}><p style={{marginBottom:4,fontWeight:600,color:C.txm}}>No lookup columns were auto-detected.</p><p style={{marginBottom:10,fontSize:12,maxWidth:560,marginLeft:"auto",marginRight:"auto",lineHeight:1.6}}>Auto-detect only flags columns whose values are Dataverse <b>GUIDs</b>. If your lookup values are non-GUID IDs (e.g. Salesforce IDs like <code style={{...mono,fontSize:11,color:C.cy}}>005To000002TH5xIAG</code>), add the lookup here and <b>resolve</b> it — match that ID against a field on the target record (an alternate key, or a custom "original ID" field you migrated). A raw Salesforce ID cannot bind a Dataverse lookup directly.</p><button onClick={()=>setLookups([...lookups,{src:"",csv:"",entity:"",nav:"",d365f:"",fb:"skip",mode:"resolve"}])} style={bt(null,{fontSize:13})}><I.Plus/> Add a lookup</button></div>
             :<div style={{display:"flex",flexDirection:"column",gap:8}}>
               {lookups.map((lk,i)=>(
                 <div key={i} style={{background:C.bg,border:`1px solid ${C.bd}`,borderRadius:7,padding:bp.mobile?10:12}}>
