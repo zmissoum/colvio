@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.65] — 2026-06-19
+### Added/Fixed (scenario audit — batch B: Loader key-health + cancel)
+- **Pre-flight key-health warnings:** the Data Loader now warns before you run when the key column has **empty cells** (in UPSERT those rows are silently CREATED as new records, not matched — a common surprise) or **duplicate key values** across rows (multiple rows hit the same record, last one wins).
+- **Cancel now interrupts the "Preparing N records" phase**, not just the sending phase — a huge file no longer ignores Cancel until prep finishes.
+
 ## [1.11.64] — 2026-06-19
 ### Fixed (scenario audit — batch A: wrong exports, stale state, dead-ends)
 - **Exports now honour the on-screen filter** in Security Audit (role privileges) and Users & Licenses — they used to export the full set even when a filter showed only a few rows.

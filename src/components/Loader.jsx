@@ -318,6 +318,25 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     return checks.filter(c=>c.count>0);
   },[csvData.r,maps,targetFieldsMeta,deleteMode]);
 
+  // Pre-flight key health: empty key cells (UPSERT silently CREATES them as new keyless records;
+  // UPDATE-only errors them) and duplicate key values (multiple rows hit the same record → last wins).
+  const keyWarnings=useMemo(()=>{
+    const out=[];
+    if(deleteMode||!uKey.d||!uKey.c||!csvData.r.length) return out;
+    const col=uKey.c;let empty=0;let dup=0;const seen=new Set();const dupd=new Set();
+    for(const r of csvData.r){
+      const v=r[col];
+      if(v===undefined||v===null||String(v).trim()===""){ empty++; continue; }
+      const k=String(v).trim().toLowerCase();
+      if(seen.has(k)){ if(!dupd.has(k)){dupd.add(k);dup++;} } else seen.add(k);
+    }
+    if(empty>0) out.push(updateOnly
+      ? `${empty.toLocaleString()} row${empty>1?"s have":" has"} an empty key ("${col}") — errored (UPDATE only, nothing to match).`
+      : `${empty.toLocaleString()} row${empty>1?"s have":" has"} an empty key ("${col}") — in UPSERT these are CREATED as new records, NOT matched. Check the key column.`);
+    if(dup>0) out.push(`${dup.toLocaleString()} key value${dup>1?"s appear":" appears"} on more than one row ("${col}") — those rows ${updateOnly?"update":"upsert"} the SAME record (last row wins).`);
+    return out;
+  },[csvData.r,uKey.d,uKey.c,updateOnly,deleteMode]);
+
   useEffect(()=>{
     if(!isLive||!target){setTargetLookups([]);setTargetAltKeys([]);setTargetFieldsMeta([]);return;}
     const gen=++fieldGen.current;
@@ -849,6 +868,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     await new Promise(r=>setTimeout(r,0));
 
     for(let i=0;i<rows.length;i++){
+      if(loadAbort.current) break; // allow Cancel to interrupt the (potentially long) prep phase, not just the batch
       if(retrySet&&!retrySet.has(i)) continue; // retry pass: only re-run the previously-failed rows
       const row=rows[i];
       if(i && i%25000===0){
@@ -1448,6 +1468,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             if(pickNoTransform.length) warnings.push({k:"pick",t:`${pickNoTransform.length} option-set field${pickNoTransform.length>1?"s":""} have no transform chosen: ${pickNoTransform.slice(0,5).join(", ")} — labels won't convert to option values.`});
             // UPSERT key set but no CSV column chosen
             if(uKey.d&&!uKey.c) warnings.push({k:"uk",t:`UPSERT key "${uKey.d}" has no CSV column selected — the import can't match existing records.`});
+            keyWarnings.forEach((w,wi)=>warnings.push({k:"key"+wi,t:w}));
             // Non-writable fields mapped for the chosen mode (calculated/rollup/read-only → 400 per row)
             if(!deleteMode){
               const isUpdateMode=uKey.d&&updateOnly;
