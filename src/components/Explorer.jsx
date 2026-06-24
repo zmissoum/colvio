@@ -521,7 +521,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           }
         }
 
-        setRes({entity:ent,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink:null,fetching:!!data.moreRecords});
+        // Resolve the entity from the FetchXML/SQL <entity name="…">, not the stale Builder selection,
+        // so the export filename matches the queried table.
+        const fxEntName=(activeFxml.match(/<entity\s+name\s*=\s*"([^"]*)"/i)||[])[1]||"";
+        const fxEnt=(fxEntName&&entities.find(e=>e.l===fxEntName))||(fxEntName?{l:fxEntName,p:fxEntName+"s"}:ent);
+        setRes({entity:fxEnt,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink:null,fetching:!!data.moreRecords});
         setLoading(false);
 
         let page=1;
@@ -601,8 +605,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const filterBlock=filterMatch?filterMatch[0]:"";
             const orderField=groupByFields.length?groupByFields[0].name:neededFields[0];
             const cleanFlatXml=`<fetch><entity name="${entName}">${neededFields.map(f=>`<attribute name="${f}"/>`).join("")}${filterBlock}<order attribute="${orderField}"/></entity></fetch>`;
+            // Entity from the parsed FetchXML, not the stale Builder selection (so exports are named right).
+            const aggEnt=(entName&&entities.find(e=>e.l===entName))||(entName?{l:entName,p:entName+"s"}:ent);
 
-            setRes({entity:ent,fields:[],data:[],count:0,total:0,query:q,elapsed:"loading...",fetching:true});
+            setRes({entity:aggEnt,fields:[],data:[],count:0,total:0,query:q,elapsed:"loading...",fetching:true});
             setLoading(false);
 
             // Use count="5000" in fetch for smaller pages = faster transfer
@@ -669,7 +675,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const headerFields=Object.keys(results[0]||{});
             const odataFieldMap={};headerFields.forEach(f=>{odataFieldMap[f]=f;});
             const elapsed=`${((Date.now()-t0b)/1000).toFixed(1)}s`;
-            setRes({entity:ent,fields:headerFields,odataFieldMap,data:results,count:results.length,total:results.length,query:q,elapsed:`${elapsed} (client-side aggregation on ${allRaw.length} records)`,fetching:false});
+            setRes({entity:aggEnt,fields:headerFields,odataFieldMap,data:results,count:results.length,total:results.length,query:q,elapsed:`${elapsed} (client-side aggregation on ${allRaw.length} records)`,fetching:false});
           }catch(fallbackErr){
             setError(`Client-side aggregation failed: ${fallbackErr.message}`);setLoading(false);
           }
@@ -702,8 +708,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         headerFields.forEach(f=>{odataFieldMap[f]=f;});
         let allRecords=[...firstClean];
         let nextLink=data.nextLink||null;
-        setRes({entity:ent||{l:"?",p:entitySet},fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink,fetching:!!nextLink});
-        addToHistory(ent||{l:entitySet},q,qm,headerFields.length);
+        // Resolve the entity from the OData path (segment before "?"), NOT the stale Builder selection —
+        // otherwise the export filename uses the previously-selected entity (e.g. a query on contacts
+        // saved as "fou_salesareateam"). Map the entity-set name back to its logical name when known.
+        const baseSet=entitySet.split(/[(/]/)[0];
+        const odataEnt=entities.find(e=>e.p===baseSet)||{l:baseSet,p:baseSet};
+        setRes({entity:odataEnt,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink,fetching:!!nextLink});
+        addToHistory(odataEnt,q,qm,headerFields.length);
         setLoading(false);
         // Paginate
         let pageNum=1;
