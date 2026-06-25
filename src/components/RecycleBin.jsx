@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, mono, inp, bt, crd, ths, tds } from "../shared.jsx";
+import { C, I, Spin, ENTS, mono, inp, bt, crd, ths, tds, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 const FMT = "@OData.Community.Display.V1.FormattedValue";
@@ -99,6 +99,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
 
   const doRestore = async () => {
     if (!selected.size || !meta) return;
+    if (!confirmProd(orgInfo?.isProduction, `Restore ${selected.size} deleted record${selected.size > 1 ? "s" : ""} (${entity}) back into the live table.`)) return;
     const ids = [...selected];
     setRestoring({ done: 0, total: ids.length });
     const out = [];

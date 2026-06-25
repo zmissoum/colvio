@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, exportTable, copyText, isTrulyCustom } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
@@ -75,15 +75,18 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     }).catch(()=>{});
   },[isLive]);
 
+  const selGen=useRef(0); // guards a slow getFields from a previous entity overwriting the current one
   const handleSelectEntity=(e)=>{
+    const gen=++selGen.current;
     setSelEnt(e);setFields([]);setShowPicklist(null);setOptionSetData({});setFieldSearch("");
     if(isLive){
       setLoadingFields(true);
       bridge.getFields(e.l).then(data=>{
+        if(selGen.current!==gen)return; // user switched entity while this was loading
         if(data&&Array.isArray(data)){
           setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,o:f.odataName||f.logical,t:f.type||"String",req:f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false})).sort((a,b)=>a.l.localeCompare(b.l)));
         }
-      }).catch(()=>{}).finally(()=>setLoadingFields(false));
+      }).catch(()=>{}).finally(()=>{if(selGen.current===gen)setLoadingFields(false);});
     } else {
       setFields(FLDS);
     }

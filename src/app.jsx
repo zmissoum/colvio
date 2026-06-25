@@ -125,6 +125,10 @@ export default function App(){
   const[queryHistory,setQueryHistory]=useState([]);
   const[orgInfo,setOrgInfo]=useState(null);
   const[permissions,setPermissions]=useState(null);
+  // false while permissions are still provisional (we connected fail-open on a slow-probe timeout).
+  // Restricted ("requires") tabs stay hidden until this flips true, so they never flash-then-vanish
+  // for non-admins. The common path (probe wins the race) sets it true immediately = no delay.
+  const[permsConfirmed,setPermsConfirmed]=useState(false);
   const[expired,setExpired]=useState(false);
   const[,setLocaleState]=useState(getLocale());// value unused, setter triggers re-render on locale change
   const[showShortcuts,setShowShortcuts]=useState(false);
@@ -168,10 +172,11 @@ export default function App(){
       // privilege, so fail-open === real perms and nothing flashes regardless.
       const FAIL_OPEN = { canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canPublish: true };
       let settled = false;
-      const go = (perms) => {
+      const go = (perms, confirmed) => {
         if (settled) return;
         settled = true;
         setPermissions(perms);
+        setPermsConfirmed(confirmed); // provisional fail-open (timeout) stays false → restricted tabs hidden until probe lands
         setConnecting(false);
         setConnected(true);
         // Deferred, cached, non-blocking: publish privilege (3 chained calls) and the
@@ -179,17 +184,19 @@ export default function App(){
         bridge.checkPublishPrivilege().then(canPublish => setPermissions(p => ({ ...p, canPublish }))).catch(() => {});
         bridge.getOrgFeatures().then(setOrgFeatures).catch(() => {});
       };
-      const timer = setTimeout(() => go(FAIL_OPEN), 2500);
+      const timer = setTimeout(() => go(FAIL_OPEN, false), 2500);
       bridge.checkPermissions().then(perms => {
         clearTimeout(timer);
         if (settled) {
           // Probe landed after we already connected fail-open → tighten the read gates, but
           // preserve the deferred canPublish (checkPublishPrivilege may have refined it already).
           setPermissions(p => ({ ...p, canReadAudit: perms.canReadAudit, canReadSolutions: perms.canReadSolutions, canReadAllUsers: perms.canReadAllUsers, canBypassPlugins: perms.canBypassPlugins }));
-        } else go(perms);
+          setPermsConfirmed(true); // exact perms known now → reveal the tabs the user is actually allowed
+        } else go(perms, true);
       }).catch(() => {
         clearTimeout(timer);
-        go(FAIL_OPEN); // probes failed entirely → show all tabs, D365 still enforces server-side
+        // Probes failed entirely → we genuinely can't tell, so fail open (D365 still enforces server-side).
+        if (settled) setPermsConfirmed(true); else go(FAIL_OPEN, true);
       });
     }
   }, []);
@@ -205,8 +212,6 @@ export default function App(){
       setConnected(true);
     }, 1500);
   };
-
-  if(!connected) return (<ConnScreen onConnect={handleManualConnect} connecting={connecting} bp={bp} orgName={orgInfo?.orgName}/>);
 
   const allTabs=[
     {id:"explorer",label:t("nav.explorer"),desc:t("nav.explorer.desc"),icon:<I.Search/>},
@@ -226,12 +231,23 @@ export default function App(){
     {id:"security",label:t("nav.security"),desc:t("nav.security.desc"),icon:<I.Shield/>,requires:"canReadAllUsers"},
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
-  const tabs=allTabs.filter(t=>!t.requires||permissions?.[t.requires]);
+  // Restricted tabs appear only once permissions are CONFIRMED — during the provisional fail-open
+  // window (slow-probe timeout) they stay hidden, so a non-admin never sees them flash then vanish
+  // (and so can never click into a tab that's about to 403).
+  const tabs=allTabs.filter(t=>!t.requires||(permsConfirmed&&permissions?.[t.requires]));
+  // If the active tab is no longer permitted (e.g. permissions tightened after a provisional connect),
+  // bounce to the first allowed tab instead of leaving its content mounted to throw a raw 403.
+  useEffect(()=>{
+    if(connected&&tab&&!tabs.some(tb=>tb.id===tab)) setTab(tabs[0]?.id||"explorer");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[connected,permsConfirmed,permissions,orgFeatures,tab]);
   const paletteActions=[
     {label:t("palette.a_theme"),hint:"dark / light",icon:"🌓",run:toggleTheme},
     {label:t("palette.a_lang"),hint:"EN ⇄ FR",icon:"🌐",run:()=>{const next=getLocale()==="en"?"fr":"en";setLocale(next);setLocaleState(next);}},
     {label:t("palette.a_shortcuts"),hint:"Ctrl+/",icon:"⌨",run:()=>setShowShortcuts(true)},
   ];
+
+  if(!connected) return (<ConnScreen onConnect={handleManualConnect} connecting={connecting} bp={bp} orgName={orgInfo?.orgName}/>);
 
   return(
     <div style={{display:"flex",height:"100vh",background:C.bg,color:C.tx,fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",fontSize:15}}>

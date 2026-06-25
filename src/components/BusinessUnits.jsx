@@ -15,24 +15,30 @@ const DEMO_BUS = [
 export default function BusinessUnits({ bp, orgInfo, theme }) {
   const isLive = orgInfo?.isExtension;
   const [bus, setBus] = useState(null);            // [{id,name,parentId,disabled}]
-  const [usersByBu, setUsersByBu] = useState({});  // { buId: [user,...] }
-  const [loading, setLoading] = useState(true);
+  const [countsByBu, setCountsByBu] = useState({});// { buId: count } — cheap, drives the tree badges
+  const [usersByBu, setUsersByBu] = useState({});  // { buId: [user,...] } — lazy cache, loaded on select
+  const [loading, setLoading] = useState(true);    // initial tree + counts load
+  const [loadingUsers, setLoadingUsers] = useState(false); // members of the selected BU
+  const [userErr, setUserErr] = useState("");
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState(null);            // selected BU id
   const [userSearch, setUserSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all | enabled | disabled
 
+  // Mount: load only the BU hierarchy + per-BU counts (one cheap aggregate query). Member rows are
+  // fetched lazily per BU when one is opened — so the module stays snappy on orgs with 50k+ users.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true); setError("");
+      setLoading(true); setError(""); setUsersByBu({});
       try {
-        const [buData, users] = await Promise.all([
+        const [buData, counts] = await Promise.all([
           isLive
             ? bridge.query("businessunits", { select: "businessunitid,name,_parentbusinessunitid_value,isdisabled", orderby: "name asc" })
             : Promise.resolve({ records: DEMO_BUS }),
-          bridge.getAllUsers(),
+          bridge.getUserCountsByBu().catch(() => ({})),   // best-effort: aggregate limit on huge orgs → blank badges
         ]);
         if (cancelled) return;
         const buList = (buData?.records || []).map(b => ({
@@ -41,15 +47,30 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
           parentId: b._parentbusinessunitid_value || null,
           disabled: !!b.isdisabled,
         }));
-        const grouped = {};
-        (users || []).forEach(u => { const k = u.buId || ""; (grouped[k] = grouped[k] || []).push(u); });
-        setBus(buList); setUsersByBu(grouped);
+        setBus(buList); setCountsByBu(counts || {});
         if (buList.length) setSel(buList.find(b => !b.parentId)?.id || buList[0].id);
       } catch (e) { if (!cancelled) setError(e.message || String(e)); }
       if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [isLive]);
+
+  // Lazy-load the selected BU's direct members the first time it's opened (cached thereafter).
+  useEffect(() => {
+    if (!sel) return;
+    if (usersByBu[sel] !== undefined) { setLoadingUsers(false); setUserErr(""); return; } // already cached
+    let cancelled = false;
+    setLoadingUsers(true); setUserErr("");
+    bridge.getUsersByBu(sel).then(list => {
+      if (cancelled) return;
+      setUsersByBu(prev => ({ ...prev, [sel]: list || [] }));
+      setLoadingUsers(false);
+    }).catch(e => {
+      if (cancelled) return;
+      setUserErr(e.message || String(e)); setLoadingUsers(false);
+    });
+    return () => { cancelled = true; };
+  }, [sel, usersByBu]);
 
   // Flatten the BU hierarchy into a depth-ordered list (parent → children). Orphans (parent not in
   // the list) and root BUs are top-level. A visited guard protects against any malformed cycle.
@@ -75,6 +96,7 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
 
   const selBu = bus?.find(b => b.id === sel);
   const selUsers = usersByBu[sel] || [];
+  const selLoaded = usersByBu[sel] !== undefined; // distinguishes "not fetched yet" from "fetched, empty"
   const passStatus = (u) => statusFilter === "all" || (statusFilter === "enabled" ? !u.disabled : !!u.disabled);
   const shownUsers = useMemo(() => {
     const s = userSearch.trim().toLowerCase();
@@ -82,8 +104,14 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
     // eslint-disable-next-line
   }, [selUsers, userSearch, statusFilter]);
 
-  const totalUsers = useMemo(() => Object.values(usersByBu).reduce((a, arr) => a + arr.length, 0), [usersByBu]);
-  const cnt = (id) => (usersByBu[id] || []).length;
+  // Counts come from the cheap aggregate (true totals even before any member rows are loaded);
+  // fall back to the loaded length if the aggregate was unavailable for that BU.
+  const cnt = (id) => countsByBu[id] ?? (usersByBu[id]?.length || 0);
+  const totalUsers = useMemo(() => {
+    const vals = Object.values(countsByBu);
+    if (vals.length) return vals.reduce((a, n) => a + (n || 0), 0);
+    return Object.values(usersByBu).reduce((a, arr) => a + arr.length, 0);
+  }, [countsByBu, usersByBu]);
 
   // Subtree = the selected BU + every BU beneath it. Used for the "incl. sub-BUs" count/export.
   const childMap = useMemo(() => {
@@ -91,23 +119,46 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
     (bus || []).forEach(b => { if (b.parentId) (m[b.parentId] = m[b.parentId] || []).push(b.id); });
     return m;
   }, [bus]);
-  const subUsers = useMemo(() => {
+  const subtreeBuIds = useMemo(() => {
     if (!sel) return [];
+    const stack = [sel], seen = new Set(), ids = [];
+    while (stack.length) { const x = stack.pop(); if (seen.has(x)) continue; seen.add(x); ids.push(x); (childMap[x] || []).forEach(c => stack.push(c)); }
+    return ids;
+  }, [sel, childMap]);
+  // Subtree member count from the aggregate — accurate without fetching every sub-BU's rows.
+  const subCount = useMemo(() => subtreeBuIds.reduce((a, id) => a + cnt(id), 0), [subtreeBuIds, countsByBu, usersByBu]); // eslint-disable-line
+  const selDirectCount = cnt(sel);
+  const hasSub = subtreeBuIds.length > 1 && subCount > selDirectCount;
+
+  // Build the deduplicated subtree member list from a cache map (used by export once rows are loaded).
+  const buildSubtreeUsers = (cache) => {
     const nameOf = (bid) => (bus || []).find(b => b.id === bid)?.name || "";
-    const stack = [sel], seenBu = new Set(), seenU = new Set(), arr = [];
-    while (stack.length) {
-      const x = stack.pop(); if (seenBu.has(x)) continue; seenBu.add(x);
-      (usersByBu[x] || []).forEach(u => { if (!seenU.has(u.id)) { seenU.add(u.id); arr.push({ ...u, _bu: nameOf(x) }); } });
-      (childMap[x] || []).forEach(c => stack.push(c));
-    }
+    const seenU = new Set(), arr = [];
+    subtreeBuIds.forEach(bid => (cache[bid] || []).forEach(u => { if (!seenU.has(u.id)) { seenU.add(u.id); arr.push({ ...u, _bu: nameOf(bid) }); } }));
     return arr;
-  }, [sel, childMap, usersByBu, bus]);
-  const hasSub = subUsers.length > selUsers.length;
+  };
 
   // scope: "this" = direct members of the selected BU; "subtree" = it + all sub-BUs (BU column kept).
-  const exportUsers = (scope, format = "csv") => {
+  // Subtree members are loaded lazily, so for a subtree export we first fetch any sub-BUs not yet cached.
+  const exportUsers = async (scope, format = "csv") => {
     if (!selBu) return;
-    const base = scope === "subtree" ? subUsers : selUsers.map(u => ({ ...u, _bu: selBu.name }));
+    let base;
+    if (scope === "subtree") {
+      const missing = subtreeBuIds.filter(id => usersByBu[id] === undefined);
+      let cache = usersByBu;
+      if (missing.length) {
+        setExporting(true);
+        try {
+          const fetched = await Promise.all(missing.map(id => bridge.getUsersByBu(id).then(l => [id, l || []]).catch(() => [id, []])));
+          cache = { ...usersByBu };
+          fetched.forEach(([id, l]) => { cache[id] = l; });
+          setUsersByBu(cache);
+        } finally { setExporting(false); }
+      }
+      base = buildSubtreeUsers(cache);
+    } else {
+      base = selUsers.map(u => ({ ...u, _bu: selBu.name }));
+    }
     const list = base.filter(passStatus);   // export respects the Enabled/Disabled filter
     if (!list.length) return;
     const headers = ["name", "email", "title", "manager", "phone", "mobile", "accessMode", "calType", "status", "businessUnit"];
@@ -154,17 +205,24 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
             <div style={{ ...crd({ padding: "16px 20px" }), marginBottom: 14 }}>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{selBu.name}</div>
               <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
-                <Badge label={`${selUsers.length} direct`} color={C.vi} />
-                {hasSub && <Badge label={`${subUsers.length} incl. sub-BUs`} color={C.cy} />}
+                <Badge label={`${selDirectCount.toLocaleString()} direct`} color={C.vi} />
+                {hasSub && <Badge label={`${subCount.toLocaleString()} incl. sub-BUs`} color={C.cy} />}
                 {selBu.disabled && <Badge label="Disabled" color={C.rd} />}
                 {selBu.parentId && bus && <span style={{ fontSize: 12, color: C.txd }}>parent: {bus.find(p => p.id === selBu.parentId)?.name || "—"}</span>}
               </div>
             </div>
 
-            {selUsers.length === 0
+            {(loadingUsers || !selLoaded) && !userErr
+              ? <div style={{ ...crd({ padding: 16 }), color: C.txm, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}><Spin s={14} /> Loading members…</div>
+              : userErr
+              ? <div style={{ ...crd({ padding: 14, borderColor: C.rd + "66" }), color: C.rd, fontSize: 13 }}>
+                  Couldn't load the members: {userErr}
+                  <button onClick={() => { setUserErr(""); setUsersByBu(prev => ({ ...prev })); }} style={{ ...bt(null, { fontSize: 12, marginLeft: 10 }) }}>↻ Retry</button>
+                </div>
+              : selUsers.length === 0
               ? <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>
                   No users are directly assigned to this business unit.
-                  {hasSub && <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}><button onClick={() => exportUsers("subtree", "csv")} style={bt(C.cy, { fontSize: 12 })}><I.Download /> Export {subUsers.length.toLocaleString()} users from sub-BUs (CSV)</button><button onClick={() => exportUsers("subtree", "xlsx")} style={bt(C.cy, { fontSize: 12 })}><I.Download /> Excel</button></div>}
+                  {hasSub && <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}><button onClick={() => exportUsers("subtree", "csv")} disabled={exporting} style={bt(C.cy, { fontSize: 12, opacity: exporting ? 0.5 : 1 })}><I.Download /> {exporting ? "Loading sub-BUs…" : `Export ${subCount.toLocaleString()} users from sub-BUs (CSV)`}</button><button onClick={() => exportUsers("subtree", "xlsx")} disabled={exporting} style={bt(C.cy, { fontSize: 12, opacity: exporting ? 0.5 : 1 })}><I.Download /> Excel</button></div>}
                 </div>
               : <>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -177,8 +235,8 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
                   <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{selUsers.length}</span>
                   <button onClick={() => exportUsers("this", "csv")} title="Export the direct members of this BU" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV (this BU)</button>
                   <button onClick={() => exportUsers("this", "xlsx")} title="Export the direct members of this BU to Excel" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel (this BU)</button>
-                  {hasSub && <button onClick={() => exportUsers("subtree", "csv")} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px" })}><I.Download /> + sub-BUs ({subUsers.length.toLocaleString()})</button>}
-                  {hasSub && <button onClick={() => exportUsers("subtree", "xlsx")} title="Export this BU plus every sub-BU beneath it to Excel" style={bt(null, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel + sub-BUs</button>}
+                  {hasSub && <button onClick={() => exportUsers("subtree", "csv")} disabled={exporting} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: exporting ? 0.5 : 1 })}><I.Download /> {exporting ? "Loading sub-BUs…" : `+ sub-BUs (${subCount.toLocaleString()})`}</button>}
+                  {hasSub && <button onClick={() => exportUsers("subtree", "xlsx")} disabled={exporting} title="Export this BU plus every sub-BU beneath it to Excel" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: exporting ? 0.5 : 1 })}><I.Download /> Excel + sub-BUs</button>}
                 </div>
                 <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 90px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>

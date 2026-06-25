@@ -132,6 +132,29 @@ export async function exportTable(headers,rows,baseName,format="csv",sheetName="
 export function Spin({s=14}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid ${C.txd}44`,borderTopColor:C.tx,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>;}
 export function copyText(t){navigator.clipboard?.writeText(String(t));}
 
+// Canonical record-id resolver, shared so every caller (result grid, post-delete row removal…) agrees
+// on which value is the record's OWN primary key. Prefers `<entity>id`, then a column ending in "id"
+// holding a GUID, then any non-lookup GUID. NEVER returns a `_..._value` lookup GUID or an annotation —
+// matching the wrong GUID would target/remove the wrong record. Returns null when none is usable.
+export function recordId(r, entityLogical){
+  if(!r) return null;
+  const idKey=`${entityLogical}id`;
+  if(r[idKey]) return r[idKey];
+  const isGuid=(v)=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const usable=Object.entries(r).filter(([k])=>!k.startsWith("_")&&!k.includes("@"));
+  for(const[k,v] of usable){ if(k.toLowerCase().endsWith("id")&&isGuid(v)) return v; }
+  for(const[,v] of usable){ if(isGuid(v)) return v; }
+  return null;
+}
+
+// Confirmation gate for a mutating action on a PRODUCTION org. Returns true to proceed. On a
+// non-production environment it proceeds silently. One helper so every destructive action prompts
+// the same way. (Native confirm — blocks reliably and needs no modal state.)
+export function confirmProd(isProduction, actionLabel){
+  if(!isProduction) return true;
+  return window.confirm(`⚠ PRODUCTION environment\n\n${actionLabel}\n\nThis affects live production data. Continue?`);
+}
+
 // Distinguish truly custom fields/entities (created by integrators) from Microsoft solution fields
 // msdyn_, mspp_, msfp_, msdynce_, msdynmkt_, adx_, cds_ etc. are Microsoft-created but IsCustom=true
 // A truly custom entity/field has a publisher prefix with underscore (new_xxx, cr123_xxx, foe_xxx)

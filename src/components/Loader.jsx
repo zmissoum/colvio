@@ -24,6 +24,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
 
   // ── Migration mode (opt-in) — preserve original created-on/by audit fields on CREATE ──────────
   const[migrationMode,setMigrationMode]=useState(false);
+  const[dateMD,setDateMD]=useState(false); // false = EU day/month (default), true = US month/day — applies to the date_iso transform
   // Override of created-on/by only works at create time. Pure create = no upsert key, not delete.
   const isPureCreate=!deleteMode&&!uKey.d;
   const migrationActive=migrationMode&&isPureCreate;
@@ -91,7 +92,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         .map(f => (f.logical || f.l || "").toLowerCase())
     );
 
-    setMaps(headers.filter(h=>!h.includes(".")).map(h=>{
+    // Dot in a header (e.g. "primarycontactid.emailaddress1") means "resolve this lookup by an
+    // alternate key". But a plain data column can legitimately contain a dot (e.g. "Q1.Revenue")
+    // and must NOT be hijacked into a bogus lookup against a non-existent entity. When target
+    // metadata is loaded we treat a dotted header as a lookup ONLY if its prefix matches a real
+    // lookup field/nav; otherwise it's a normal, mappable column. Before metadata arrives we can't
+    // tell, so we keep the heuristic (the retroactive effect enriches genuine ones once it loads).
+    const metaKnown=targetLookups.length>0;
+    const dotHeaders=headers.filter(h=>h.includes("."));
+    const dotLookupCols=new Set(dotHeaders.filter(col=>!metaKnown||findLookupMeta(col)));
+
+    setMaps(headers.filter(h=>!dotLookupCols.has(h)).map(h=>{
       const low=h.toLowerCase();
       if(SKIP_FIELDS.has(low)) return {csv:h,d365:"",transform:"",skip:true};
       if(low===primaryKey) return {csv:h,d365:"",transform:"",skip:true,isPK:true};
@@ -106,7 +117,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     }));
 
     const parents=new Set();const lks=[...autoLookups];
-    headers.filter(h=>h.includes(".")).forEach(col=>{
+    dotHeaders.filter(col=>dotLookupCols.has(col)).forEach(col=>{
       const p=col.split(".")[0];
       if(parents.has(p)) return;
       parents.add(p);
@@ -336,6 +347,35 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(dup>0) out.push(`${dup.toLocaleString()} key value${dup>1?"s appear":" appears"} on more than one row ("${col}") — those rows ${updateOnly?"update":"upsert"} the SAME record (last row wins).`);
     return out;
   },[csvData.r,uKey.d,uKey.c,updateOnly,deleteMode]);
+
+  // Pre-flight Salesforce-ID detection. A 15/18-char alphanumeric value (e.g. "001Hs00003abcDEF") is
+  // almost certainly a Salesforce record id, NOT a Dataverse GUID. Binding one straight to a lookup
+  // (direct mode) or to a migration owner/created-by field fails (400/404) — the user needs resolve
+  // mode against an external-id column, or to convert the id to the matching D365 GUID first.
+  const sfIdWarnings=useMemo(()=>{
+    if(deleteMode||!csvData.r.length) return [];
+    const looksSF=(v)=>{const s=String(v).trim();return (s.length===15||s.length===18)&&/^[A-Za-z0-9]+$/.test(s)&&/[A-Za-z]/.test(s)&&/[0-9]/.test(s);};
+    const majoritySF=(col)=>{ // sample up to 200 non-empty cells; flag if ≥60% look like SF ids
+      if(!col) return false;
+      let seen=0,hit=0;
+      for(const r of csvData.r){const v=r[col];if(v==null||String(v).trim()==="")continue;seen++;if(looksSF(v))hit++;if(seen>=200)break;}
+      return seen>0 && hit/seen>=0.6;
+    };
+    const out=[];
+    for(const lk of lookups){ // lookups bound directly as a GUID
+      if(lk.mode!=="direct"||!lk.csv) continue;
+      if(majoritySF(lk.csv)) out.push(`Lookup column "${lk.csv}" looks like Salesforce IDs — a direct bind needs a Dataverse GUID. Switch this lookup to "resolve" mode and match on an external-id field instead.`);
+    }
+    if(migrationMode){ // owner / created-by / modified-by override must be systemuser GUIDs
+      for(const m of maps){
+        if(m.skip||!m.d365) continue;
+        const ln=String(m.d365).toLowerCase();
+        if((ln==="createdby"||ln==="modifiedby"||ln==="ownerid")&&majoritySF(m.csv))
+          out.push(`"${m.csv}" (→ ${ln}) looks like Salesforce user IDs — these must be Dataverse systemuser GUIDs, not SF IDs.`);
+      }
+    }
+    return out;
+  },[csvData.r,lookups,maps,migrationMode,deleteMode]);
 
   useEffect(()=>{
     if(!isLive||!target){setTargetLookups([]);setTargetAltKeys([]);setTargetFieldsMeta([]);return;}
@@ -651,7 +691,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(isSystemField(m.d365)) continue;
       const rawVal=row[m.csv];
       if(rawVal===undefined||rawVal===null||rawVal==="") continue;
-      const val=applyTransform(rawVal,m.transform,optionMapsRef.current[m.d365]);
+      const val=applyTransform(rawVal,m.transform,optionMapsRef.current[m.d365],dateMD);
       if(val!==null&&val!==undefined&&val!==""){
         const lc=m.d365.toLowerCase();
         if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,val);
@@ -882,7 +922,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           if(!m.d365) continue;
           const rawVal = row[m.csv];
           if(rawVal === undefined || rawVal === null || rawVal === "") continue;
-          const val=applyTransform(rawVal,m.transform,optionMaps[m.d365]);
+          const val=applyTransform(rawVal,m.transform,optionMaps[m.d365],dateMD);
           if(val!==null && val!==undefined && val!==""){
             const lc=m.d365.toLowerCase();
             if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,val);
@@ -1469,6 +1509,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             // UPSERT key set but no CSV column chosen
             if(uKey.d&&!uKey.c) warnings.push({k:"uk",t:`UPSERT key "${uKey.d}" has no CSV column selected — the import can't match existing records.`});
             keyWarnings.forEach((w,wi)=>warnings.push({k:"key"+wi,t:w}));
+            sfIdWarnings.forEach((w,wi)=>warnings.push({k:"sfid"+wi,t:w}));
             // Non-writable fields mapped for the chosen mode (calculated/rollup/read-only → 400 per row)
             if(!deleteMode){
               const isUpdateMode=uKey.d&&updateOnly;
@@ -1567,6 +1608,27 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               </div>
             )}
           </div>
+
+          {/* Date format — only relevant when a column uses the date transform. d/m/Y is ambiguous
+              (03/04/2024 = 4 Mar in EU, 3 Apr in US); let the user pick rather than silently corrupt. */}
+          {maps.some(m=>m.transform==="date_iso")&&(
+            <div style={{...crd({padding:12}),marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
+                <span>📅 Date format for ambiguous dates</span>
+                <Tooltip text="Applies to columns using the 'date_iso' transform when the source is d/m/Y or m/d/Y (e.g. 03/04/2024). ISO dates (2024-03-04) and unambiguous ones (day part > 12) are detected automatically and ignore this setting. Salesforce/US exports are usually month-first."/>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer",padding:"5px 10px",borderRadius:6,border:`1px solid ${!dateMD?C.vi:C.bd}`,background:!dateMD?C.vi+"11":"transparent",color:!dateMD?C.vi:C.txm,fontWeight:!dateMD?600:400}}>
+                  <input type="radio" name="dateMD" checked={!dateMD} onChange={()=>setDateMD(false)} style={{accentColor:C.vi}}/>
+                  <span>Day first — d/m/Y (EU)</span>
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer",padding:"5px 10px",borderRadius:6,border:`1px solid ${dateMD?C.vi:C.bd}`,background:dateMD?C.vi+"11":"transparent",color:dateMD?C.vi:C.txm,fontWeight:dateMD?600:400}}>
+                  <input type="radio" name="dateMD" checked={dateMD} onChange={()=>setDateMD(true)} style={{accentColor:C.vi}}/>
+                  <span>Month first — m/d/Y (US / Salesforce)</span>
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* Save the current mapping + lookups + key as a reusable template for this entity */}
           <div style={{...crd({padding:"8px 12px"}),marginBottom:12,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>

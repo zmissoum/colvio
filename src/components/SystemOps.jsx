@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 // System Ops — two admin panels:
@@ -259,6 +259,7 @@ function SystemJobs({ bp, isAdmin, theme }) {
   const act = async (verb) => {
     const targets = rows.filter(j => selected.has(j.asyncoperationid) && (verb === "cancel" ? CANCELABLE(j) : RESUMABLE(j)));
     if (!targets.length) return;
+    if (!confirmProd(orgInfo?.isProduction, `${verb === "cancel" ? "Cancel" : "Resume"} ${targets.length} system job${targets.length > 1 ? "s" : ""}.`)) return;
     setActing({ done: 0, total: targets.length, verb });
     const out = [];
     for (const j of targets) {

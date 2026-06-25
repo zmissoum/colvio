@@ -86,6 +86,14 @@ describe("applyTransform", () => {
   });
   it("date: unparseable time part → null, never invalid ISO", () =>
     expect(applyTransform("13/06/2026 not-a-time", "date_iso")).toBeNull());
+  it("date: ambiguous d/m/Y stays day-first by default (EU)", () =>
+    expect(applyTransform("03/04/2024", "date_iso")).toBe("2024-04-03"));
+  it("date: ambiguous d/m/Y read month-first with dateMD=true (US)", () =>
+    expect(applyTransform("03/04/2024", "date_iso", null, true)).toBe("2024-03-04"));
+  it("date: dateMD=true still auto-swaps when the month part is impossible (>12)", () =>
+    expect(applyTransform("31/12/2024", "date_iso", null, true)).toBe("2024-12-31"));
+  it("date: ISO date ignores dateMD entirely", () =>
+    expect(applyTransform("2024-03-04", "date_iso", null, true)).toBe("2024-03-04"));
   it("no transform → passthrough", () => expect(applyTransform("Acme", "")).toBe("Acme"));
 });
 

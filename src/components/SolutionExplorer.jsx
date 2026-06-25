@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
@@ -43,10 +43,12 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
     return item.objectId?.substring(0,13)+"…";
   };
 
+  const selGen=useRef(0); // guards a slow component load from a previous solution overwriting the current one
   const handleSelect=async(sol)=>{
+    const gen=++selGen.current;
     setSelSol(sol);setLoadingComp(true);setCollapsed({});
-    try{const d=await bridge.getSolutionComponents(sol.id);setComponents(d||[]);}catch{setComponents([]);}
-    setLoadingComp(false);
+    try{const d=await bridge.getSolutionComponents(sol.id);if(selGen.current!==gen)return;setComponents(d||[]);}catch{if(selGen.current===gen)setComponents([]);}
+    if(selGen.current===gen)setLoadingComp(false);
   };
 
   const grouped=useMemo(()=>{

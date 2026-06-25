@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRoleUsers" || action === "getRoleUserCount";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getUsersByBu" || action === "getUserCountsByBu";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -695,6 +695,26 @@ export const bridge = {
     return callD365("getAllUsers");
   },
 
+  async getUserCountsByBu() {
+    if (!isExtension) return { b1: 2, b2: 1, b3: 1, b4: 0 };
+    return callD365("getUserCountsByBu", {});
+  },
+
+  async getUsersByBu(buId) {
+    if (!isExtension) {
+      const demo = {
+        b1: [
+          { id: "u1", fullname: "Alice Martin", email: "alice@contoso.com", disabled: false, accessMode: 0, accessModeLabel: "Read-Write", calType: 0, calTypeLabel: "Full", buId: "b1", buName: "Contoso", title: "CFO" },
+          { id: "u3", fullname: "Svc Integration", email: "", disabled: false, accessMode: 4, accessModeLabel: "Non-Interactive", calType: 5, calTypeLabel: "Essential", buId: "b1", buName: "Contoso", title: "" },
+        ],
+        b2: [{ id: "u2", fullname: "Bruno Lefebvre", email: "bruno@contoso.com", disabled: false, accessMode: 0, accessModeLabel: "Read-Write", calType: 0, calTypeLabel: "Full", buId: "b2", buName: "Sales EU", title: "Sales Manager" }],
+        b3: [{ id: "u4", fullname: "Old Account", email: "old@contoso.com", disabled: true, accessMode: 0, accessModeLabel: "Read-Write", calType: 0, calTypeLabel: "Full", buId: "b3", buName: "Sales US", title: "" }],
+      };
+      return demo[buId] || [];
+    }
+    return callD365("getUsersByBu", { buId });
+  },
+
   async getUserRoles(userId) {
     if (!isExtension) return [
       { id: "r1", name: "System Administrator" },
@@ -744,14 +764,14 @@ export const bridge = {
     return callD365("getRoleUserCount", { roleName });
   },
 
-  async getRoleUsers(roleName) {
+  async getRoleUsers(roleName, cap) {
     if (!isExtension) return [
       { id: "u1", name: "Alice Martin", email: "alice.martin@contoso.com", domain: "contoso\\alice", disabled: false, accessMode: "Read-Write", accessModeCode: 0, bu: "Contoso" },
       { id: "u2", name: "Bruno Lefebvre", email: "bruno.lefebvre@contoso.com", domain: "contoso\\bruno", disabled: false, accessMode: "Read-Write", accessModeCode: 0, bu: "Sales EU" },
       { id: "u3", name: "Svc Integration", email: "", domain: "app\\svcint", disabled: false, accessMode: "Non-interactive", accessModeCode: 4, bu: "Contoso" },
       { id: "u4", name: "Old Account", email: "old@contoso.com", domain: "contoso\\old", disabled: true, accessMode: "Read-Write", accessModeCode: 0, bu: "Sales US" },
     ];
-    return callD365("getRoleUsers", { roleName });
+    return callD365("getRoleUsers", { roleName, cap });
   },
 
   async getManyToManyRelationships(logicalName) {
