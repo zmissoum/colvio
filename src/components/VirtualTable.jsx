@@ -67,7 +67,7 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
         <thead>
           <tr>
             <th style={{...ths(),position:"sticky",left:0,zIndex:2,background:C.sf,minWidth:52,display:"flex",alignItems:"center",gap:4,top:0}}>
-              <input type="checkbox" checked={data.length>0&&data.every(r=>selected.has(getRecordId(r)))} onChange={toggleAll} style={{accentColor:C.vi,cursor:"pointer"}}/>
+              <input type="checkbox" checked={(()=>{const ids=data.map(getRecordId).filter(Boolean);return ids.length>0&&ids.every(id=>selected.has(id));})()} onChange={toggleAll} style={{accentColor:C.vi,cursor:"pointer"}}/>
               <span>#</span>
             </th>
             {fields.map(f => (<th key={f} onClick={()=>onSort?.(f)} style={{...ths(),position:"sticky",top:0,zIndex:1,background:C.sf,cursor:"pointer",userSelect:"none"}}><span style={{display:"inline-flex",alignItems:"center",gap:3}}>{f}{sortField===f&&<span style={{fontSize:10,color:C.vi}}>{sortDir==="asc"?"\u25B2":"\u25BC"}</span>}</span></th>))}
@@ -77,16 +77,19 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
           {startIdx > 0 && <tr style={{height:offsetY}}><td colSpan={fields.length+1}/></tr>}
           {data.slice(startIdx, endIdx).map((r, vi) => {
             const i = startIdx + vi;
-            const recId = getRecordId(r) ?? i; // stable identity → inline-edit/selection survive sort+filter (was positional key={i})
+            const rid = getRecordId(r); // the row's real primary key, or null if this result has no usable id
+            const recId = rid ?? i; // stable identity → inline-edit/selection survive sort+filter (was positional key={i})
+            const noId = !rid; // can't select / edit / delete / open a row we can't address by id
             const isFocused = i === focusedRow;
             return (
               <tr key={recId} style={{height:ROW_H,borderBottom:`1px solid ${C.bd}`,background:isFocused?C.sfa:"transparent"}}
                 onMouseEnter={e=>{if(!isFocused)e.currentTarget.style.background=C.sfh;}}
                 onMouseLeave={e=>{if(!isFocused)e.currentTarget.style.background="transparent";}}>
-                <td style={{...tds,color:C.txd,fontSize:12,position:"sticky",left:0,background:selected.has(getRecordId(r))?C.vid:isFocused?C.sfa:C.bg,zIndex:1,display:"flex",alignItems:"center",gap:4}}>
-                  <input type="checkbox" checked={selected.has(getRecordId(r))} onChange={()=>toggleSel(getRecordId(r))} style={{accentColor:C.vi,cursor:"pointer"}}/>
+                <td style={{...tds,color:C.txd,fontSize:12,position:"sticky",left:0,background:(rid&&selected.has(rid))?C.vid:isFocused?C.sfa:C.bg,zIndex:1,display:"flex",alignItems:"center",gap:4}}>
+                  <input type="checkbox" disabled={noId} checked={!!rid&&selected.has(rid)} onChange={()=>rid&&toggleSel(rid)} title={noId?"No unique id in this result \u2014 add the table's primary key column to select, edit or delete this row":undefined} style={{accentColor:C.vi,cursor:noId?"not-allowed":"pointer",opacity:noId?0.4:1}}/>
                   <span>{i+1}</span>
-                  {orgInfo?.orgUrl&&entityName&&getRecordId(r)&&<a href={`${orgInfo.orgUrl}/main.aspx?etn=${entityName}&id=${getRecordId(r)}&pagetype=entityrecord`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:C.vi,textDecoration:"none",fontSize:10,lineHeight:1}} title="Open in D365">{"\u2197"}</a>}
+                  {orgInfo?.orgUrl&&entityName&&rid&&<a href={`${orgInfo.orgUrl}/main.aspx?etn=${entityName}&id=${rid}&pagetype=entityrecord`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:C.vi,textDecoration:"none",fontSize:10,lineHeight:1}} title="Open in D365">{"\u2197"}</a>}
+                  {noId&&<span title="This row has no unique id \u2014 read-only" style={{color:C.yw,fontSize:10,lineHeight:1}}>{"\u26a0"}</span>}
                 </td>
                 {fields.map(f => {
                   const k=`${recId}-${f}`;
@@ -94,8 +97,8 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
                   return (
                     <td key={f} style={{...tds,maxWidth:220,cursor:"pointer",background:isEd?C.sfa:undefined}}
                       onClick={()=>!isEd&&copy(bestGet(r,f),k)}
-                      onDoubleClick={async()=>{if(onInlineEdit&&!f.includes(".")){if(onBeforeEdit&&!(await onBeforeEdit(r)))return;const raw=rawGet(r,f);setEditing({rowId:recId,field:f,value:raw!=null?String(raw):"",record:r});}}}
-                      title={isEd?"Enter=save | Esc=cancel":"Click=copy | Dbl-click=edit"}>
+                      onDoubleClick={async()=>{if(onInlineEdit&&!f.includes(".")&&!noId){if(onBeforeEdit&&!(await onBeforeEdit(r)))return;const raw=rawGet(r,f);setEditing({rowId:recId,field:f,value:raw!=null?String(raw):"",record:r});}}}
+                      title={isEd?"Enter=save | Esc=cancel":noId?"Click=copy (row has no unique id — not editable)":"Click=copy | Dbl-click=edit"}>
                       {isEd?(
                         <input ref={editRef} value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})}
                           onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();onInlineEdit(editing.record,f,editing.value);setEditing(null);}if(e.key==="Escape"){e.preventDefault();setEditing(null);}}}

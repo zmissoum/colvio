@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.11.66] — 2026-06-24
+### Added/Fixed (scenario-audit hardening — migration integrity, big-volume perf, permissions UX, finishing touches)
+**Group 1 — migration data integrity**
+- **Date locale toggle (silent data corruption fix).** A US/Salesforce export of `03/04/2024` (meaning March 4) was read day-first as April 3, with no error. The Loader now shows a **Day-first d/m (EU)** ⇄ **Month-first m/d (US / Salesforce)** toggle whenever a column uses the `date_iso` transform; ISO dates and unambiguous values (day part > 12) are still auto-detected and ignore the setting. (`applyTransform` gained a `dateMD` flag, threaded through both run paths; +4 tests.)
+- **Dot-headers no longer hijacked as lookup notation.** A plain data column whose header contains a dot (e.g. `Q1.Revenue`) was forced into a bogus lookup against a non-existent entity and excluded from the normal mapping. When target metadata is loaded, a dotted header is treated as a lookup **only** if its prefix matches a real lookup field/nav; otherwise it's a normal, mappable column.
+- **Salesforce-ID pre-flight warning.** Mapping 15/18-char Salesforce IDs to a direct-bind lookup or to a migration owner/created-by/modified-by field now raises a pre-flight warning — those need a Dataverse GUID (or resolve mode against an external-id field), not a raw SF id.
+
+**Group 2 — big-volume performance**
+- **Security Audit → role members cap.** A baseline role held by tens of thousands of users no longer pages the entire list (slow / timeout-prone). The first 10,000 are loaded and the view shows "first N of M members (capped for performance)"; the count badge still reflects the true total.
+- **Business Units lazy-loads members.** The module no longer fetches **every** org user on mount. It loads the BU hierarchy + per-BU counts (one cheap aggregate query) immediately, then fetches a BU's members only when it's opened (cached thereafter). Subtree export pulls any not-yet-loaded sub-BUs on demand.
+
+**Group 3 — permissions & connection UX**
+- **No more permission flash for non-admins.** During the provisional fail-open window (slow-permission-probe timeout), restricted tabs now stay hidden until permissions are confirmed — so they never appear then vanish, and a non-admin can't click into a tab that's about to 403. (Admins, the common case where the probe wins the race, see no change.)
+- **Orphaned-tab guard.** If the active tab becomes disallowed after permissions tighten, the app bounces to the first allowed tab instead of leaving its content mounted to throw a raw 403.
+- **Unified session-expired message** across every Explorer mode (Builder/OData/FetchXML/SQL) — one detector + one message, so it can't drift.
+- **Production confirmation** before mutating actions: Recycle Bin restore, System Ops cancel/resume, and Translation save+publish now prompt on a PROD environment (silent on sandbox/UAT/dev).
+
+**Group 4 — finishing touches**
+- **Explorer rows with no unique id are read-only.** When a result has no resolvable primary key, the row's select checkbox and inline edit are disabled with a hint (add the table's primary-key column), instead of silently no-op'ing or deleting the wrong record.
+- **Post-delete row removal unified.** The grid and the Explorer's after-delete refresh now share one canonical `recordId` resolver, so deleted rows always disappear (the old after-delete filter matched the first GUID in the row — sometimes a lookup — and could leave deleted rows on screen).
+- **Stale-selection guards** added to Metadata Browser, Solution Explorer and Translation Manager — a slow load from a previously-selected entity/solution can no longer overwrite the current selection's view.
+
 ## [1.11.65] — 2026-06-19
 ### Added/Fixed (scenario audit — batch B: Loader key-health + cancel)
 - **Pre-flight key-health warnings:** the Data Loader now warns before you run when the key column has **empty cells** (in UPSERT those rows are silently CREATED as new records, not matched — a common surprise) or **duplicate key values** across rows (multiple rows hit the same record, last one wins).

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds } from "../shared.jsx";
+import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
 
@@ -117,18 +117,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const[selected,setSelected]=useState(new Set());
   const[deleting,setDeleting]=useState(false);
 
-  const getRecordId=(r)=>{
-    const idKey=`${res.entity.l}id`;
-    if(r[idKey]) return r[idKey];
-    const isGuid=(v)=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-    // NEVER mistake a lookup GUID (_ownerid_value, _parentcustomerid_value…) or an annotation for
-    // the record's own id — otherwise inline-edit / bulk-update / DELETE would target the wrong record.
-    // Prefer a real primary-key-looking column (ends in "id"), then any non-lookup GUID as last resort.
-    const usable=Object.entries(r).filter(([k])=>!k.startsWith("_")&&!k.includes("@"));
-    for(const[k,v] of usable){ if(k.toLowerCase().endsWith("id")&&isGuid(v)) return v; }
-    for(const[,v] of usable){ if(isGuid(v)) return v; }
-    return null;
-  };
+  // Canonical id resolver (shared with the parent's post-delete row removal so they can't disagree).
+  const getRecordId=(r)=>recordId(r,res.entity?.l);
   const toggleSel=(id)=>setSelected(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
   const toggleAll=()=>{
     // Additive over the VISIBLE (filtered) rows only — never silently drop rows selected then hidden

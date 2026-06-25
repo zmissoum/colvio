@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, dl, expName } from "../shared.jsx";
+import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, dl, expName, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
@@ -20,6 +20,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const[attrSearch,setAttrSearch]=useState("");
   const[confirmModal,setConfirmModal]=useState(null);
   const fRef=useRef(null);
+  const selGen=useRef(0); // guards against a slow load from a previous entity overwriting the current one
 
   useEffect(()=>{
     bridge.getOrgLanguages().then(d=>{if(d){setLanguages(d);setSelLangs(d.map(l=>l.code));}}).catch(()=>{});
@@ -27,9 +28,10 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   },[]);
 
   const doSelectEntity=async(e)=>{
+    const gen=++selGen.current;
     setSelEnt(e);setLoading(true);setEdits({});setSaveMsg(null);
-    try{const d=await bridge.getAttributeLabels(e.l);setAttributes(d||[]);}catch{setAttributes([]);}
-    setLoading(false);
+    try{const d=await bridge.getAttributeLabels(e.l);if(selGen.current!==gen)return;setAttributes(d||[]);}catch{if(selGen.current===gen)setAttributes([]);}
+    if(selGen.current===gen)setLoading(false);
   };
   const handleSelect=async(e)=>{
     if(editCount>0){
@@ -47,6 +49,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
 
   const handleSave=async()=>{
     if(!selEnt||editCount===0)return;
+    if(!confirmProd(orgInfo?.isProduction,`Save ${editCount} label change${editCount>1?"s":""} and publish ${selEnt.l}.`))return;
     setSaving(true);setSaveMsg(null);
     let ok=0,fail=0;
     for(const[attrName,langEdits] of Object.entries(edits)){

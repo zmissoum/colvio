@@ -20,6 +20,9 @@ const SENSITIVE_PRIVS = new Set([
 ]);
 
 const DEPTH_COLORS = { 1: C.gn, 2: C.cy, 4: C.yw, 8: C.rd };
+// Cap the member list fetch — a baseline role can be held by tens of thousands of users; paging all
+// of them is slow and timeout-prone. We load the first N (the count badge still shows the true total).
+const USERS_CAP = 10000;
 
 // Parse privilege name into readable label
 // prvAppendToCustomerGroup -> Append To · CustomerGroup
@@ -121,7 +124,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     const gen = selectGen.current;
     setLoadingUsers(true);
     setUsersErr("");
-    bridge.getRoleUsers(selRole.name).then(list => {
+    bridge.getRoleUsers(selRole.name, USERS_CAP).then(list => {
       if (selectGen.current !== gen) return;
       setUsers(list || []); setLoadingUsers(false);
     }).catch(e => {
@@ -322,6 +325,11 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       <button onClick={() => exportUsersCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
                       <button onClick={() => exportUsersCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
                     </div>
+                    {userCount != null && userCount > users.length && (
+                      <div style={{ ...crd({ padding: "8px 12px", background: C.yw + "0c", borderColor: C.yw + "55" }), marginBottom: 10, fontSize: 12, color: C.txm }}>
+                        ⚠ Showing the first <b>{users.length.toLocaleString()}</b> of <b>{userCount.toLocaleString()}</b> members (capped for performance). Use the filter to find a specific user — export covers the loaded {users.length.toLocaleString()} only.
+                      </div>
+                    )}
                     <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 92px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
                         <span>Name</span><span>Email</span><span>Business Unit</span><span>Status</span>

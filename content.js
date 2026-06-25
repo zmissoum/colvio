@@ -1446,6 +1446,47 @@
             break;
           }
 
+          case "getUserCountsByBu": {
+            // One grouped-aggregate query → user count per business unit. Drives the BU-tree badges
+            // without loading every user row up front. Subject to Dataverse's aggregate record limit
+            // on very large orgs, so the caller treats this as best-effort (badges just go blank).
+            const dC = await dvRequest("GET", "systemusers?$apply=groupby((_businessunitid_value),aggregate($count as count))");
+            const counts = {};
+            (dC.value || []).forEach(r => { counts[r._businessunitid_value || ""] = r.count || 0; });
+            result = counts;
+            break;
+          }
+
+          case "getUsersByBu": {
+            // Direct members of ONE business unit, fetched lazily when that BU is opened (keeps the
+            // module snappy on large orgs instead of loading every user on mount). Same row shape as
+            // getAllUsers so the panel renders identically.
+            const buIdB = String(params.buId || "");
+            const ACCESS_MODES_B = { 0: "Read-Write", 1: "Admin", 2: "Read", 3: "Support", 4: "Non-Interactive", 5: "Delegated Admin" };
+            const CAL_TYPES_B = { 0: "Full", 1: "Admin", 2: "Basic", 3: "Device Full", 4: "Device Basic", 5: "Essential", 6: "Device Essential", 7: "Enterprise", 8: "Device Enterprise", 9: "Sales", 10: "Service", 11: "Field Service", 12: "Project Service" };
+            const fieldsB = "systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value,address1_telephone1,mobilephone,_parentsystemuserid_value";
+            const mapUserB = (u) => ({
+              id: u.systemuserid, fullname: u.fullname || "", email: u.internalemailaddress || "",
+              disabled: u.isdisabled, accessMode: u.accessmode ?? 0, accessModeLabel: ACCESS_MODES_B[u.accessmode] || `Mode ${u.accessmode}`,
+              calType: u.caltype ?? 0, calTypeLabel: CAL_TYPES_B[u.caltype] || `Type ${u.caltype}`,
+              buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "", buId: u._businessunitid_value || "",
+              title: u.title || "", manager: u["_parentsystemuserid_value@OData.Community.Display.V1.FormattedValue"] || "",
+              phone: u.address1_telephone1 || "", mobile: u.mobilephone || "", createdOn: u.createdon,
+            });
+            const filtB = buIdB ? `_businessunitid_value eq ${buIdB}` : "_businessunitid_value eq null";
+            let usersB = [];
+            let urlB = `systemusers?$select=${fieldsB}&$filter=${filtB}&$orderby=fullname asc&$top=5000`;
+            let guardB = 0;
+            while (urlB && guardB++ < 50) {
+              const dataB = await dvRequest("GET", urlB);
+              usersB = usersB.concat((dataB.value || []).map(mapUserB));
+              const nlB = dataB["@odata.nextLink"];
+              urlB = nlB ? nlB.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = usersB;
+            break;
+          }
+
           case "getUserRoles": {
             validateGuid(params.userId);
             const data = await dvRequest("GET",
@@ -1577,6 +1618,10 @@
             const nameU = String(params.roleName || "");
             if (!nameU) { result = []; break; }
             const escU = nameU.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''"); // strip control chars then quote-escape
+            // Cap the fetch: a baseline role can be held by tens of thousands of users — paging all of
+            // them is slow and risks a timeout. We stop once CAP distinct users are collected; the panel
+            // already knows the true count and shows "first N of M". Caller may override (1..50000).
+            const CAP = Math.min(Math.max(parseInt(params.cap, 10) || 10000, 1), 50000);
             const map = {};
             let url = `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value,title,address1_telephone1,mobilephone,_parentsystemuserid_value&$filter=systemuserroles_association/any(o:o/name eq '${escU}')&$orderby=fullname asc`;
             while (url) {
@@ -1599,9 +1644,9 @@
                 };
               });
               const nl = d["@odata.nextLink"];
-              url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              url = (nl && Object.keys(map).length < CAP) ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
             }
-            result = Object.values(map).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            result = Object.values(map).sort((a, b) => (a.name || "").localeCompare(b.name || "")).slice(0, CAP);
             break;
           }
 

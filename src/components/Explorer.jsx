@@ -3,11 +3,16 @@ import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
 import Results from "./Results.jsx";
+
+// A 401 / lost session looks the same whatever the query mode (Builder, OData, FetchXML, SQL) — one
+// detector + one message so every path reports it identically (and can't drift over time).
+const SESSION_EXPIRED_MSG = "Session expired — refresh D365 (F5) then click ⚡ again";
+const isSessionExpired = (msg) => { const s = String(msg || ""); return s.includes("401") || s.includes("SESSION_EXPIRED"); };
 
 export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const isLive = orgInfo?.isExtension;
@@ -815,8 +820,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           const paint = !nextLink || pageNum%5===0 || newCols; // throttle data re-render; force a paint when columns change
           setRes(prev => ({...prev, fields: headerFields, odataFieldMap, ...(paint?{data:allRecords}:{}), count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         } catch (pageErr) {
-          if (pageErr.message?.includes("401") || pageErr.message?.includes("SESSION_EXPIRED")) {
-            setError("Session expired — refresh D365 (F5) then click ⚡ again");
+          if (isSessionExpired(pageErr.message)) {
+            setError(SESSION_EXPIRED_MSG);
           } else { setError(`Page ${pageNum}: ${pageErr.message}`); }
           setRes(prev => ({...prev, nextLink: null, fetching: false}));
           break;
@@ -827,8 +832,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       }
       setRes(prev => ({...prev, data: allRecords, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
     } catch(e) {
-      if(e.message?.includes("401") || e.message?.includes("SESSION_EXPIRED")) {
-        setError("Session expired — refresh D365 (F5) then click ⚡ again");
+      if(isSessionExpired(e.message)) {
+        setError(SESSION_EXPIRED_MSG);
       } else { setError(e.message); }
       setLoading(false);
     }
@@ -1151,7 +1156,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               </div>
             </div>
           </div>
-          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>{const id=Object.values(r).find(v=>typeof v==="string"&&/^[0-9a-f]{8}-/.test(v));return !ids.has(id);})}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
+          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>!ids.has(recordId(r,prev.entity?.l)))}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
         </>:null}
       </div>
       {saveModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setSaveModal(false)}>

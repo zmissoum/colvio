@@ -69,7 +69,7 @@ export const BOOLEAN_YESNO = { yes: true, no: false, oui: true, non: false, true
 
 // Convert a raw CSV value into the Dataverse-ready value for the chosen transform.
 // optionMap (optional): { "<label lowercased>": <int value> } enables label→value for option sets.
-export function applyTransform(val, transform, optionMap) {
+export function applyTransform(val, transform, optionMap, dateMD = false) {
   if (val === undefined || val === null || val === "") return null;
   const low = String(val).toLowerCase().trim();
   switch (transform) {
@@ -115,8 +115,10 @@ export function applyTransform(val, transform, optionMap) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
       const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[T\s]+(.*))?$/);
       if (m) {
-        let dd = +m[1], mm = +m[2];
-        // Day-first by default (EU); if the middle part can't be a month, it's US m/d → swap.
+        // Day-first by default (EU d/m); dateMD forces month-first (US m/d). Either way, if the chosen
+        // order is impossible (the "month" part is >12), swap — that case is unambiguous.
+        let dd = dateMD ? +m[2] : +m[1];
+        let mm = dateMD ? +m[1] : +m[2];
         if (mm > 12 && dd <= 12) { const t = dd; dd = mm; mm = t; }
         if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
         const dateStr = `${m[3]}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
