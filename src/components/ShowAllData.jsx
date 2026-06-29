@@ -159,8 +159,8 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
 
           {/* BPF manager — System-Administrator only (canBypassPlugins == the sysadmin role check).
               Lets an admin reopen/re-stage a record's BPF that the form UI locks once finished. */}
-          {orgInfo?.isExtension&&permissions?.canBypassPlugins===true&&record.entitySet&&
-            <BpfManager entity={record.entity} entitySet={record.entitySet} recordId={record.id} orgInfo={orgInfo}/>}
+          {orgInfo?.isExtension&&permissions?.canBypassPlugins===true&&record.entity&&
+            <BpfManager entity={record.entity} recordId={record.id} orgInfo={orgInfo}/>}
 
           <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
             <div style={{position:"relative",flex:1,maxWidth:300}}>

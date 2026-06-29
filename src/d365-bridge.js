@@ -182,12 +182,12 @@ export const bridge = {
 
   // ── Business Process Flows (admin-only) ──────────────────────
   // All BPF instances running on one record. Writes (stage move, reopen/finish/abort) reuse update().
-  async getProcessInstances(entitySet, id) {
+  async getProcessInstances(entity, id) {
     if (!isExtension) return [
       { id: "bpf1", bpfEntity: "phonetocaseprocess", bpfEntitySet: "phonetocaseprocesses", name: "Phone to Case Process", processId: "proc1", processName: "Phone to Case Process", activeStageId: "stg2", activeStageName: "Research", stateCode: 0, stateLabel: "Active", statusCode: 1, statusLabel: "Active", traversedPath: "stg1,stg2", createdOn: "2026-01-10T09:00:00Z", completedOn: null },
       { id: "bpf2", bpfEntity: "leadtoopportunitysalesprocess", bpfEntitySet: "leadtoopportunitysalesprocesses", name: "Lead to Opportunity", processId: "proc2", processName: "Lead to Opportunity Sales Process", activeStageId: "stgC", activeStageName: "Close", stateCode: 1, stateLabel: "Inactive", statusCode: 2, statusLabel: "Finished", traversedPath: "stgA,stgB,stgC", createdOn: "2026-01-05T08:00:00Z", completedOn: "2026-02-01T17:30:00Z" },
     ];
-    return callD365("getProcessInstances", { entitySet, id });
+    return callD365("getProcessInstances", { entity, id });
   },
   async getProcessStages(processId) {
     if (!isExtension) {

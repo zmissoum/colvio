@@ -1828,13 +1828,15 @@
           }
 
           case "getProcessInstances": {
-            // All Business Process Flow instances running on ONE record, across every BPF definition,
-            // via the bound RetrieveProcessInstances function. Each instance is a row in its own BPF
-            // entity (statecode/statuscode = Active/Finished/Aborted lives there, NOT on the record).
-            // We resolve each instance's entity SET (for later PATCH) from its @odata.type, cached.
-            validateEntitySet(params.entitySet);
+            // All Business Process Flow instances running on ONE record, across every BPF definition.
+            // RetrieveProcessInstances is an UNBOUND function taking EntityId + EntityLogicalName — a
+            // bound call (entityset(id)/...RetrieveProcessInstances()) 404s "Resource not found for the
+            // segment". Each instance is a row in its own BPF entity (statecode/statuscode = Active/
+            // Finished/Aborted lives there, NOT on the record); we resolve each instance's entity SET
+            // (for the later PATCH) from its @odata.type, cached.
+            validateName(params.entity, "entity");
             validateGuid(params.id);
-            const ri = await dvRequest("GET", `${params.entitySet}(${params.id})/Microsoft.Dynamics.CRM.RetrieveProcessInstances()`);
+            const ri = await dvRequest("GET", `RetrieveProcessInstances(EntityId=${params.id},EntityLogicalName='${params.entity}')`);
             const setCache = {};
             const instances = [];
             for (const inst of (ri?.value || [])) {
