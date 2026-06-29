@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.71] — 2026-06-29
+### Added — inline field editing in Show All Data
+- **Edit a field straight from Show All Data, even one the form marks read-only.** Each writable column (per its `IsValidForUpdate` metadata) now has a ✎ pencil: edit the value inline and save it via a direct Web API `PATCH`. Supports text, memo, whole/decimal numbers, money, yes/no, date-time (ISO), and option-sets (State/Status/Picklist) with a value dropdown. Lookups and the primary key are left read-only for now.
+- **Guardrails:** the server still enforces field-level security and the write privilege; every save runs through the production-environment confirmation and the tooltip flags it as a direct API write that bypasses the form. The record reloads after a save so the new formatted value (and any rollup/calculated knock-on) shows immediately.
+
 ## [1.11.70] — 2026-06-29
 ### Fixed
 - **BPF manager: writes now target the concrete BPF entity resolved from the process `uniquename`.** The previous attempts (`@odata.type`, then `@odata.id`) both reported the abstract base `businessprocessflowinstance`, so Reopen/Move/Finish/Abort 400'd. Per the Microsoft docs, the writable entity is the **`uniquename` of the instance's process (workflow)** — Colvio now looks up `workflows(<processid>)?$select=uniquename`, resolves its `EntitySetName` from metadata, and PATCHes that concrete entity (the instance id is shared with the base, so it addresses the same row). Confirmed the legacy `stageid`/`processid`/`traversedpath` columns on the primary record are deprecated/unsupported, so the instance PATCH is the only supported route.
