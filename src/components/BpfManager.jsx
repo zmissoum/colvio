@@ -8,7 +8,7 @@ import { C, Spin, inp, bt, crd, confirmProd } from "../shared.jsx";
 // entity (statecode/statuscode live there, NOT on the record), patched directly via the Web API.
 // NOTE: switching a record to a DIFFERENT process is intentionally absent — the SetProcess message is
 // no longer supported through the Web API.
-export default function BpfManager({ entity, entitySet, recordId, orgInfo }) {
+export default function BpfManager({ entity, recordId, orgInfo }) {
   const [instances, setInstances] = useState(null); // null = loading, [] = none, [...] = loaded
   const [err, setErr] = useState("");
   const [stages, setStages] = useState({});         // { processId: [stage,...] }
@@ -20,7 +20,7 @@ export default function BpfManager({ entity, entitySet, recordId, orgInfo }) {
   const load = () => {
     const g = ++gen.current;
     setInstances(null); setErr(""); setMsg(""); setPick({});
-    bridge.getProcessInstances(entitySet, recordId).then(list => {
+    bridge.getProcessInstances(entity, recordId).then(list => {
       if (gen.current !== g) return;
       setInstances(list || []);
       [...new Set((list || []).map(i => i.processId).filter(Boolean))].forEach(pid => {
@@ -30,7 +30,7 @@ export default function BpfManager({ entity, entitySet, recordId, orgInfo }) {
     }).catch(e => { if (gen.current === g) { setErr(e.message || String(e)); setInstances([]); } });
   };
 
-  useEffect(() => { if (entitySet && recordId) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entitySet, recordId]);
+  useEffect(() => { if (entity && recordId) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entity, recordId]);
 
   const statusOf = (inst) => inst.stateCode === 0 ? "active" : (inst.statusCode === 3 ? "aborted" : "finished");
   const colorOf = (st) => st === "active" ? C.gn : st === "aborted" ? C.rd : C.cy;
