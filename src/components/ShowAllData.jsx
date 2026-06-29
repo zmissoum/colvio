@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import AuditHistory from "./AuditHistory.jsx";
 import BpfManager from "./BpfManager.jsx";
-import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom, confirmProd } from "../shared.jsx";
 
 export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const isLive = orgInfo?.isExtension;
@@ -15,6 +15,12 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const[loading,setLoading]=useState(false);
   const[error,setError]=useState("");
   const[autoDetected,setAutoDetected]=useState(null);
+  // Inline field editing — write a value straight via the Web API, even for fields the form marks
+  // read-only (the server still enforces field-level security + the write privilege).
+  const[editing,setEditing]=useState(null);   // { l, t, value } of the field being edited
+  const[savingField,setSavingField]=useState(false);
+  const[editMsg,setEditMsg]=useState("");
+  const[optionsCache,setOptionsCache]=useState({}); // { fieldLogical: [{value,label}] }
 
   useEffect(()=>{
     if(!isLive) return;
@@ -73,6 +79,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
         return {
           l:f.logical, d:f.display||f.logical, t:f.type||"String",
           req:!!f.required, cust:!!f.isCustom,
+          vfu:f.validForUpdate!==false, // writable via the Web API (may still be read-only on the form)
           target: lookupTarget || ((f.type==="Lookup"||f.type==="Customer") ? f.logical.replace(/^_/,"").replace(/_value$/,"") : undefined),
           display: displayVal || null,
           value: displayVal || (rawVal!==undefined ? rawVal : null),
@@ -102,6 +109,48 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   };
 
   const cp=(text,key)=>{copyText(text);setCopied(key);setTimeout(()=>setCopied(""),1200);};
+
+  // ── Inline field editing ─────────────────────────────────────
+  // Types we can edit safely as a single value. Lookups (need @odata.bind + target) and the PK are
+  // deferred — they show as read-only here.
+  const OPTIONSET_TYPES=new Set(["Picklist","State","Status"]);
+  const NUMERIC_INT=new Set(["Integer","BigInt"]);
+  const NUMERIC_FLOAT=new Set(["Decimal","Double","Money"]);
+  const EDITABLE_TYPES=new Set(["String","Memo","Boolean","DateTime",...NUMERIC_INT,...NUMERIC_FLOAT,...OPTIONSET_TYPES]);
+  const isEditable=(f)=> isLive && f.vfu && EDITABLE_TYPES.has(f.t) && f.l!==`${record?.entity}id`;
+
+  const coerce=(v,t)=>{
+    const s=String(v??"").trim();
+    if(s==="")return null;
+    if(t==="Boolean")return s==="true";
+    if(NUMERIC_INT.has(t)||OPTIONSET_TYPES.has(t)){const n=parseInt(s,10);return isNaN(n)?null:n;}
+    if(NUMERIC_FLOAT.has(t)){const n=parseFloat(s);return isNaN(n)?null:n;}
+    return s; // String / Memo / DateTime (ISO string passed through)
+  };
+
+  const startEdit=(f)=>{
+    setEditMsg("");
+    setEditing({l:f.l,t:f.t,value:f.rawValue!=null?String(f.rawValue):""});
+    // Lazy-load option-set values the first time an option-set field is edited.
+    if(OPTIONSET_TYPES.has(f.t)&&!optionsCache[f.l]){
+      bridge.getOptionSet(record.entity,f.l,f.t).then(opts=>setOptionsCache(c=>({...c,[f.l]:opts||[]}))).catch(()=>setOptionsCache(c=>({...c,[f.l]:[]})));
+    }
+  };
+
+  const saveField=async(f)=>{
+    if(!editing)return;
+    if(!confirmProd(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`))return;
+    setSavingField(true);setEditMsg("");
+    try{
+      await bridge.update(record.entitySet,record.id,{[f.l]:coerce(editing.value,f.t)});
+      setEditing(null);
+      await loadRecordDirect(record.entity,record.id); // reload to show the fresh formatted value
+      setEditMsg(`✓ ${f.l} updated`);
+    }catch(e){
+      setEditMsg(`✗ ${f.l}: ${e.message||e}`);
+    }
+    setSavingField(false);
+  };
 
   const filteredFields=useMemo(()=>{
     if(!record)return[];
@@ -155,6 +204,8 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
             </div>
           </div>
 
+          {editMsg&&<div style={{...crd({padding:"8px 12px"}),marginBottom:12,fontSize:13,color:editMsg.startsWith("✓")?C.gn:C.rd}}>{editMsg}</div>}
+
           {orgInfo?.isExtension&&<AuditHistory recordId={record.id} orgFeatures={orgFeatures}/>}
 
           {/* BPF manager — System-Administrator only (canBypassPlugins == the sysadmin role check).
@@ -185,6 +236,8 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
                 const empty=f.value===null||f.value===undefined||f.value==="";
                 const isLookup=f.t==="Lookup";
                 const isPicklist=f.t==="Picklist"||f.t==="State"||f.t==="Status";
+                const editable=isEditable(f);
+                const isEd=!!editing&&editing.l===f.l;
                 const fmtVal=empty?"—"
                   :isLookup?null
                   :f.value==="Active"?"● Active"
@@ -211,13 +264,38 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
                       </div>
                     </div>
                     <div style={{flex:1,minWidth:0,fontSize:14,color:valColor,wordBreak:"break-word",fontStyle:empty?"italic":"normal",...(isLookup||f.l.includes("id")?mono:{})}}>
-                      {isLookup&&!empty?(
+                      {isEd?(
+                        <span onClick={e=>e.stopPropagation()} style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          {f.t==="Boolean"?(
+                            <select autoFocus value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})} style={inp({width:"auto",fontSize:13,padding:"4px 8px"})}>
+                              <option value="">(empty)</option><option value="true">true</option><option value="false">false</option>
+                            </select>
+                          ):OPTIONSET_TYPES.has(f.t)?(
+                            <select autoFocus value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})} style={inp({width:"auto",maxWidth:280,fontSize:13,padding:"4px 8px"})}>
+                              <option value="">(empty)</option>
+                              {(optionsCache[f.l]||[]).map(o=><option key={o.value} value={o.value}>{o.label} ({o.value})</option>)}
+                            </select>
+                          ):(
+                            <input autoFocus value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})}
+                              onKeyDown={e=>{if(e.key==="Enter")saveField(f);if(e.key==="Escape")setEditing(null);}}
+                              placeholder={f.t==="DateTime"?"YYYY-MM-DDTHH:mm:ssZ":undefined}
+                              style={inp({...mono,fontSize:13,padding:"4px 8px",maxWidth:340})}/>
+                          )}
+                          <button onClick={()=>saveField(f)} disabled={savingField} style={bt(C.gn,{fontSize:12,padding:"4px 10px"})}>{savingField?<Spin s={11}/>:"Save"}</button>
+                          <button onClick={()=>setEditing(null)} disabled={savingField} style={bt(null,{fontSize:12,padding:"4px 10px"})}>Cancel</button>
+                        </span>
+                      ):isLookup&&!empty?(
                         <span style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <span style={{color:C.vil}}>{f.display||f.rawValue}</span>
                           {f.rawValue&&<span style={{fontSize:11,color:C.txd}}>{String(f.rawValue).substring(0,13)}…</span>}
                           {d365Link&&<a href={d365Link} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{fontSize:11,padding:"2px 8px",borderRadius:3,background:C.vi+"22",color:C.vi,textDecoration:"none",border:`1px solid ${C.vi}44`}}>Open in D365 ↗</a>}
                         </span>
-                      ):fmtVal}
+                      ):(
+                        <span style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span>{fmtVal}</span>
+                          {editable&&<button onClick={e=>{e.stopPropagation();startEdit(f);}} title="Edit this field (direct API write — bypasses the form)" style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:13,flexShrink:0,lineHeight:1}}>✎</button>}
+                        </span>
+                      )}
                       {copied===`val-${i}`&&<span style={{color:C.gn,fontSize:11,marginLeft:6}}>✓ copied</span>}
                     </div>
                   </div>
