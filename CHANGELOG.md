@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.11.67] — 2026-06-29
+### Added — Business Process Flow manager (System Administrator only)
+- **New "Business Process Flows" section in Show All Data.** When a System Administrator inspects a record, Colvio now lists every BPF instance running on it and lets you do what the form UI blocks once a flow is finished/locked:
+  - **Move to any stage** — pick a stage and apply (`activestageid` + `traversedpath` updated together, per the platform contract).
+  - **Reopen** a finished/aborted flow (`statecode=0 / statuscode=1`), **Finish** (`1 / 2`), or **Abort** (`1 / 3`).
+  - The section auto-appears only when the record actually has a BPF instance; it reads them via the bound `RetrieveProcessInstances` function and resolves each instance's own entity for the PATCH.
+- **Guardrails:** the whole section is gated to System Administrators (reuses the existing role check), shows a clear "direct API edit — bypasses stage rules" warning, and routes every change through the production-environment confirmation. Errors are surfaced per action.
+- **Note:** switching a record to a *different* process is intentionally not offered — Microsoft removed `SetProcess` from the Web API.
+- **Fix (prerequisite):** the System-Administrator detection now matches the role **template id** (`627090ff-…`) instead of the English role name, so it works on non-English orgs (a French org's role is "Administrateur système"). This also tightens the existing admin-gated features (System Ops job cancel/resume).
+
 ## [1.11.66] — 2026-06-24
 ### Added/Fixed (scenario-audit hardening — migration integrity, big-volume perf, permissions UX, finishing touches)
 **Group 1 — migration data integrity**
