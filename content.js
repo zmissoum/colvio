@@ -1832,41 +1832,39 @@
             // RetrieveProcessInstances is an UNBOUND function taking EntityId + EntityLogicalName — a
             // bound call (entityset(id)/...RetrieveProcessInstances()) 404s "Resource not found for the
             // segment". The returned rows are typed as the abstract base `businessprocessflowinstance`,
-            // which does NOT support direct CRUD ("RetrieveMultiple ... does not support entities of
-            // type 'businessprocessflowinstance'"). So we request FULL metadata and read each row's
-            // @odata.id, which points at the CONCRETE BPF entity set (e.g. phonetocaseprocesses) — the
-            // one we PATCH later. (statecode/statuscode = Active/Finished/Aborted live on that row.)
+            // which is NOT writable ("RetrieveMultiple ... does not support entities of type
+            // 'businessprocessflowinstance'") — and BOTH @odata.type and @odata.id report that base set.
+            // Per the docs, the CONCRETE BPF entity (the one to PATCH) is the `uniquename` of the
+            // instance's PROCESS (workflow). So we look up workflows(<processid>).uniquename and resolve
+            // its EntitySetName from metadata, cached per process.
             validateName(params.entity, "entity");
             validateGuid(params.id);
-            const ri = await dvRequest(
-              "GET",
-              `RetrieveProcessInstances(EntityId=${params.id},EntityLogicalName='${params.entity}')`,
-              null,
-              { Accept: "application/json;odata.metadata=full" }
-            );
-            const LINK_RE = /([a-zA-Z_0-9]+)\(([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\)/;
-            const setCache = {};
+            const ri = await dvRequest("GET", `RetrieveProcessInstances(EntityId=${params.id},EntityLogicalName='${params.entity}')`);
+            const setByProcess = {};
+            const resolveSet = async (processId) => {
+              if (!processId) return null;
+              if (setByProcess[processId] !== undefined) return setByProcess[processId];
+              let set = null;
+              try {
+                const w = await dvRequest("GET", `workflows(${processId})?$select=uniquename`);
+                const logical = w?.uniquename || null; // == the concrete BPF entity logical name
+                if (logical) {
+                  try { const d = await dvRequest("GET", `EntityDefinitions(LogicalName='${logical}')?$select=EntitySetName`); set = d?.EntitySetName || (logical + "s"); }
+                  catch { set = logical + "s"; }
+                }
+              } catch { set = null; }
+              setByProcess[processId] = set;
+              return set;
+            };
             const instances = [];
             for (const inst of (ri?.value || [])) {
-              const bpfEntity = String(inst["@odata.type"] || "").replace(/^#?Microsoft\.Dynamics\.CRM\./, "") || null;
-              // The concrete entity set + id come from @odata.id (full metadata) — the only reliable
-              // source, because @odata.type can be the un-writable base type.
-              const link = String(inst["@odata.id"] || inst["@odata.editLink"] || "").match(LINK_RE);
-              let bpfEntitySet = link ? link[1] : null;
-              const instId = link ? link[2] : (inst.businessprocessflowinstanceid || (bpfEntity ? inst[`${bpfEntity}id`] : null) || null);
-              // Fallback only when @odata.id was absent: resolve a CONCRETE (non-base) @odata.type.
-              if (!bpfEntitySet && bpfEntity && bpfEntity !== "businessprocessflowinstance" && bpfEntity !== "crmbaseentity") {
-                if (setCache[bpfEntity] === undefined) {
-                  try { const d = await dvRequest("GET", `EntityDefinitions(LogicalName='${bpfEntity}')?$select=EntitySetName`); setCache[bpfEntity] = d?.EntitySetName || (bpfEntity + "s"); }
-                  catch { setCache[bpfEntity] = bpfEntity + "s"; }
-                }
-                bpfEntitySet = setCache[bpfEntity];
-              }
+              const processId = inst._processid_value || null;
+              const bpfEntitySet = await resolveSet(processId);
               instances.push({
-                id: instId,
-                bpfEntity, bpfEntitySet,
+                id: inst.businessprocessflowinstanceid || null,
+                bpfEntitySet,
                 name: inst.bpf_name || inst.name || "",
-                processId: inst._processid_value || null,
+                processId,
                 processName: inst["_processid_value@OData.Community.Display.V1.FormattedValue"] || "",
                 activeStageId: inst._activestageid_value || null,
                 activeStageName: inst["_activestageid_value@OData.Community.Display.V1.FormattedValue"] || "",
