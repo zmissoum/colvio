@@ -1808,18 +1808,76 @@
             // Check if the current user has the System Administrator role.
             // The System Administrator role grants prvBypassCustomPlugins (among many others),
             // which is required to use MSCRM.BypassCustomPluginExecution + related bypass headers.
+            // Match on the role-TEMPLATE id (627090ff-…, the fixed System Administrator template) so
+            // this works regardless of UI language — a French org names the role "Administrateur
+            // système", so the old name-only filter ('System Administrator') wrongly returned false.
+            // (Name kept as an OR fallback for any org missing the template link.)
             // Returns false on any error (defensive — never block UI on permission check failure).
             try {
               const who = await dvRequest("GET", "WhoAmI");
               if (!who?.UserId) { result = false; break; }
               const roles = await dvRequest(
                 "GET",
-                `systemusers(${who.UserId})/systemuserroles_association?$select=name&$filter=name eq 'System Administrator'`
+                `systemusers(${who.UserId})/systemuserroles_association?$select=name&$filter=_roletemplateid_value eq 627090ff-40a3-4053-8790-584edc5be201 or name eq 'System Administrator'`
               );
               result = (roles?.value || []).length > 0;
             } catch {
               result = false;
             }
+            break;
+          }
+
+          case "getProcessInstances": {
+            // All Business Process Flow instances running on ONE record, across every BPF definition,
+            // via the bound RetrieveProcessInstances function. Each instance is a row in its own BPF
+            // entity (statecode/statuscode = Active/Finished/Aborted lives there, NOT on the record).
+            // We resolve each instance's entity SET (for later PATCH) from its @odata.type, cached.
+            validateEntitySet(params.entitySet);
+            validateGuid(params.id);
+            const ri = await dvRequest("GET", `${params.entitySet}(${params.id})/Microsoft.Dynamics.CRM.RetrieveProcessInstances()`);
+            const setCache = {};
+            const instances = [];
+            for (const inst of (ri?.value || [])) {
+              const bpfEntity = String(inst["@odata.type"] || "").replace(/^#?Microsoft\.Dynamics\.CRM\./, "") || null;
+              let bpfEntitySet = null;
+              if (bpfEntity) {
+                if (setCache[bpfEntity] === undefined) {
+                  try { const d = await dvRequest("GET", `EntityDefinitions(LogicalName='${bpfEntity}')?$select=EntitySetName`); setCache[bpfEntity] = d?.EntitySetName || (bpfEntity + "s"); }
+                  catch { setCache[bpfEntity] = bpfEntity + "s"; }
+                }
+                bpfEntitySet = setCache[bpfEntity];
+              }
+              instances.push({
+                id: inst.businessprocessflowinstanceid || (bpfEntity ? inst[`${bpfEntity}id`] : null) || null,
+                bpfEntity, bpfEntitySet,
+                name: inst.bpf_name || inst.name || "",
+                processId: inst._processid_value || null,
+                processName: inst["_processid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                activeStageId: inst._activestageid_value || null,
+                activeStageName: inst["_activestageid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                stateCode: inst.statecode,
+                stateLabel: inst["statecode@OData.Community.Display.V1.FormattedValue"] || "",
+                statusCode: inst.statuscode,
+                statusLabel: inst["statuscode@OData.Community.Display.V1.FormattedValue"] || "",
+                traversedPath: inst.traversedpath || "",
+                createdOn: inst.createdon || null,
+                completedOn: inst.completedon || null,
+              });
+            }
+            result = instances;
+            break;
+          }
+
+          case "getProcessStages": {
+            // Every stage of a BPF definition (the values an admin can move a record to). Ordered by
+            // stage category as a rough sequence proxy. The platform validates the target on PATCH.
+            validateGuid(params.processId);
+            const rs = await dvRequest("GET", `processstages?$select=processstageid,stagename,stagecategory,_processid_value&$filter=_processid_value eq ${params.processId}&$orderby=stagecategory asc`);
+            result = (rs?.value || []).map(s => ({
+              id: s.processstageid,
+              name: s.stagename || "(unnamed stage)",
+              category: s["stagecategory@OData.Community.Display.V1.FormattedValue"] || (s.stagecategory != null ? String(s.stagecategory) : ""),
+            }));
             break;
           }
 

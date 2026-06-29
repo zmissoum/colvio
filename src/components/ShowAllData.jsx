@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import AuditHistory from "./AuditHistory.jsx";
+import BpfManager from "./BpfManager.jsx";
 import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom } from "../shared.jsx";
 
-export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
+export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const isLive = orgInfo?.isExtension;
   const[recordUrl,setRecordUrl]=useState("");
   const[record,setRecord]=useState(null);
@@ -79,7 +80,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
         };
       }).sort((a,b)=>a.l.localeCompare(b.l));
       const name=rec.name||rec.fullname||rec.subject||rec.title||id;
-      setRecord({entity,entityDisplay:entity,id,name,fields:allFields,loadedAt:new Date().toLocaleTimeString()});
+      setRecord({entity,entitySet,entityDisplay:entity,id,name,fields:allFields,loadedAt:new Date().toLocaleTimeString()});
     }catch(e){
       if(e.message?.includes("401")||e.message?.includes("SESSION_EXPIRED")){
         setError("Session expired — refresh D365 (F5) then click ⚡ again");
@@ -155,6 +156,11 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures}){
           </div>
 
           {orgInfo?.isExtension&&<AuditHistory recordId={record.id} orgFeatures={orgFeatures}/>}
+
+          {/* BPF manager — System-Administrator only (canBypassPlugins == the sysadmin role check).
+              Lets an admin reopen/re-stage a record's BPF that the form UI locks once finished. */}
+          {orgInfo?.isExtension&&permissions?.canBypassPlugins===true&&record.entitySet&&
+            <BpfManager entity={record.entity} entitySet={record.entitySet} recordId={record.id} orgInfo={orgInfo}/>}
 
           <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
             <div style={{position:"relative",flex:1,maxWidth:300}}>

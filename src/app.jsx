@@ -327,7 +327,7 @@ export default function App(){
           {showShortcuts&&<ShortcutsPanel onClose={()=>setShowShortcuts(false)}/>}
           <OnboardingTour/>
           {tab==="apitester"&&<ErrorBoundary><ApiTesterTabs bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
+          {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures} permissions={permissions}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {/* Loader stays MOUNTED (display toggle, like Explorer) so switching nav tabs during an
