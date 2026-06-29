@@ -44,7 +44,7 @@ export default function BpfManager({ entity, recordId, orgInfo }) {
       setMsg(`✓ ${label} done.`);
       load();
     } catch (e) {
-      setMsg(`✗ ${label} failed: ${e.message || e}`);
+      setMsg(`✗ ${label} failed (${inst.bpfEntitySet || "?"}): ${e.message || e}`);
     } finally { setBusy(""); }
   };
 
