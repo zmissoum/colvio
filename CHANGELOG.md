@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.69] — 2026-06-29
+### Fixed
+- **BPF manager: "HTTP 400: The 'RetrieveMultiple' method does not support entities of type 'businessprocessflowinstance'" on Reopen/Finish/Abort/Move.** `RetrieveProcessInstances` returns each instance typed as the abstract base `businessprocessflowinstance`, which can't be updated directly — the write must target the **concrete** BPF entity set (e.g. `phonetocaseprocesses`). The call now requests **full OData metadata** and derives the concrete entity set + id from each instance's `@odata.id`, so the PATCH addresses the right entity. (The failure message also now shows which entity set was targeted, for support.)
+
 ## [1.11.68] — 2026-06-29
 ### Fixed
 - **BPF manager: "HTTP 404: Resource not found for the segment 'RetrieveProcessInstances()'".** `RetrieveProcessInstances` is an **unbound** Web API function taking `EntityId` + `EntityLogicalName` — it was being called as a *bound* function on the record (`entityset(id)/Microsoft.Dynamics.CRM.RetrieveProcessInstances()`), which 404s. Now called correctly as `RetrieveProcessInstances(EntityId=<guid>,EntityLogicalName='<entity>')`, so the Business Process Flows section actually loads.
