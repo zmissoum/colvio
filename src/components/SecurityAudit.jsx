@@ -24,6 +24,32 @@ const DEPTH_COLORS = { 1: C.gn, 2: C.cy, 4: C.yw, 8: C.rd };
 // of them is slow and timeout-prone. We load the first N (the count badge still shows the true total).
 const USERS_CAP = 10000;
 
+// The 8 access rights, in the same column order the make.powerapps role editor uses.
+const OPS = ["Create", "Read", "Write", "Delete", "Append", "AppendTo", "Assign", "Share"];
+const DEPTH_LABEL = { 0: "None", 1: "User", 2: "Business Unit", 4: "Parent: Child BU", 8: "Organization" };
+const DEPTH_FRAC = { 0: 0, 1: 0.25, 2: 0.5, 4: 0.75, 8: 1 };
+
+// The make.powerapps depth circle: empty ring = None, then a pie filled ¼/½/¾/full for
+// User/BU/Parent-Child/Org, coloured by depth (green→red) so breadth of access reads at a glance.
+function DepthPie({ depth }) {
+  const frac = DEPTH_FRAC[depth] ?? 0;
+  const color = DEPTH_COLORS[depth] || C.txd;
+  const r = 6, cx = 8, cy = 8;
+  let slice = "";
+  if (frac > 0 && frac < 1) {
+    const a = 2 * Math.PI * frac - Math.PI / 2;
+    const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+    slice = `M ${cx} ${cy} L ${cx} ${cy - r} A ${r} ${r} 0 ${frac > 0.5 ? 1 : 0} 1 ${x} ${y} Z`;
+  }
+  return (
+    <svg width="16" height="16" style={{ display: "block" }}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={depth ? color : C.bd} strokeWidth="1.5" />
+      {frac >= 1 && <circle cx={cx} cy={cy} r={r} fill={color} />}
+      {slice && <path d={slice} fill={color} />}
+    </svg>
+  );
+}
+
 // Parse privilege name into readable label
 // prvAppendToCustomerGroup -> Append To · CustomerGroup
 // prvDeleteAccount -> Delete · Account
@@ -68,6 +94,12 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [usersErr, setUsersErr] = useState("");      // distinct from "genuinely empty"
   const [userSearch, setUserSearch] = useState("");
   const [userStatus, setUserStatus] = useState("all"); // all | enabled | disabled
+  const [privView, setPrivView] = useState("list");   // list | matrix (make.powerapps-style grid)
+  const [matrix, setMatrix] = useState(null);          // { entities:[{entity,ops}], misc:[{name,depth}] }
+  const [loadingMatrix, setLoadingMatrix] = useState(false);
+  const [matrixErr, setMatrixErr] = useState("");
+  const [matrixSearch, setMatrixSearch] = useState("");
+  const [showAllTables, setShowAllTables] = useState(false); // include tables the role can't touch
   const selectGen = useRef(0);
 
   // Load all roles on mount
@@ -94,6 +126,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     setUsers(null);
     setUsersErr("");
     setUserSearch("");
+    setPrivView("list");
+    setMatrix(null);
+    setMatrixErr("");
+    setMatrixSearch("");
     setError("");
 
     // Load privileges (usually the slower one)
@@ -114,6 +150,47 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     }).catch(() => {
       if (selectGen.current === gen) { setUserCount(null); setLoadingCount(false); }
     });
+  };
+
+  // The full CRUD matrix is loaded lazily — only when the Matrix view is first opened for a role.
+  const openMatrix = () => {
+    setPrivView("matrix");
+    if (matrix !== null || loadingMatrix || !selRole) return;
+    const gen = selectGen.current;
+    setLoadingMatrix(true); setMatrixErr("");
+    bridge.getRolePrivilegeMatrix(selRole.id).then(m => {
+      if (selectGen.current !== gen) return;
+      setMatrix(m || { entities: [], misc: [] }); setLoadingMatrix(false);
+    }).catch(e => {
+      if (selectGen.current === gen) { setMatrixErr(e.message || String(e)); setLoadingMatrix(false); }
+    });
+  };
+
+  const anyGrant = (ops) => OPS.some(op => (ops?.[op] || 0) > 0);
+  const matrixRows = useMemo(() => {
+    if (!matrix) return [];
+    const s = matrixSearch.trim().toLowerCase();
+    return matrix.entities.filter(r =>
+      (showAllTables || anyGrant(r.ops)) && (!s || r.entity.toLowerCase().includes(s))
+    );
+  }, [matrix, matrixSearch, showAllTables]);
+
+  // Export the FULL grid (every table × the 8 rights, as depth labels) + a Miscellaneous section —
+  // the complete picture you'd otherwise read cell-by-cell in the make.powerapps role editor.
+  const exportMatrix = (format = "csv") => {
+    if (!matrix || !selRole) return;
+    const headers = ["table", ...OPS];
+    const rows = matrix.entities.map(r => [r.entity, ...OPS.map(op => DEPTH_LABEL[r.ops[op] || 0])]);
+    // Append the task-based (miscellaneous) privileges below, one per row, with their granted depth.
+    const grantedMisc = (matrix.misc || []).filter(m => m.depth > 0);
+    if (grantedMisc.length) {
+      rows.push(Array(headers.length).fill(""));
+      rows.push(["— Miscellaneous privileges —", ...Array(OPS.length).fill("")]);
+      grantedMisc.forEach(m => rows.push([m.name, DEPTH_LABEL[m.depth] || `Depth ${m.depth}`, ...Array(OPS.length - 1).fill("")]));
+    }
+    exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}_matrix`, format, "Matrix");
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${matrix.entities.length} tables)`);
+    setTimeout(() => setFeedback(""), 2000);
   };
 
   // The full user list is loaded lazily — only when the Users tab is first opened — so clicking
@@ -266,6 +343,14 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
             </div>
 
             {detailTab === "privileges" && (<>
+            {/* View switch: flat List of granted privileges | make.powerapps-style CRUD Matrix */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+              {[["list", "List"], ["matrix", "Matrix (by table)"]].map(([k, label]) => (
+                <button key={k} onClick={() => k === "matrix" ? openMatrix() : setPrivView("list")} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${privView === k ? C.cy : C.bd}`, background: privView === k ? C.cy + "22" : "transparent", color: privView === k ? C.cy : C.txm }}>{label}</button>
+              ))}
+            </div>
+
+            {privView === "list" && (<>
             {/* Privilege filters */}
             <div style={{ display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap" }}>
               {[["all", `All (${privStats.total})`], ["org", `Org-level (${privStats.org})`], ["sensitive", `Sensitive (${privStats.sensitive})`]].map(([k, label]) => (
@@ -302,6 +387,54 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                 </div>
               </div>
             )}
+            </>)}
+
+            {privView === "matrix" && (<>
+              {matrixErr && <div style={{ ...crd({ padding: 12, borderColor: C.rd + "66" }), color: C.rd, fontSize: 13, marginBottom: 10 }}>{matrixErr} <button onClick={openMatrix} style={bt(null, { fontSize: 12, marginLeft: 8 })}>↻ Retry</button></div>}
+              {loadingMatrix && <div style={{ textAlign: "center", marginTop: 20 }}><Spin s={16} /> Building the privilege matrix…</div>}
+              {matrix && !loadingMatrix && (<>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <input value={matrixSearch} onChange={e => setMatrixSearch(e.target.value)} placeholder="Filter tables…" style={inp({ fontSize: 13, maxWidth: 220 })} />
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.txm, cursor: "pointer" }}>
+                    <input type="checkbox" checked={showAllTables} onChange={e => setShowAllTables(e.target.checked)} style={{ accentColor: C.cy }} /> Show tables with no access
+                  </label>
+                  <span style={{ fontSize: 12, color: C.txd, ...mono }}>{matrixRows.length} tables</span>
+                  <div style={{ flex: 1 }} />
+                  <button onClick={() => exportMatrix("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                  <button onClick={() => exportMatrix("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8, fontSize: 11, color: C.txm }}>
+                  {[0, 1, 2, 4, 8].map(d => <span key={d} style={{ display: "flex", alignItems: "center", gap: 4 }}><DepthPie depth={d} /> {DEPTH_LABEL[d]}</span>)}
+                </div>
+                <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
+                  <div style={{ display: "grid", gridTemplateColumns: `minmax(140px,1.4fr) repeat(${OPS.length}, 1fr)`, padding: "8px 12px", background: C.sfh, fontSize: 10.5, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                    <span>Table</span>
+                    {OPS.map(op => <span key={op} style={{ textAlign: "center" }}>{op}</span>)}
+                  </div>
+                  <div style={{ maxHeight: 520, overflow: "auto" }}>
+                    {matrixRows.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No tables match{!showAllTables ? " — tick \"Show tables with no access\" to see the rest" : ""}.</div>}
+                    {matrixRows.map(r => (
+                      <div key={r.entity} style={{ display: "grid", gridTemplateColumns: `minmax(140px,1.4fr) repeat(${OPS.length}, 1fr)`, padding: "4px 12px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center" }}>
+                        <span style={{ ...mono, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.entity}>{r.entity}</span>
+                        {OPS.map(op => <span key={op} title={`${op}: ${DEPTH_LABEL[r.ops[op] || 0]}`} style={{ display: "flex", justifyContent: "center" }}><DepthPie depth={r.ops[op] || 0} /></span>)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {matrix.misc && matrix.misc.some(m => m.depth > 0) && (
+                  <div style={{ ...crd({ padding: "10px 12px" }), marginTop: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.txd, marginBottom: 6 }}>Miscellaneous privileges (granted)</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {matrix.misc.filter(m => m.depth > 0).map(m => (
+                        <span key={m.id || m.name} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, ...mono, padding: "2px 8px", borderRadius: 4, background: C.sfh }} title={`${m.name} — ${DEPTH_LABEL[m.depth]}`}>
+                          <DepthPie depth={m.depth} /> {formatPrivName(m.name)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>)}
+            </>)}
             </>)}
 
             {detailTab === "users" && (

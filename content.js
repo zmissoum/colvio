@@ -1600,6 +1600,57 @@
             break;
           }
 
+          case "getRolePrivilegeMatrix": {
+            // Full CRUD-style privilege matrix for a role, like the make.powerapps role editor grid:
+            // one row per table × the 8 access rights (Create/Read/Write/Delete/Append/AppendTo/
+            // Assign/Share), each cell = the granted DEPTH (0 None · 1 User · 2 BU · 4 Parent:Child ·
+            // 8 Org). Built from the FULL privilege catalog (so NOT-granted cells show as None) crossed
+            // with the role's granted depths. Non-table (task-based) privileges go into `misc`.
+            validateGuid(params.roleId);
+            const rd = await dvRequest("GET", `RetrieveRolePrivilegesRole(RoleId=${params.roleId})`);
+            const DEPTH_MAP_M = { "Basic": 1, "Local": 2, "Deep": 4, "Global": 8 };
+            const grantedDepth = {};
+            (rd.RolePrivileges || []).forEach(p => {
+              const depth = typeof p.Depth === "string" ? (DEPTH_MAP_M[p.Depth] || 0) : (p.Depth || 0);
+              grantedDepth[p.PrivilegeId] = depth;
+            });
+            // Ensure the org's full privilege catalog is cached (name + accessright per privilege).
+            if (!window.__colvioPrivCache) {
+              window.__colvioPrivCache = {};
+              let allP = []; let pg = 1; let more = true;
+              while (more) {
+                const fx = `<fetch page="${pg}" count="5000"><entity name="privilege"><attribute name="privilegeid"/><attribute name="name"/><attribute name="accessright"/><order attribute="privilegeid"/></entity></fetch>`;
+                const pdata = await dvRequest("GET", `privileges?fetchXml=${encodeURIComponent(fx)}`);
+                const b = pdata.value || [];
+                allP = allP.concat(b);
+                more = b.length === 5000; pg++;
+              }
+              allP.forEach(p => { window.__colvioPrivCache[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
+            }
+            const cat = window.__colvioPrivCache;
+            // AccessRights enum → operation. A privilege carries exactly one of these.
+            const AR = { 1: "Read", 2: "Write", 4: "Append", 16: "AppendTo", 32: "Create", 65536: "Delete", 262144: "Share", 524288: "Assign" };
+            const entities = {}; // { schemaName: { op: depth } }
+            const misc = [];
+            for (const pid in cat) {
+              const nm = cat[pid].name || "";
+              const op = AR[cat[pid].accessRight];
+              const depth = grantedDepth[pid] || 0;
+              // Entity privilege = accessright is a core op AND the name is prv<Op><EntitySchemaName>.
+              const entity = (op && nm.startsWith("prv" + op)) ? nm.substring(3 + op.length) : null;
+              if (op && entity) {
+                (entities[entity] = entities[entity] || {})[op] = Math.max(entities[entity][op] || 0, depth);
+              } else {
+                misc.push({ id: pid, name: nm, depth });
+              }
+            }
+            result = {
+              entities: Object.keys(entities).sort((a, b) => a.localeCompare(b)).map(e => ({ entity: e, ops: entities[e] })),
+              misc: misc.sort((a, b) => a.name.localeCompare(b.name)),
+            };
+            break;
+          }
+
           // A security role exists as one copy PER BUSINESS UNIT, all copies sharing the same NAME
           // (children link to the root via parentrootroleid). Instead of fanning out one query per
           // copy (slow + 429-storms orgs with many BUs), we start from systemusers and filter by the

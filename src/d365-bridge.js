@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getUsersByBu" || action === "getUserCountsByBu";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getUsersByBu" || action === "getUserCountsByBu";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -777,6 +777,25 @@ export const bridge = {
       ];
     }
     return callD365("getRolePrivileges", { roleId });
+  },
+
+  async getRolePrivilegeMatrix(roleId) {
+    if (!isExtension) return {
+      entities: [
+        { entity: "Account", ops: { Create: 2, Read: 8, Write: 4, Delete: 0, Append: 2, AppendTo: 2, Assign: 1, Share: 0 } },
+        { entity: "Contact", ops: { Create: 2, Read: 8, Write: 2, Delete: 0, Append: 2, AppendTo: 2, Assign: 0, Share: 0 } },
+        { entity: "Opportunity", ops: { Create: 1, Read: 4, Write: 1, Delete: 0, Append: 1, AppendTo: 1, Assign: 0, Share: 0 } },
+        { entity: "Incident", ops: { Create: 8, Read: 8, Write: 8, Delete: 8, Append: 8, AppendTo: 8, Assign: 8, Share: 8 } },
+        { entity: "SystemUser", ops: { Create: 0, Read: 8, Write: 0, Delete: 0, Append: 0, AppendTo: 0, Assign: 0, Share: 0 } },
+      ],
+      misc: [
+        { id: "m1", name: "prvBulkDelete", depth: 8 },
+        { id: "m2", name: "prvExportToExcel", depth: 8 },
+        { id: "m3", name: "prvActOnBehalfOfAnotherUser", depth: 0 },
+        { id: "m4", name: "prvUseInternetMarketing", depth: 0 },
+      ],
+    };
+    return callD365("getRolePrivilegeMatrix", { roleId });
   },
 
   async getRoleUserCount(roleName) {

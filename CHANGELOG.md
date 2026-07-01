@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.72] — 2026-06-29
+### Added — Security Audit: CRUD privilege matrix (make.powerapps-style)
+- **New "Matrix (by table)" view on a security role.** Alongside the flat privilege list, you can now see the full grid like the make.powerapps role editor: one row per table × the 8 access rights (Create / Read / Write / Delete / Append / Append To / Assign / Share), each cell a depth "pie" — empty = None, then ¼/½/¾/full for User / Business Unit / Parent-Child / Organization, coloured green→red by breadth. **Crucially, it shows the NOT-granted cells too** (None), which the list view couldn't — so you can confirm what a role *can't* do, not just what it can.
+  - Built from the org's full privilege catalog crossed with the role's granted depths — no extra queries (the catalog is already cached). Filter tables by name, and a "Show tables with no access" toggle to include every securable table.
+  - Task-based (miscellaneous) privileges that aren't tied to a table are listed separately with their granted depth.
+- **Export the whole grid** to CSV / Excel — every table × the 8 rights as depth labels, plus the granted miscellaneous privileges — the complete role definition you'd otherwise have to read cell-by-cell in the maker portal.
+
 ## [1.11.71] — 2026-06-29
 ### Added — inline field editing in Show All Data
 - **Edit a field straight from Show All Data, even one the form marks read-only.** Each writable column (per its `IsValidForUpdate` metadata) now has a ✎ pencil: edit the value inline and save it via a direct Web API `PATCH`. Supports text, memo, whole/decimal numbers, money, yes/no, date-time (ISO), and option-sets (State/Status/Picklist) with a value dropdown. Lookups and the primary key are left read-only for now.
