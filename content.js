@@ -82,6 +82,11 @@
   async function dvRequest(method, path, body = null, extraHeaders = null) {
     const ctx = d365Context || extractContext();
     if (!ctx) throw new Error("D365 context not detected");
+    // A raw "#" in a URL starts the FRAGMENT — the browser strips everything after it before the
+    // request leaves, so a filter like contains(fullname,'#') reaches Dataverse truncated mid-string
+    // ("unterminated string literal"). A literal # is never meaningful in an API URL, so always
+    // send it percent-encoded. (Other reserved chars are handled by fetch/URL normalization.)
+    path = String(path).replace(/#/g, "%23");
     const url = path.startsWith("http") ? path : `${ctx.clientUrl}/api/data/${ctx.apiVersion}/${path}`;
     // Defense-in-depth chokepoint: any absolute URL (e.g. an @odata.nextLink) MUST target the
     // user's own org host. Panel messages already can't be forged (background.js checks sender.id,
