@@ -208,7 +208,8 @@ export default function App(){
     setTimeout(() => {
       setConnecting(false);
       setOrgInfo({ orgUrl: "https://demo.crm4.dynamics.com", orgName: "demo", region: "crm4", isProduction: false, isExtension: false });
-      setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canPublish: true });
+      setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canBypassPlugins: true, canPublish: true });
+      setPermsConfirmed(true); // demo permissions are final — without this, every "requires" tab stays hidden in demo mode
       setConnected(true);
     }, 1500);
   };

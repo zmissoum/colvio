@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.73] — 2026-07-02
+### Fixed (code-review pass over the 1.11.67→72 features)
+- **Demo mode showed only half the app.** Since the 1.11.66 anti-flash fix, permission-gated tabs are hidden until permissions are *confirmed* — but the demo (manual) connect never confirmed them, so Login History, Solutions, Translations, System Ops, Users & Licenses, Business Units and Security Audit were all missing in demo mode. Demo now confirms its permissions (and includes the admin flag, so admin-gated features are visible in demo too).
+- **BPF "Move to stage" backwards left a stale traversed path.** Moving a flow to an *earlier* stage kept the later stages in `traversedpath`, which can render an inconsistent progress bar on the form. The path is now truncated to end at the target stage (forward moves still append).
+- **`getUsersByBu` now validates the business-unit id** before building the OData filter — consistency with every other content-script action (never interpolate an unvalidated id into a URL).
+
 ## [1.11.72] — 2026-06-29
 ### Added — Security Audit: CRUD privilege matrix (make.powerapps-style)
 - **New "Matrix (by table)" view on a security role.** Alongside the flat privilege list, you can now see the full grid like the make.powerapps role editor: one row per table × the 8 access rights (Create / Read / Write / Delete / Append / Append To / Assign / Share), each cell a depth "pie" — empty = None, then ¼/½/¾/full for User / Business Unit / Parent-Child / Organization, coloured green→red by breadth. **Crucially, it shows the NOT-granted cells too** (None), which the list view couldn't — so you can confirm what a role *can't* do, not just what it can.
