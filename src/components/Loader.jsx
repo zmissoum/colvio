@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
 
 // System / audit fields the loader never writes by default (platform-managed or write-protected).
@@ -691,6 +691,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(isSystemField(m.d365)) continue;
       const rawVal=row[m.csv];
       if(rawVal===undefined||rawVal===null||rawVal==="") continue;
+      if(isNullToken(rawVal)){
+        if(!(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase()))) rec[m.d365]=null;
+        continue;
+      }
       const val=applyTransform(rawVal,m.transform,optionMapsRef.current[m.d365],dateMD);
       if(val!==null&&val!==undefined&&val!==""){
         const lc=m.d365.toLowerCase();
@@ -702,6 +706,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(!lk.csv||!lk.nav) continue;
       const val=row[lk.csv];
       if(!val) continue;
+      if(isNullToken(val)){ rec[lk.nav]=null; continue; } // explicit clear — mirrors doLoad
       if(lk.mode==="direct") rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
       else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${e}')`;}
       else rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(<resolved at runtime>)`;
@@ -837,7 +842,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(lk.mode==="direct") continue;
       if(isAltKeyBind(lk)) continue; // alt-key path: bind directly via /entity(field='value'), skip pre-resolve
       if(!lk.csv||!lk.entity||!lk.d365f) continue;
-      const uniqueVals=[...new Set(rows.map(r=>r[lk.csv]).filter(Boolean))];
+      const uniqueVals=[...new Set(rows.map(r=>r[lk.csv]).filter(v=>v&&!isNullToken(v)))]; // NULL tokens clear the lookup — nothing to resolve
       setLoadProgress({done:0,total:uniqueVals.length,current:`Resolving lookups ${lk.entity} (${uniqueVals.length.toLocaleString()} values)...`});
       const {found,errored}=await resolveLookupBatch(lk,uniqueVals);
       const nrm=(v)=>String(v).trim().toLowerCase();
@@ -922,6 +927,12 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           if(!m.d365) continue;
           const rawVal = row[m.csv];
           if(rawVal === undefined || rawVal === null || rawVal === "") continue;
+          // Explicit NULL token → clear the field (empty cells still mean "leave untouched").
+          // Meaningless on migration-override audit fields, so those are just skipped.
+          if(isNullToken(rawVal)){
+            if(!(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase()))) rec[m.d365]=null;
+            continue;
+          }
           const val=applyTransform(rawVal,m.transform,optionMaps[m.d365],dateMD);
           if(val!==null && val!==undefined && val!==""){
             const lc=m.d365.toLowerCase();
@@ -943,6 +954,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             if(lk.fb==="error"){ errors.push({row:i+1,msg:`Empty lookup: ${lk.csv}`});logEntries.push({row:i+1,status:"ERROR",detail:`Empty lookup: ${lk.csv}`,d365Id:""});skipRow=true;break; }
             continue;
           }
+          // Explicit NULL token → CLEAR the lookup: bare single-valued nav property set to null
+          // (the documented Web API disassociate). No @odata.bind, no resolve needed.
+          if(isNullToken(val)){ rec[lk.nav]=null; continue; }
           if(lk.mode==="direct"){
             const gkey=isOwnerLk(lk)?String(val).trim().toLowerCase():null;
             // Owner type couldn't be probed (transient throttling) — error the row rather than
@@ -1001,6 +1015,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 const slim={};let kept=0,binds=0;
                 for(const [k,v] of Object.entries(rec)){
                   if(k.includes("@odata.bind")){ slim[k]=v;binds++;continue; } // binds kept (cheap compare impossible)
+                  if(v===null){ slim[k]=v;kept++;continue; } // explicit NULL-token clear — always send (the org column may not even be in the delta fetch)
                   const metaF=targetFieldsMeta.find(f=>(f.logical||f.l)===k);
                   const curV=cur[metaF&&metaF.odataName?metaF.odataName:k];
                   if(deltaEqual(curV,v)) continue;
@@ -1533,7 +1548,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
-{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{rec[m.d365]=row[m.csv]||"";});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
+{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{const rv=row[m.csv]||"";rec[m.d365]=isNullToken(rv)?null:rv;});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(isNullToken(val)){rec[lk.nav]=null;}else if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
             </pre>
           </div>
           <div style={{...crd({padding:12}),marginBottom:12}}>

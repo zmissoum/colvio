@@ -30,6 +30,14 @@ export function isTransientError(msg) {
   );
 }
 
+// Explicit "clear this field" token for the Data Loader. An EMPTY cell always means "leave the
+// field untouched" (so partial files can't wipe data) — typing NULL (any case) is the opt-in way
+// to actually erase a value. For lookups the request sends the bare navigation property set to
+// null, the documented Web API disassociate.
+export function isNullToken(v) {
+  return typeof v === "string" && /^null$/i.test(v.trim());
+}
+
 // RFC-4180 delimited parser — handles quoted fields, embedded delimiters/newlines, and ""
 // escaping. Preserves every value as its exact string (no number coercion → leading zeros and
 // SAP-style codes survive). Returns an array of string arrays.

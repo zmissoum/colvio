@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.77] — 2026-07-02
+### Added — Data Loader: NULL token to clear a field (lookups included)
+- **Put the literal word `NULL` (any case) in a cell to CLEAR that field on the target record.** Until now there was no way to empty a field from a file: an empty cell means "leave the field untouched" (by design — a partial file must never wipe data), so lookups in particular could not be cleared. `NULL` is the explicit opt-in:
+  - **Lookups:** the request sends the bare single-valued navigation property set to `null` — the documented Web API disassociate. Works in direct, alt-key and resolve modes (no resolution is attempted on a NULL token).
+  - **Regular fields:** the attribute is sent as `null` (text, numbers, dates, option sets…).
+  - **Delta mode:** an explicit clear is always sent (never dropped by the unchanged-field comparison); the pre-flight "D365 record example" and the request log show the `null` exactly as sent. Meaningless on migration-override audit fields, so it's ignored there.
+- Empty cells behave exactly as before. Help updated (EN + FR) with the empty-vs-NULL rule. (+2 tests → 246.)
+
 ## [1.11.76] — 2026-07-02
 ### Fixed
 - **Filtering on a value containing `#` failed with "unterminated string literal".** A raw `#` in a URL starts the *fragment* — the browser strips everything after it before the request is even sent, so a Builder filter like `fullname not contains '#'` reached Dataverse truncated mid-string (`contains(fullname,'`) and 400'd. The content script now percent-encodes `#` (`%23`) in every request path — a literal `#` is never meaningful in an API URL, so this fixes the Builder, raw OData mode, and any other caller in one place.
