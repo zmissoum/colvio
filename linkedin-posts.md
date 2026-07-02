@@ -424,6 +424,153 @@ How do you map your org's business-unit structure today — admin center, a scri
 
 ---
 
+## Post 16 — Excel export + richer user data (the "for the business" wave)
+
+> Publish after the next Chrome Web Store resubmission (bundles v1.11.25→48). Link in the FIRST COMMENT. HONEST framing — CSV/Excel export, these user fields and Entra data are all available elsewhere (native exports, XrmToolBox, FetchXML, Microsoft Graph). Position on convenience / in-browser / business-friendly + the listening-to-users angle, NOT "nobody else does this". All three updates came from real user requests this week.
+
+Three updates to Colvio this week. None of them flashy. All three started with the same kind of message: "could it also…?"
+
+1️⃣ Excel, not just CSV.
+Every export in Colvio now has an Excel (.xlsx) button right next to the CSV one. CSV is fine for engineers — but the person who actually opens the file is often in finance, ops or HR. They get real typed cells and clean columns instead of a comma puzzle. Same data, friendlier format.
+
+2️⃣ More of the user record.
+The user lists now show job title, manager, business phone and mobile — pulled straight from the Dataverse systemuser record, and included in every export. (Being precise here: pure-Entra fields like "department" live in Microsoft Graph, not on systemuser. Colvio reads your Dataverse session, so it shows what Dataverse actually holds — no more, no less.)
+
+3️⃣ A faster, clearer open.
+The panel used to sometimes sit on the connect screen for a few seconds while it probed your permissions. Now it shows a clear "Connecting to <your org>…" and no longer blocks the first screen behind those checks. Open it, and you're in.
+
+That's the whole philosophy, really: free, in-browser, no setup — and shaped by whoever takes a minute to ask for the next small thing.
+
+Colvio is now ~13,000 lines of open-source code, 15 modules, still zero configuration and zero cost.
+
+What's the one "could it also…?" you'd send me? 👇
+
+#Dynamics365 #Dataverse #D365 #PowerPlatform #CRM #OpenSource #ChromeExtension #Free
+
+---
+
+## Post 17 — Migration-grade data loading (audit fields + length pre-flight)
+
+> Publish after the next Chrome Web Store resubmission (bundles up to v1.11.51). Link in the FIRST COMMENT. HONEST framing — audit-field override and length validation already exist in SSIS/KingswaySoft, the Configuration Migration tool, dataflows, etc. Position on free / in-browser / zero-setup + the safety net (dry-run, pre-flight), NOT "nobody else does this". Migration mode needs the prvOverrideCreatedOnCreatedBy privilege — say so. Migration angle from v1.11.49 (Migration mode) + v1.11.50 (length pre-flight).
+
+Migrating data into Dynamics 365? Two things that quietly wreck a migration — and what I just shipped for them in Colvio's Data Loader.
+
+1️⃣ You lose the original dates.
+Load 50,000 historical records and every one reads "Created on: today, by: you." The real created/modified dates and authors are gone — and every report built on them is now wrong.
+→ New opt-in **Migration mode** lets you map createdon, modifiedon, createdby and modifiedby so migrated records keep their original audit values (createdon → overriddencreatedon, the field Dataverse actually allows you to set). It runs on create only, and requires the prvOverrideCreatedOnCreatedBy privilege — no privilege, no override, by design.
+
+2️⃣ Rich text overflows the field.
+Migrating HTML into a rich-text column? The markup inflates the length, blows past the field's max, and you get a 400 on row 12,473 — after the run.
+→ The Loader now **pre-flights** every mapped column against the field's real MaxLength and warns you before you run: which field, how many rows exceed it, and the longest value found.
+
+Both sit on top of what was already there: a full dry-run that simulates the whole load (create / update / skip / fail, row by row) with zero writes, plus one-click rollback.
+
+None of this is unique — SSIS/KingswaySoft, the Configuration Migration tool and dataflows all do migrations, often with more power. Colvio's bet is different: free, in the browser, zero setup, and a safety net that tells you what will break before it breaks.
+
+What's the worst data-migration surprise you've hit on D365? 👇
+
+#Dynamics365 #Dataverse #D365 #PowerPlatform #CRM #DataMigration #OpenSource #ChromeExtension
+
+---
+
+## Post 18 — New release: submitted to Chrome (in review) + already on GitHub (1.11.52 → 1.11.60)
+
+> Availability-announcement framing: new version JUST submitted to the Chrome Web Store (pending review) and already live on the open-source GitHub repo. Links IN THE BODY this time (user asked) — GitHub (available now) + Chrome (in review). HONEST: "submitted/in review", not "live on Chrome". Content = 1.11.52→60 (Loader resilience + results filter + code audit). Acknowledge alternatives; free/in-browser/zero-setup positioning. Note: body links can dent LinkedIn reach — the user can move them to the first comment if they prefer.
+
+🚀 New Colvio release — just submitted to the Chrome Web Store, and already live on GitHub.
+
+While Chrome reviews it, you can grab it right now from the repo — it's 100% free and open-source.
+
+This batch is mostly one theme: making big, messy bulk loads in Dynamics 365 survive what actually happens — throttling, timeouts, partial failures, the wrong key.
+
+🛡 A Data Loader that doesn't give up
+• Retry only the transient failures (timeouts, throttling, 5xx) at gentler concurrency — rollback still covers everything. Data/permission errors aren't offered a pointless retry.
+• One slow or timed-out chunk no longer aborts the whole load — its rows become retryable errors and the rest keeps going.
+• If a run crashes, you get the exact error on screen (with the stack trace), not a silent spinner.
+• The progress bar counts the rows actually sent — so a 91k-row update matching 5k records reads "5k sent, 86k not eligible," not "stuck at 5k."
+
+🔎 Filter results without re-querying
+Query results now have a live filter box across every column — and every export (CSV / Excel / JSON) honours the filter + sort. Narrow thousands of rows to the ones you want, then export just those.
+
+🧹 Safer defaults
+Switching the target entity now resets the match key & mode, so a stale key from another entity can't quietly 404 every row. And the result card's Created vs Updated counts are now split correctly.
+
+✅ A full code audit
+I ran a multi-dimension review of the whole codebase — security, Dataverse limits, React/performance, and Edge compatibility — and fixed what it surfaced (count accuracy, a number-parsing trap, an N+1 query, grid identity under sort+filter, and more).
+
+Free, open-source, in your browser, zero setup. None of this is unique — native admin tools, XrmToolBox, SSIS/KingswaySoft and dataflows overlap — but the bet stays the same: a safety net that tells you what will break before it breaks.
+
+👉 GitHub (available now): https://github.com/zmissoum/colvio
+👉 Chrome Web Store (in review): https://chromewebstore.google.com/detail/colvio-for-dynamics-365/edieednbdaclheikneelkjfbckibhdgl
+
+What's the worst bulk-load surprise you've hit on D365? 👇
+
+#Dynamics365 #Dataverse #D365 #PowerPlatform #CRM #DataMigration #OpenSource #ChromeExtension
+
+---
+
+## Post 19 — Do what the form won't let you (BPF manager + inline field edit)
+
+> Release post (Colvio page), covers what's NEW since the published 1.11.66 → i.e. 1.11.67-71: two hero features only — BPF manager (reopen/re-stage a finished Business Process Flow, sysadmin-only) + inline editing of form-locked fields in Show All Data. Theme = "the form locks it, the API doesn't — 2 clicks in your browser." HONEST framing — XrmToolBox / SDK / console apps / direct Web API all do this; position on in-browser + zero-setup + from-the-record + PROD guardrail, NOT "nobody does this." NOTE FOR ZAKARIA: store is published @ 1.11.66; these two features are on GitHub (main, 1.11.71) but NOT yet on Chrome — upload colvio-v1.11.71.zip to put them live. Links: Post 18 used body links; strategy default is first comment — your call.
+
+🔓 New in Colvio — for the moments Dynamics 365 says "no."
+
+You know them. A case is resolved, so its Business Process Flow is locked — you can't reopen it or move it back a stage. A field is read-only on the form, even though it's perfectly writable underneath. The UI protects you… right up until you're the admin who actually needs to change it.
+
+Two new features, one idea: do the legitimate, API-supported thing the form blocks — from the record you're already looking at, in your browser.
+
+⚙️ Business Process Flow manager (System Administrators)
+Open a record, see every BPF running on it, and:
+• Reopen a finished / locked flow
+• Move it to any stage
+• Finish or abort it
+No console app, no plugin to deploy — and it resolves the right underlying BPF entity for you (they're trickier under the hood than they look).
+
+✎ Edit a field the form locked
+Show All Data now puts a pencil on every writable column — text, numbers, yes/no, dates, option sets. Edit, save, done. Field-level security and your write privilege are still enforced by the server; the only thing bypassed is the form's own lock — and there's a production-environment confirmation before you commit.
+
+None of this is unique — XrmToolBox, the SDK, console apps and the raw Web API can all do it. The bet is the same as always: zero setup, in the browser, two clicks from the record, with a guardrail before you touch production. Free and open-source.
+
+👉 GitHub: https://github.com/zmissoum/colvio
+👉 Chrome Web Store: https://chromewebstore.google.com/detail/colvio-for-dynamics-365/edieednbdaclheikneelkjfbckibhdgl
+
+What's the one thing the D365 form won't let you do that you wish it would? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #CRM #PowerApps #OpenSource
+
+---
+
+## Post 20 — Roles you can finally read (and export) + clearing fields from a file
+
+> Release post (Colvio page voice — no "I"), covers 1.11.72 → 1.11.78. Two themes: Security Audit upgrades (privilege MATRIX with not-granted cells + full export the maker portal doesn't offer; TEAMS tab solving the "Users (0)" mystery) and the Loader NULL token (clear any field — lookups included — from a file). HONEST framing — the matrix grid exists natively in make.powerapps (Colvio's angle = the EXPORT + not-granted visibility + in-browser); role membership tools exist in XrmToolBox; SSIS/KingswaySoft can clear fields. NOTE FOR ZAKARIA: publish AFTER uploading colvio-v1.11.78.zip to Chrome (store is @ 1.11.66 — none of this is live there yet); links in body like Posts 18-19, or move to first comment per strategy default.
+
+🔍 New in Colvio — security roles you can finally read end-to-end, and one word to empty a field.
+
+🧩 The privilege matrix, exportable
+The make.powerapps role editor shows a beautiful grid — every table × Create / Read / Write / Delete / Append / Assign / Share, with those little depth pies. But try answering "can this role delete Contacts?" for an audit… cell by cell, tab by tab. And there's no export.
+Colvio's Security Audit now has the same Matrix view — depth pies included — with two twists:
+• It shows what a role can NOT do (not-granted cells included). Proving the absence of a privilege is half of every audit.
+• One click exports the entire grid to Excel/CSV — every table, all 8 rights, plus the task-based privileges.
+
+👥 The "Users (0)" mystery, solved
+A role shows zero users… but it's clearly in use? It's held by TEAMS — users inherit it through membership. A new Teams tab lists every team holding the role (type, business unit, administrator, member count), right next to the Users tab. No more false "this role is unused" conclusions.
+
+🧹 One word to clear a field
+In the Data Loader, an empty cell has always meant "leave the field untouched" — by design, so a partial file can never wipe data. But then… how do you empty a field? Now: put the literal word NULL in the cell. Works on regular fields AND on lookups (the proper Web API disassociate under the hood, with the right navigation-property casing even on custom fields — a fun Dataverse gotcha).
+
+Plus quiet hardening: filters on values containing # no longer break (URL fragment trap), and custom-lookup writes use the correctly-cased navigation property.
+
+As always: none of this is exclusive — the maker portal shows the grid, XrmToolBox has role tooling, SSIS/KingswaySoft can clear fields. Colvio's bet is the same: zero setup, in your browser, exportable, free and open-source.
+
+👉 GitHub: https://github.com/zmissoum/colvio
+👉 Chrome Web Store: https://chromewebstore.google.com/detail/colvio-for-dynamics-365/edieednbdaclheikneelkjfbckibhdgl
+
+What's the most painful thing about auditing security roles in your org? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #Security #PowerApps #OpenSource
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
