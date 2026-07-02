@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.74] — 2026-07-02
+### Changed — Help updated with the latest features (EN + FR)
+- **New "Business Process Flows (admin)" card** in the Admin category: what the section does (list every BPF on a record, reopen a finished flow, move to any stage, finish/abort), the sysadmin gate, the PROD confirmation, the bypass warning, and the SetProcess limitation.
+- **Show All Data card** now documents inline field editing — the ✎ pencil, supported types, the fact it works on form-locked fields, and that server-side security still applies.
+- **Security Audit card** now documents the Matrix (by table) view — the make.powerapps-style grid with depth pies, not-granted cells, and the full CSV/Excel export.
+
 ## [1.11.73] — 2026-07-02
 ### Fixed (code-review pass over the 1.11.67→72 features)
 - **Demo mode showed only half the app.** Since the 1.11.66 anti-flash fix, permission-gated tabs are hidden until permissions are *confirmed* — but the demo (manual) connect never confirmed them, so Login History, Solutions, Translations, System Ops, Users & Licenses, Business Units and Security Audit were all missing in demo mode. Demo now confirms its permissions (and includes the admin flag, so admin-gated features are visible in demo too).
