@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.76] — 2026-07-02
+### Fixed
+- **Filtering on a value containing `#` failed with "unterminated string literal".** A raw `#` in a URL starts the *fragment* — the browser strips everything after it before the request is even sent, so a Builder filter like `fullname not contains '#'` reached Dataverse truncated mid-string (`contains(fullname,'`) and 400'd. The content script now percent-encodes `#` (`%23`) in every request path — a literal `#` is never meaningful in an API URL, so this fixes the Builder, raw OData mode, and any other caller in one place.
+
 ## [1.11.75] — 2026-07-02
 ### Added — Security Audit: Teams sub-tab (who holds the role via teams)
 - **New "Teams" tab next to Users on a security role.** A role can be held by teams only — users then inherit it through team membership, so the Users tab legitimately shows 0 while the role is very much in use (e.g. "…BASIC TEAM" roles). The Teams tab lists every team holding the role across all business-unit copies (deduplicated): team name + description, type (Owner / Access / AAD group), business unit, administrator, and member count (counted for the first 50 teams).
