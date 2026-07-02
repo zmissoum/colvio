@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.78] — 2026-07-02
+### Fixed
+- **Loader lookups on CUSTOM fields: "Invalid property 'xxx' was found in entity" (HTTP 400).** OData navigation-property names are case-sensitive, and for a custom lookup the navigation property is the attribute **SchemaName** (e.g. `fou_BlockedReasonId`) — not the lowercase logical name. Out-of-box lookups happen to match their logical name, which is why `ownerid`/`primarycontactid` worked while clearing (or binding) a custom lookup like `fou_blockedreasonid` could 400. The Loader now canonicalizes every lookup's navigation property against the relationship metadata at request-build time — for NULL-token clears AND all @odata.bind writes (direct, alt-key, resolve). The pre-flight request example reflects the corrected name too.
+
 ## [1.11.77] — 2026-07-02
 ### Added — Data Loader: NULL token to clear a field (lookups included)
 - **Put the literal word `NULL` (any case) in a cell to CLEAR that field on the target record.** Until now there was no way to empty a field from a file: an empty cell means "leave the field untouched" (by design — a partial file must never wipe data), so lookups in particular could not be cleared. `NULL` is the explicit opt-in:

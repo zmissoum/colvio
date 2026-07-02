@@ -475,6 +475,18 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     ) || null;
   };
 
+  // OData navigation-property names are CASE-SENSITIVE, and for CUSTOM lookups the nav property is
+  // the attribute SchemaName (e.g. fou_BlockedReasonId) — NOT the lowercase logical name. OOB
+  // lookups happen to match their logical name, which is why a lowercased nav works for ownerid/
+  // primarycontactid but 400s ("property does not exist") on a custom field. Canonicalize the
+  // configured nav against the relationship metadata; fall back unchanged when unknown.
+  const canonNav = (nav) => {
+    if (!nav) return nav;
+    const low = String(nav).toLowerCase();
+    const meta = (targetLookups || []).find(m => (m.navProperty || "").toLowerCase() === low || (m.lookupField || "").toLowerCase() === low);
+    return meta?.navProperty || nav;
+  };
+
   // Retroactive enrichment: when target lookup metadata arrives after a CSV
   // was already parsed (heuristic applied), upgrade lookups to use real
   // entity + nav property names from D365 metadata.
@@ -704,12 +716,13 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     }
     for(const lk of lookups){
       if(!lk.csv||!lk.nav) continue;
+      const nav=canonNav(lk.nav); // custom lookups need the SchemaName-cased nav property
       const val=row[lk.csv];
       if(!val) continue;
-      if(isNullToken(val)){ rec[lk.nav]=null; continue; } // explicit clear — mirrors doLoad
-      if(lk.mode==="direct") rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
-      else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${e}')`;}
-      else rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(<resolved at runtime>)`;
+      if(isNullToken(val)){ rec[nav]=null; continue; } // explicit clear — mirrors doLoad
+      if(lk.mode==="direct") rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
+      else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${e}')`;}
+      else rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(<resolved at runtime>)`;
     }
     if(uKey.d&&uKey.c&&row[uKey.c]){
       const isPK=uKey.d.toLowerCase()===target+"id";
@@ -949,6 +962,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         let skipRow=false;
         for(const lk of lookups){
           if(!lk.csv||!lk.nav) continue;
+          const nav=canonNav(lk.nav); // custom lookups need the SchemaName-cased nav property
           const val=row[lk.csv];
           if(!val){
             if(lk.fb==="error"){ errors.push({row:i+1,msg:`Empty lookup: ${lk.csv}`});logEntries.push({row:i+1,status:"ERROR",detail:`Empty lookup: ${lk.csv}`,d365Id:""});skipRow=true;break; }
@@ -956,7 +970,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           }
           // Explicit NULL token → CLEAR the lookup: bare single-valued nav property set to null
           // (the documented Web API disassociate). No @odata.bind, no resolve needed.
-          if(isNullToken(val)){ rec[lk.nav]=null; continue; }
+          if(isNullToken(val)){ rec[nav]=null; continue; }
           if(lk.mode==="direct"){
             const gkey=isOwnerLk(lk)?String(val).trim().toLowerCase():null;
             // Owner type couldn't be probed (transient throttling) — error the row rather than
@@ -966,12 +980,12 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break;
             }
             const ownerSet=gkey?ownerSetCache[gkey]:null;
-            rec[`${lk.nav}@odata.bind`]=`/${ownerSet||entitySetFor(lk.entity)}(${val})`;
+            rec[`${nav}@odata.bind`]=`/${ownerSet||entitySetFor(lk.entity)}(${val})`;
           } else if(isAltKeyBind(lk)){
             // Alt-key direct binding — Dataverse resolves server-side. Empty fb=skip/null already
             // short-circuited above; missing record on the server returns a per-row PATCH error.
             const escaped=String(val).replace(/'/g,"''");
-            rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${escaped}')`;
+            rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${escaped}')`;
           } else {
             const cached=lookupCache[`${lk.entity}.${lk.d365f}.${val}`];
             if(cached&&typeof cached==="object"&&cached.__resolveError){
@@ -982,7 +996,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               if(lk.fb!=="null"){ errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break; }
               // fb==="null": load the row without this lookup
             }else if(cached){
-              rec[`${lk.nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${cached})`;
+              rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${cached})`;
             } else {
               if(lk.fb==="error"){ errors.push({row:i+1,msg:`Lookup not found: ${lk.csv}="${val}"`});logEntries.push({row:i+1,status:"ERROR",detail:`Lookup not found: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
               if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+1,status:"SKIPPED",detail:`Lookup not resolved: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
@@ -1548,7 +1562,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
-{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{const rv=row[m.csv]||"";rec[m.d365]=isNullToken(rv)?null:rv;});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(isNullToken(val)){rec[lk.nav]=null;}else if(lk.mode==="direct"&&val){rec[`${lk.nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${lk.nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${lk.nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
+{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{const rv=row[m.csv]||"";rec[m.d365]=isNullToken(rv)?null:rv;});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const nav=canonNav(lk.nav);const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(isNullToken(val)){rec[nav]=null;}else if(lk.mode==="direct"&&val){rec[`${nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
             </pre>
           </div>
           <div style={{...crd({padding:12}),marginBottom:12}}>
