@@ -94,6 +94,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [usersErr, setUsersErr] = useState("");      // distinct from "genuinely empty"
   const [userSearch, setUserSearch] = useState("");
   const [userStatus, setUserStatus] = useState("all"); // all | enabled | disabled
+  const [teams, setTeams] = useState(null);            // lazy — loaded when the Teams tab opens
+  const [loadingTeams, setLoadingTeams] = useState(false);
+  const [teamsErr, setTeamsErr] = useState("");
+  const [teamCount, setTeamCount] = useState(null);
   const [privView, setPrivView] = useState("list");   // list | matrix (make.powerapps-style grid)
   const [matrix, setMatrix] = useState(null);          // { entities:[{entity,ops}], misc:[{name,depth}] }
   const [loadingMatrix, setLoadingMatrix] = useState(false);
@@ -126,6 +130,9 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     setUsers(null);
     setUsersErr("");
     setUserSearch("");
+    setTeams(null);
+    setTeamsErr("");
+    setTeamCount(null);
     setPrivView("list");
     setMatrix(null);
     setMatrixErr("");
@@ -149,6 +156,14 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
       setLoadingCount(false);
     }).catch(() => {
       if (selectGen.current === gen) { setUserCount(null); setLoadingCount(false); }
+    });
+
+    // Team count in parallel too — a role can be held by teams only (users inherit via membership),
+    // in which case Users shows 0 and THIS badge is the real signal.
+    bridge.getRoleTeamCount(role.name).then(tc => {
+      if (selectGen.current === gen) setTeamCount(tc?.count ?? 0);
+    }).catch(() => {
+      if (selectGen.current === gen) setTeamCount(null);
     });
   };
 
@@ -190,6 +205,29 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     }
     exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}_matrix`, format, "Matrix");
     setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${matrix.entities.length} tables)`);
+    setTimeout(() => setFeedback(""), 2000);
+  };
+
+  // Teams holding the role — lazy, loaded the first time the Teams tab opens.
+  const openTeamsTab = () => {
+    setDetailTab("teams");
+    if (teams !== null || loadingTeams || !selRole) return;
+    const gen = selectGen.current;
+    setLoadingTeams(true); setTeamsErr("");
+    bridge.getRoleTeams(selRole.name).then(list => {
+      if (selectGen.current !== gen) return;
+      setTeams(list || []); setLoadingTeams(false);
+    }).catch(e => {
+      if (selectGen.current === gen) { setTeamsErr(e.message || "Failed to load teams"); setTeams(null); setLoadingTeams(false); }
+    });
+  };
+
+  const exportTeamsCSV = (format = "csv") => {
+    if (!selRole || !teams?.length) return;
+    const headers = ["name", "type", "businessUnit", "administrator", "members", "description"];
+    const rows = teams.map(tm => [tm.name, tm.type, tm.bu, tm.admin, tm.memberCount ?? "", tm.description]);
+    exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}_teams`, format, "Teams");
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${teams.length} teams)`);
     setTimeout(() => setFeedback(""), 2000);
   };
 
@@ -337,8 +375,8 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
 
             {/* Sub-tabs: Privileges | Users */}
             <div style={{ display: "flex", gap: 4, marginBottom: 12, borderBottom: `1px solid ${C.bd}` }}>
-              {[["privileges", `Privileges${privStats.total ? ` (${privStats.total})` : ""}`], ["users", `Users${userCount != null ? ` (${userCount})` : ""}`]].map(([k, label]) => (
-                <button key={k} onClick={() => k === "users" ? openUsersTab() : setDetailTab("privileges")} style={{ padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: "transparent", borderBottom: `2px solid ${detailTab === k ? C.cy : "transparent"}`, color: detailTab === k ? C.tx : C.txm, marginBottom: -1 }}>{label}</button>
+              {[["privileges", `Privileges${privStats.total ? ` (${privStats.total})` : ""}`], ["users", `Users${userCount != null ? ` (${userCount})` : ""}`], ["teams", `Teams${teamCount != null ? ` (${teamCount})` : ""}`]].map(([k, label]) => (
+                <button key={k} onClick={() => k === "users" ? openUsersTab() : k === "teams" ? openTeamsTab() : setDetailTab("privileges")} style={{ padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: "transparent", borderBottom: `2px solid ${detailTab === k ? C.cy : "transparent"}`, color: detailTab === k ? C.tx : C.txm, marginBottom: -1 }}>{label}</button>
               ))}
             </div>
 
@@ -487,6 +525,49 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                     </div>
                     <div style={{ fontSize: 11, color: C.txd, marginTop: 8, lineHeight: 1.6 }}>
                       Members across every business-unit copy of this role (deduplicated by user). The "Business Unit" column shows where each user sits.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {detailTab === "teams" && (
+              <div>
+                {loadingTeams && <div style={{ textAlign: "center", marginTop: 20 }}><Spin s={16} /> Loading teams…</div>}
+                {!loadingTeams && teamsErr && <div style={{ ...crd({ padding: 14, borderColor: C.rd + "66" }), color: C.rd, fontSize: 13 }}>
+                  Couldn't load the teams: {teamsErr}
+                  <button onClick={() => { setTeamsErr(""); openTeamsTab(); }} style={{ ...bt(null, { fontSize: 12, marginLeft: 10 }) }}>↻ Retry</button>
+                </div>}
+                {!loadingTeams && !teamsErr && teams && teams.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No teams hold this role.</div>}
+                {!loadingTeams && !teamsErr && teams && teams.length > 0 && (
+                  <>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: C.txd, ...mono }}>{teams.length} team{teams.length > 1 ? "s" : ""}</span>
+                      <div style={{ flex: 1 }} />
+                      <button onClick={() => exportTeamsCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                      <button onClick={() => exportTeamsCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
+                    </div>
+                    <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 80px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                        <span>Team</span><span>Type</span><span>Business Unit</span><span>Administrator</span><span>Members</span>
+                      </div>
+                      <div style={{ maxHeight: 500, overflow: "auto" }}>
+                        {teams.map(tm => (
+                          <div key={tm.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 80px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center" }}>
+                            <span style={{ minWidth: 0, overflow: "hidden" }} title={tm.description ? `${tm.name} — ${tm.description}` : tm.name}>
+                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{tm.name}</span>
+                              {tm.description && <span style={{ display: "block", fontSize: 10, color: C.txd, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tm.description}</span>}
+                            </span>
+                            <span><Badge label={tm.type || "—"} color={tm.typeCode === 0 ? C.cy : C.vi} /></span>
+                            <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tm.bu}>{tm.bu || "—"}</span>
+                            <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tm.admin}>{tm.admin || "—"}</span>
+                            <span style={{ ...mono, color: tm.memberCount ? C.tx : C.txd }}>{tm.memberCount != null ? tm.memberCount.toLocaleString() : "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.txd, marginTop: 8, lineHeight: 1.6 }}>
+                      Teams holding this role, across every business-unit copy. Users in these teams inherit the role through membership — they do NOT appear in the Users tab (direct assignments only).
                     </div>
                   </>
                 )}

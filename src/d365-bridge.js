@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getUsersByBu" || action === "getUserCountsByBu";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "getUsersByBu" || action === "getUserCountsByBu";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -811,6 +811,19 @@ export const bridge = {
       { id: "u4", name: "Old Account", email: "old@contoso.com", domain: "contoso\\old", disabled: true, accessMode: "Read-Write", accessModeCode: 0, bu: "Sales US" },
     ];
     return callD365("getRoleUsers", { roleName, cap });
+  },
+
+  async getRoleTeamCount(roleName) {
+    if (!isExtension) return { count: 2 };
+    return callD365("getRoleTeamCount", { roleName });
+  },
+
+  async getRoleTeams(roleName) {
+    if (!isExtension) return [
+      { id: "t1", name: "Sales EU Team", type: "Owner", typeCode: 0, bu: "Sales EU", admin: "Alice Martin", description: "Owner team for the EU sales BU", memberCount: 14 },
+      { id: "t2", name: "Support AAD Group", type: "AAD Security Group", typeCode: 2, bu: "Contoso", admin: "Pierre Bernard", description: "", memberCount: 37 },
+    ];
+    return callD365("getRoleTeams", { roleName });
   },
 
   async getManyToManyRelationships(logicalName) {

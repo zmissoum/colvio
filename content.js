@@ -1702,6 +1702,57 @@
             break;
           }
 
+          case "getRoleTeamCount": {
+            // How many TEAMS hold this role (users inherit the role through team membership — the
+            // Users tab only lists direct assignments). Same by-NAME pattern as getRoleUserCount so
+            // every business-unit copy of the role is covered in one query.
+            const nameT = String(params.roleName || "");
+            if (!nameT) { result = { count: 0 }; break; }
+            const escT = nameT.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''");
+            const dT = await dvRequest("GET", `teams?$select=teamid&$top=1&$count=true&$filter=teamroles_association/any(o:o/name eq '${escT}')`);
+            result = { count: dT["@odata.count"] != null ? dT["@odata.count"] : (dT.value || []).length };
+            break;
+          }
+
+          case "getRoleTeams": {
+            // The teams holding this role (across every BU copy, deduplicated), with each team's
+            // member count. Counts use the same JSON-safe $count=true trick as getRoleUserCount
+            // (a raw /$count endpoint returns text/plain, which dvRequest doesn't parse) and are
+            // capped to the first 50 teams — beyond that the count shows as unknown.
+            const nameTs = String(params.roleName || "");
+            if (!nameTs) { result = []; break; }
+            const escTs = nameTs.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''");
+            const mapT = {};
+            let urlT = `teams?$select=teamid,name,teamtype,description,_businessunitid_value,_administratorid_value&$filter=teamroles_association/any(o:o/name eq '${escTs}')&$orderby=name asc`;
+            while (urlT) {
+              const dTs = await dvRequest("GET", urlT);
+              (dTs.value || []).forEach(tm => {
+                const k = String(tm.teamid || "").toLowerCase();
+                if (k && !mapT[k]) mapT[k] = {
+                  id: tm.teamid,
+                  name: tm.name || tm.teamid,
+                  type: tm["teamtype@OData.Community.Display.V1.FormattedValue"] || String(tm.teamtype ?? ""),
+                  typeCode: tm.teamtype,
+                  bu: tm["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                  admin: tm["_administratorid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                  description: tm.description || "",
+                  memberCount: null,
+                };
+              });
+              const nlT = dTs["@odata.nextLink"];
+              urlT = nlT ? nlT.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            const teamsList = Object.values(mapT).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            for (const tm of teamsList.slice(0, 50)) {
+              try {
+                const cD = await dvRequest("GET", `systemusers?$select=systemuserid&$top=1&$count=true&$filter=teammembership_association/any(o:o/teamid eq ${tm.id})`);
+                tm.memberCount = cD["@odata.count"] != null ? cD["@odata.count"] : null;
+              } catch { tm.memberCount = null; }
+            }
+            result = teamsList;
+            break;
+          }
+
           case "probe": {
             // Lightweight permission probe — returns true if endpoint is accessible
             await dvRequest("GET", params.url);
