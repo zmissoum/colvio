@@ -54,10 +54,13 @@ export default function BpfManager({ entity, recordId, orgInfo }) {
   const applyStage = (inst) => {
     const stageId = pick[inst.id];
     if (!stageId || stageId === inst.activeStageId) return;
-    // Per Microsoft docs, activestageid and traversedpath must move together.
+    // Per Microsoft docs, activestageid and traversedpath must move together — and the path must END
+    // at the active stage. Forward: append the target. Backward: truncate everything after it
+    // (keeping later stages would show an inconsistent progress bar on the form).
     const parts = (inst.traversedPath || "").split(",").map(s => s.trim()).filter(Boolean);
-    if (!parts.includes(stageId)) parts.push(stageId);
-    patch(inst, { "activestageid@odata.bind": `/processstages(${stageId})`, traversedpath: parts.join(",") }, "Move stage");
+    const idx = parts.indexOf(stageId);
+    const path = idx >= 0 ? parts.slice(0, idx + 1) : [...parts, stageId];
+    patch(inst, { "activestageid@odata.bind": `/processstages(${stageId})`, traversedpath: path.join(",") }, "Move stage");
   };
 
   if (instances === null) return (<div style={{ ...crd({ padding: 12 }), marginBottom: 12, fontSize: 13, color: C.txm, display: "flex", alignItems: "center", gap: 8 }}><Spin s={14} /> Loading process flows…</div>);
