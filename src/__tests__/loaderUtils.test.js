@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken } from "../loaderUtils.js";
+
+describe("isNullToken (explicit clear-the-field marker)", () => {
+  it("matches NULL in any case, with surrounding spaces", () => {
+    expect(isNullToken("NULL")).toBe(true);
+    expect(isNullToken("null")).toBe(true);
+    expect(isNullToken("Null")).toBe(true);
+    expect(isNullToken("  null  ")).toBe(true);
+  });
+  it("does NOT match empty (empty = leave untouched), words containing null, or non-strings", () => {
+    expect(isNullToken("")).toBe(false);
+    expect(isNullToken("nullable")).toBe(false);
+    expect(isNullToken("not null")).toBe(false);
+    expect(isNullToken(null)).toBe(false);
+    expect(isNullToken(undefined)).toBe(false);
+    expect(isNullToken(0)).toBe(false);
+  });
+});
 
 describe("parseDelimited (RFC-4180)", () => {
   it("splits simple comma rows", () => {
