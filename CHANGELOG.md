@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.75] — 2026-07-02
+### Added — Security Audit: Teams sub-tab (who holds the role via teams)
+- **New "Teams" tab next to Users on a security role.** A role can be held by teams only — users then inherit it through team membership, so the Users tab legitimately shows 0 while the role is very much in use (e.g. "…BASIC TEAM" roles). The Teams tab lists every team holding the role across all business-unit copies (deduplicated): team name + description, type (Owner / Access / AAD group), business unit, administrator, and member count (counted for the first 50 teams).
+- The tab badge shows the team count as soon as a role is selected (fetched in parallel with the user count), so a "Users (0) / Teams (3)" role reads correctly at a glance. **CSV / Excel export** of the team list. Help updated (EN + FR).
+
 ## [1.11.74] — 2026-07-02
 ### Changed — Help updated with the latest features (EN + FR)
 - **New "Business Process Flows (admin)" card** in the Admin category: what the section does (list every BPF on a record, reopen a finished flow, move to any stage, finish/abort), the sysadmin gate, the PROD confirmation, the bypass warning, and the SetProcess limitation.
