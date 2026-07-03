@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.82] — 2026-07-03
+### Fixed (code-review pass over 1.11.74→81)
+- **Bulk role assign/remove: switching role mid-operation could paint the wrong members.** If you launched an assign/remove and clicked another role while it ran, the completion handler reloaded the *previous* role's member list into the newly selected role's Users tab (and the result report bled across). Both operations now capture the selection generation at start and leave the view alone if the role changed mid-flight (the writes themselves were always correct).
+- **Role removal now warns about selection hidden by the filter** — "⚠ N selected hidden by filter" next to the Remove button, matching the Explorer's behaviour, so a filtered view can't silently remove the role from members you no longer see.
+
 ## [1.11.81] — 2026-07-03
 ### Changed
 - **"What's new" popup refreshed.** It was still announcing the v1.11.0-6 arc (dry run, Recycle Bin…). It now highlights the current arc (EN + FR): BPF manager, inline editing of form-locked fields, the privilege matrix, the role Teams tab + bulk assign/remove, the Loader NULL token, the strip-HTML transform, and the EU/US date toggle + pre-flight checks.

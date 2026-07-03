@@ -257,6 +257,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const runAssign = async () => {
     const tokens = [...new Set(assignText.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean))];
     if (!tokens.length || !selRole) return;
+    const gen = selectGen.current; // captured at START — if the user switches role mid-flight, don't touch the new role's view
     setAssignBusy(true); setAssignReport(null);
     try {
       const byToken = new Map(); // lower(email|domain) -> user
@@ -281,10 +282,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
           const u = matched.find(m => String(m.systemuserid).toLowerCase() === String(r.id).toLowerCase());
           report.push({ label: u?.fullname || r.id, ok: !!r.ok, msg: r.error || r.note || "assigned" });
         });
-        reloadMembers();
+        if (selectGen.current === gen) reloadMembers();
       }
-      setAssignReport(report);
-    } catch (e) { setAssignReport([{ label: "Error", ok: false, msg: e.message || String(e) }]); }
+      if (selectGen.current === gen) setAssignReport(report);
+    } catch (e) { if (selectGen.current === gen) setAssignReport([{ label: "Error", ok: false, msg: e.message || String(e) }]); }
     setAssignBusy(false);
   };
 
@@ -293,15 +294,18 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const runRemove = async () => {
     if (!selUsers.size || !selRole) return;
     if (!confirmProd(orgInfo?.isProduction, `Remove the role "${selRole.name}" from ${selUsers.size} user${selUsers.size > 1 ? "s" : ""}.`)) return;
+    const gen = selectGen.current; // captured at START — a mid-flight role switch must not repaint the new role's view
     setAssignBusy(true);
     try {
       const res = await bridge.assignRoleUsers(selRole.name, [...selUsers], "remove");
-      setAssignReport((res || []).map(r => {
-        const u = (users || []).find(x => String(x.id).toLowerCase() === String(r.id).toLowerCase());
-        return { label: u?.name || r.id, ok: !!r.ok, msg: r.error || r.note || "removed" };
-      }));
-      reloadMembers();
-    } catch (e) { setAssignReport([{ label: "Error", ok: false, msg: e.message || String(e) }]); }
+      if (selectGen.current === gen) {
+        setAssignReport((res || []).map(r => {
+          const u = (users || []).find(x => String(x.id).toLowerCase() === String(r.id).toLowerCase());
+          return { label: u?.name || r.id, ok: !!r.ok, msg: r.error || r.note || "removed" };
+        }));
+        reloadMembers();
+      }
+    } catch (e) { if (selectGen.current === gen) setAssignReport([{ label: "Error", ok: false, msg: e.message || String(e) }]); }
     setAssignBusy(false);
   };
 
@@ -604,6 +608,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       <button onClick={() => exportUsersCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
                       <button onClick={() => setAssignOpen(o => !o)} style={bt(C.gn, { fontSize: 11, padding: "4px 10px" })}>➕ Assign users</button>
                       {selUsers.size > 0 && <button onClick={runRemove} disabled={assignBusy} style={bt(null, { fontSize: 11, padding: "4px 10px", color: C.rd, borderColor: C.rd + "66", opacity: assignBusy ? 0.5 : 1 })}>{assignBusy ? <Spin s={11} /> : "🗑"} Remove role ({selUsers.size})</button>}
+                      {selUsers.size > 0 && (() => { const hid = [...selUsers].filter(id => !shownUsers.some(u => u.id === id)).length; return hid > 0 ? <span style={{ fontSize: 11, color: C.yw, fontWeight: 600 }} title="Removal applies to your whole selection, including members hidden by the active filter.">⚠ {hid} selected hidden by filter</span> : null; })()}
                     </div>
                     {userCount != null && userCount > users.length && (
                       <div style={{ ...crd({ padding: "8px 12px", background: C.yw + "0c", borderColor: C.yw + "55" }), marginBottom: 10, fontSize: 12, color: C.txm }}>
