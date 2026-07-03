@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
 
 // System / audit fields the loader never writes by default (platform-managed or write-protected).
@@ -315,14 +315,16 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(!m.d365||m.skip) continue;
       const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
       const max=meta&&typeof meta.maxLength==="number"?meta.maxLength:null;
-      if(max) checks.push({field:m.d365,col:m.csv,max,count:0,maxFound:0});
+      if(max) checks.push({field:m.d365,col:m.csv,transform:m.transform,max,count:0,maxFound:0});
     }
     if(!checks.length) return [];
     for(const row of csvData.r){
       for(const c of checks){
         const v=row[c.col];
         if(v==null) continue;
-        const len=String(v).length;
+        // Measure what will actually be SENT: with strip_html the markup is removed first, so
+        // checking the raw HTML length would massively over-warn.
+        const len=(c.transform==="strip_html"?stripHtml(String(v)):String(v)).length;
         if(len>c.max){ c.count++; if(len>c.maxFound) c.maxFound=len; }
       }
     }
@@ -1385,6 +1387,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   <option value="int">int</option>
                   <option value="float">float</option>
                   <option value="date_iso">date ISO</option>
+                  <option value="strip_html">strip HTML → plain text</option>
                   <option value="upper">UPPER</option>
                   <option value="lower">lower</option>
                 </select>}</td>

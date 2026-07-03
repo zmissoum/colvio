@@ -72,6 +72,32 @@ export function detectSep(text) {
   return counts[";"] > counts[","] ? ";" : ",";
 }
 
+// Strip HTML down to readable plain text — for importing rich-text (HTML) sources into PLAIN-text
+// columns. Pure regex (this file is DOM-free): drops <script>/<style>/comments with their content,
+// turns <br> and closing block tags into line breaks and <li> into "- " bullets, strips the
+// remaining tags, decodes the common entities (numeric ones included, &amp; decoded LAST so
+// "&amp;lt;" can't double-decode), then tidies the whitespace.
+export function stripHtml(s) {
+  let t = String(s ?? "");
+  t = t.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "");
+  t = t.replace(/<!--[\s\S]*?-->/g, "");
+  t = t.replace(/<br\s*\/?>/gi, "\n");
+  t = t.replace(/<li[^>]*>/gi, "\n- ");
+  t = t.replace(/<\/(p|div|ul|ol|h[1-6]|tr|table|blockquote|pre)>/gi, "\n"); // not </li> — the <li> opener already breaks the line
+  t = t.replace(/<[^>]+>/g, "");
+  t = t
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&(#39|apos);/gi, "'")
+    .replace(/&#(\d+);/g, (m, n) => { const c = parseInt(n, 10); return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : m; })
+    .replace(/&#x([0-9a-f]+);/gi, (m, n) => { const c = parseInt(n, 16); return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : m; })
+    .replace(/&amp;/gi, "&");
+  t = t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ");
+  return t.trim();
+}
+
 export const STATECODE_MAP = { active: 0, inactive: 1, actif: 0, inactif: 1, "0": 0, "1": 1 };
 export const BOOLEAN_YESNO = { yes: true, no: false, oui: true, non: false, true: true, false: false, "1": true, "0": false, vrai: true, faux: false };
 
@@ -141,6 +167,11 @@ export function applyTransform(val, transform, optionMap, dateMD = false) {
         return isNaN(d.getTime()) ? null : d.toISOString();
       }
       try { const d = new Date(s); return isNaN(d.getTime()) ? null : d.toISOString(); } catch { return null; }
+    }
+    case "strip_html": {
+      // HTML source → plain-text target: keep the visible text, drop the markup.
+      const t = stripHtml(val);
+      return t === "" ? null : t;
     }
     case "upper": return String(val).toUpperCase();
     case "lower": return String(val).toLowerCase();

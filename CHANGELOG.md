@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.79] — 2026-07-03
+### Added — Data Loader: "strip HTML → plain text" transform
+- **New column transform that removes HTML markup and keeps the visible text** — for importing rich-text (HTML) sources, e.g. Salesforce rich text areas, into a **plain-text** column without changing the column's format. `<br>`/`</p>`/closing blocks become line breaks, `<li>` becomes a "- " bullet, `<script>`/`<style>` are dropped with their content, and common + numeric HTML entities are decoded (`&amp;` last, so already-escaped text can't double-decode).
+- **The max-length pre-flight measures the stripped text**, not the raw HTML — so it warns on what will actually be sent. Help updated (EN + FR). (+5 tests → 251.)
+
 ## [1.11.78] — 2026-07-02
 ### Fixed
 - **Loader lookups on CUSTOM fields: "Invalid property 'xxx' was found in entity" (HTTP 400).** OData navigation-property names are case-sensitive, and for a custom lookup the navigation property is the attribute **SchemaName** (e.g. `fou_BlockedReasonId`) — not the lowercase logical name. Out-of-box lookups happen to match their logical name, which is why `ownerid`/`primarycontactid` worked while clearing (or binding) a custom lookup like `fou_blockedreasonid` could 400. The Loader now canonicalizes every lookup's navigation property against the relationship metadata at request-build time — for NULL-token clears AND all @odata.bind writes (direct, alt-key, resolve). The pre-flight request example reflects the corrected name too.
