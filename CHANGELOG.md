@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.85] — 2026-07-03
+### Fixed — a chunk timeout no longer silently discards the rest of the load
+- **Root cause of "it sped through the rest without updating anything".** When one chunk exceeded the 600s timeout, the timeout handler fired the batch-abort flag (meant to stop the hung chunk's server-side work) — but every later chunk then bounced off that flag and returned instantly EMPTY: the progress bar sprinted to the end while those rows were never sent, never logged, and missing from the final counts (a 243k-row update could end at "14,600 processed" with 228k rows unaccounted).
+- Now: after a chunk timeout, the run **stops dispatching** and every never-sent row is recorded as an explicit, **retryable** per-row error ("Aborted before send… retry to send this row"). The result screen shows honest totals and the "Retry transient errors" card offers exactly the unsent rows — at gentler concurrency, which is usually what a timing-out org needs.
+- Defense in depth in the content script: any batch call interrupted by the abort flag (timeout **or** user cancel) now pads every unprocessed row with the same retryable error instead of dropping it — rows can no longer vanish from the accounting, in any mode (CREATE / UPSERT / UPDATE / DELETE).
+
 ## [1.11.84] — 2026-07-03
 ### Fixed
 - **The "D365 record example" now applies the column transforms.** It used to show the raw CSV value — so a "No" mapped with the boolean (Yes/No→true/false) transform previewed as the string `"No"`, making a correct mapping look wrong (and hiding a genuinely missing transform). The example now mirrors what the run will send: transforms applied (`"No"` → `false`, dates → ISO, strip-HTML → cleaned text…), NULL tokens as `null`, and option-set labels annotated with "resolved at run time" (their numeric values are only loaded when the run starts).
