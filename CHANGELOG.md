@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.84] — 2026-07-03
+### Fixed
+- **The "D365 record example" now applies the column transforms.** It used to show the raw CSV value — so a "No" mapped with the boolean (Yes/No→true/false) transform previewed as the string `"No"`, making a correct mapping look wrong (and hiding a genuinely missing transform). The example now mirrors what the run will send: transforms applied (`"No"` → `false`, dates → ISO, strip-HTML → cleaned text…), NULL tokens as `null`, and option-set labels annotated with "resolved at run time" (their numeric values are only loaded when the run starts).
+
 ## [1.11.83] — 2026-07-03
 ### Added — Data Loader: parse transparency (lines vs records)
 - **"My 200k-line file only imported 14,800 rows" is now answered on screen.** When a CSV has far more file *lines* than parsed *records*, the Mapping step says so explicitly:
