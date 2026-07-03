@@ -79,6 +79,22 @@
   // back-off loops so a cancel stops retries and chunk processing inside the content script too.
   let batchAborted = false;
 
+  // When an abort (user cancel, or the panel's chunk-timeout abort) short-circuits a batch loop,
+  // the untouched rows must NOT vanish from the results — the run would look "done" while most of
+  // the file was never sent. Give every row with no log entry an explicit, RETRYABLE error, and
+  // tell the panel this call ended aborted so it stops dispatching further chunks.
+  const padAbortedRows = (results, total) => {
+    results.aborted = batchAborted;
+    if (!batchAborted) return;
+    const seen = new Set(results.log.map(e => e.row));
+    const msg = "Aborted before send — the run stopped early (chunk timeout or cancel); retry to send this row";
+    for (let i = 1; i <= total; i++) {
+      if (seen.has(i)) continue;
+      results.log.push({ row: i, status: "ERROR", msg });
+      results.errors.push({ row: i, msg, payload: "" });
+    }
+  };
+
   async function dvRequest(method, path, body = null, extraHeaders = null) {
     const ctx = d365Context || extractContext();
     if (!ctx) throw new Error("D365 context not detected");
@@ -677,6 +693,7 @@
                 }
               }
             }
+            padAbortedRows(results, records.length);
             result = results;
             break;
           }
@@ -857,6 +874,7 @@
                 }
               }
             }
+            padAbortedRows(results, items.length);
             result = results;
             break;
           }
@@ -968,6 +986,7 @@
                 }
               }
             }
+            padAbortedRows(results, items.length);
             result = results;
             break;
           }

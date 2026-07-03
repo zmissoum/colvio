@@ -143,6 +143,27 @@ async function callD365(action, params = {}) {
   });
 }
 
+// When a batch run stops early (a chunk timeout fired abortBatch, or the user cancelled), the
+// chunks that were never dispatched must STILL show up in the result — as retryable per-row errors —
+// otherwise the tail of the file silently disappears and the run looks "done". "Aborted" + "timeout"
+// in the message make isTransientError() classify these rows as retryable, so the post-run card
+// offers to send exactly them.
+function flushNeverSent(agg, chunks, nextIdx, totalItems, processedRecords, onProgress) {
+  if (!agg.aborted || nextIdx >= chunks.length) return;
+  const NOT_SENT = "Aborted before send — the run stopped early (chunk timeout or cancel); retry to send this row";
+  const sErr = [], sLog = [];
+  for (let ci = Math.min(nextIdx, chunks.length); ci < chunks.length; ci++) {
+    const { start, slice } = chunks[ci];
+    for (let i = 0; i < slice.length; i++) {
+      sErr.push({ row: start + i + 1, msg: NOT_SENT, payload: "" });
+      sLog.push({ row: start + i + 1, status: "ERROR", msg: NOT_SENT });
+    }
+  }
+  agg.errors.push(...sErr);
+  agg.log.push(...sLog);
+  onProgress?.({ done: Math.min(processedRecords + sLog.length, totalItems), total: totalItems, errorCount: agg.errors.length, newErrors: sErr, newLog: sLog });
+}
+
 // ── Public API ───────────────────────────────────────────────
 export const bridge = {
   isExtension,
@@ -396,23 +417,27 @@ export const bridge = {
 
     let nextIdx = 0;
     let processedRecords = 0;
+    let stopped = false; // a chunk timeout already fired abortBatch — later dispatches would bounce empty
     const worker = async () => {
       while (true) {
         if (shouldAbort?.()) { agg.aborted = true; notifyAbort(); return; }
+        if (stopped) return;
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
           const r = await callD365("batchCreate", { entitySet, records: slice, ...bypass });
+          if (r?.aborted) { stopped = true; agg.aborted = true; }
           agg.created += r?.created || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
           chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
         } catch (e) {
-          // One chunk failing (a 600s timeout, network drop, content-script error) must NOT abort the
-          // whole load — record its rows as per-row errors (logged + retryable) and carry on with the
-          // next chunks. Previously an unhandled chunk rejection killed the entire batch.
+          // One chunk failing (a 600s timeout, network drop, content-script error) must NOT lose the
+          // rest of the load — record its rows as per-row errors (logged + retryable). A TIMEOUT
+          // already fired abortBatch, so stop dispatching; never-sent rows are accounted for below.
           const msg = e?.message || String(e);
+          if (/timeout after \d+s/i.test(msg)) { stopped = true; agg.aborted = true; }
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -423,6 +448,7 @@ export const bridge = {
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
+    flushNeverSent(agg, chunks, nextIdx, records.length, processedRecords, onProgress);
     return agg;
   },
 
@@ -446,24 +472,33 @@ export const bridge = {
 
     let nextIdx = 0;
     let processedRecords = 0;
+    // A chunk hitting the bridge's 600s timeout has ALREADY fired abortBatch in the content script
+    // (so a hung chunk stops grinding server-side) — every later dispatch would bounce off the
+    // abort flag and return instantly-empty, which used to make the progress bar sprint through
+    // the rest of the file while its rows silently vanished. Stop dispatching instead, and account
+    // for every never-sent row below.
+    let stopped = false;
     const worker = async () => {
       while (true) {
         if (shouldAbort?.()) { agg.aborted = true; notifyAbort(); return; }
+        if (stopped) return;
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
           const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, ...bypass });
+          if (r?.aborted) { stopped = true; agg.aborted = true; } // content-side abort flag is set — later chunks would bounce
           agg.created += r?.created || 0; // upsert-created (201) tracked separately from real updates (204)
           agg.updated += r?.updated || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
           chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
         } catch (e) {
-          // One chunk failing (a 600s timeout, network drop, content-script error) must NOT abort the
-          // whole load — record its rows as per-row errors (logged + retryable; a timeout classifies as
-          // transient so the retry card offers exactly these rows) and carry on with the next chunks.
+          // One chunk failing (a 600s timeout, network drop, content-script error) must NOT lose the
+          // rest of the load — record its rows as per-row errors (logged + retryable). A TIMEOUT is
+          // special: callD365 already fired abortBatch, so stop dispatching (see above).
           const msg = e?.message || String(e);
+          if (/timeout after \d+s/i.test(msg)) { stopped = true; agg.aborted = true; }
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -474,6 +509,7 @@ export const bridge = {
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
+    flushNeverSent(agg, chunks, nextIdx, items.length, processedRecords, onProgress);
     return agg;
   },
 
@@ -490,22 +526,27 @@ export const bridge = {
     for (let i = 0; i < items.length; i += CHUNK) chunks.push({ start: i, slice: items.slice(i, i + CHUNK) });
     let nextIdx = 0;
     let processedRecords = 0;
+    let stopped = false; // a chunk timeout already fired abortBatch — later dispatches would bounce empty
     const worker = async () => {
       while (true) {
         if (shouldAbort?.()) { agg.aborted = true; notifyAbort(); return; }
+        if (stopped) return;
         const idx = nextIdx++;
         if (idx >= chunks.length) return;
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
           const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey });
+          if (r?.aborted) { stopped = true; agg.aborted = true; }
           agg.deleted += r?.deleted || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
           chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
         } catch (e) {
-          // One chunk failing (timeout / network / content-script error) must NOT abort the whole
-          // delete — log its rows as per-row errors and carry on with the next chunks.
+          // One chunk failing (timeout / network / content-script error) must NOT lose the rest of
+          // the delete — log its rows as per-row errors. A TIMEOUT already fired abortBatch, so stop
+          // dispatching; never-sent rows are accounted for below.
           const msg = e?.message || String(e);
+          if (/timeout after \d+s/i.test(msg)) { stopped = true; agg.aborted = true; }
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -516,6 +557,7 @@ export const bridge = {
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
+    flushNeverSent(agg, chunks, nextIdx, items.length, processedRecords, onProgress);
     return agg;
   },
 
