@@ -6,22 +6,22 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
-    "🔍 Data Loader: Dry run — simulate any import with zero writes",
-    "↩ Data Loader: Rollback — undo the records a run just created",
-    "♻ New module: Recycle Bin — restore deleted records (server-side)",
-    "📜 Show All Data: field-level change history from the audit log",
-    "⚡ New module: System Ops — system jobs monitor + plugin traces",
-    "⇄ Metadata: schema snapshot & diff between environments",
-    "⌘K / Ctrl+K: command palette",
+    "⚙️ BPF manager — reopen or re-stage a locked Business Process Flow (admins)",
+    "✎ Show All Data — edit fields the form marks read-only, straight through the API",
+    "🧩 Security Audit — full privilege matrix per table, exportable to Excel/CSV",
+    "👥 Security roles — Teams tab, plus bulk assign/remove for users (paste emails)",
+    "🧹 Data Loader — type NULL in a cell to clear a field (lookups included)",
+    "🏷 Data Loader — \"strip HTML\" transform for rich-text sources into plain text",
+    "📅 Data Loader — EU/US date toggle + more pre-flight checks before you run",
   ],
   fr: [
-    "🔍 Data Loader : Dry run — simulez un import sans rien écrire",
-    "↩ Data Loader : Rollback — annulez les créations d'un run",
-    "♻ Nouveau module : Corbeille — restaurez les enregistrements supprimés",
-    "📜 Show All Data : historique des modifications champ par champ",
-    "⚡ Nouveau module : System Ops — jobs système + traces de plug-ins",
-    "⇄ Metadata : snapshot & diff de schéma entre environnements",
-    "⌘K / Ctrl+K : palette de commandes",
+    "⚙️ Gestion BPF — rouvrez ou changez l'étape d'un Business Process Flow verrouillé (admins)",
+    "✎ Show All Data — éditez les champs verrouillés par le formulaire, directement via l'API",
+    "🧩 Audit de sécurité — matrice complète des privilèges par table, exportable Excel/CSV",
+    "👥 Rôles de sécurité — onglet Teams, + affectation/retrait en masse (collez des e-mails)",
+    "🧹 Data Loader — tapez NULL dans une cellule pour vider un champ (lookups compris)",
+    "🏷 Data Loader — transform « strip HTML » pour importer du rich text en texte brut",
+    "📅 Data Loader — bascule de format de date EU/US + nouveaux contrôles pré-vol",
   ],
 };
 
