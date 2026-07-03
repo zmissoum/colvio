@@ -25,6 +25,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // ── Migration mode (opt-in) — preserve original created-on/by audit fields on CREATE ──────────
   const[migrationMode,setMigrationMode]=useState(false);
   const[dateMD,setDateMD]=useState(false); // false = EU day/month (default), true = US month/day — applies to the date_iso transform
+  const[parseInfo,setParseInfo]=useState(null); // CSV-only parse diagnostics: {rawLines, maxNl, maxNlRow} — explains "200k lines → 14k records"
   // Override of created-on/by only works at create time. Pure create = no upsert key, not delete.
   const isPureCreate=!deleteMode&&!uKey.d;
   const migrationActive=migrationMode&&isPureCreate;
@@ -40,6 +41,14 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const parseData=(text)=>{
     const sep=detectSep(text);
     const aoa=parseDelimited(text,sep);
+    // Parse diagnostics: a big gap between file LINES and parsed RECORDS is either legit quoted
+    // line breaks inside cells (multiline / HTML content) or an UNCLOSED QUOTE that swallowed the
+    // rest of the file into one giant field. Detect both so "my 200k-line file imported 14k rows"
+    // is answered on screen instead of looking like a silent truncation.
+    const rawLines=(text.match(/\n/g)||[]).length+1;
+    let maxNl=0,maxNlRow=0;
+    aoa.forEach((arr,i)=>arr.forEach(f=>{const n=(String(f??"").match(/\n/g)||[]).length;if(n>maxNl){maxNl=n;maxNlRow=i;}}));
+    setParseInfo({rawLines,maxNl,maxNlRow});
     ingestAoa(aoa);
   };
 
@@ -147,6 +156,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const wb=XLSX.read(ev.target.result,{type:"array"});
           const ws=wb.Sheets[wb.SheetNames[0]];
           const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
+          setParseInfo(null); // line-count diagnostics are CSV-only (no "lines" in a sheet)
           ingestAoa(aoa);
         }catch(err){ setCsvData({h:[],r:[]}); setCsvFile(null); }
       } else parseData(ev.target.result);
@@ -1366,6 +1376,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               </div>
               <span style={{fontSize:12,color:C.txd}}>{csvFile?.name} — {csvData.r.length} rows</span>
             </div>
+            {/* Parse transparency: when the file has far more LINES than parsed RECORDS, say so —
+                quoted line breaks inside cells (multiline/HTML) are the usual, legitimate reason.
+                A single field holding hundreds of line breaks is the unclosed-quote signature:
+                everything after it was swallowed into one cell, i.e. the file tail wasn't imported. */}
+            {parseInfo&&csvData.r.length>0&&parseInfo.rawLines>csvData.r.length*1.3+10&&(
+              <div style={{padding:"8px 12px",fontSize:11.5,lineHeight:1.6,color:C.txm,background:(parseInfo.maxNl>200?C.rd:C.yw)+"0c",borderBottom:`1px solid ${(parseInfo.maxNl>200?C.rd:C.yw)}44`}}>
+                {parseInfo.maxNl>200
+                  ?<span style={{color:C.rd}}>⚠ Your file has <b>{parseInfo.rawLines.toLocaleString()}</b> lines but parsed into only <b>{csvData.r.length.toLocaleString()}</b> records — and one field around record <b>{parseInfo.maxNlRow.toLocaleString()}</b> contains {parseInfo.maxNl.toLocaleString()} line breaks. That is the signature of an <b>unclosed quote (")</b>: everything after it was swallowed into a single cell and will NOT be imported. Fix the stray quote near that row in the source file, then reload.</span>
+                  :<span>ℹ Your file has <b>{parseInfo.rawLines.toLocaleString()}</b> lines but parsed into <b>{csvData.r.length.toLocaleString()}</b> records — cells containing quoted line breaks (multiline / HTML content) span several file lines each, which is normal. If you expected ~{parseInfo.rawLines.toLocaleString()} records, check the source export instead.</span>}
+              </div>
+            )}
             {templateNote&&<div style={{padding:"6px 12px",fontSize:11,color:C.cy,background:C.cy+"0c",borderBottom:`1px solid ${C.bd}`,display:"flex",justifyContent:"space-between",gap:8}}><span>✓ {templateNote}</span><button onClick={()=>setTemplateNote("")} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",fontSize:11}}>✕</button></div>}
             <div style={{overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:460}}>
               <thead><tr style={{background:C.bg}}><th style={ths()}>CSV</th><th style={{...ths(),width:24}}></th><th style={ths()}>D365</th><th style={ths()}>Transform</th><th style={ths()}>Preview</th><th style={{...ths(),width:24}}></th></tr></thead>
