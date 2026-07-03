@@ -571,6 +571,37 @@ What's the most painful thing about auditing security roles in your org? 👇
 
 ---
 
+## Post 21 — Assign a role to 30 users in one paste (+ strip HTML on import)
+
+> Release post (Colvio page voice), covers 1.11.79 → 1.11.80. Hero = bulk role assign/remove with the BU-copy gotcha story; secondary = strip-HTML Loader transform. HONEST framing — PPAC manages roles per user, XrmToolBox has Role Updater, SSIS tools transform HTML; Colvio's angle = in-browser + paste-emails + automatic BU-copy resolution + per-user report. NOTE FOR ZAKARIA: publish AFTER the next zip upload (store still @ 1.11.66); Posts 19 & 20 are also pending — space them out Tue/Thu. Links in body like recent posts, or first comment per strategy default.
+
+👥 New in Colvio — assign a security role to 30 users in one paste.
+
+The task every D365 admin knows: "give the new LNG.BASIC role to these 30 people." The admin center does it user by user. Click, search, tick, save — thirty times.
+
+And if you script it instead, you hit THE classic trap: a security role isn't one record. It's one copy per business unit, and you must assign the copy that lives in each user's own BU. Assign the root copy to a user in a child BU → error.
+
+Colvio's Security Audit now does the whole thing:
+• Open the role → Users tab → paste a list of emails (one per line, commas fine)
+• Colvio matches each user, picks the role copy from their business unit automatically, and assigns
+• Per-user ✓/✗ report — unmatched emails listed, "already assigned" counted as OK, so you can safely re-run the same list
+• Removal works the same way: tick members (filter to "Disabled" first, if that's your cleanup), one click removes the role
+• Production asks for confirmation; the server still enforces your assign-role privilege — Colvio grants nothing you can't
+
+🏷 Also new: the "strip HTML" import transform
+Migrating rich text (hello, Salesforce exports) into a plain-text column? The new Data Loader transform removes the markup and keeps readable text — line breaks preserved, lists become bullets, entities decoded — and the pre-flight length check measures the cleaned text, not the raw HTML.
+
+Honest as always: the admin center manages roles per user, XrmToolBox's Role Updater does bulk, SSIS tools transform HTML. Colvio's bet: zero setup, in your browser, BU-copies handled for you, with a per-user report. Free and open-source.
+
+👉 GitHub: https://github.com/zmissoum/colvio
+👉 Chrome Web Store: https://chromewebstore.google.com/detail/colvio-for-dynamics-365/edieednbdaclheikneelkjfbckibhdgl
+
+How do you handle bulk role assignments today — admin center, XrmToolBox, scripts? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #Security #PowerApps #OpenSource
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:

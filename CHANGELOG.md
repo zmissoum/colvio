@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.81] — 2026-07-03
+### Changed
+- **"What's new" popup refreshed.** It was still announcing the v1.11.0-6 arc (dry run, Recycle Bin…). It now highlights the current arc (EN + FR): BPF manager, inline editing of form-locked fields, the privilege matrix, the role Teams tab + bulk assign/remove, the Loader NULL token, the strip-HTML transform, and the EU/US date toggle + pre-flight checks.
+
 ## [1.11.80] — 2026-07-03
 ### Added — Security Audit: bulk assign / remove a role for users
 - **Assign a role to many users at once.** On a role's Users tab (also offered when the role has no direct member), click "➕ Assign users" and paste a list of emails (or domain logins) — one per line, commas/semicolons accepted. Colvio resolves each user, then associates the role copy from **that user's own business unit** — the platform requires the BU-local copy, which is exactly where naive bulk scripts fail. Per-user ✓/✗ report (unmatched emails, per-user Dataverse errors), and idempotent semantics: "already assigned" counts as OK.
