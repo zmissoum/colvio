@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.80] — 2026-07-03
+### Added — Security Audit: bulk assign / remove a role for users
+- **Assign a role to many users at once.** On a role's Users tab (also offered when the role has no direct member), click "➕ Assign users" and paste a list of emails (or domain logins) — one per line, commas/semicolons accepted. Colvio resolves each user, then associates the role copy from **that user's own business unit** — the platform requires the BU-local copy, which is exactly where naive bulk scripts fail. Per-user ✓/✗ report (unmatched emails, per-user Dataverse errors), and idempotent semantics: "already assigned" counts as OK.
+- **Remove a role from selected members.** Tick users in the list (header checkbox selects the filtered view) → "Remove role (N)". Direct assignments only — team-inherited roles are managed on the team, as the footnote now states.
+- Guardrails: production-environment confirmation on both actions, the member list and count refresh after a run, and the server still enforces the assign-role privilege (Colvio grants nothing the caller doesn't have). Help updated (EN + FR).
+
 ## [1.11.79] — 2026-07-03
 ### Added — Data Loader: "strip HTML → plain text" transform
 - **New column transform that removes HTML markup and keeps the visible text** — for importing rich-text (HTML) sources, e.g. Salesforce rich text areas, into a **plain-text** column without changing the column's format. `<br>`/`</p>`/closing blocks become line breaks, `<li>` becomes a "- " bullet, `<script>`/`<style>` are dropped with their content, and common + numeric HTML entities are decoded (`&amp;` last, so already-escaped text can't double-decode).
