@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "getUsersByBu" || action === "getUserCountsByBu";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getUsersByBu" || action === "getUserCountsByBu";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -816,6 +816,11 @@ export const bridge = {
   async getRoleTeamCount(roleName) {
     if (!isExtension) return { count: 2 };
     return callD365("getRoleTeamCount", { roleName });
+  },
+
+  async assignRoleUsers(roleName, userIds, mode) {
+    if (!isExtension) return (userIds || []).map(id => ({ id, ok: true }));
+    return callD365("assignRoleUsers", { roleName, userIds, mode });
   },
 
   async getRoleTeams(roleName) {

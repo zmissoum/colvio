@@ -1758,6 +1758,57 @@
             break;
           }
 
+          case "assignRoleUsers": {
+            // Bulk assign/remove a security role to/from users — the N:N systemuserroles_association.
+            // THE gotcha: a role exists as one copy PER BUSINESS UNIT, and you must associate the copy
+            // living in the USER's BU (associating another BU's copy fails). So: resolve every copy of
+            // the role (name → {buId: roleId}), fetch each target user's BU, then POST/DELETE the $ref
+            // per user with the right copy. Per-user results — one failure never aborts the batch.
+            // Server enforces prvAssignRole; Colvio adds nothing the caller isn't entitled to.
+            const nameR = String(params.roleName || "").replace(/[\x00-\x1f\x7f]/g, "");
+            const idsR = Array.isArray(params.userIds) ? params.userIds : [];
+            const removing = params.mode === "remove";
+            if (!nameR || !idsR.length) { result = []; break; }
+            idsR.forEach(validateGuid);
+            const escRn = nameR.replace(/'/g, "''");
+            const ctxA = d365Context || extractContext();
+            const copies = await dvRequest("GET", `roles?$select=roleid,_businessunitid_value&$filter=name eq '${escRn}'`);
+            const roleByBu = {};
+            (copies.value || []).forEach(r => { roleByBu[String(r._businessunitid_value || "").toLowerCase()] = r.roleid; });
+            const buByUser = {};
+            for (let i = 0; i < idsR.length; i += 20) {
+              const chunk = idsR.slice(i, i + 20);
+              const f = chunk.map(u => `systemuserid eq ${u}`).join(" or ");
+              const d = await dvRequest("GET", `systemusers?$select=systemuserid,_businessunitid_value&$filter=${f}`);
+              (d.value || []).forEach(u => { buByUser[String(u.systemuserid).toLowerCase()] = String(u._businessunitid_value || "").toLowerCase(); });
+            }
+            const out = [];
+            let idxR = 0;
+            const workR = async () => {
+              while (idxR < idsR.length) {
+                const uid = idsR[idxR++];
+                const bu = buByUser[uid.toLowerCase()];
+                const rid = bu ? roleByBu[bu] : null;
+                if (!rid) { out.push({ id: uid, ok: false, error: bu ? "No copy of this role in the user's business unit" : "User not found" }); continue; }
+                try {
+                  if (removing) await dvRequest("DELETE", `systemusers(${uid})/systemuserroles_association(${rid})/$ref`);
+                  else await dvRequest("POST", `systemusers(${uid})/systemuserroles_association/$ref`, { "@odata.id": `${ctxA.clientUrl}/api/data/${ctxA.apiVersion}/roles(${rid})` });
+                  out.push({ id: uid, ok: true });
+                } catch (e) {
+                  const msg = String(e.message || e);
+                  // Idempotence: assigning a role the user already has / removing one they don't
+                  // have are both no-ops in spirit — report them as OK with a note, not failures.
+                  if (!removing && /duplicate|already exist/i.test(msg)) out.push({ id: uid, ok: true, note: "already assigned" });
+                  else if (removing && /does not exist|not found|404/i.test(msg)) out.push({ id: uid, ok: true, note: "was not assigned" });
+                  else out.push({ id: uid, ok: false, error: msg });
+                }
+              }
+            };
+            await Promise.all(Array.from({ length: Math.min(4, idsR.length) }, workR));
+            result = out;
+            break;
+          }
+
           case "probe": {
             // Lightweight permission probe — returns true if endpoint is accessible
             await dvRequest("GET", params.url);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -94,6 +94,11 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [usersErr, setUsersErr] = useState("");      // distinct from "genuinely empty"
   const [userSearch, setUserSearch] = useState("");
   const [userStatus, setUserStatus] = useState("all"); // all | enabled | disabled
+  const [selUsers, setSelUsers] = useState(new Set()); // members ticked for role removal
+  const [assignOpen, setAssignOpen] = useState(false); // "assign users" paste panel
+  const [assignText, setAssignText] = useState("");
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignReport, setAssignReport] = useState(null); // [{label, ok, msg}]
   const [teams, setTeams] = useState(null);            // lazy — loaded when the Teams tab opens
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [teamsErr, setTeamsErr] = useState("");
@@ -130,6 +135,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     setUsers(null);
     setUsersErr("");
     setUserSearch("");
+    setSelUsers(new Set());
+    setAssignOpen(false);
+    setAssignText("");
+    setAssignReport(null);
     setTeams(null);
     setTeamsErr("");
     setTeamCount(null);
@@ -229,6 +238,71 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     exportTable(headers, rows, `security_role_${selRole.name.replace(/\s+/g, "_")}_teams`, format, "Teams");
     setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${teams.length} teams)`);
     setTimeout(() => setFeedback(""), 2000);
+  };
+
+  // Re-fetch the member list + count after an assign/remove so the tab reflects reality.
+  const reloadMembers = () => {
+    if (!selRole) return;
+    const gen = selectGen.current;
+    setLoadingUsers(true); setUsersErr(""); setSelUsers(new Set());
+    bridge.getRoleUsers(selRole.name, USERS_CAP).then(list => {
+      if (selectGen.current === gen) { setUsers(list || []); setLoadingUsers(false); }
+    }).catch(e => { if (selectGen.current === gen) { setUsersErr(e.message || "Failed to load users"); setLoadingUsers(false); } });
+    bridge.getRoleUserCount(selRole.name).then(uc => { if (selectGen.current === gen) setUserCount(uc?.count ?? 0); }).catch(() => {});
+  };
+
+  // Bulk-ASSIGN the selected role: paste emails (or domain logins), Colvio resolves them to users,
+  // then associates each user with the role copy from THEIR business unit (done in the content
+  // script — associating another BU's copy is the classic failure of naive bulk scripts).
+  const runAssign = async () => {
+    const tokens = [...new Set(assignText.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean))];
+    if (!tokens.length || !selRole) return;
+    setAssignBusy(true); setAssignReport(null);
+    try {
+      const byToken = new Map(); // lower(email|domain) -> user
+      for (let i = 0; i < tokens.length; i += 15) {
+        const chunk = tokens.slice(i, i + 15);
+        const f = chunk.map(t => { const e = t.replace(/'/g, "''"); return `(internalemailaddress eq '${e}' or domainname eq '${e}')`; }).join(" or ");
+        const d = await bridge.query("systemusers", { select: "systemuserid,fullname,internalemailaddress,domainname", filter: f });
+        (d?.records || []).forEach(u => {
+          if (u.internalemailaddress) byToken.set(String(u.internalemailaddress).toLowerCase(), u);
+          if (u.domainname) byToken.set(String(u.domainname).toLowerCase(), u);
+        });
+      }
+      const report = []; const matched = []; const seen = new Set();
+      for (const t of tokens) {
+        const u = byToken.get(t.toLowerCase());
+        if (!u) { report.push({ label: t, ok: false, msg: "no user found with this email / login" }); continue; }
+        if (!seen.has(u.systemuserid)) { seen.add(u.systemuserid); matched.push(u); }
+      }
+      if (matched.length && confirmProd(orgInfo?.isProduction, `Assign the role "${selRole.name}" to ${matched.length} user${matched.length > 1 ? "s" : ""}.`)) {
+        const res = await bridge.assignRoleUsers(selRole.name, matched.map(u => u.systemuserid), "assign");
+        (res || []).forEach(r => {
+          const u = matched.find(m => String(m.systemuserid).toLowerCase() === String(r.id).toLowerCase());
+          report.push({ label: u?.fullname || r.id, ok: !!r.ok, msg: r.error || r.note || "assigned" });
+        });
+        reloadMembers();
+      }
+      setAssignReport(report);
+    } catch (e) { setAssignReport([{ label: "Error", ok: false, msg: e.message || String(e) }]); }
+    setAssignBusy(false);
+  };
+
+  // Bulk-REMOVE the role from the ticked members. Direct assignments only — a role inherited
+  // through a team is managed on the team, not here.
+  const runRemove = async () => {
+    if (!selUsers.size || !selRole) return;
+    if (!confirmProd(orgInfo?.isProduction, `Remove the role "${selRole.name}" from ${selUsers.size} user${selUsers.size > 1 ? "s" : ""}.`)) return;
+    setAssignBusy(true);
+    try {
+      const res = await bridge.assignRoleUsers(selRole.name, [...selUsers], "remove");
+      setAssignReport((res || []).map(r => {
+        const u = (users || []).find(x => String(x.id).toLowerCase() === String(r.id).toLowerCase());
+        return { label: u?.name || r.id, ok: !!r.ok, msg: r.error || r.note || "removed" };
+      }));
+      reloadMembers();
+    } catch (e) { setAssignReport([{ label: "Error", ok: false, msg: e.message || String(e) }]); }
+    setAssignBusy(false);
   };
 
   // The full user list is loaded lazily — only when the Users tab is first opened — so clicking
@@ -482,7 +556,40 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                   Couldn't load the members: {usersErr.includes("Timeout") ? "the request timed out — this role exists in many business units." : usersErr}
                   <button onClick={() => { setUsersErr(""); openUsersTab(); }} style={{ ...bt(null, { fontSize: 12, marginLeft: 10 }) }}>↻ Retry</button>
                 </div>}
-                {!loadingUsers && !usersErr && users && users.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No users are assigned to this role.</div>}
+                {!loadingUsers && !usersErr && users && users.length === 0 && (
+                  <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13, marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span>No users hold this role directly{teamCount ? " (check the Teams tab — it may be team-inherited)" : ""}.</span>
+                    <button onClick={() => setAssignOpen(o => !o)} style={bt(C.gn, { fontSize: 12 })}>➕ Assign users</button>
+                  </div>
+                )}
+                {!loadingUsers && !usersErr && users && assignOpen && (
+                  <div style={{ ...crd({ padding: 12, borderColor: C.gn + "55" }), marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>➕ Assign "{selRole?.name}" to users</div>
+                    <div style={{ fontSize: 11, color: C.txd, marginBottom: 8, lineHeight: 1.5 }}>
+                      Paste one <b>email</b> (or domain login) per line — commas/semicolons work too. Colvio matches each user and assigns the role copy from <b>their own business unit</b> automatically (the classic failure of manual bulk scripts).
+                    </div>
+                    <textarea value={assignText} onChange={e => setAssignText(e.target.value)} rows={5} placeholder={"alice@contoso.com\nbob@contoso.com\n…"} style={inp({ fontSize: 12, ...mono, resize: "vertical", marginBottom: 8 })} />
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button onClick={runAssign} disabled={assignBusy || !assignText.trim()} style={bt(C.gn, { fontSize: 12, opacity: assignBusy || !assignText.trim() ? 0.5 : 1 })}>{assignBusy ? <><Spin s={12} /> Assigning…</> : "Assign role"}</button>
+                      <button onClick={() => { setAssignOpen(false); setAssignReport(null); }} disabled={assignBusy} style={bt(null, { fontSize: 12 })}>Close</button>
+                    </div>
+                  </div>
+                )}
+                {!loadingUsers && !usersErr && users && assignReport && (
+                  <div style={{ ...crd({ padding: "10px 12px" }), marginBottom: 10, maxHeight: 220, overflow: "auto" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.txd, marginBottom: 6 }}>
+                      Result — {assignReport.filter(r => r.ok).length} OK · {assignReport.filter(r => !r.ok).length} failed
+                      <button onClick={() => setAssignReport(null)} style={{ background: "none", border: "none", color: C.txd, cursor: "pointer", float: "right", fontSize: 12 }}>✕</button>
+                    </div>
+                    {assignReport.map((r, i) => (
+                      <div key={i} style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "baseline", padding: "1px 0" }}>
+                        <span style={{ color: r.ok ? C.gn : C.rd, flexShrink: 0 }}>{r.ok ? "✓" : "✗"}</span>
+                        <span style={{ fontWeight: 600 }}>{r.label}</span>
+                        <span style={{ color: C.txd }}>{r.msg}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {!loadingUsers && !usersErr && users && users.length > 0 && (
                   <>
                     <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -495,6 +602,8 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{users.length}</span>
                       <button onClick={() => exportUsersCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
                       <button onClick={() => exportUsersCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
+                      <button onClick={() => setAssignOpen(o => !o)} style={bt(C.gn, { fontSize: 11, padding: "4px 10px" })}>➕ Assign users</button>
+                      {selUsers.size > 0 && <button onClick={runRemove} disabled={assignBusy} style={bt(null, { fontSize: 11, padding: "4px 10px", color: C.rd, borderColor: C.rd + "66", opacity: assignBusy ? 0.5 : 1 })}>{assignBusy ? <Spin s={11} /> : "🗑"} Remove role ({selUsers.size})</button>}
                     </div>
                     {userCount != null && userCount > users.length && (
                       <div style={{ ...crd({ padding: "8px 12px", background: C.yw + "0c", borderColor: C.yw + "55" }), marginBottom: 10, fontSize: 12, color: C.txm }}>
@@ -502,13 +611,15 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       </div>
                     )}
                     <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 92px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "24px 1.4fr 1.7fr 1fr 92px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                        <input type="checkbox" title="Select the visible users (for role removal)" checked={shownUsers.length > 0 && shownUsers.every(u => selUsers.has(u.id))} onChange={() => { const all = shownUsers.length > 0 && shownUsers.every(u => selUsers.has(u.id)); setSelUsers(prev => { const s = new Set(prev); shownUsers.forEach(u => all ? s.delete(u.id) : s.add(u.id)); return s; }); }} style={{ accentColor: C.cy, cursor: "pointer" }} />
                         <span>Name</span><span>Email</span><span>Business Unit</span><span>Status</span>
                       </div>
                       <div style={{ maxHeight: 500, overflow: "auto" }}>
                         {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match this filter</div>}
                         {shownUsers.map((u, i) => (
-                          <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 92px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
+                          <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: "24px 1.4fr 1.7fr 1fr 92px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
+                            <input type="checkbox" checked={selUsers.has(u.id)} onChange={() => setSelUsers(prev => { const s = new Set(prev); s.has(u.id) ? s.delete(u.id) : s.add(u.id); return s; })} style={{ accentColor: C.cy, cursor: "pointer" }} />
                             <span style={{ minWidth: 0, overflow: "hidden" }} title={u.title ? `${u.name} — ${u.title}` : u.name}>
                               <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {u.name}
@@ -524,7 +635,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: C.txd, marginTop: 8, lineHeight: 1.6 }}>
-                      Members across every business-unit copy of this role (deduplicated by user). The "Business Unit" column shows where each user sits.
+                      Members across every business-unit copy of this role (deduplicated by user). The "Business Unit" column shows where each user sits. Removal affects DIRECT assignments only — a role inherited through a team is managed on the team.
                     </div>
                   </>
                 )}
