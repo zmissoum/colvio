@@ -1586,7 +1586,15 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
-{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{const rv=row[m.csv]||"";rec[m.d365]=isNullToken(rv)?null:rv;});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const nav=canonNav(lk.nav);const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(isNullToken(val)){rec[nav]=null;}else if(lk.mode==="direct"&&val){rec[`${nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
+{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{const rv=row[m.csv]||"";
+  // Mirror what the run will actually send: NULL token → null, then the column's TRANSFORM applied
+  // (a "No" with the boolean transform must preview as false, not as the raw string). Option-set
+  // labels can't resolve before the run loads the option maps — annotate instead of showing null.
+  if(isNullToken(rv)){rec[m.d365]=null;return;}
+  if(!m.transform){rec[m.d365]=rv;return;}
+  const t=applyTransform(rv,m.transform,optionMapsRef.current?.[m.d365],dateMD);
+  rec[m.d365]=(t===null&&String(rv).trim()!==""&&(m.transform==="picklist"||m.transform==="statecode"))?`${rv} → (option value resolved at run time)`:t;
+});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const nav=canonNav(lk.nav);const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(isNullToken(val)){rec[nav]=null;}else if(lk.mode==="direct"&&val){rec[`${nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
             </pre>
           </div>
           <div style={{...crd({padding:12}),marginBottom:12}}>
