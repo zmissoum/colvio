@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml } from "../loaderUtils.js";
+
+describe("stripHtml + strip_html transform", () => {
+  it("strips tags and keeps the visible text", () =>
+    expect(applyTransform("<p>Hello <b>world</b></p>", "strip_html")).toBe("Hello world"));
+  it("turns <br> and closing blocks into line breaks, <li> into bullets", () => {
+    expect(stripHtml("Line1<br>Line2")).toBe("Line1\nLine2");
+    expect(stripHtml("<ul><li>alpha</li><li>beta</li></ul>")).toBe("- alpha\n- beta");
+  });
+  it("decodes common + numeric entities (&amp; last — no double decode)", () => {
+    expect(stripHtml("Fish &amp; Chips &lt;3 &#233;t&#xE9;")).toBe("Fish & Chips <3 été");
+    expect(stripHtml("&amp;lt;not a tag&amp;gt;")).toBe("&lt;not a tag&gt;");
+  });
+  it("drops <script>/<style> WITH their content", () =>
+    expect(stripHtml("<style>p{color:red}</style>Hi<script>alert(1)</script>")).toBe("Hi"));
+  it("passes plain text through and returns null when only markup", () => {
+    expect(applyTransform("no tags here", "strip_html")).toBe("no tags here");
+    expect(applyTransform("<p> </p>", "strip_html")).toBeNull();
+  });
+});
 
 describe("isNullToken (explicit clear-the-field marker)", () => {
   it("matches NULL in any case, with surrounding spaces", () => {
