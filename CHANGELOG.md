@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.83] — 2026-07-03
+### Added — Data Loader: parse transparency (lines vs records)
+- **"My 200k-line file only imported 14,800 rows" is now answered on screen.** When a CSV has far more file *lines* than parsed *records*, the Mapping step says so explicitly:
+  - ℹ Informational when cells contain quoted line breaks (multiline / HTML content) — each record legitimately spans several file lines; the parsed count is the true record count.
+  - ⚠ **Unclosed-quote detection**: if a single field holds hundreds of line breaks, a stray `"` swallowed the rest of the file into one cell — the banner flags the record where it happens so you can fix the source and reload, instead of silently importing a truncated file.
+
 ## [1.11.82] — 2026-07-03
 ### Fixed (code-review pass over 1.11.74→81)
 - **Bulk role assign/remove: switching role mid-operation could paint the wrong members.** If you launched an assign/remove and clicked another role while it ran, the completion handler reloaded the *previous* role's member list into the newly selected role's Users tab (and the result report bled across). Both operations now capture the selection generation at start and leave the view alone if the role changed mid-flight (the writes themselves were always correct).
