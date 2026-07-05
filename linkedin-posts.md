@@ -602,6 +602,36 @@ How do you handle bulk role assignments today — admin center, XrmToolBox, scri
 
 ---
 
+## Post 22 — A bulk loader that never lies to you
+
+> Release post (Colvio page voice), covers 1.11.82 → 1.11.85 — the reliability wave, all born from ONE real 243k-row migration run: (1) timeout can no longer silently drop rows (honest totals + retry the unsent rows), (2) pre-flight example applies transforms (shows exactly what will be sent), (3) file-lines vs parsed-records transparency + unclosed-quote detection. Engineering-honesty angle — admitting the bug IS the story, plays well with a technical audience. NOTE FOR ZAKARIA: publish after the next store upload; Posts 19-21 also pending — this one works well LAST in the sequence (it's the "we fix our own bugs in the open" trust-builder). Links in body or first comment per preference.
+
+🛡 New in Colvio — a bulk loader that never lies to you.
+
+A user ran a 243,000-row update. One chunk hit a timeout… and the progress bar sprinted to the end. Result screen: "done". Reality: 228,000 rows were never sent — and nothing said so.
+
+That bug is fixed, and it turned into a principle. Three releases, one theme: the loader must always tell you the truth.
+
+1️⃣ A timeout can't eat your file anymore
+When a chunk times out, the run now stops honestly: every unsent row becomes an explicit, retryable error. The totals add up to your file size — always. One click retries exactly the unsent rows, at gentler concurrency (which is what a throttled org needs anyway).
+
+2️⃣ The preview shows what will actually be sent
+The pre-flight "record example" used to display your raw CSV values — a "No" mapped through the boolean transform previewed as the string "No", so a correct mapping and a broken one looked identical. It now applies your transforms: booleans as true/false, dates as ISO, HTML stripped, NULL as null. What you see is what Dataverse gets.
+
+3️⃣ Your file's row count, explained
+"My 200k-line file only imported 14,800 rows??" — Because cells with quoted line breaks (hello, multiline HTML) span several file lines each. The Mapping step now says so, with both numbers. And if a stray unclosed quote swallowed the tail of your file into one giant cell, Colvio flags the exact record where it happened — before you run.
+
+Bulk tools all fail sometimes — orgs throttle, files are messy. The difference is whether the tool tells you. Free, open-source, in your browser.
+
+👉 GitHub: https://github.com/zmissoum/colvio
+👉 Chrome Web Store: https://chromewebstore.google.com/detail/colvio-for-dynamics-365/edieednbdaclheikneelkjfbckibhdgl
+
+What's the worst "it said done but it wasn't" you've hit with a data tool? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataMigration #OpenSource
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
