@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.86] — 2026-07-03
+### Changed
+- **"What's new" popup updated with the reliability wave.** The highlights (EN + FR) now also cover the Loader trust fixes: no silent row loss on timeouts (honest totals + retry of exactly the unsent rows), the pre-flight example applying transforms, and the file-lines vs parsed-records transparency. Store users updating across the whole 1.11.67→86 arc get an accurate recap on first launch.
+
 ## [1.11.85] — 2026-07-03
 ### Fixed — a chunk timeout no longer silently discards the rest of the load
 - **Root cause of "it sped through the rest without updating anything".** When one chunk exceeded the 600s timeout, the timeout handler fired the batch-abort flag (meant to stop the hung chunk's server-side work) — but every later chunk then bounced off that flag and returned instantly EMPTY: the progress bar sprinted to the end while those rows were never sent, never logged, and missing from the final counts (a 243k-row update could end at "14,600 processed" with 228k rows unaccounted).
