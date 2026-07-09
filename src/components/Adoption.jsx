@@ -27,6 +27,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [userSort, setUserSort] = useState("logins"); // logins | days | last
+  const [chartMetric, setChartMetric] = useState("both"); // both | logins | users
   const roleMemberCache = useRef(new Map());
   const gen = useRef(0);
 
@@ -147,28 +148,35 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     </div>
   );
 
-  // Inline trend chart: bars = logins per bucket, line = distinct active users per bucket.
-  const Chart = ({ series }) => {
+  // Inline trend chart. metric: "both" = login bars + distinct-user line; "logins" or "users" =
+  // just that series as bars, scaled to its own max so it fills the height.
+  const Chart = ({ series, metric }) => {
     const W = 900, H = 200, padL = 34, padB = 34, padT = 10, padR = 10;
     const n = series.length || 1;
     const maxL = Math.max(1, ...series.map(s => s.logins));
+    const maxU = Math.max(1, ...series.map(s => s.users));
+    const barVal = (s) => metric === "users" ? s.users : s.logins;
+    const barMax = metric === "users" ? maxU : maxL;
+    const barColor = metric === "users" ? C.cy : C.vi;
+    const showLine = metric === "both";
     const bw = (W - padL - padR) / n;
     const x = (i) => padL + i * bw;
-    const yL = (v) => padT + (H - padT - padB) * (1 - v / maxL);
-    const linePts = series.map((s, i) => `${x(i) + bw / 2},${yL(s.users)}`).join(" ");
+    const y = (v, max) => padT + (H - padT - padB) * (1 - v / max);
+    const linePts = series.map((s, i) => `${x(i) + bw / 2},${y(s.users, maxL)}`).join(" ");
     const step = Math.ceil(n / 12);
     return (
       <div style={{ overflowX: "auto" }}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ minWidth: 520, display: "block" }} preserveAspectRatio="none">
-          {[0, 0.5, 1].map(f => <line key={f} x1={padL} x2={W - padR} y1={yL(maxL * f)} y2={yL(maxL * f)} stroke={C.bd} strokeWidth="1" />)}
-          {[0, 0.5, 1].map(f => <text key={"t" + f} x={padL - 4} y={yL(maxL * f) + 3} fontSize="9" fill={C.txd} textAnchor="end">{Math.round(maxL * f)}</text>)}
-          {series.map((s, i) => <rect key={i} x={x(i) + bw * 0.12} y={yL(s.logins)} width={bw * 0.76} height={Math.max(0, H - padB - yL(s.logins))} fill={C.vi} opacity="0.7"><title>{`${s.label}: ${s.logins} logins · ${s.users} users`}</title></rect>)}
-          <polyline points={linePts} fill="none" stroke={C.cy} strokeWidth="1.5" />
+          {[0, 0.5, 1].map(f => <line key={f} x1={padL} x2={W - padR} y1={y(barMax * f, barMax)} y2={y(barMax * f, barMax)} stroke={C.bd} strokeWidth="1" />)}
+          {[0, 0.5, 1].map(f => <text key={"t" + f} x={padL - 4} y={y(barMax * f, barMax) + 3} fontSize="9" fill={C.txd} textAnchor="end">{Math.round(barMax * f)}</text>)}
+          {series.map((s, i) => <rect key={i} x={x(i) + bw * 0.12} y={y(barVal(s), barMax)} width={bw * 0.76} height={Math.max(0, H - padB - y(barVal(s), barMax))} fill={barColor} opacity="0.7"><title>{`${s.label}: ${s.logins} logins · ${s.users} users`}</title></rect>)}
+          {showLine && <polyline points={linePts} fill="none" stroke={C.cy} strokeWidth="1.5" />}
           {series.map((s, i) => (i % step === 0 ? <text key={"x" + i} x={x(i) + bw / 2} y={H - padB + 12} fontSize="8" fill={C.txd} textAnchor="middle">{s.label.slice(5)}</text> : null))}
         </svg>
         <div style={{ display: "flex", gap: 14, fontSize: 11, color: C.txm, marginTop: 4, paddingLeft: padL }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: C.vi, opacity: 0.7, borderRadius: 2 }} /> Logins</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 12, height: 2, background: C.cy }} /> Distinct users</span>
+          {metric !== "users" && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: C.vi, opacity: 0.7, borderRadius: 2 }} /> Logins</span>}
+          {metric === "users" && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: C.cy, opacity: 0.7, borderRadius: 2 }} /> Distinct users</span>}
+          {metric === "both" && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 12, height: 2, background: C.cy }} /> Distinct users</span>}
         </div>
       </div>
     );
@@ -220,8 +228,16 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
         </div>
 
         <div style={{ ...crd({ padding: 14 }), marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Logins per {agg.weekly ? "week" : "day"}{agg.weekly ? " (window over 92 days — bucketed weekly)" : ""}</div>
-          {agg.series.some(s => s.logins > 0) ? <Chart series={agg.series} /> : <div style={{ color: C.txd, fontSize: 12, padding: 10 }}>No logins in this window / filter.</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Per {agg.weekly ? "week" : "day"}{agg.weekly ? " (bucketed weekly — window over 92 days)" : ""}</span>
+            <div style={{ flex: 1 }} />
+            <div style={{ display: "flex", border: `1px solid ${C.bd}`, borderRadius: 5, overflow: "hidden" }}>
+              {[["both", "Both"], ["logins", "Logins"], ["users", "Distinct users"]].map(([k, lbl]) => (
+                <button key={k} onClick={() => setChartMetric(k)} style={{ padding: "3px 10px", fontSize: 11, border: "none", cursor: "pointer", background: chartMetric === k ? C.vi + "22" : "transparent", color: chartMetric === k ? C.vi : C.txm, fontWeight: chartMetric === k ? 600 : 400 }}>{lbl}</button>
+              ))}
+            </div>
+          </div>
+          {agg.series.some(s => s.logins > 0) ? <Chart series={agg.series} metric={chartMetric} /> : <div style={{ color: C.txd, fontSize: 12, padding: 10 }}>No logins in this window / filter.</div>}
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>

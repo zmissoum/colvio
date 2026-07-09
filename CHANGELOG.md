@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.90] — 2026-07-03
+### Changed
+- **Adoption chart: pick the series.** A Both / Logins / Distinct users toggle above the trend chart. "Both" keeps login bars + the distinct-user line; picking a single series shows it as bars scaled to its own maximum so it fills the height.
+
 ## [1.11.89] — 2026-07-03
 ### Added — New module: Adoption (usage & login analytics)
 - **A new "Adoption" tab turns the user-access audit into usage analytics.** For a window you pick (7 / 30 / 90 days or a custom range): total logins, distinct active users, average logins per active user, and how many enabled users **never signed in**. A per-day (per-week over 92 days) chart shows the login trend with a distinct-active-users line.
