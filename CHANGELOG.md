@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.92] — 2026-07-09
+### Performance
+- **Adoption filters are now snappy on big orgs.** Switching the security-role or business-unit filter used to re-scan every login event (up to 300k) to recompute the KPIs, chart and table — a visible lag. The aggregation is split in two: a heavy pass that buckets + rolls events up per user runs **once per window**, and the filter change now only reduces over users (a few thousand at most), re-summing pre-computed per-bucket counts. Same numbers, near-instant. (The security-role filter still does one cached Dataverse lookup the first time a given role is picked — that round-trip is network-bound.)
+
 ## [1.11.91] — 2026-07-09
 ### Fixed
 - **Adoption custom range: no more bad-date crashes.** A native date field emits transient values (e.g. year `0020`) while you edit the year, which Dataverse rejected with *"DateTime is less than minimum value supported by CrmDateTime"* (HTTP 400). The custom window is now validated (well-formed, 2000–today, from ≤ to) before any query — an incomplete or out-of-bounds entry keeps the last good window instead of firing an illegal request, and shows an inline hint. The inputs are bounded with `min`/`max` and outlined red while invalid.

@@ -110,10 +110,11 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
 
   const passUser = (id) => (!roleMembers || roleMembers.has(id)) && (!buFilter || userMeta.get(id)?.buId === buFilter);
 
-  // The whole aggregation — reacts to role/BU filters instantly (no re-query).
-  const agg = useMemo(() => {
+  // HEAVY pass — runs ONCE per window (events/window/userMeta), NOT on filter change. Buckets the
+  // timeline and rolls every event up per user (incl. a per-bucket count). Scans all events (≤300k)
+  // exactly once so that changing the role/BU filter never re-scans them again.
+  const prep = useMemo(() => {
     if (!events) return null;
-    const filtered = events.filter(e => passUser(String(e.userId).toLowerCase()));
     const weekly = windowRange.days > 92;
     const bucketOf = (iso) => {
       if (!weekly) return iso.slice(0, 10);
@@ -121,34 +122,56 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       return isoDay((day - ((d.getUTCDay() + 6) % 7)) * DAY); // Monday of that week
     };
     // Continuous bucket timeline over the window (so quiet days show as gaps, not disappear).
-    const buckets = new Map();
+    const labels = [];
     const start = new Date(windowRange.from).getTime(), end = new Date(windowRange.to).getTime();
-    for (let ms = start; ms <= end; ms += (weekly ? 7 : 1) * DAY) buckets.set(bucketOf(new Date(ms).toISOString()), { logins: 0, users: new Set() });
+    for (let ms = start; ms <= end; ms += (weekly ? 7 : 1) * DAY) labels.push(bucketOf(new Date(ms).toISOString()));
+    const bucketSet = new Set(labels);
     const byUser = new Map();
-    for (const e of filtered) {
+    for (const e of events) {
       const id = String(e.userId).toLowerCase();
-      const b = buckets.get(bucketOf(e.date));
-      if (b) { b.logins++; b.users.add(id); }
       let u = byUser.get(id);
-      if (!u) { u = { id, name: e.userName || userMeta.get(id)?.name || id, bu: userMeta.get(id)?.bu || "", logins: 0, days: new Set(), last: e.date }; byUser.set(id, u); }
+      if (!u) { u = { id, name: e.userName || userMeta.get(id)?.name || id, bu: userMeta.get(id)?.bu || "", logins: 0, days: new Set(), last: e.date, byBucket: new Map() }; byUser.set(id, u); }
       u.logins++; u.days.add(e.date.slice(0, 10)); if (e.date > u.last) u.last = e.date;
+      const label = bucketOf(e.date);
+      if (bucketSet.has(label)) u.byBucket.set(label, (u.byBucket.get(label) || 0) + 1);
     }
-    const series = [...buckets.entries()].map(([label, v]) => ({ label, logins: v.logins, users: v.users.size }));
-    const perUser = [...byUser.values()].map(u => ({ ...u, days: u.days.size }));
+    return { weekly, labels, byUser };
+    // eslint-disable-next-line
+  }, [events, windowRange.from, windowRange.to, windowRange.days, userMeta]);
+
+  // LIGHT pass — reacts to role/BU filters. Reduces over USERS only (a few thousand at most),
+  // re-summing their pre-computed per-bucket counts, instead of re-scanning every login event.
+  const agg = useMemo(() => {
+    if (!prep) return null;
+    const idx = new Map(prep.labels.map((l, i) => [l, i]));
+    const logins = new Array(prep.labels.length).fill(0);
+    const distinct = new Array(prep.labels.length).fill(0);
+    let total = 0;
+    const perUser = [];
+    for (const u of prep.byUser.values()) {
+      if (!passUser(u.id)) continue;
+      total += u.logins;
+      perUser.push({ id: u.id, name: u.name, bu: u.bu, logins: u.logins, days: u.days.size, last: u.last });
+      for (const [label, c] of u.byBucket) {
+        const i = idx.get(label);
+        if (i !== undefined) { logins[i] += c; distinct[i] += 1; } // one bucket entry per user ⇒ distinct users
+      }
+    }
+    const series = prep.labels.map((label, i) => ({ label, logins: logins[i], users: distinct[i] }));
     // Never-signed-in = users in scope (role/BU) with zero logins in the window.
     const scopeUsers = users.filter(u => passUser(String(u.id).toLowerCase()));
     const activeIds = new Set(perUser.map(u => u.id));
     const neverIn = scopeUsers.filter(u => !activeIds.has(String(u.id).toLowerCase()) && !u.disabled);
     return {
-      total: filtered.length,
-      unique: byUser.size,
-      avg: byUser.size ? filtered.length / byUser.size : 0,
+      total,
+      unique: perUser.length,
+      avg: perUser.length ? total / perUser.length : 0,
       scopeCount: scopeUsers.length,
       never: neverIn,
-      series, weekly, perUser,
+      series, weekly: prep.weekly, perUser,
     };
     // eslint-disable-next-line
-  }, [events, roleMembers, buFilter, userMeta, users, windowRange]);
+  }, [prep, roleMembers, buFilter, users, userMeta]);
 
   const shownUsers = useMemo(() => {
     if (!agg) return [];
