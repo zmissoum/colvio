@@ -206,7 +206,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // Trade speed for skipped server-side logic — use only when input data is already validated externally.
   const[bypassPlugins,setBypassPlugins]=useState(false);
   const[suppressDuplicates,setSuppressDuplicates]=useState(false);
-  const[bypassSyncLogic,setBypassSyncLogic]=useState(false);
+  const[bypassAsyncLogic,setBypassAsyncLogic]=useState(false);
   const loadAbort=useRef(false);
   const runningRef=useRef(false);   // true while a real/dry run is executing (step 4, no result yet)
   const[liveEntities,setLiveEntities]=useState([]);
@@ -1105,7 +1105,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         const res=await bridge.batchCreate(entitySet,createRecords,p=>{
           setLoadProgress({done:p.done,total:sendTotal,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (CREATE) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,createRowMap,rows);
-        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic});
+        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
         created=res.created||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
         if(res.aborted){const remaining=createRecords.length-created;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
@@ -1121,7 +1121,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
           setLoadProgress({done:createRecords.length+p.done,total:sendTotal,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,upsertRowMap,rows);
-        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassSyncLogic:canShowSpeedBoosters&&bypassSyncLogic,updateOnly});
+        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic,updateOnly});
         updated=res.updated||0;
         created+=res.created||0; // upsert that created (201) → count toward Created, matching the log + rollback set
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
@@ -1539,7 +1539,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 : mode==="update"
                 ? <>Will <b style={{color:C.or}}>UPDATE {n.toLocaleString()}</b> existing record{n>1?"s":""} in <b>{entDisplay}</b> matched on <code style={{...mono,fontSize:12,color:C.or}}>{uKey.d}</code> — rows with <b>no matching record fail</b> (nothing is created).</>
                 : <>Will <b style={{color:C.gn}}>CREATE {n.toLocaleString()}</b> new record{n>1?"s":""} in <b>{entDisplay}</b>.</>}
-              {mode!=="delete"&&canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassSyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
+              {mode!=="delete"&&canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassAsyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
             </div>);
           })()}
 
@@ -1621,12 +1621,12 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
 
           {/* Speed boosters — server-side bypass via MSCRM headers. Hidden for non-admin users. */}
           {canShowSpeedBoosters && (
-          <div style={{...crd({padding:12,borderColor:(bypassPlugins||suppressDuplicates||bypassSyncLogic)?C.or+"55":C.bd}),marginBottom:12}}>
+          <div style={{...crd({padding:12,borderColor:(bypassPlugins||suppressDuplicates||bypassAsyncLogic)?C.or+"55":C.bd}),marginBottom:12}}>
             <div style={{fontSize:13,fontWeight:600,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
               <span>🚀 Speed boosters</span>
               <span style={{fontSize:10,color:C.txd,fontWeight:400}}>(advanced — bypass server-side processes per record)</span>
             </div>
-            {(bypassPlugins||suppressDuplicates||bypassSyncLogic) && (
+            {(bypassPlugins||suppressDuplicates||bypassAsyncLogic) && (
               <div style={{fontSize:11,color:C.or,marginBottom:8,padding:"6px 8px",background:C.or+"11",borderRadius:4,border:`1px solid ${C.or}33`}}>
                 ⚠ One or more boosters enabled — server-side business logic will be skipped. Requires <code style={{...mono,fontSize:11}}>prvBypassCustomPlugins</code> privilege (typically System Administrator). Records with invalid data may bypass validation. Use only when input data is already validated externally.
               </div>
@@ -1634,8 +1634,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.tx,cursor:"pointer"}}>
                 <input type="checkbox" checked={bypassPlugins} onChange={e=>setBypassPlugins(e.target.checked)} style={{accentColor:C.or}}/>
-                <span style={{fontWeight:600}}>Bypass custom plugins</span>
-                <Tooltip text="Sets MSCRM.BypassCustomPluginExecution: true on each request. Skips ALL custom plugins (sync + async) for the duration of the import. Typical gain: 100-500ms per record on orgs with active plugins. Warning: skips business logic that may include validation, defaulting, calculated fields, audit overrides."/>
+                <span style={{fontWeight:600}}>Bypass custom synchronous logic</span>
+                <Tooltip text="Sets MSCRM.BypassCustomPluginExecution: true on each request. Skips ALL custom SYNCHRONOUS logic — synchronous plug-ins AND real-time (synchronous) workflows — for the duration of the import. Microsoft plug-ins/workflows and other publishers' solutions are NOT bypassed. Requires the prvBypassCustomPlugins privilege (System Administrator by default). Typical gain: 100-500ms per record. Warning: skips business logic that may include validation, defaulting, calculated fields, audit overrides."/>
                 <code style={{...mono,fontSize:11,color:C.txd}}>MSCRM.BypassCustomPluginExecution</code>
               </label>
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.tx,cursor:"pointer"}}>
@@ -1645,10 +1645,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 <code style={{...mono,fontSize:11,color:C.txd}}>MSCRM.SuppressDuplicateDetection</code>
               </label>
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.tx,cursor:"pointer"}}>
-                <input type="checkbox" checked={bypassSyncLogic} onChange={e=>setBypassSyncLogic(e.target.checked)} style={{accentColor:C.or}}/>
-                <span style={{fontWeight:600}}>Bypass synchronous workflows</span>
-                <Tooltip text="Sets MSCRM.BypassSynchronousLogic: true on each request. Broader than BypassCustomPluginExecution — also skips synchronous workflows. Use this when your org has heavy sync workflow chains."/>
-                <code style={{...mono,fontSize:11,color:C.txd}}>MSCRM.BypassSynchronousLogic</code>
+                <input type="checkbox" checked={bypassAsyncLogic} onChange={e=>setBypassAsyncLogic(e.target.checked)} style={{accentColor:C.or}}/>
+                <span style={{fontWeight:600}}>Bypass custom asynchronous logic</span>
+                <Tooltip text="Adds CustomAsync to MSCRM.BypassBusinessLogicExecution (Microsoft's current bypass parameter — combined with the sync box it sends CustomSync,CustomAsync in one header). Skips ASYNCHRONOUS custom plug-ins and background workflows so they don't queue up as a flood of system jobs during a bulk load. Requires the prvBypassCustomBusinessLogic privilege (System Administrator by default). Note: Power Automate flows are a separate mechanism and are NOT bypassed by this."/>
+                <code style={{...mono,fontSize:11,color:C.txd}}>MSCRM.BypassBusinessLogicExecution</code>
               </label>
             </div>
           </div>

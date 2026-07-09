@@ -409,7 +409,7 @@ export const bridge = {
     const bypass = {
       bypassPlugins: !!opts.bypassPlugins,
       suppressDuplicates: !!opts.suppressDuplicates,
-      bypassSyncLogic: !!opts.bypassSyncLogic,
+      bypassAsyncLogic: !!opts.bypassAsyncLogic,
     };
     const agg = { created: 0, errors: [], log: [], aborted: false };
     const chunks = [];
@@ -463,7 +463,7 @@ export const bridge = {
     const bypass = {
       bypassPlugins: !!opts.bypassPlugins,
       suppressDuplicates: !!opts.suppressDuplicates,
-      bypassSyncLogic: !!opts.bypassSyncLogic,
+      bypassAsyncLogic: !!opts.bypassAsyncLogic,
       updateOnly: !!opts.updateOnly,
     };
     const agg = { created: 0, updated: 0, errors: [], log: [], aborted: false };

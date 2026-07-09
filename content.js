@@ -567,14 +567,27 @@
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
 
-            // Microsoft-documented bypass headers — go on each individual request
-            // inside the multipart body, NOT on the outer $batch envelope.
-            // Requires prvBypassCustomPlugins privilege (typically System Administrator).
-            const bypassHeaderLines = [
-              params.bypassPlugins ? "MSCRM.BypassCustomPluginExecution: true" : null,
-              params.suppressDuplicates ? "MSCRM.SuppressDuplicateDetection: true" : null,
-              params.bypassSyncLogic ? "MSCRM.BypassSynchronousLogic: true" : null,
-            ].filter(Boolean).map(l => l + "\r\n").join("");
+            // Microsoft-documented bypass headers — go on each individual request inside the
+            // multipart body, NOT on the outer $batch envelope. Verified against the docs
+            // (learn.microsoft.com/power-apps/developer/data-platform/bypass-custom-business-logic):
+            //  · MSCRM.BypassCustomPluginExecution: true → ALL custom SYNCHRONOUS logic (sync
+            //    plug-ins AND real-time workflows); privilege prvBypassCustomPlugins.
+            //  · MSCRM.BypassBusinessLogicExecution: CustomAsync (or CustomSync,CustomAsync when
+            //    both boosters are on — the modern parameter covers both in one header);
+            //    privilege prvBypassCustomBusinessLogic. Sysadmin holds both by default.
+            //  · MSCRM.SuppressDuplicateDetection: true → skip duplicate-detection rules.
+            // (The old "MSCRM.BypassSynchronousLogic" header does NOT exist — Dataverse silently
+            //  ignored it, so the async-bypass checkbox used to be a no-op.)
+            const bypassPairs = [
+              params.bypassPlugins && params.bypassAsyncLogic ? ["MSCRM.BypassBusinessLogicExecution", "CustomSync,CustomAsync"] : null,
+              params.bypassPlugins && !params.bypassAsyncLogic ? ["MSCRM.BypassCustomPluginExecution", "true"] : null,
+              !params.bypassPlugins && params.bypassAsyncLogic ? ["MSCRM.BypassBusinessLogicExecution", "CustomAsync"] : null,
+              params.suppressDuplicates ? ["MSCRM.SuppressDuplicateDetection", "true"] : null,
+            ].filter(Boolean);
+            const bypassHeaderLines = bypassPairs.map(([k, v]) => `${k}: ${v}\r\n`).join("");
+            // Same headers for the serial-PATCH/POST fallback — rows must get the boosters
+            // whichever transport they end up on.
+            const bypassHeaderObj = bypassPairs.length ? Object.fromEntries(bypassPairs) : null;
 
             const buildClean = (rec) => {
               const c = {};
@@ -667,7 +680,7 @@
                     const rowIdx = batch + i + 1;
                     if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                     try {
-                      await dvRequest("POST", entitySet, buildClean(chunk[i]));
+                      await dvRequest("POST", entitySet, buildClean(chunk[i]), bypassHeaderObj);
                       results.created++;
                       results.log.push({ row: rowIdx, status: "CREATED" });
                     } catch (e) {
@@ -682,7 +695,7 @@
                   const rowIdx = batch + i + 1;
                   if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                   try {
-                    await dvRequest("POST", entitySet, buildClean(chunk[i]));
+                    await dvRequest("POST", entitySet, buildClean(chunk[i]), bypassHeaderObj);
                     results.created++;
                     results.log.push({ row: rowIdx, status: "CREATED" });
                   } catch (e) {
@@ -715,13 +728,24 @@
 
             // Per-record request headers. `If-Match: *` forces UPDATE-ONLY semantics:
             // Dataverse updates an existing record but returns 404 instead of creating one
-            // when it's missing (vs. plain PATCH-by-key which upserts). Plus the MSCRM bypass headers.
+            // when it's missing (vs. plain PATCH-by-key which upserts). Plus the MSCRM bypass
+            // headers — doc-verified names (see batchCreate for the full rationale): the modern
+            // MSCRM.BypassBusinessLogicExecution covers sync+async; the old
+            // "MSCRM.BypassSynchronousLogic" never existed and was silently ignored.
+            const bypassPairs = [
+              params.bypassPlugins && params.bypassAsyncLogic ? ["MSCRM.BypassBusinessLogicExecution", "CustomSync,CustomAsync"] : null,
+              params.bypassPlugins && !params.bypassAsyncLogic ? ["MSCRM.BypassCustomPluginExecution", "true"] : null,
+              !params.bypassPlugins && params.bypassAsyncLogic ? ["MSCRM.BypassBusinessLogicExecution", "CustomAsync"] : null,
+              params.suppressDuplicates ? ["MSCRM.SuppressDuplicateDetection", "true"] : null,
+            ].filter(Boolean);
             const bypassHeaderLines = [
               params.updateOnly ? "If-Match: *" : null,
-              params.bypassPlugins ? "MSCRM.BypassCustomPluginExecution: true" : null,
-              params.suppressDuplicates ? "MSCRM.SuppressDuplicateDetection: true" : null,
-              params.bypassSyncLogic ? "MSCRM.BypassSynchronousLogic: true" : null,
+              ...bypassPairs.map(([k, v]) => `${k}: ${v}`),
             ].filter(Boolean).map(l => l + "\r\n").join("");
+            // Serial-fallback headers: boosters + If-Match must survive the transport switch.
+            const fbHeaders = (bypassPairs.length || params.updateOnly)
+              ? { ...Object.fromEntries(bypassPairs), ...(params.updateOnly ? { "If-Match": "*" } : {}) }
+              : null;
 
             // Sanitize the key value before it goes into the multipart request line — prevents
             // changeset break-out / HTTP-request injection when a CSV key column contains \r\n or
@@ -847,7 +871,7 @@
                     const rowIdx = batch + i + 1;
                     if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                     try {
-                      await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), params.updateOnly ? { "If-Match": "*" } : null);
+                      await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), fbHeaders);
                       results.updated++;
                       results.log.push({ row: rowIdx, status: "UPSERTED" });
                     } catch (e) {
@@ -863,7 +887,7 @@
                   const rowIdx = batch + i + 1;
                   if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
                   try {
-                    await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), params.updateOnly ? { "If-Match": "*" } : null);
+                    await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), fbHeaders);
                     results.updated++;
                     results.log.push({ row: rowIdx, status: "UPSERTED" });
                   } catch (e) {
