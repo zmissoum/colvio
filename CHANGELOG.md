@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.87] — 2026-07-03
+### Added — Security Audit: Org-wide privilege view ("who can do what")
+- **One view across EVERY security role.** New "🌐 Org-wide view" button in Security Audit: pick an **operation** (Delete by default — the classic audit ask) and a **minimum depth** (Organization by default), and see each role with the entities it can touch, as depth-pie chips. Scans every role's privilege matrix (progressively, with a progress bar; results are cached so changing filters afterwards is instant). Root roles only — business-unit copies inherit the same privileges.
+- **Group by role or by entity** — the entity grouping answers "which roles can delete Account?" in one glance; clicking a role opens its full detail. Filter by role or entity name. **CSV / Excel export** of the whole view (role, entity, operation, depth), flat and pivot-ready.
+### Fixed
+- **Test suite scoping.** Vitest also picked up stale copies of the test files inside `.claude/worktrees/*` (session worktrees pinned to old branches), inflating counts with duplicate old tests. The suite now runs only this checkout's tests (151).
+
 ## [1.11.86] — 2026-07-03
 ### Changed
 - **"What's new" popup updated with the reliability wave.** The highlights (EN + FR) now also cover the Loader trust fixes: no silent row loss on timeouts (honest totals + retry of exactly the unsent rows), the pre-flight example applying transforms, and the file-lines vs parsed-records transparency. Store users updating across the whole 1.11.67→86 arc get an accurate recap on first launch.

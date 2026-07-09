@@ -103,6 +103,17 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [teamsErr, setTeamsErr] = useState("");
   const [teamCount, setTeamCount] = useState(null);
+  // Org-wide cross-role view: "which roles can <operation> which entities, at which depth?" —
+  // answered across EVERY role at once instead of opening them one by one.
+  const [orgView, setOrgView] = useState(false);
+  const [orgOp, setOrgOp] = useState("Delete");        // audited operation (Delete is the classic ask)
+  const [orgDepthMin, setOrgDepthMin] = useState(8);   // 8 = Organization only (default) … 1 = any granted
+  const [orgSearch, setOrgSearch] = useState("");
+  const [orgGroup, setOrgGroup] = useState("role");    // role | entity
+  const [orgScan, setOrgScan] = useState(null);        // {done,total} while scanning
+  const [, setOrgScanned] = useState(0);               // bump-only: re-render as the cache fills
+  const orgCache = useRef(new Map());                  // roleId -> entities[] from getRolePrivilegeMatrix
+  const orgGen = useRef(0);
   const [privView, setPrivView] = useState("list");   // list | matrix (make.powerapps-style grid)
   const [matrix, setMatrix] = useState(null);          // { entities:[{entity,ops}], misc:[{name,depth}] }
   const [loadingMatrix, setLoadingMatrix] = useState(false);
@@ -125,6 +136,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   // Load privileges when role is selected — progressive (privileges first, user count in parallel)
   const handleSelect = async (role) => {
     const gen = ++selectGen.current;
+    orgGen.current++; setOrgScan(null); setOrgView(false); // picking a role leaves the org-wide view (and stops its scan)
     setSelRole(role);
     setLoadingPriv(true);
     setLoadingCount(true);
@@ -383,6 +395,65 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     setTimeout(() => setFeedback(""), 2000);
   };
 
+  // ── Org-wide cross-role view ────────────────────────────────
+  // Scans every role's privilege matrix (one RetrieveRolePrivilegesRole each — the privilege
+  // catalog itself is fetched once and cached in the page), concurrency 3 to stay org-friendly.
+  // Results are cached per role, so changing operation/depth/search afterwards is instant.
+  const scanAllRoles = async () => {
+    const gen = ++orgGen.current;
+    const todo = roles.filter(r => !orgCache.current.has(r.id));
+    if (!todo.length) return;
+    setOrgScan({ done: roles.length - todo.length, total: roles.length });
+    let idx = 0;
+    const worker = async () => {
+      while (idx < todo.length) {
+        if (orgGen.current !== gen) return; // view closed / role selected — stop scanning
+        const role = todo[idx++];
+        try { const m = await bridge.getRolePrivilegeMatrix(role.id); orgCache.current.set(role.id, m?.entities || []); }
+        catch { /* leave uncached — a Rescan can retry it */ }
+        if (orgGen.current === gen) { setOrgScan({ done: Math.min(roles.length, roles.length - todo.length + idx), total: roles.length }); setOrgScanned(n => n + 1); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, todo.length) }, worker));
+    if (orgGen.current === gen) setOrgScan(null);
+  };
+  const openOrgView = () => { setOrgView(true); scanAllRoles(); };
+  const closeOrgView = () => { orgGen.current++; setOrgScan(null); setOrgView(false); };
+
+  // Role-grouped rows for the current op/depth/search — entity-grouped view derives from these.
+  const orgRows = useMemo(() => {
+    if (!orgView) return [];
+    const s = orgSearch.trim().toLowerCase();
+    const out = [];
+    for (const r of roles) {
+      const ents = orgCache.current.get(r.id);
+      if (!ents) continue;
+      const roleMatch = s && r.name.toLowerCase().includes(s);
+      const hits = ents.filter(e => (e.ops[orgOp] || 0) >= orgDepthMin && (!s || roleMatch || e.entity.toLowerCase().includes(s)));
+      if (hits.length) out.push({ role: r, ents: hits });
+    }
+    return out;
+    // eslint-disable-next-line
+  }, [orgView, roles, orgOp, orgDepthMin, orgSearch, orgScan]);
+  const orgRowsByEntity = useMemo(() => {
+    if (orgGroup !== "entity") return [];
+    const map = new Map();
+    for (const g of orgRows) for (const e of g.ents) {
+      if (!map.has(e.entity)) map.set(e.entity, []);
+      map.get(e.entity).push({ role: g.role, depth: e.ops[orgOp] || 0 });
+    }
+    return [...map.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  }, [orgRows, orgGroup, orgOp]);
+
+  const exportOrgCSV = (format = "csv") => {
+    const rows = [];
+    for (const g of orgRows) for (const e of g.ents) rows.push([g.role.name, e.entity, orgOp, DEPTH_LABEL[e.ops[orgOp] || 0]]);
+    if (!rows.length) return;
+    exportTable(["role", "entity", "operation", "depth"], rows, `security_orgwide_${orgOp.toLowerCase()}`, format, "OrgWide");
+    setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${rows.length} role×entity grants)`);
+    setTimeout(() => setFeedback(""), 2000);
+  };
+
   const Badge = ({ label, color }) => (
     <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: (color || C.txd) + "22", color: color || C.txd, fontWeight: 600 }}>{label}</span>
   );
@@ -402,6 +473,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
             ))}
           </div>
           {!loading && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{filteredRoles.length} roles ({roles.filter(r => r.isCustom).length} custom)</div>}
+          <button onClick={() => orgView ? closeOrgView() : openOrgView()} disabled={loading} style={bt(orgView ? C.cy : null, { fontSize: 12, width: "100%", justifyContent: "center", marginTop: 8, opacity: loading ? 0.5 : 1 })}>🌐 Org-wide view — who can do what</button>
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
           {loading && <div style={{ textAlign: "center", padding: 20 }}><Spin /> Loading roles...</div>}
@@ -417,10 +489,77 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
         </div>
       </div>
 
-      {/* Right panel — role detail */}
+      {/* Right panel — role detail OR the org-wide cross-role view */}
       <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-        {!selRole && <div style={{ textAlign: "center", color: C.txd, marginTop: 60 }}>{t("security.select_role")}</div>}
-        {selRole && (
+        {orgView && (
+          <div>
+            <div style={{ ...crd({ padding: "14px 18px" }), marginBottom: 12 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 2 }}>🌐 Org-wide privilege view</div>
+              <div style={{ fontSize: 12, color: C.txd, marginBottom: 10 }}>Every security role × the entities it can <b>{orgOp}</b> — pick the operation and minimum depth. Root roles only (business-unit copies inherit the same privileges).</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <select value={orgOp} onChange={e => setOrgOp(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
+                  {OPS.map(op => <option key={op} value={op}>{op}</option>)}
+                </select>
+                <select value={orgDepthMin} onChange={e => setOrgDepthMin(+e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
+                  <option value={8}>Organization only</option>
+                  <option value={4}>Parent: Child BU and wider</option>
+                  <option value={2}>Business Unit and wider</option>
+                  <option value={1}>Any depth granted</option>
+                </select>
+                <input value={orgSearch} onChange={e => setOrgSearch(e.target.value)} placeholder="Filter by role or entity…" style={inp({ fontSize: 12, maxWidth: 220 })} />
+                <div style={{ display: "flex", border: `1px solid ${C.bd}`, borderRadius: 5, overflow: "hidden" }}>
+                  {[["role", "By role"], ["entity", "By entity"]].map(([k, lbl]) => (
+                    <button key={k} onClick={() => setOrgGroup(k)} style={{ padding: "4px 10px", fontSize: 11, border: "none", cursor: "pointer", background: orgGroup === k ? C.cy + "22" : "transparent", color: orgGroup === k ? C.cy : C.txm, fontWeight: orgGroup === k ? 600 : 400 }}>{lbl}</button>
+                  ))}
+                </div>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => exportOrgCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
+                <button onClick={() => exportOrgCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
+              </div>
+              {orgScan && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11, color: C.txm, marginBottom: 4 }}><Spin s={11} /> Scanning role privileges… {orgScan.done}/{orgScan.total} (results appear as they load)</div>
+                  <div style={{ height: 4, background: C.bd, borderRadius: 2 }}><div style={{ height: 4, width: `${Math.round(orgScan.done / Math.max(1, orgScan.total) * 100)}%`, background: C.cy, borderRadius: 2, transition: "width .3s" }} /></div>
+                </div>
+              )}
+              {feedback && <div style={{ fontSize: 11, color: C.gn, marginTop: 6 }}>{feedback}</div>}
+            </div>
+            {!orgScan && orgRows.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No role grants "{orgOp}" at this depth{orgSearch ? " matching your filter" : ""}.</div>}
+            {orgGroup === "role" && orgRows.map(g => (
+              <div key={g.role.id} style={{ ...crd({ padding: "10px 14px" }), marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, cursor: "pointer" }} onClick={() => handleSelect(g.role)} title="Open this role's detail">{g.role.name}</span>
+                  <Badge label={g.role.isCustom ? "Custom" : "Managed"} color={g.role.isCustom ? C.or : C.txd} />
+                  <span style={{ fontSize: 11, color: C.txd, ...mono }}>{g.ents.length} entit{g.ents.length > 1 ? "ies" : "y"}</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {g.ents.map(e => (
+                    <span key={e.entity} title={`${orgOp}: ${DEPTH_LABEL[e.ops[orgOp] || 0]}`} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, ...mono, padding: "2px 8px", borderRadius: 4, background: C.sfh }}>
+                      <DepthPie depth={e.ops[orgOp] || 0} /> {e.entity}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {orgGroup === "entity" && orgRowsByEntity.map(([entity, grants]) => (
+              <div key={entity} style={{ ...crd({ padding: "10px 14px" }), marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, ...mono }}>{entity}</span>
+                  <span style={{ fontSize: 11, color: C.txd, ...mono }}>{grants.length} role{grants.length > 1 ? "s" : ""} can {orgOp}</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {grants.map(gr => (
+                    <span key={gr.role.id} title={`${orgOp}: ${DEPTH_LABEL[gr.depth]} — click to open the role`} onClick={() => handleSelect(gr.role)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.sfh, cursor: "pointer" }}>
+                      <DepthPie depth={gr.depth} /> {gr.role.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {!orgView && !selRole && <div style={{ textAlign: "center", color: C.txd, marginTop: 60 }}>{t("security.select_role")}</div>}
+        {!orgView && selRole && (
           <div>
             {/* Role header */}
             <div style={{ ...crd({ padding: "16px 20px", marginBottom: 16 }) }}>
