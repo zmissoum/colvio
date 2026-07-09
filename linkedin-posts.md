@@ -632,34 +632,43 @@ What's the worst "it said done but it wasn't" you've hit with a data tool? 👇
 
 ---
 
-## Post 23 — Who's actually using your CRM? (new Adoption module)
+## Post 23 — Two questions every D365 admin dreads (Adoption + org-wide privileges)
 
-> Release post (Colvio page voice), covers 1.11.87 → 1.11.92. Hero = the new Adoption module (16th module, 1.11.89 + the 1.11.90-92 polish: chart series toggle, date-range hardening, instant filters). Secondary = org-wide privilege view (1.11.87). Closer = the bypass-header fix (1.11.88) — continues the engineering-honesty thread from Post 22. HONESTY NOTES kept: Adoption is built on Dataverse's own login audit (needs "Audit user access" enabled, limited to audit retention — the post says so); the admin center has usage analytics too, our angle is role/BU filtering + never-signed-in + export, not "nobody else does this". NOTE FOR ZAKARIA: publish after the next store upload, AFTER Posts 19-22 (keep 22 → 23 back-to-back: 22 admits a loader bug, 23 admits a bypass bug — the trust thread reads well in sequence). Link in first comment per preference.
+> Release post (Colvio page voice), covers 1.11.87 → 1.11.93. DUAL HERO structure (rewritten per Zakaria's ask — the org-wide privilege view deserved full billing, not one paragraph): Hero 1 = Adoption module (1.11.89 + 1.11.90-93 polish); Hero 2 = org-wide "who can do what" view (1.11.87 + the 1.11.93 honesty hardening: failed roles flagged, no partial exports). Closer = the bypass-header fix (1.11.88) — continues the engineering-honesty thread from Post 22. HONESTY NOTES kept: Adoption is built on Dataverse's own login audit (needs "Audit user access" enabled, limited to audit retention — the post says so); the admin center has usage analytics and make.powerapps shows per-role privileges — our angle is the CROSS-role sweep + role/BU filters + exports, not "nobody else does this". NOTE FOR ZAKARIA: publish after the next store upload, AFTER Posts 19-22 (keep 22 → 23 back-to-back: 22 admits a loader bug, 23 admits a bypass bug — the trust thread reads well in sequence). Link in first comment per preference.
 
-📈 New in Colvio: find out who's actually using the CRM you're paying for.
+Two questions every Dynamics 365 admin gets asked — and dreads:
 
-You rolled out Dynamics 365. Licenses assigned, training done. Six months later, someone asks: "is the sales team actually in there?" — and the honest answer is a shrug.
+1️⃣ "Who's actually USING the CRM we pay for?"
+2️⃣ "Who can DELETE accounts in this org?"
 
-Colvio's new Adoption module turns Dataverse's own login audit into answers:
+Both used to mean hours of clicking. Colvio now answers each in one screen.
 
-📊 Total logins, distinct active users, average per user — over 7/30/90 days or any custom window
+📈 Question 1 → the new Adoption module
+
+Dataverse's own login audit, turned into answers:
+📊 Total logins, distinct active users, average per user — 7/30/90 days or any custom window
 👥 Filter by security role or business unit: "are the people we licensed for Sales actually signing in?"
 📉 A trend chart you can switch between total logins, distinct users, or both
 🚨 And the list nobody has ready when asked: enabled users who NEVER signed in during the window — one click to export it
 
-Fair print, because honesty is the house style: it's built on Dataverse's user-access audit. It needs "Audit user access" enabled in your org, and it sees what your audit retention keeps — Colvio tells you both, in the UI.
+Fair print: it needs "Audit user access" enabled in your org, and it sees what your audit retention keeps — Colvio tells you both, in the UI.
 
-Also in this wave:
+🌐 Question 2 → Security Audit went org-wide
 
-🌐 Security Audit went org-wide. One scan answers "who can delete Accounts?" across EVERY role at once — pick an operation and a minimum depth, group by role or by table, export the whole thing. The role-by-role matrix is still there; this is the bird's-eye view auditors ask for.
+Until now you could open ONE role and read its privilege matrix. The new org-wide view scans EVERY security role in the org and answers the question auditors actually ask:
 
-🛠 And one fix we'd rather own in public than bury in a changelog: the Loader's "bypass asynchronous logic" checkbox was sending a header that… doesn't exist in the Dataverse API. Dataverse silently ignored it — the box did nothing. We verified every bypass header against Microsoft's docs; they're all correct now (and the sync bypass always was). If you relied on that checkbox: it works now, and we're sorry it didn't before.
+🔎 Pick an operation (Delete, Write, Assign, Share…) and a minimum depth (org-wide only → any depth granted)
+📋 Group by ROLE ("what can this role touch?") or flip it by TABLE ("which roles can delete Account — and at what depth?")
+📤 Export the whole thing to CSV/Excel — the deliverable your security review wants
+🛡 And it never lies: if a role fails to load mid-scan, you get a red "INCOMPLETE" banner and a retry button — not a clean-looking report with silent holes. Exports are blocked while the scan runs, so a partial file can't masquerade as a complete one.
+
+🛠 One more fix we'd rather own in public than bury in a changelog: the Loader's "bypass asynchronous logic" checkbox was sending a header that… doesn't exist in the Dataverse API. Dataverse silently ignored it — the box did nothing. We verified every bypass header against Microsoft's docs; they're all correct now, and they now apply to bulk DELETE too (they didn't before). If you relied on that checkbox: it works now, and we're sorry it didn't before.
 
 Free, open-source, runs in your browser on your own session — nothing leaves your org.
 
-What's your adoption story — did usage match the licenses you bought? 👇
+Which one hits closer to home — proving adoption, or proving who can delete what? 👇
 
-#Dynamics365 #Dataverse #PowerPlatform #D365 #CRM #Adoption #OpenSource
+#Dynamics365 #Dataverse #PowerPlatform #D365 #CRM #SecurityAudit #Adoption #OpenSource
 
 ---
 
