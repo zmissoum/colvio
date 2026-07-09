@@ -632,6 +632,37 @@ What's the worst "it said done but it wasn't" you've hit with a data tool? 👇
 
 ---
 
+## Post 23 — Who's actually using your CRM? (new Adoption module)
+
+> Release post (Colvio page voice), covers 1.11.87 → 1.11.92. Hero = the new Adoption module (16th module, 1.11.89 + the 1.11.90-92 polish: chart series toggle, date-range hardening, instant filters). Secondary = org-wide privilege view (1.11.87). Closer = the bypass-header fix (1.11.88) — continues the engineering-honesty thread from Post 22. HONESTY NOTES kept: Adoption is built on Dataverse's own login audit (needs "Audit user access" enabled, limited to audit retention — the post says so); the admin center has usage analytics too, our angle is role/BU filtering + never-signed-in + export, not "nobody else does this". NOTE FOR ZAKARIA: publish after the next store upload, AFTER Posts 19-22 (keep 22 → 23 back-to-back: 22 admits a loader bug, 23 admits a bypass bug — the trust thread reads well in sequence). Link in first comment per preference.
+
+📈 New in Colvio: find out who's actually using the CRM you're paying for.
+
+You rolled out Dynamics 365. Licenses assigned, training done. Six months later, someone asks: "is the sales team actually in there?" — and the honest answer is a shrug.
+
+Colvio's new Adoption module turns Dataverse's own login audit into answers:
+
+📊 Total logins, distinct active users, average per user — over 7/30/90 days or any custom window
+👥 Filter by security role or business unit: "are the people we licensed for Sales actually signing in?"
+📉 A trend chart you can switch between total logins, distinct users, or both
+🚨 And the list nobody has ready when asked: enabled users who NEVER signed in during the window — one click to export it
+
+Fair print, because honesty is the house style: it's built on Dataverse's user-access audit. It needs "Audit user access" enabled in your org, and it sees what your audit retention keeps — Colvio tells you both, in the UI.
+
+Also in this wave:
+
+🌐 Security Audit went org-wide. One scan answers "who can delete Accounts?" across EVERY role at once — pick an operation and a minimum depth, group by role or by table, export the whole thing. The role-by-role matrix is still there; this is the bird's-eye view auditors ask for.
+
+🛠 And one fix we'd rather own in public than bury in a changelog: the Loader's "bypass asynchronous logic" checkbox was sending a header that… doesn't exist in the Dataverse API. Dataverse silently ignored it — the box did nothing. We verified every bypass header against Microsoft's docs; they're all correct now (and the sync bypass always was). If you relied on that checkbox: it works now, and we're sorry it didn't before.
+
+Free, open-source, runs in your browser on your own session — nothing leaves your org.
+
+What's your adoption story — did usage match the licenses you bought? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #CRM #Adoption #OpenSource
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
