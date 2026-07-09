@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.11.88] — 2026-07-03
+### Fixed — Data Loader speed boosters now use the correct, documented bypass headers
+- **The "Bypass synchronous workflows" booster was a silent no-op.** It sent `MSCRM.BypassSynchronousLogic: true` — a header that **does not exist** in Dataverse, so the platform silently ignored it and nothing was bypassed. Verified against Microsoft's [Bypass custom Dataverse logic](https://learn.microsoft.com/power-apps/developer/data-platform/bypass-custom-business-logic) docs.
+- **Reworked to Microsoft's real headers:**
+  - **Bypass custom synchronous logic** → `MSCRM.BypassCustomPluginExecution: true` — skips sync plug-ins **and real-time workflows** (needs `prvBypassCustomPlugins`).
+  - **Bypass custom asynchronous logic** (renamed checkbox) → `MSCRM.BypassBusinessLogicExecution: CustomAsync` — skips async plug-ins + background workflows so a bulk load doesn't flood the system-job queue (needs `prvBypassCustomBusinessLogic`; Power Automate flows are a separate mechanism and are NOT bypassed).
+  - Both boxes together send `MSCRM.BypassBusinessLogicExecution: CustomSync,CustomAsync` in a single header (Microsoft's current combined parameter).
+  - Duplicate-detection suppression unchanged.
+- **The boosters now also apply on the serial-PATCH/POST fallback path**, not only the `$batch` path — so a row that falls back still bypasses what you asked. Tooltips and Help (EN + FR) updated with exactly what each header does and the privilege it needs.
+
 ## [1.11.87] — 2026-07-03
 ### Added — Security Audit: Org-wide privilege view ("who can do what")
 - **One view across EVERY security role.** New "🌐 Org-wide view" button in Security Audit: pick an **operation** (Delete by default — the classic audit ask) and a **minimum depth** (Organization by default), and see each role with the entities it can touch, as depth-pie chips. Scans every role's privilege matrix (progressively, with a progress bar; results are cached so changing filters afterwards is instant). Root roles only — business-unit copies inherit the same privileges.
