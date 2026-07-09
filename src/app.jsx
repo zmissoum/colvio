@@ -10,6 +10,7 @@ import MetadataBrowser from "./components/MetadataBrowser.jsx";
 import ExplorerTabs from "./components/ExplorerTabs.jsx";
 import ApiTesterTabs from "./components/ApiTesterTabs.jsx";
 import LoginHistory from "./components/LoginHistory.jsx";
+import Adoption from "./components/Adoption.jsx";
 import Loader from "./components/Loader.jsx";
 import RecycleBin from "./components/RecycleBin.jsx";
 import SystemOps from "./components/SystemOps.jsx";
@@ -220,6 +221,7 @@ export default function App(){
     {id:"show",label:t("nav.show"),desc:t("nav.show.desc"),icon:<I.Eye/>},
     {id:"metadata",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
     {id:"logins",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
+    {id:"adoption",label:t("nav.adoption"),desc:t("nav.adoption.desc"),icon:<I.Users/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
     {id:"loader",label:t("nav.loader"),desc:t("nav.loader.desc"),icon:<I.Upload/>},
     {id:"recyclebin",label:t("nav.recyclebin"),desc:t("nav.recyclebin.desc"),icon:<I.Trash/>,featureOff:!!(orgFeatures&&orgFeatures.recycleBin&&!orgFeatures.recycleBin.enabled&&!orgFeatures.recycleBin.unknown)},
     {id:"graph",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
@@ -331,6 +333,7 @@ export default function App(){
           {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures} permissions={permissions}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
+          {tab==="adoption"&&<ErrorBoundary><Adoption bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {/* Loader stays MOUNTED (display toggle, like Explorer) so switching nav tabs during an
               import never unmounts it — the run keeps its progress, log and result, and you can
               come back to Cancel or Rollback. Conditional rendering would lose all of that. */}
