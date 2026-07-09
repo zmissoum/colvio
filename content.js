@@ -1157,6 +1157,32 @@
             result = records;
             break;
           }
+
+          case "getLoginEvents": {
+            // ALL user-login audit rows (action 64) in a time window — fuel for the Adoption tab.
+            // Returns just {date,userId,userName} so the panel can aggregate + filter (role/BU)
+            // client-side without re-querying. Paged (5000/page) and hard-capped. NOTE: needs
+            // "Audit user access" enabled, and only sees rows still within the org's audit retention.
+            const ISO = /^\d{4}-\d{2}-\d{2}(T[0-9:.]+Z?)?$/; // date-picker values only — never interpolate free text
+            const fromD = params.from && ISO.test(params.from) ? params.from : null;
+            const toD = params.to && ISO.test(params.to) ? params.to : null;
+            const capL = Math.min(Math.max(parseInt(params.cap, 10) || 100000, 1), 300000);
+            let urlL = `audits?$select=createdon,_objectid_value&$filter=action eq 64${fromD ? ` and createdon ge ${fromD}` : ""}${toD ? ` and createdon le ${toD}` : ""}&$orderby=createdon desc`;
+            const events = [];
+            while (urlL && events.length < capL) {
+              const dL = await dvRequest("GET", urlL, null, { Prefer: "odata.maxpagesize=5000" });
+              (dL.value || []).forEach(a => events.push({
+                date: a.createdon,
+                userId: a._objectid_value || "",
+                userName: a["_objectid_value@OData.Community.Display.V1.FormattedValue"] || "",
+              }));
+              const nlL = dL["@odata.nextLink"];
+              urlL = (nlL && events.length < capL) ? nlL.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = { events: events.slice(0, capL), capped: events.length >= capL };
+            break;
+          }
+
           case "upsert": {
             validateEntitySet(params.entitySet);
             validateName(params.keyField, 'keyField');

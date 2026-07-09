@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getUsersByBu" || action === "getUserCountsByBu";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getLoginEvents" || action === "getUsersByBu" || action === "getUserCountsByBu";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -655,6 +655,18 @@ export const bridge = {
       userId,
       info: "",
     }));
+  },
+
+  async getLoginEvents(from, to, cap) {
+    if (isExtension) return callD365("getLoginEvents", { from, to, cap });
+    // Demo: synthetic logins over the last 30 days for a few users (matches getAllUsers demo ids).
+    const now = Date.now(), ids = ["u1", "u2", "u3", "u5", "u8"], names = ["Zakaria Missoum", "Marie Martin", "Alex Baker", "Lucas Moreau", "Pierre Bernard"];
+    const events = [];
+    for (let d = 0; d < 30; d++) for (let k = 0; k < ids.length; k++) {
+      const per = [5, 3, 1, 2, 4][k]; // different activity levels
+      for (let j = 0; j < per; j++) if ((d + j + k) % 2 === 0) events.push({ date: new Date(now - d * 86400000 - j * 3600000).toISOString(), userId: ids[k], userName: names[k] });
+    }
+    return { events, capped: false };
   },
 
   async getApiLimits() {

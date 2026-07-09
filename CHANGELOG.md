@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.89] — 2026-07-03
+### Added — New module: Adoption (usage & login analytics)
+- **A new "Adoption" tab turns the user-access audit into usage analytics.** For a window you pick (7 / 30 / 90 days or a custom range): total logins, distinct active users, average logins per active user, and how many enabled users **never signed in**. A per-day (per-week over 92 days) chart shows the login trend with a distinct-active-users line.
+- **Filter the whole view by security role or business unit** — applied client-side, so switching filters is instant (the window drives the one audit query; role/BU never re-query). Per-user table (logins, active days, last login) with search + sort, plus the never-signed-in list. **CSV / Excel export.**
+- Gated to users with audit-read rights (like Login History) and dimmed when auditing is off. Only reflects login rows still inside the org's audit retention window — stated in the UI. New content-script action `getLoginEvents` (paged `audits` scan of `action eq 64`). Help (EN + FR) added.
+
 ## [1.11.88] — 2026-07-03
 ### Fixed — Data Loader speed boosters now use the correct, documented bypass headers
 - **The "Bypass synchronous workflows" booster was a silent no-op.** It sent `MSCRM.BypassSynchronousLogic: true` — a header that **does not exist** in Dataverse, so the platform silently ignored it and nothing was bypassed. Verified against Microsoft's [Bypass custom Dataverse logic](https://learn.microsoft.com/power-apps/developer/data-platform/bypass-custom-business-logic) docs.
