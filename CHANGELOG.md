@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.94] — 2026-07-09
+### Added — Builder: relational filters (Advanced-Find style)
+- **New REL row in the Builder: filter the ROOT rows by their related records** — the thing D365 views/Advanced Find do that the Builder couldn't. Two flavors:
+  - **Condition on a parent (N:1)** — "accounts whose primary contact's email contains @gmail": generates a single-valued navigation-property path filter (`primarycontactid/emailaddress1 …`).
+  - **Has / has no children (1:N)** — "accounts with NO open opportunity": generates an `any()` lambda (`opportunity_customer_accounts/any(o: o/statecode eq 0)`, negated with `not` for "has none"); with no condition it's a pure existence test (`any()`).
+- Same type-aware operator UI as everywhere else (contains/starts with on text, </> on numbers and dates, GUID handling on lookups), AND/OR between conditions on the same relation, several relation filters combine with the WHERE via AND (with correct OR-precedence parenthesization). The generated OData shows in the query preview.
+- Persisted in saved queries (target-entity metadata is re-fetched on restore); reset on entity switch; independent from EXPAND — REL changes which rows return, EXPAND changes what's displayed.
+- Help EN/FR updated, including the honest limit: parent paths go one level deep (Dataverse limitation) — deeper chains still need FetchXML link-entities.
+
 ## [1.11.93] — 2026-07-09
 ### Fixed — code-review pass over 1.11.83 → 1.11.92 (3 agents + manual review; 9 findings, all fixed)
 - **Loader: speed boosters now really apply to DELETE mode.** The boosters card was shown and toggleable in delete mode, but the bypass headers were never sent with deletes — a silent no-op. Bulk deletes now carry the same doc-verified bypass headers ($batch sub-requests AND the serial fallback), and the "boosters on" warning shows in delete mode too.

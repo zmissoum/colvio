@@ -7,6 +7,7 @@ import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, 
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
+import RelFilterCard from "./RelFilterCard.jsx";
 import Results from "./Results.jsx";
 
 // A 401 / lost session looks the same whatever the query mode (Builder, OData, FetchXML, SQL) — one
@@ -85,7 +86,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
   const doSaveQuery=(name)=>{
     if(!name||!ent) return;
-    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,rq,sqlQ,savedAt:new Date().toISOString()};
+    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),relFilters:relFilters.map(rf=>({navProperty:rf.navProperty,targetEntity:rf.targetEntity,lookupField:rf.lookupField,type:rf.type,mode:rf.mode||"any",conditions:rf.conditions||[],conditionLogic:rf.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,rq,sqlQ,savedAt:new Date().toISOString()};
     const updated=[q,...savedQueries.filter(s=>s.name!==name)].slice(0,20);
     setSavedQueries(updated);
     if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_saved_queries:updated});
@@ -107,6 +108,17 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         if(q.rq) setRq(q.rq);
         if(q.fxml) setFxml(q.fxml);
         if(q.sqlQ) setSqlQ(q.sqlQ);
+        // Relational filters need the target entity's field metadata back (types drive the
+        // operator lists and OData quoting) — refetch it per saved filter, drop the ones whose
+        // target no longer resolves.
+        if(q.relFilters?.length){
+          Promise.all(q.relFilters.map(async rf=>{
+            try{
+              const tf=isLive?await bridge.getFields(rf.targetEntity):FLDS;
+              return {...rf, mode:rf.mode||"any", conditionLogic:rf.conditionLogic||"and", allFields:mapTargetFields(tf)};
+            }catch{return null;}
+          })).then(list=>setRelFilters(list.filter(Boolean)));
+        }
       };
       selEnt(match);
     } else {
@@ -133,6 +145,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[childRelsLoaded,setChildRelsLoaded]=useState(false);
   const debouncedExpandSearch = useDebounce(expandSearch, 150);
   const[loadingExpand,setLoadingExpand]=useState("");
+  // Relational filters — Advanced-Find-style conditions on RELATED records that filter the ROOT
+  // rows (unlike $expand filters, which only filter what's displayed). Parent (N:1) → nav-property
+  // path filter; child (1:N) → any()/not any() lambda.
+  const[relFilters,setRelFilters]=useState([]);
+  const[showRelPicker,setShowRelPicker]=useState(false);
+  const[relSearch,setRelSearch]=useState("");
+  const debouncedRelSearch = useDebounce(relSearch, 150);
+  const[loadingRel,setLoadingRel]=useState("");
 
   useEffect(()=>{
     if(!isLive) return;
@@ -164,6 +184,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setEnt(e);setRes(null);setPicker(false);setError("");
     setFilterGroups([{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
     setExpands([]);setLookups([]);setShowExpandPicker(false);setChildRelsLoaded(false);
+    setRelFilters([]);setShowRelPicker(false);setRelSearch(""); // relational filters belonged to the OLD entity
     setRq("");setFxml("");setSqlQ(""); // raw query text belonged to the previous entity — clear it so a switch can't run against the wrong table
     if(bp.mobile)setShowList(false);
     if(isLive){
@@ -205,20 +226,38 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     }
   };
 
+  // Map a getFields() payload to the internal field shape — shared by expands and relational filters.
+  const mapTargetFields = (targetFields) => (targetFields || [])
+    .map(f => ({
+      l: f.logical || f.l,
+      d: f.display || f.d || f.logical || f.l,
+      t: f.type || f.t || "String",
+      cust: !!((f.isCustom || f.cust) && isTrulyCustom(f.logical || f.l)),
+      odata: f.odataName || f.logical || f.l,
+    }))
+    .sort((a, b) => a.l.localeCompare(b.l));
+
+  // Child (1:N) relations are lazy-loaded on first open of either picker (Relations or Rel filter).
+  const ensureChildRels = () => {
+    if (childRelsLoaded || !ent || !isLive) return;
+    setChildRelsLoaded(true);
+    bridge.getChildRelationships(ent.l).then(childRels => {
+      if (childRels && Array.isArray(childRels)) {
+        setLookups(prev => {
+          const seen = new Set(prev.map(l => l.navProperty));
+          const newRels = childRels.filter(l => l.navProperty && !seen.has(l.navProperty)).map(l => ({ ...l, type: "collection" }));
+          return [...prev, ...newRels];
+        });
+      }
+    }).catch(() => {});
+  };
+
   const addExpand = async (lookup) => {
     if (expands.find(x => x.navProperty === lookup.navProperty)) return;
     setLoadingExpand(lookup.navProperty);
     try {
       const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
-      const mapped = (targetFields || [])
-        .map(f => ({
-          l: f.logical || f.l,
-          d: f.display || f.d || f.logical || f.l,
-          t: f.type || f.t || "String",
-          cust: !!((f.isCustom || f.cust) && isTrulyCustom(f.logical || f.l)),
-          odata: f.odataName || f.logical || f.l,
-        }))
-        .sort((a, b) => a.l.localeCompare(b.l));
+      const mapped = mapTargetFields(targetFields);
       const commonNames = ["name","fullname","title","subject","accountnumber","emailaddress1","internalemailaddress","telephone1","new_sapid","new_externalid"];
       const auto = mapped.filter(f => commonNames.includes(f.l)).map(f => f.l);
       setExpands(prev => [...prev, {
@@ -256,6 +295,30 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const setExpandLogic = (navProperty, conditionLogic) => {
     setExpands(prev => prev.map(ex => ex.navProperty === navProperty ? { ...ex, conditionLogic } : ex));
   };
+
+  const addRelFilter = async (lookup) => {
+    if (relFilters.find(x => x.navProperty === lookup.navProperty)) return;
+    setLoadingRel(lookup.navProperty);
+    try {
+      const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
+      setRelFilters(prev => [...prev, {
+        navProperty: lookup.navProperty,
+        targetEntity: lookup.targetEntity,
+        lookupField: lookup.lookupField,
+        type: lookup.type === "collection" ? "collection" : "single",
+        mode: "any",             // collection only: any = "has at least one", none = "has none"
+        conditions: [{ field: "", op: "eq", value: "" }],
+        conditionLogic: "and",
+        allFields: mapTargetFields(targetFields),
+      }]);
+      setShowRelPicker(false);
+    } catch (e) {
+      setError(`Relation filter ${lookup.targetEntity}: ${e.message}`);
+    }
+    setLoadingRel("");
+  };
+  const removeRelFilter = (navProperty) => setRelFilters(prev => prev.filter(x => x.navProperty !== navProperty));
+  const updateRelFilter = (navProperty, patch) => setRelFilters(prev => prev.map(rf => rf.navProperty === navProperty ? { ...rf, ...patch } : rf));
 
   const debouncedEs = useDebounce(es, 150);
   const filtered=entities.filter(e=>e.d.toLowerCase().includes(debouncedEs.toLowerCase())||e.l.includes(debouncedEs.toLowerCase())).sort((a,b)=>{const aB=bookmarks.includes(a.l)?0:1;const bB=bookmarks.includes(b.l)?0:1;return aB-bB||a.d.localeCompare(b.d);});
@@ -341,6 +404,35 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     });
   };
 
+  // Relational filters → OData clauses that filter ROOT rows by related records.
+  // Parent (N:1): nav/field op value (Dataverse supports single-valued nav paths one level deep —
+  // buildFilter is reused with the field's odata name prefixed by the nav property, so contains()/
+  // GUID/type quoting rules all apply unchanged). Child (1:N): nav/any(o: conds) lambda, or a pure
+  // existence test nav/any() when no condition is set; mode "none" negates with not.
+  const buildRelFilterClauses = () => {
+    const parts = [];
+    for (const rf of relFilters) {
+      const active = (rf.conditions || []).filter(c => c.field && (c.value || c.op === "is_null" || c.op === "is_not_null"));
+      if (rf.type === "collection") {
+        const neg = rf.mode === "none" ? "not " : "";
+        if (active.length) {
+          const lambdaFields = rf.allFields.map(f => ({ ...f, odata: `o/${f.odata}` }));
+          const conds = active.map(c => buildFilter(c.field, c.op, c.value, lambdaFields));
+          const inner = conds.length === 1 ? conds[0] : conds.join(` ${rf.conditionLogic || "and"} `);
+          parts.push(`${neg}${rf.navProperty}/any(o:${inner})`);
+        } else {
+          parts.push(`${neg}${rf.navProperty}/any()`); // existence only: has children / has none
+        }
+      } else {
+        if (!active.length) continue; // a parent filter with no condition filters nothing
+        const navFields = rf.allFields.map(f => ({ ...f, odata: `${rf.navProperty}/${f.odata}` }));
+        const conds = active.map(c => buildFilter(c.field, c.op, c.value, navFields));
+        parts.push(conds.length === 1 ? conds[0] : `(${conds.join(` ${rf.conditionLogic || "and"} `)})`);
+      }
+    }
+    return parts;
+  };
+
   const buildGroupFilter = () => {
     const groupParts = filterGroups.map(g => {
       const active = g.conditions.filter(c => c.field && (c.value || c.op === "is_null" || c.op === "is_not_null"));
@@ -349,8 +441,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if (parts.length === 1) return parts[0];
       return `(${parts.join(` ${g.logic} `)})`;
     }).filter(Boolean);
-    if (!groupParts.length) return "";
-    return groupParts.join(` ${groupLogic} `);
+    const gf = groupParts.length ? groupParts.join(` ${groupLogic} `) : "";
+    const rel = buildRelFilterClauses();
+    if (!rel.length) return gf;
+    if (!gf) return rel.join(" and ");
+    // Relational clauses are ANDed with the WHERE groups. Parenthesize the group side when several
+    // groups are OR-joined — OData's "and" binds tighter than "or", so "A or B and rel" would
+    // silently become "A or (B and rel)".
+    return `${groupParts.length > 1 ? `(${gf})` : gf} and ${rel.join(" and ")}`;
   };
 
   const fetchAbort = useRef(false);
@@ -994,6 +1092,82 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                 })}
               </div>
 
+              {/* ── REL — filter root rows by RELATED records (Advanced-Find-style) ── */}
+              <div style={{display:"flex",alignItems:"flex-start",gap:5,flexDirection:"column"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:12,color:C.gn,fontWeight:700,minWidth:44,...mono}}>REL</span>
+                  {relFilters.length>0&&!showRelPicker&&(
+                    <div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>
+                      {relFilters.map(rf=>(
+                        <span key={rf.navProperty} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 7px",background:C.gn+"22",border:`1px solid ${C.gn}44`,borderRadius:3,fontSize:12,color:C.gn}}>
+                          {rf.type==="collection"?`${rf.mode==="none"?"∄":"∃"} ${rf.targetEntity}`:`${rf.lookupField}→${rf.targetEntity}`}
+                          <button onClick={()=>removeRelFilter(rf.navProperty)} style={{background:"none",border:"none",color:C.gn,cursor:"pointer",padding:0,lineHeight:1,fontSize:12}}>✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={()=>{const opening=!showRelPicker;setShowRelPicker(opening);setRelSearch("");if(opening)ensureChildRels();}} disabled={lookups.length===0&&!showRelPicker} style={{padding:"3px 10px",background:showRelPicker?C.gn+"33":"transparent",border:`1px ${showRelPicker?"solid":"dashed"} ${showRelPicker?C.gn:C.bd}`,borderRadius:3,color:showRelPicker?C.gn:C.txd,cursor:lookups.length||showRelPicker?"pointer":"default",fontSize:12,display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
+                    {showRelPicker?<I.X/>:<I.Link/>} {showRelPicker?"Close":"+ Relation filter"}
+                  </button>
+                  {relFilters.length===0&&!showRelPicker&&<span style={{fontSize:11,color:C.txd}}>filter rows by parent / child records — "accounts with no open opportunity"</span>}
+                </div>
+
+                {showRelPicker&&(
+                  <div style={{marginLeft:bp.mobile?0:50,width:bp.mobile?"100%":"calc(100% - 50px)"}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:relFilters.length?8:0}}>
+                      <input value={relSearch} onChange={e=>setRelSearch(e.target.value)} placeholder="🔍 Search relations (entity, field)..." style={inp({fontSize:12,padding:"5px 10px"})}/>
+                      {(()=>{
+                        const rs=debouncedRelSearch.toLowerCase();
+                        const matchRel=l=>!rs||l.lookupField?.toLowerCase().includes(rs)||l.targetEntity?.toLowerCase().includes(rs)||l.navProperty?.toLowerCase().includes(rs);
+                        const parentRels=lookups.filter(l=>l.type!=="collection"&&!relFilters.find(r2=>r2.navProperty===l.navProperty)&&matchRel(l));
+                        const childRels=lookups.filter(l=>l.type==="collection"&&!relFilters.find(r2=>r2.navProperty===l.navProperty)&&matchRel(l));
+                        return <>
+                          {parentRels.length>0&&(
+                            <div>
+                              <div style={{fontSize:10,color:C.txd,fontWeight:600,marginBottom:3,textTransform:"uppercase",letterSpacing:".5px"}}>↑ Condition on the parent (N→1) — {parentRels.length}</div>
+                              <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:8,background:C.bg,borderRadius:6,border:`1px solid ${C.bd}`,maxHeight:100,overflow:"auto"}}>
+                                {parentRels.map(l=>(
+                                  <button key={l.navProperty} onClick={()=>addRelFilter(l)} disabled={loadingRel===l.navProperty} style={{padding:"4px 10px",background:C.sfh,border:`1px solid ${C.bd}`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:4}}>
+                                    {loadingRel===l.navProperty?<Spin s={10}/>:<I.Link/>}
+                                    <span style={{color:C.or,...mono,fontSize:11}}>{l.lookupField}</span>
+                                    <span style={{color:C.txd}}>→</span>
+                                    <span style={{color:C.cy,fontSize:11}}>{l.targetEntity}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {childRels.length>0&&(
+                            <div>
+                              <div style={{fontSize:10,color:C.txd,fontWeight:600,marginBottom:3,textTransform:"uppercase",letterSpacing:".5px"}}>↓ Has / has no children (1→N) — {childRels.length}</div>
+                              <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:8,background:C.bg,borderRadius:6,border:`1px solid ${C.gn}33`,maxHeight:100,overflow:"auto"}}>
+                                {childRels.map(l=>(
+                                  <button key={l.navProperty} onClick={()=>addRelFilter(l)} disabled={loadingRel===l.navProperty} style={{padding:"4px 10px",background:C.sfh,border:`1px solid ${C.gn}44`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:4}}>
+                                    {loadingRel===l.navProperty?<Spin s={10}/>:<I.Link/>}
+                                    <span style={{color:C.cy,...mono,fontSize:11}}>{l.targetEntity}</span>
+                                    <span style={{color:C.txd}}>←</span>
+                                    <span style={{color:C.or,fontSize:11}}>{l.lookupField}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {parentRels.length===0&&childRels.length===0&&(
+                            <span style={{color:C.txd,fontSize:12,padding:4}}>{relSearch?"No relations found":"All relations added"}</span>
+                          )}
+                        </>;
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {relFilters.length>0&&(
+                  <div style={{marginLeft:bp.mobile?0:50,width:bp.mobile?"100%":"calc(100% - 50px)"}}>
+                    {relFilters.map(rf=>(<RelFilterCard key={rf.navProperty} rf={rf} onUpdate={updateRelFilter} onRemove={removeRelFilter} bp={bp}/>))}
+                  </div>
+                )}
+              </div>
+
               {/* ── EXPAND — join parent entities ── */}
               <div style={{display:"flex",alignItems:"flex-start",gap:5,flexDirection:"column"}}>
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -1012,18 +1186,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                     const opening = !showExpandPicker;
                     setShowExpandPicker(opening);
                     setExpandSearch("");
-                    if(opening && !childRelsLoaded && ent && isLive) {
-                      setChildRelsLoaded(true);
-                      bridge.getChildRelationships(ent.l).then(childRels => {
-                        if(childRels && Array.isArray(childRels)) {
-                          setLookups(prev => {
-                            const seen = new Set(prev.map(l => l.navProperty));
-                            const newRels = childRels.filter(l => l.navProperty && !seen.has(l.navProperty)).map(l => ({...l, type: "collection"}));
-                            return [...prev, ...newRels];
-                          });
-                        }
-                      }).catch(() => {});
-                    }
+                    if(opening) ensureChildRels();
                   }} disabled={lookups.length===0} style={{padding:"3px 10px",background:showExpandPicker?C.or+"33":"transparent",border:`1px ${showExpandPicker?"solid":"dashed"} ${showExpandPicker?C.or:C.bd}`,borderRadius:3,color:showExpandPicker?C.or:C.txd,cursor:lookups.length?"pointer":"default",fontSize:12,display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
                     {showExpandPicker?<I.X/>:<I.Link/>} {showExpandPicker?"Close":"Relations"}
                   </button>
