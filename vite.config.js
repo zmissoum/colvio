@@ -21,4 +21,10 @@ export default defineConfig({
     sourcemap: false,
     target: "es2020",
   },
+  test: {
+    // Only this checkout's tests. Without the exclude, Vitest also picks up STALE copies of the
+    // suite inside .claude/worktrees/* (session worktrees pinned to old branches), inflating the
+    // counts with duplicate old tests — and a stale test could fail a perfectly green build.
+    include: ["src/**/*.test.js"],
+  },
 });
