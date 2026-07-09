@@ -536,7 +536,7 @@ export const bridge = {
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
-          const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey });
+          const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey, bypassPlugins: opts.bypassPlugins, bypassAsyncLogic: opts.bypassAsyncLogic });
           if (r?.aborted) { stopped = true; agg.aborted = true; }
           agg.deleted += r?.deleted || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
@@ -659,12 +659,18 @@ export const bridge = {
 
   async getLoginEvents(from, to, cap) {
     if (isExtension) return callD365("getLoginEvents", { from, to, cap });
-    // Demo: synthetic logins over the last 30 days for a few users (matches getAllUsers demo ids).
+    // Demo: synthetic logins over the last 30 days for a few users (matches getAllUsers demo ids),
+    // clipped to the requested window like the live server would — otherwise a 7-day preset shows
+    // 30 days of totals under a 7-day chart.
     const now = Date.now(), ids = ["u1", "u2", "u3", "u5", "u8"], names = ["Zakaria Missoum", "Marie Martin", "Alex Baker", "Lucas Moreau", "Pierre Bernard"];
+    const fromT = from ? new Date(from).getTime() : -Infinity, toT = to ? new Date(to).getTime() : Infinity;
     const events = [];
     for (let d = 0; d < 30; d++) for (let k = 0; k < ids.length; k++) {
       const per = [5, 3, 1, 2, 4][k]; // different activity levels
-      for (let j = 0; j < per; j++) if ((d + j + k) % 2 === 0) events.push({ date: new Date(now - d * 86400000 - j * 3600000).toISOString(), userId: ids[k], userName: names[k] });
+      for (let j = 0; j < per; j++) {
+        const ts = now - d * 86400000 - j * 3600000;
+        if ((d + j + k) % 2 === 0 && ts >= fromT && ts <= toT) events.push({ date: new Date(ts).toISOString(), userId: ids[k], userName: names[k] });
+      }
     }
     return { events, capped: false };
   },

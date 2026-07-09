@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.93] — 2026-07-09
+### Fixed — code-review pass over 1.11.83 → 1.11.92 (3 agents + manual review; 9 findings, all fixed)
+- **Loader: speed boosters now really apply to DELETE mode.** The boosters card was shown and toggleable in delete mode, but the bypass headers were never sent with deletes — a silent no-op. Bulk deletes now carry the same doc-verified bypass headers ($batch sub-requests AND the serial fallback), and the "boosters on" warning shows in delete mode too.
+- **Loader: a file that parses to nothing is now said out loud.** A CSV whose header line contains an unclosed quote collapses to <2 rows and used to be silently ignored — the Mapping step kept showing the PREVIOUS file's data under the new file's name. A red banner now names the file, explains the likely stray quote, and warns that the table below still shows the previous file.
+- **Loader: the pre-flight "D365 record example" now mirrors the run exactly.** Three drifts fixed: an empty cell previewed as sent/cleared (the run omits it — only the NULL token clears); Migration-mode fields previewed under their raw names (the run remaps createdon → overriddencreatedon etc.); an empty lookup cell previewed as a fabricated `@odata.bind` (the run skips the binding).
+- **Security Audit org-wide view: leaving the tab now stops the scan.** Switching modules mid-scan used to leave orphaned workers hammering the API to completion, and coming back started a second full scan alongside them (doubling the intended concurrency).
+- **Security Audit org-wide view: failed roles are no longer silently missing.** A role whose privilege fetch fails is now reported in a red banner ("N roles failed to load — results below are INCOMPLETE") with a Retry button, instead of quietly disappearing from a view an auditor might read as a verified negative. The "No role grants X" empty-state no longer shows when data is missing.
+- **Security Audit org-wide view: no partial exports.** CSV/Excel are disabled during the scan (a mid-scan export produced a partial file indistinguishable from a complete one); the progress counter now counts completed fetches, not claimed ones.
+- **Adoption: role-filter race fixed.** Picking a role then switching back to "All" (or to another role) before its member list arrived could silently leave the OLD role's filter applied to the KPIs and table. In-flight results for a role you've navigated away from are now discarded.
+- **Adoption: "results capped" no longer cries wolf.** The warning fired when the window's login count landed exactly on the fetch cap even though everything was retrieved; it now fires only when rows were actually left on the server.
+- **Adoption (demo mode): synthetic logins now respect the selected window** — the 7-day preset used to chart 7 days while the KPIs counted 30.
+
 ## [1.11.92] — 2026-07-09
 ### Performance
 - **Adoption filters are now snappy on big orgs.** Switching the security-role or business-unit filter used to re-scan every login event (up to 300k) to recompute the KPIs, chart and table — a visible lag. The aggregation is split in two: a heavy pass that buckets + rolls events up per user runs **once per window**, and the filter change now only reduces over users (a few thousand at most), re-summing pre-computed per-bucket counts. Same numbers, near-instant. (The security-role filter still does one cached Dataverse lookup the first time a given role is picked — that round-trip is network-bound.)

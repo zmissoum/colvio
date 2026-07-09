@@ -111,9 +111,14 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [orgSearch, setOrgSearch] = useState("");
   const [orgGroup, setOrgGroup] = useState("role");    // role | entity
   const [orgScan, setOrgScan] = useState(null);        // {done,total} while scanning
+  const [orgFailed, setOrgFailed] = useState([]);      // role names whose privilege fetch failed — view is incomplete
   const [, setOrgScanned] = useState(0);               // bump-only: re-render as the cache fills
   const orgCache = useRef(new Map());                  // roleId -> entities[] from getRolePrivilegeMatrix
   const orgGen = useRef(0);
+  // Stop an in-flight org scan when the module unmounts (tab switch) — otherwise the orphaned
+  // workers keep hammering the API to completion into a dead cache, and coming back starts a
+  // SECOND full scan alongside them (doubling the intended concurrency).
+  useEffect(() => () => { orgGen.current++; }, []);
   const [privView, setPrivView] = useState("list");   // list | matrix (make.powerapps-style grid)
   const [matrix, setMatrix] = useState(null);          // { entities:[{entity,ops}], misc:[{name,depth}] }
   const [loadingMatrix, setLoadingMatrix] = useState(false);
@@ -402,23 +407,26 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const scanAllRoles = async () => {
     const gen = ++orgGen.current;
     const todo = roles.filter(r => !orgCache.current.has(r.id));
+    setOrgFailed([]);
     if (!todo.length) return;
     setOrgScan({ done: roles.length - todo.length, total: roles.length });
-    let idx = 0;
+    let idx = 0, completed = 0;
+    const failed = [];
     const worker = async () => {
       while (idx < todo.length) {
-        if (orgGen.current !== gen) return; // view closed / role selected — stop scanning
+        if (orgGen.current !== gen) return; // view closed / role selected / unmounted — stop scanning
         const role = todo[idx++];
         try { const m = await bridge.getRolePrivilegeMatrix(role.id); orgCache.current.set(role.id, m?.entities || []); }
-        catch { /* leave uncached — a Rescan can retry it */ }
-        if (orgGen.current === gen) { setOrgScan({ done: Math.min(roles.length, roles.length - todo.length + idx), total: roles.length }); setOrgScanned(n => n + 1); }
+        catch { failed.push(role.name); } // left uncached — surfaced below + "Retry failed" re-scans them
+        completed++; // progress counts COMPLETED fetches, not claimed ones
+        if (orgGen.current === gen) { setOrgScan({ done: Math.min(roles.length, roles.length - todo.length + completed), total: roles.length }); setOrgScanned(n => n + 1); }
       }
     };
     await Promise.all(Array.from({ length: Math.min(3, todo.length) }, worker));
-    if (orgGen.current === gen) setOrgScan(null);
+    if (orgGen.current === gen) { setOrgScan(null); setOrgFailed(failed); }
   };
   const openOrgView = () => { setOrgView(true); scanAllRoles(); };
-  const closeOrgView = () => { orgGen.current++; setOrgScan(null); setOrgView(false); };
+  const closeOrgView = () => { orgGen.current++; setOrgScan(null); setOrgFailed([]); setOrgView(false); };
 
   // Role-grouped rows for the current op/depth/search — entity-grouped view derives from these.
   const orgRows = useMemo(() => {
@@ -513,8 +521,8 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                   ))}
                 </div>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => exportOrgCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV</button>
-                <button onClick={() => exportOrgCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
+                <button onClick={() => exportOrgCSV("csv")} disabled={!!orgScan} title={orgScan ? "Scan in progress — the export would be partial" : undefined} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: orgScan ? 0.5 : 1 })}><I.Download /> CSV</button>
+                <button onClick={() => exportOrgCSV("xlsx")} disabled={!!orgScan} title={orgScan ? "Scan in progress — the export would be partial" : undefined} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: orgScan ? 0.5 : 1 })}><I.Download /> Excel</button>
               </div>
               {orgScan && (
                 <div style={{ marginTop: 10 }}>
@@ -522,9 +530,15 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                   <div style={{ height: 4, background: C.bd, borderRadius: 2 }}><div style={{ height: 4, width: `${Math.round(orgScan.done / Math.max(1, orgScan.total) * 100)}%`, background: C.cy, borderRadius: 2, transition: "width .3s" }} /></div>
                 </div>
               )}
+              {!orgScan && orgFailed.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: C.rd, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span>⚠ {orgFailed.length} role{orgFailed.length > 1 ? "s" : ""} failed to load and {orgFailed.length > 1 ? "are" : "is"} missing from this view{orgFailed.length <= 5 ? ` (${orgFailed.join(", ")})` : ""} — results and exports below are INCOMPLETE.</span>
+                  <button onClick={scanAllRoles} style={bt(C.rd, { fontSize: 11, padding: "3px 10px" })}>Retry failed</button>
+                </div>
+              )}
               {feedback && <div style={{ fontSize: 11, color: C.gn, marginTop: 6 }}>{feedback}</div>}
             </div>
-            {!orgScan && orgRows.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No role grants "{orgOp}" at this depth{orgSearch ? " matching your filter" : ""}.</div>}
+            {!orgScan && orgRows.length === 0 && orgFailed.length === 0 && <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>No role grants "{orgOp}" at this depth{orgSearch ? " matching your filter" : ""}.</div>}
             {orgGroup === "role" && orgRows.map(g => (
               <div key={g.role.id} style={{ ...crd({ padding: "10px 14px" }), marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>

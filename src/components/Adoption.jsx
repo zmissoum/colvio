@@ -82,17 +82,20 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     // eslint-disable-next-line
   }, [windowRange.from, windowRange.to]);
 
-  // Role filter → fetch (and cache) the role's members across every BU copy.
+  // Role filter → fetch (and cache) the role's members across every BU copy. Guarded by its OWN
+  // generation counter: switching role (or back to "All") mid-fetch must DISCARD the stale result —
+  // the window `gen` doesn't change on role switches, so it can't catch this race.
+  const roleGen = useRef(0);
   useEffect(() => {
-    if (!roleFilter) { setRoleMembers(null); return; }
-    if (roleMemberCache.current.has(roleFilter)) { setRoleMembers(roleMemberCache.current.get(roleFilter)); return; }
-    const g = gen.current;
+    const rg = ++roleGen.current;
+    if (!roleFilter) { setRoleMembers(null); setLoadingMembers(false); return; }
+    if (roleMemberCache.current.has(roleFilter)) { setRoleMembers(roleMemberCache.current.get(roleFilter)); setLoadingMembers(false); return; }
     setLoadingMembers(true);
     bridge.getRoleUsers(roleFilter).then(list => {
       const set = new Set((list || []).map(u => String(u.id).toLowerCase()));
-      roleMemberCache.current.set(roleFilter, set);
-      if (gen.current === g) setRoleMembers(set);
-    }).catch(() => { if (gen.current === g) setRoleMembers(new Set()); }).finally(() => setLoadingMembers(false));
+      roleMemberCache.current.set(roleFilter, set); // cache even if stale — instant on next pick
+      if (roleGen.current === rg) { setRoleMembers(set); setLoadingMembers(false); }
+    }).catch(() => { if (roleGen.current === rg) { setRoleMembers(new Set()); setLoadingMembers(false); } });
   }, [roleFilter]);
 
   // Per-user metadata (BU + name + disabled), keyed by lowercase id.

@@ -918,6 +918,17 @@
             if (!ctx) throw new Error("D365 context not found");
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
 
+            // Speed boosters apply to DELETE too — sync plug-ins and async logic fire on deletes
+            // as well. Same tri-state mapping as batchCreate/batchUpsert; no SuppressDuplicateDetection
+            // here (duplicate detection doesn't apply to deletes).
+            const bypassPairsD = [
+              params.bypassPlugins && params.bypassAsyncLogic ? ["MSCRM.BypassBusinessLogicExecution", "CustomSync,CustomAsync"] : null,
+              params.bypassPlugins && !params.bypassAsyncLogic ? ["MSCRM.BypassCustomPluginExecution", "true"] : null,
+              !params.bypassPlugins && params.bypassAsyncLogic ? ["MSCRM.BypassBusinessLogicExecution", "CustomAsync"] : null,
+            ].filter(Boolean);
+            const bypassHeaderLinesD = bypassPairsD.map(([k, v]) => `${k}: ${v}\r\n`).join("");
+            const bypassHeaderObjD = bypassPairsD.length ? Object.fromEntries(bypassPairsD) : null;
+
             const stripCtrl = (v) => String(v ?? "").replace(/[\x00-\x1f\x7f]/g, "");
             const buildPath = (item) => {
               if (isPrimaryKey) {
@@ -962,7 +973,7 @@
                 body += "--" + csName + "\r\n";
                 body += "Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n";
                 body += "Content-ID: " + (batch + i + 1) + "\r\n\r\n";
-                body += "DELETE " + baseUrl + "/" + path + " HTTP/1.1\r\n\r\n";
+                body += "DELETE " + baseUrl + "/" + path + " HTTP/1.1\r\n" + bypassHeaderLinesD + "\r\n";
                 body += "--" + csName + "--\r\n";
               }
               body += "--" + boundary + "--\r\n";
@@ -997,7 +1008,7 @@
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
                     if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
-                    try { await dvRequest("DELETE", buildPath(chunk[i])); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
+                    try { await dvRequest("DELETE", buildPath(chunk[i]), null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                     catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                   }
                 }
@@ -1005,7 +1016,7 @@
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
                   if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
-                  try { await dvRequest("DELETE", buildPath(chunk[i])); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
+                  try { await dvRequest("DELETE", buildPath(chunk[i]), null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                   catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                 }
               }
@@ -1169,7 +1180,9 @@
             const capL = Math.min(Math.max(parseInt(params.cap, 10) || 100000, 1), 300000);
             let urlL = `audits?$select=createdon,_objectid_value&$filter=action eq 64${fromD ? ` and createdon ge ${fromD}` : ""}${toD ? ` and createdon le ${toD}` : ""}&$orderby=createdon desc`;
             const events = [];
-            while (urlL && events.length < capL) {
+            let moreL = false; // capped = we STOPPED with data still on the server, not "row count == cap"
+            while (urlL) {
+              if (events.length >= capL) { moreL = true; break; }
               const dL = await dvRequest("GET", urlL, null, { Prefer: "odata.maxpagesize=5000" });
               (dL.value || []).forEach(a => events.push({
                 date: a.createdon,
@@ -1177,9 +1190,9 @@
                 userName: a["_objectid_value@OData.Community.Display.V1.FormattedValue"] || "",
               }));
               const nlL = dL["@odata.nextLink"];
-              urlL = (nlL && events.length < capL) ? nlL.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              urlL = nlL ? nlL.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
             }
-            result = { events: events.slice(0, capL), capped: events.length >= capL };
+            result = { events: events.slice(0, capL), capped: moreL || events.length > capL };
             break;
           }
 

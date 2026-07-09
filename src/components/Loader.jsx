@@ -48,13 +48,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const rawLines=(text.match(/\n/g)||[]).length+1;
     let maxNl=0,maxNlRow=0;
     aoa.forEach((arr,i)=>arr.forEach(f=>{const n=(String(f??"").match(/\n/g)||[]).length;if(n>maxNl){maxNl=n;maxNlRow=i;}}));
+    // A file that parses to <2 rows (header only, or ONE giant row when an unclosed quote in the
+    // header swallowed everything) is silently ignored by ingestAoa — flag it so the user isn't
+    // left staring at the previous file's data under the new file's name.
+    if(!ingestAoa(aoa)){setParseInfo({rawLines,maxNl,maxNlRow,badParse:true,parsedRecords:Math.max(0,aoa.length-1)});return;}
     setParseInfo({rawLines,maxNl,maxNlRow});
-    ingestAoa(aoa);
   };
 
   // Build the working dataset + auto-mapping from a parsed array-of-arrays (CSV text or an XLSX sheet).
+  // Returns false when there's nothing to ingest (<2 rows) — callers surface that instead of silence.
   const ingestAoa=(aoa)=>{
-    if(!aoa||aoa.length<2)return;
+    if(!aoa||aoa.length<2)return false;
     const headers=(aoa[0]||[]).map(h=>String(h==null?"":h).trim().replace(/^\uFEFF/,""));
     // .trim() every value: stray spaces around delimiters ("a, b") would otherwise leak into
     // upsert keys (' A001' → no match → duplicate created), lookup GUIDs and field values; a
@@ -138,6 +142,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       }
     });
     setLookups(lks);setTemplateNote("");setShowTemplates(false);setDeleteConfirm("");setStep(1);
+    return true;
   };
 
   const handleFile=(e)=>{
@@ -156,8 +161,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const wb=XLSX.read(ev.target.result,{type:"array"});
           const ws=wb.Sheets[wb.SheetNames[0]];
           const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
+          if(!ingestAoa(aoa)){setParseInfo({rawLines:0,maxNl:0,maxNlRow:0,badParse:true,parsedRecords:Math.max(0,(aoa?.length||0)-1)});return;}
           setParseInfo(null); // line-count diagnostics are CSV-only (no "lines" in a sheet)
-          ingestAoa(aoa);
         }catch(err){ setCsvData({h:[],r:[]}); setCsvFile(null); }
       } else parseData(ev.target.result);
     };
@@ -812,7 +817,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const res=await bridge.batchDeleteKeyed(entitySetD,uKey.d,deleteItems,isPKD,p=>{
             setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Deleting records ${p.done}/${p.total}...`});
             pushBatchLog(p.newLog,deleteRowMap,rows);
-          },()=>loadAbort.current,{chunk:batchSize,concurrency:threads});
+          },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
           deleted=res.deleted||0;
           if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
           if(res.aborted){const remaining=deleteItems.length-deleted;logEntries.push({row:0,status:"CANCELLED",detail:`Cancelled — ${remaining} records not processed`,d365Id:""});}
@@ -1237,6 +1242,13 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
 
       {step===1&&(
         <div>
+          {parseInfo?.badParse&&(
+            <div style={{...crd({padding:"10px 14px",background:C.rd+"0c",borderColor:C.rd+"55"}),marginBottom:12,fontSize:12.5,lineHeight:1.6,color:C.rd}}>
+              ⚠ <b>{csvFile?.name||"The file"}</b> parsed into {parseInfo.parsedRecords} data row{parseInfo.parsedRecords===1?"":"s"} — <b>nothing was loaded from it</b>.
+              {parseInfo.rawLines>2&&<> The file has {parseInfo.rawLines.toLocaleString()} lines, so a stray <b>unclosed quote (")</b> in the header or first line probably swallowed the rest into one giant cell — fix it in the source file and reload.</>}
+              {csvData.r.length>0&&<> The mapping below still shows your <b>previous</b> file's data.</>}
+            </div>
+          )}
           <div style={{display:"flex",gap:10,marginBottom:12,flexDirection:bp.mobile?"column":"row"}}>
             <div style={{...crd({padding:12}),flex:1}}>
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Target D365 entity</label>
@@ -1380,7 +1392,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 quoted line breaks inside cells (multiline/HTML) are the usual, legitimate reason.
                 A single field holding hundreds of line breaks is the unclosed-quote signature:
                 everything after it was swallowed into one cell, i.e. the file tail wasn't imported. */}
-            {parseInfo&&csvData.r.length>0&&parseInfo.rawLines>csvData.r.length*1.3+10&&(
+            {parseInfo&&!parseInfo.badParse&&csvData.r.length>0&&parseInfo.rawLines>csvData.r.length*1.3+10&&(
               <div style={{padding:"8px 12px",fontSize:11.5,lineHeight:1.6,color:C.txm,background:(parseInfo.maxNl>200?C.rd:C.yw)+"0c",borderBottom:`1px solid ${(parseInfo.maxNl>200?C.rd:C.yw)}44`}}>
                 {parseInfo.maxNl>200
                   ?<span style={{color:C.rd}}>⚠ Your file has <b>{parseInfo.rawLines.toLocaleString()}</b> lines but parsed into only <b>{csvData.r.length.toLocaleString()}</b> records — and one field around record <b>{parseInfo.maxNlRow.toLocaleString()}</b> contains {parseInfo.maxNl.toLocaleString()} line breaks. That is the signature of an <b>unclosed quote (")</b>: everything after it was swallowed into a single cell and will NOT be imported. Fix the stray quote near that row in the source file, then reload.</span>
@@ -1539,7 +1551,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 : mode==="update"
                 ? <>Will <b style={{color:C.or}}>UPDATE {n.toLocaleString()}</b> existing record{n>1?"s":""} in <b>{entDisplay}</b> matched on <code style={{...mono,fontSize:12,color:C.or}}>{uKey.d}</code> — rows with <b>no matching record fail</b> (nothing is created).</>
                 : <>Will <b style={{color:C.gn}}>CREATE {n.toLocaleString()}</b> new record{n>1?"s":""} in <b>{entDisplay}</b>.</>}
-              {mode!=="delete"&&canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassAsyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
+              {canShowSpeedBoosters&&(bypassPlugins||suppressDuplicates||bypassAsyncLogic)&&<span style={{color:C.or}}> · ⚠ server-side logic bypassed (boosters on)</span>}
             </div>);
           })()}
 
@@ -1586,15 +1598,28 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           <div style={{...crd({padding:12}),marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>D365 record example</div>
             <pre style={{...inp({...mono,color:C.cy,fontSize:12,padding:10,overflow:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}),margin:0}}>
-{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.filter(m=>m.d365&&!m.skip).forEach(m=>{const rv=row[m.csv]||"";
-  // Mirror what the run will actually send: NULL token → null, then the column's TRANSFORM applied
-  // (a "No" with the boolean transform must preview as false, not as the raw string). Option-set
-  // labels can't resolve before the run loads the option maps — annotate instead of showing null.
-  if(isNullToken(rv)){rec[m.d365]=null;return;}
-  if(!m.transform){rec[m.d365]=rv;return;}
-  const t=applyTransform(rv,m.transform,optionMapsRef.current?.[m.d365],dateMD);
-  rec[m.d365]=(t===null&&String(rv).trim()!==""&&(m.transform==="picklist"||m.transform==="statecode"))?`${rv} → (option value resolved at run time)`:t;
-});lookups.forEach(lk=>{if(lk.nav&&lk.csv){const nav=canonNav(lk.nav);const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";if(isNullToken(val)){rec[nav]=null;}else if(lk.mode==="direct"&&val){rec[`${nav}@odata.bind`]=`/${es}(${val})`;}else if(isAltKeyBind(lk)){const v=val?String(val).replace(/'/g,"''"):"value";rec[`${nav}@odata.bind`]=`/${es}(${lk.d365f}='${v}')`;}else{rec[`${nav}@odata.bind`]=`/${es}(<GUID>)`;}}});return rec;})(),null,2)}
+{JSON.stringify((() => {const row=csvData.r[0]||{};const rec={};maps.forEach(m=>{if(!m.d365||m.skip)return;
+  // Mirror the RUN exactly (same rules as buildRequestForRow/doLoad): system fields dropped, EMPTY
+  // cells OMITTED (empty ≠ clear — only the NULL token clears), the column's transform applied
+  // (a "No" with the boolean transform must preview as false), migration fields remapped like the
+  // run. Option-set labels can't resolve before the run loads the option maps — annotate instead.
+  if(isSystemField(m.d365))return;
+  const rawVal=row[m.csv];
+  if(rawVal===undefined||rawVal===null||rawVal==="")return;
+  const lc=m.d365.toLowerCase();
+  if(isNullToken(rawVal)){if(!(migrationActive&&MIGRATION_FIELDS.includes(lc)))rec[m.d365]=null;return;}
+  const val=m.transform?applyTransform(rawVal,m.transform,optionMapsRef.current?.[m.d365],dateMD):rawVal;
+  const shown=(val===null&&String(rawVal).trim()!==""&&(m.transform==="picklist"||m.transform==="statecode"))?`${rawVal} → (option value resolved at run time)`:val;
+  if(shown===null||shown===undefined||shown==="")return;
+  if(migrationActive&&MIGRATION_FIELDS.includes(lc))emitMigrationField(rec,lc,shown);
+  else rec[m.d365]=shown;
+});lookups.forEach(lk=>{if(!lk.csv||!lk.nav)return;const nav=canonNav(lk.nav);const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";
+  if(!val)return; // empty lookup cell → the run skips the binding entirely
+  if(isNullToken(val)){rec[nav]=null;return;}
+  if(lk.mode==="direct"){rec[`${nav}@odata.bind`]=`/${es}(${val})`;}
+  else if(isAltKeyBind(lk)){rec[`${nav}@odata.bind`]=`/${es}(${lk.d365f}='${String(val).replace(/'/g,"''")}')`;}
+  else{rec[`${nav}@odata.bind`]=`/${es}(<resolved at run time>)`;}
+});return rec;})(),null,2)}
             </pre>
           </div>
           <div style={{...crd({padding:12}),marginBottom:12}}>
