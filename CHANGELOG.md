@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.91] — 2026-07-09
+### Fixed
+- **Adoption custom range: no more bad-date crashes.** A native date field emits transient values (e.g. year `0020`) while you edit the year, which Dataverse rejected with *"DateTime is less than minimum value supported by CrmDateTime"* (HTTP 400). The custom window is now validated (well-formed, 2000–today, from ≤ to) before any query — an incomplete or out-of-bounds entry keeps the last good window instead of firing an illegal request, and shows an inline hint. The inputs are bounded with `min`/`max` and outlined red while invalid.
+- **Adoption custom range: click anywhere to open the calendar.** Clicking (or focusing) either date field now opens the native picker via `showPicker()`, instead of only the tiny calendar icon reacting.
+
 ## [1.11.90] — 2026-07-03
 ### Changed
 - **Adoption chart: pick the series.** A Both / Logins / Distinct users toggle above the trend chart. "Both" keeps login bars + the distinct-user line; picking a single series shows it as bars scaled to its own maximum so it fills the height.

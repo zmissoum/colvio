@@ -9,6 +9,11 @@ import { t } from "../i18n.js";
 // access" enabled; only sees rows still inside the org's audit retention.
 const DAY = 86400000;
 const isoDay = (d) => new Date(d).toISOString().slice(0, 10);
+// Dataverse (CrmDateTime) rejects dates before 1753-01-01; login audit can't predate ~2000 anyway.
+// A native <input type=date> will emit transient values like "0020-06-09" while the year is edited,
+// so we validate before ever hitting the API.
+const MIN_ISO = "2000-01-01";
+const isValidDay = (s, todayISO) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + "T00:00:00Z").getTime()) && s >= MIN_ISO && s <= todayISO;
 
 export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const isLive = orgInfo?.isExtension;
@@ -30,13 +35,32 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [chartMetric, setChartMetric] = useState("both"); // both | logins | users
   const roleMemberCache = useRef(new Map());
   const gen = useRef(0);
+  const lastValidWin = useRef(null); // remembers the last well-formed window so a bad keystroke doesn't re-query
+  const todayISO = isoDay(Date.now());
+  // Whether the custom inputs currently hold a usable range (drives the inline hint + open the picker).
+  const customValid = preset !== "custom" || (isValidDay(customFrom, todayISO) && isValidDay(customTo, todayISO) && customFrom <= customTo);
+  const openPicker = (e) => { try { e.currentTarget.showPicker?.(); } catch { /* not user-activated / unsupported */ } };
 
   // Resolve the [from,to] ISO window from the preset (inclusive end of day for custom).
+  // When a custom entry is incomplete or out of bounds we KEEP the last valid window rather than
+  // querying Dataverse with an illegal date — that avoids the 400 (and a runaway bucket loop below).
   const windowRange = useMemo(() => {
     const now = Date.now();
-    if (preset === "custom") return { from: `${customFrom}T00:00:00Z`, to: `${customTo}T23:59:59Z`, days: Math.max(1, Math.round((new Date(customTo) - new Date(customFrom)) / DAY) + 1) };
+    if (preset === "custom") {
+      const valid = isValidDay(customFrom, todayISO) && isValidDay(customTo, todayISO) && customFrom <= customTo;
+      if (valid) {
+        const win = { from: `${customFrom}T00:00:00Z`, to: `${customTo}T23:59:59Z`, days: Math.max(1, Math.round((new Date(customTo) - new Date(customFrom)) / DAY) + 1), valid: true };
+        lastValidWin.current = win;
+        return win;
+      }
+      const base = lastValidWin.current || { from: new Date(now - 30 * DAY).toISOString(), to: new Date(now).toISOString(), days: 30 };
+      return { ...base, valid: false };
+    }
     const days = parseInt(preset, 10) || 30;
-    return { from: new Date(now - days * DAY).toISOString(), to: new Date(now).toISOString(), days };
+    const win = { from: new Date(now - days * DAY).toISOString(), to: new Date(now).toISOString(), days, valid: true };
+    lastValidWin.current = win;
+    return win;
+    // eslint-disable-next-line
   }, [preset, customFrom, customTo]);
 
   // Load login events whenever the WINDOW changes (role/BU filters are applied client-side, instant).
@@ -197,9 +221,10 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
           ))}
         </div>
         {preset === "custom" && <>
-          <input type="date" value={customFrom} max={customTo} onChange={e => setCustomFrom(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })} />
+          <input type="date" value={customFrom} min={MIN_ISO} max={customValid ? customTo : todayISO} onClick={openPicker} onFocus={openPicker} onChange={e => setCustomFrom(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px", ...(customValid ? {} : { borderColor: C.rd + "88" }) })} />
           <span style={{ color: C.txd }}>→</span>
-          <input type="date" value={customTo} min={customFrom} max={isoDay(Date.now())} onChange={e => setCustomTo(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })} />
+          <input type="date" value={customTo} min={customValid ? customFrom : MIN_ISO} max={todayISO} onClick={openPicker} onFocus={openPicker} onChange={e => setCustomTo(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px", ...(customValid ? {} : { borderColor: C.rd + "88" }) })} />
+          {!customValid && <span style={{ fontSize: 11, color: C.rd }}>Pick a valid range (from ≤ to, {MIN_ISO.slice(0, 4)}–today)</span>}
         </>}
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} style={inp({ width: "auto", maxWidth: 220, fontSize: 12, padding: "5px 8px" })}>
           <option value="">All security roles</option>
