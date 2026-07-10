@@ -1209,21 +1209,9 @@
             const ISO_S = /^\d{4}-\d{2}-\d{2}(T[0-9:.]+Z?)?$/; // guards both OData and FetchXML interpolation
             if (!params.from || !ISO_S.test(params.from) || !params.to || !ISO_S.test(params.to)) throw new Error("getLoginStatsSlice: invalid from/to");
             const fromS = params.from, toS = params.to;
-            try {
-              const fx = `<fetch aggregate="true"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="auditid" alias="n" aggregate="count"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="eq" value="64"/><condition attribute="createdon" operator="ge" value="${fromS}"/><condition attribute="createdon" operator="lt" value="${toS}"/></filter></entity></fetch>`;
-              const d = await dvRequest("GET", `audits?fetchXml=${encodeURIComponent(fx)}`);
-              const rows = (d.value || []).map(r => ({
-                userId: r.uid || "",
-                userName: r["uid@OData.Community.Display.V1.FormattedValue"] || "",
-                count: r.n || 0,
-                last: r.last || "",
-              }));
-              result = { rows, method: "aggregate" };
-            } catch (e) {
-              const msg = e?.message || "";
-              // Only the documented aggregate limits warrant the expensive fallback — anything else
-              // (403, session expired…) must surface to the caller as a failed slice.
-              if (!/AggregateQueryRecordLimit|8004E023|maximum record limit|aggregate/i.test(msg)) throw e;
+            // Exact-but-slower path: paged raw scan of the slice, aggregated here. Used when the
+            // aggregate result is truncated, errors, or blows the 50k AggregateQueryRecordLimit.
+            const scanSlice = async () => {
               const byU = new Map();
               let url = `audits?$select=createdon,_objectid_value&$filter=action eq 64 and createdon ge ${fromS} and createdon lt ${toS}`;
               while (url) {
@@ -1237,7 +1225,36 @@
                 const nl = dL["@odata.nextLink"];
                 url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
               }
-              result = { rows: [...byU.values()], method: "scan" };
+              return { rows: [...byU.values()], method: "scan" };
+            };
+            try {
+              // count=5000: audit is an ELASTIC table, whose default page size is 500 (not 5000) —
+              // without it the aggregate result was silently paged at 500 groups and the chart
+              // flat-lined at exactly 500 distinct users/day. <order alias> on the groupby column
+              // per the aggregate-data doc.
+              const fx = `<fetch aggregate="true" count="5000"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="auditid" alias="n" aggregate="count"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="eq" value="64"/><condition attribute="createdon" operator="ge" value="${fromS}"/><condition attribute="createdon" operator="lt" value="${toS}"/></filter><order alias="uid"/></entity></fetch>`;
+              const d = await dvRequest("GET", `audits?fetchXml=${encodeURIComponent(fx)}`);
+              const vals = d.value || [];
+              // ANY continuation signal — or a full page — means the aggregate was truncated by
+              // server paging: never trust it, take the exact scan instead.
+              const truncated = !!d["@Microsoft.Dynamics.CRM.fetchxmlpagingcookie"] || !!d["@odata.nextLink"] || d["@Microsoft.Dynamics.CRM.morerecords"] === true || vals.length >= 5000;
+              if (truncated) {
+                result = await scanSlice();
+              } else {
+                const rows = vals.map(r => ({
+                  userId: r.uid || "",
+                  userName: r["uid@OData.Community.Display.V1.FormattedValue"] || "",
+                  count: r.n || 0,
+                  last: r.last || "",
+                }));
+                result = { rows, method: "aggregate" };
+              }
+            } catch (e) {
+              const msg = e?.message || "";
+              // Auth/session problems must surface as a failed slice; any other aggregate hiccup
+              // (50k limit 8004E023, elastic quirks with count/order…) falls back to the exact scan.
+              if (/401|403|privilege|permission|expired/i.test(msg)) throw e;
+              result = await scanSlice();
             }
             break;
           }

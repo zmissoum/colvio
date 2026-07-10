@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.96] — 2026-07-10
+### Fixed — Adoption: distinct users no longer flat-line at 500 (elastic-table paging)
+- **The per-day aggregate was silently truncated at 500 users.** The audit table is an ELASTIC table, and elastic tables page results at 500 rows by default (standard tables: 5,000) — busy days showed exactly 500 distinct users and undercounted totals. The aggregate now requests a 5,000-row page (`count="5000"`), adds the `<order>` element the aggregate spec expects, and — belt and braces — treats ANY continuation signal (paging cookie, nextLink, morerecords, or a full page) as truncation and switches that day to the exact paged raw scan instead of trusting a partial aggregate.
+- Fallback logic inverted for safety: only auth/session errors surface as a failed day; any other aggregate hiccup (50k limit, elastic quirks) silently takes the exact scan path.
+
 ## [1.11.95] — 2026-07-10
 ### Changed — Adoption: exact totals on any audit volume (no more 100k cap)
 - **The login scan is now aggregated SERVER-SIDE, per day.** Instead of downloading every login event (capped at 100k — orgs with heavy traffic hit it in days), Colvio asks Dataverse for a per-user aggregate (count + last login) of each UTC day via FetchXML `aggregate` — the audit table supports it, and slicing by day keeps every query under Dataverse's 50,000-row aggregate limit (Microsoft's documented workaround: filter by date range, run multiple queries, combine). 30 days = 30 fast queries returning ~active-users rows each, whatever the volume.
