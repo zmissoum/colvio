@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getLoginEvents" || action === "getUsersByBu" || action === "getUserCountsByBu";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getLoginEvents" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -673,6 +673,71 @@ export const bridge = {
       }
     }
     return { events, capped: false };
+  },
+
+  // Login stats over a window, aggregated per user per UTC day — the scalable replacement for
+  // getLoginEvents. Slices the window into days, asks content.js for a SERVER-SIDE aggregate of
+  // each slice (per-user count + last login), and merges. Each daily aggregate scans well under
+  // Dataverse's 50k AggregateQueryRecordLimit on orgs with heavy audit; a day that exceeds it
+  // falls back to a paged scan of just that day (inside content.js). Only per-user/day totals
+  // travel — never raw events — so a 10M-row audit table costs (days × active users) rows here.
+  async getLoginStats(from, to, onProgress) {
+    const DAY = 86400000;
+    if (!isExtension) {
+      // Demo: same synthetic pattern as getLoginEvents, pre-aggregated per user/day, window-clipped.
+      const now = Date.now(), ids = ["u1", "u2", "u3", "u5", "u8"], names = ["Zakaria Missoum", "Marie Martin", "Alex Baker", "Lucas Moreau", "Pierre Bernard"];
+      const fromT = from ? new Date(from).getTime() : now - 30 * DAY, toT = to ? new Date(to).getTime() : now;
+      const users = new Map();
+      for (let d = 0; d < 30; d++) for (let k = 0; k < ids.length; k++) {
+        const per = [5, 3, 1, 2, 4][k];
+        for (let j = 0; j < per; j++) {
+          const ts = now - d * DAY - j * 3600000;
+          if ((d + j + k) % 2 !== 0 || ts < fromT || ts > toT) continue;
+          const iso = new Date(ts).toISOString(), day = iso.slice(0, 10);
+          let u = users.get(ids[k]);
+          if (!u) { u = { id: ids[k], name: names[k], total: 0, last: "", byDay: {} }; users.set(ids[k], u); }
+          u.total++; u.byDay[day] = (u.byDay[day] || 0) + 1; if (iso > u.last) u.last = iso;
+        }
+      }
+      return { users: [...users.values()], failedDays: [], sliceCount: 30 };
+    }
+    // UTC-midnight boundaries between from and to (end made exclusive by +1s — the custom picker
+    // sends T23:59:59Z, so +1s lands exactly on the next midnight).
+    const start = new Date(from).getTime(), endEx = new Date(to).getTime() + 1000;
+    const slices = [];
+    let cur = start;
+    while (cur < endEx) {
+      const nextMidnight = (Math.floor(cur / DAY) + 1) * DAY;
+      const sliceEnd = Math.min(nextMidnight, endEx);
+      slices.push({ from: new Date(cur).toISOString(), to: new Date(sliceEnd).toISOString(), day: new Date(cur).toISOString().slice(0, 10) });
+      cur = sliceEnd;
+    }
+    const users = new Map();
+    const failedDays = [];
+    let done = 0, idx = 0;
+    const worker = async () => {
+      while (idx < slices.length) {
+        const s = slices[idx++];
+        try {
+          const r = await callD365("getLoginStatsSlice", { from: s.from, to: s.to });
+          for (const row of (r?.rows || [])) {
+            if (!row.userId) continue;
+            let u = users.get(row.userId);
+            if (!u) { u = { id: row.userId, name: row.userName || "", total: 0, last: "", byDay: {} }; users.set(row.userId, u); }
+            u.total += row.count || 0;
+            u.byDay[s.day] = (u.byDay[s.day] || 0) + (row.count || 0);
+            if (row.last && row.last > u.last) u.last = row.last;
+            if (!u.name && row.userName) u.name = row.userName;
+          }
+        } catch (e) {
+          failedDays.push(s.day); // surfaced in the UI — totals must not silently exclude a day
+        }
+        done++;
+        onProgress?.({ done, total: slices.length });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, slices.length) }, () => worker()));
+    return { users: [...users.values()], failedDays, sliceCount: slices.length };
   },
 
   async getApiLimits() {

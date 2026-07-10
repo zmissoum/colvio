@@ -1196,6 +1196,52 @@
             break;
           }
 
+          case "getLoginStatsSlice": {
+            // ONE time slice (typically a day) of login audit, aggregated SERVER-SIDE per user via
+            // FetchXML aggregate (count + max createdon, grouped by objectid — the audit table
+            // supports aggregates per learn.microsoft.com/power-apps/developer/data-platform/auditing/retrieve-audit-data).
+            // Dataverse caps ANY aggregate query at 50k scanned rows (AggregateQueryRecordLimit);
+            // the caller slices the window by day precisely so each query stays under it —
+            // Microsoft's documented workaround ("add date-range filters, run multiple times,
+            // combine"). A slice that still blows the cap (>50k logins in one day) falls back to a
+            // raw paged scan of JUST that slice, aggregated here. Either way only per-user totals
+            // cross the bridge — never raw events — so org size stops mattering.
+            const ISO_S = /^\d{4}-\d{2}-\d{2}(T[0-9:.]+Z?)?$/; // guards both OData and FetchXML interpolation
+            if (!params.from || !ISO_S.test(params.from) || !params.to || !ISO_S.test(params.to)) throw new Error("getLoginStatsSlice: invalid from/to");
+            const fromS = params.from, toS = params.to;
+            try {
+              const fx = `<fetch aggregate="true"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="auditid" alias="n" aggregate="count"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="eq" value="64"/><condition attribute="createdon" operator="ge" value="${fromS}"/><condition attribute="createdon" operator="lt" value="${toS}"/></filter></entity></fetch>`;
+              const d = await dvRequest("GET", `audits?fetchXml=${encodeURIComponent(fx)}`);
+              const rows = (d.value || []).map(r => ({
+                userId: r.uid || "",
+                userName: r["uid@OData.Community.Display.V1.FormattedValue"] || "",
+                count: r.n || 0,
+                last: r.last || "",
+              }));
+              result = { rows, method: "aggregate" };
+            } catch (e) {
+              const msg = e?.message || "";
+              // Only the documented aggregate limits warrant the expensive fallback — anything else
+              // (403, session expired…) must surface to the caller as a failed slice.
+              if (!/AggregateQueryRecordLimit|8004E023|maximum record limit|aggregate/i.test(msg)) throw e;
+              const byU = new Map();
+              let url = `audits?$select=createdon,_objectid_value&$filter=action eq 64 and createdon ge ${fromS} and createdon lt ${toS}`;
+              while (url) {
+                const dL = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" });
+                for (const a of (dL.value || [])) {
+                  const id = a._objectid_value || "";
+                  let u = byU.get(id);
+                  if (!u) { u = { userId: id, userName: a["_objectid_value@OData.Community.Display.V1.FormattedValue"] || "", count: 0, last: "" }; byU.set(id, u); }
+                  u.count++; if (a.createdon > u.last) u.last = a.createdon;
+                }
+                const nl = dL["@odata.nextLink"];
+                url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              }
+              result = { rows: [...byU.values()], method: "scan" };
+            }
+            break;
+          }
+
           case "upsert": {
             validateEntitySet(params.entitySet);
             validateName(params.keyField, 'keyField');

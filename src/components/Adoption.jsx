@@ -20,8 +20,9 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [preset, setPreset] = useState("30");        // 7 | 30 | 90 | custom
   const [customFrom, setCustomFrom] = useState(isoDay(Date.now() - 30 * DAY));
   const [customTo, setCustomTo] = useState(isoDay(Date.now()));
-  const [events, setEvents] = useState(null);
-  const [capped, setCapped] = useState(false);
+  const [stats, setStats] = useState(null);        // { users:[{id,name,total,last,byDay}], failedDays }
+  const [scanProg, setScanProg] = useState(null);  // {done,total} while the per-day scan runs
+  const [retryKey, setRetryKey] = useState(0);     // bump to re-run the scan (failed-days retry)
   const [users, setUsers] = useState([]);            // getAllUsers → BU + name + disabled map
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -63,24 +64,24 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     // eslint-disable-next-line
   }, [preset, customFrom, customTo]);
 
-  // Load login events whenever the WINDOW changes (role/BU filters are applied client-side, instant).
+  // Load login stats whenever the WINDOW changes (role/BU filters are applied client-side, instant).
+  // Server-side per-day aggregation: exact totals with no fetch cap, whatever the audit volume.
   useEffect(() => {
-    if (!isLive && !events) { /* demo path still loads via bridge below */ }
     const g = ++gen.current;
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setScanProg(null);
     Promise.all([
-      bridge.getLoginEvents(windowRange.from, windowRange.to).catch(e => { throw e; }),
+      bridge.getLoginStats(windowRange.from, windowRange.to, p => { if (gen.current === g) setScanProg(p); }),
       users.length ? Promise.resolve(null) : bridge.getAllUsers().catch(() => []),
       roles.length ? Promise.resolve(null) : bridge.getAllRoles().catch(() => []),
-    ]).then(([ev, us, rs]) => {
+    ]).then(([st, us, rs]) => {
       if (gen.current !== g) return;
-      setEvents(ev?.events || []); setCapped(!!ev?.capped);
+      setStats(st || { users: [], failedDays: [] });
       if (us) setUsers(us);
       if (rs) setRoles(rs);
-      setLoading(false);
-    }).catch(e => { if (gen.current === g) { setError(e.message || String(e)); setLoading(false); } });
+      setLoading(false); setScanProg(null);
+    }).catch(e => { if (gen.current === g) { setError(e.message || String(e)); setLoading(false); setScanProg(null); } });
     // eslint-disable-next-line
-  }, [windowRange.from, windowRange.to]);
+  }, [windowRange.from, windowRange.to, retryKey]);
 
   // Role filter → fetch (and cache) the role's members across every BU copy. Guarded by its OWN
   // generation counter: switching role (or back to "All") mid-fetch must DISCARD the stale result —
@@ -113,11 +114,11 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
 
   const passUser = (id) => (!roleMembers || roleMembers.has(id)) && (!buFilter || userMeta.get(id)?.buId === buFilter);
 
-  // HEAVY pass — runs ONCE per window (events/window/userMeta), NOT on filter change. Buckets the
-  // timeline and rolls every event up per user (incl. a per-bucket count). Scans all events (≤300k)
-  // exactly once so that changing the role/BU filter never re-scans them again.
+  // HEAVY pass — runs ONCE per window (stats/window/userMeta), NOT on filter change. The server
+  // already aggregated per user per day; here we just re-bucket days (weekly over 92d) and attach
+  // user metadata, so filter changes only ever touch (users × days) rows.
   const prep = useMemo(() => {
-    if (!events) return null;
+    if (!stats) return null;
     const weekly = windowRange.days > 92;
     const bucketOf = (iso) => {
       if (!weekly) return iso.slice(0, 10);
@@ -130,17 +131,26 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     for (let ms = start; ms <= end; ms += (weekly ? 7 : 1) * DAY) labels.push(bucketOf(new Date(ms).toISOString()));
     const bucketSet = new Set(labels);
     const byUser = new Map();
-    for (const e of events) {
-      const id = String(e.userId).toLowerCase();
-      let u = byUser.get(id);
-      if (!u) { u = { id, name: e.userName || userMeta.get(id)?.name || id, bu: userMeta.get(id)?.bu || "", logins: 0, days: new Set(), last: e.date, byBucket: new Map() }; byUser.set(id, u); }
-      u.logins++; u.days.add(e.date.slice(0, 10)); if (e.date > u.last) u.last = e.date;
-      const label = bucketOf(e.date);
-      if (bucketSet.has(label)) u.byBucket.set(label, (u.byBucket.get(label) || 0) + 1);
+    for (const su of stats.users) {
+      const id = String(su.id).toLowerCase();
+      const byBucket = new Map();
+      for (const [day, c] of Object.entries(su.byDay || {})) {
+        const label = bucketOf(day);
+        if (bucketSet.has(label)) byBucket.set(label, (byBucket.get(label) || 0) + c);
+      }
+      byUser.set(id, {
+        id,
+        name: su.name || userMeta.get(id)?.name || id,
+        bu: userMeta.get(id)?.bu || "",
+        logins: su.total || 0,
+        days: new Set(Object.keys(su.byDay || {})),
+        last: su.last || "",
+        byBucket,
+      });
     }
     return { weekly, labels, byUser };
     // eslint-disable-next-line
-  }, [events, windowRange.from, windowRange.to, windowRange.days, userMeta]);
+  }, [stats, windowRange.from, windowRange.to, windowRange.days, userMeta]);
 
   // LIGHT pass — reacts to role/BU filters. Reduces over USERS only (a few thousand at most),
   // re-summing their pre-computed per-bucket counts, instead of re-scanning every login event.
@@ -261,16 +271,22 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
           {buOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
         {(loadingMembers || loading) && <Spin s={13} />}
+        {loading && scanProg && scanProg.total > 1 && <span style={{ fontSize: 11, color: C.txd, ...mono }}>{scanProg.done}/{scanProg.total} days</span>}
         <div style={{ flex: 1 }} />
         <button onClick={() => exportUsers("csv")} disabled={!agg} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}><I.Download /> CSV</button>
         <button onClick={() => exportUsers("xlsx")} disabled={!agg} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}><I.Download /> Excel</button>
       </div>
 
       {error && <div style={{ ...crd({ padding: 14, borderColor: C.rd + "55" }), color: C.rd, fontSize: 13, marginBottom: 12 }}>{error}</div>}
-      {loading && !agg && <div style={{ textAlign: "center", marginTop: 40 }}><Spin s={18} /> Loading login audit…</div>}
+      {loading && !agg && <div style={{ textAlign: "center", marginTop: 40 }}><Spin s={18} /> Aggregating login audit{scanProg && scanProg.total > 1 ? ` — day ${scanProg.done}/${scanProg.total}` : ""}…</div>}
 
       {agg && (<>
-        {capped && <div style={{ ...crd({ padding: "8px 12px", background: C.yw + "0c", borderColor: C.yw + "55" }), marginBottom: 12, fontSize: 12, color: C.txm }}>⚠ Result capped — the window has more login events than the fetch limit. Narrow the period for exact totals.</div>}
+        {stats?.failedDays?.length > 0 && (
+          <div style={{ ...crd({ padding: "8px 12px", background: C.rd + "0c", borderColor: C.rd + "55" }), marginBottom: 12, fontSize: 12, color: C.rd, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span>⚠ {stats.failedDays.length} day{stats.failedDays.length > 1 ? "s" : ""} failed to load ({stats.failedDays.slice(0, 4).join(", ")}{stats.failedDays.length > 4 ? "…" : ""}) — totals below EXCLUDE {stats.failedDays.length > 1 ? "them" : "it"}.</span>
+            <button onClick={() => setRetryKey(k => k + 1)} disabled={loading} style={{ ...bt(C.rd, { fontSize: 11, padding: "3px 10px" }), opacity: loading ? 0.5 : 1 }}>Retry</button>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
           <KPI label="Total logins" value={agg.total.toLocaleString()} color={C.vi} />
           <KPI label="Distinct users signed in" value={agg.unique.toLocaleString()} color={C.cy} hint={agg.scopeCount ? `of ${agg.scopeCount.toLocaleString()} in scope` : undefined} />

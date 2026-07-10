@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.95] — 2026-07-10
+### Changed — Adoption: exact totals on any audit volume (no more 100k cap)
+- **The login scan is now aggregated SERVER-SIDE, per day.** Instead of downloading every login event (capped at 100k — orgs with heavy traffic hit it in days), Colvio asks Dataverse for a per-user aggregate (count + last login) of each UTC day via FetchXML `aggregate` — the audit table supports it, and slicing by day keeps every query under Dataverse's 50,000-row aggregate limit (Microsoft's documented workaround: filter by date range, run multiple queries, combine). 30 days = 30 fast queries returning ~active-users rows each, whatever the volume.
+- **Fallback for extreme days:** a single day exceeding 50k logins falls back to a paged raw scan of just that day, aggregated inside the content script — raw events never cross the extension bridge in either path.
+- **Result: KPIs, chart and per-user table are exact** — the "Result capped" warning is gone. A day whose query fails is reported in a red banner ("N days failed — totals EXCLUDE them") with a Retry button, never silently missing. Scan progress shows as "day 12/30".
+- Demo mode mirrors the new shape; Help EN/FR updated.
+
 ## [1.11.94] — 2026-07-09
 ### Added — Builder: relational filters (Advanced-Find style)
 - **New REL row in the Builder: filter the ROOT rows by their related records** — the thing D365 views/Advanced Find do that the Builder couldn't. Two flavors:
