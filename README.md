@@ -24,7 +24,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Data Explorer
 - **Query tabs** — open several queries at once like browser tabs; each tab is fully independent (its own table, mode, filters, results), so you run them one at a time and switch to compare; rename inline (double-click), close with ✕
-- **Query Builder** — visual SELECT, WHERE (AND/OR groups, 14 operators), EXPAND (parent + child), LIMIT (defaults to **All** — lower it for a quick preview)
+- **Query Builder** — visual SELECT, WHERE (AND/OR groups, 14 operators), EXPAND (parent + child), ORDER BY, LIMIT (defaults to **All** — lower it for a quick preview)
+- **Relational filters (REL)** — filter the ROOT rows by related records, Advanced-Find style: conditions on a parent's fields (`primarycontactid/emailaddress1 contains…`) or has-at-least-one / **has-none** children with conditions (`not opportunity_…/any(o:o/statecode eq 0)` — "accounts with no open opportunity"); the generated OData is shown in the preview
 - **FetchXML mode** — textarea with 3 templates (simple, inner join, aggregation) + paging cookie pagination
 - **OData mode** — raw OData URL editing
 - **Column sorting** — click any header to sort ASC/DESC
@@ -53,6 +54,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Auto-detect current record from D365 tab
 - Responsive **multi-column grid** that fills the screen (even 400+ field records stay readable): Logical Name, label, type, value
 - Filter columns, toggle empty/custom-only, clickable lookup links, copy a single field or full JSON
+- **Inline field editing** — a ✎ pencil on every writable field lets you PATCH a value straight through the API, even when the form marks it read-only (text, numbers, yes/no, dates, option sets); field-level security and privileges still enforced server-side, confirmation on production
+- **Business Process Flow manager** (System Administrators) — lists every BPF instance on the record, including finished ones the form has locked: reopen, move to any stage, finish or abort (Colvio resolves the flow's real underlying table for the write)
 
 ### Metadata Browser
 - Browse entities, fields, OptionSets by category
@@ -80,7 +83,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Multipart **OData $batch** with **per-record changesets** — errors don't cascade across the chunk
 - **429-aware**: Service Protection throttling retried automatically honoring `Retry-After`
 - **Alt-key direct bind**: when the lookup target field is a registered alternate key, skips the resolve query (no `?$filter=...` per unique value) and binds via `entity(field='value')` syntax; lookup `@odata.bind` paths use the real `EntitySetName` (irregular plurals, polymorphic targets)
-- **Speed boosters** (System Administrators only): per-record `MSCRM.BypassCustomPluginExecution`, `SuppressDuplicateDetection`, `BypassSynchronousLogic` headers
+- **Column transforms extras**: the literal word **`NULL`** in a cell **clears** the field — including lookups (empty cells always leave fields untouched, so a partial file can never wipe data); **strip HTML → plain text** for rich-text exports landing in plain-text columns; **EU/US date-format toggle** (day-first vs month-first) so `03/04/2024` never silently becomes the wrong date
+- **Migration mode** (opt-in, create-only): map `createdon` (→ `overriddencreatedon`), `modifiedon`, `createdby`, `modifiedby` so migrated records keep their original audit values (requires `prvOverrideCreatedOnCreatedBy`)
+- **Pre-flight checks** before the run: values exceeding the target field's max length, empty/duplicate match keys, Salesforce-style IDs where a GUID is needed, unmapped required fields, file-lines vs parsed-records transparency (multiline cells vs a stray unclosed quote — named record)
+- **Honest accounting**: a chunk timeout can never silently drop rows — every unsent row becomes an explicit retryable error and totals always sum to your file size; **retry transient failures** (timeouts, 429, 5xx) at gentler concurrency from the result screen
+- **Speed boosters** (System Administrators only), using Microsoft's documented bypass headers on imports **and bulk deletes**: `MSCRM.BypassCustomPluginExecution` (sync plug-ins + real-time workflows), `MSCRM.BypassBusinessLogicExecution: CustomAsync` (async plug-ins + background workflows), `MSCRM.SuppressDuplicateDetection`
 - **Live per-row import log** during the run: every line shown with its CSV columns + `Success`/`Failed` status + Dataverse error detail + the exact request sent (method, URL, headers, body)
 - **Cancel mid-import** — stops remaining chunks *and* in-flight 429 retries: no writes are sent after cancel
 
@@ -147,13 +154,24 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Sensitive privilege detection** — 30+ critical privileges flagged (delete, assign role, export, audit, publish)
 - Filter by: All / Org-level only / Sensitive only
 - User count per role, CSV export
+- **Matrix view (by table)** — the full make.powerapps-style grid: every table × Create/Read/Write/Delete/Append/Append To/Assign/Share with a depth pie per cell, **including what is NOT granted** — and the whole grid exports to CSV/Excel
+- **Org-wide view** — "who can do what" across **every role at once**: pick an operation + minimum depth, group by role or by table ("which roles can delete Account?"), full export; failed roles are flagged with a retry (never a silently incomplete audit)
 - **Users sub-tab** — lists exactly who holds the role (name, email, business unit, status), aggregated across **every business-unit copy** of the role and deduplicated so members in child BUs are never missed, with service-account flags; CSV export on both privileges and members
+- **Teams sub-tab** — the teams holding the role (type, BU, administrator, member count) — the answer when a role shows 0 direct users but is very much in use
+- **Bulk role assignment** — paste a list of user emails to assign a role (Colvio matches each user's business-unit copy automatically — the classic trap), or select members and remove it; confirmation on production
 
 ### Business Units
 - **BU hierarchy** as an indented tree (search), each with its **direct user count** and a disabled badge
 - Pick a BU to list its **direct members** — name, email, access mode / CAL type, enabled/disabled — with a filter
 - **CSV export with scope choice**: just this BU's members, or **this BU + every sub-BU beneath it** (the export keeps a Business Unit column); even works when the BU itself has no direct members
 - Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated, read-only
+
+### Adoption
+- **Who's actually using the CRM?** Total logins, distinct active users, average per active user — over 7/30/90 days or any custom window
+- **Exact totals whatever the audit volume** — Dataverse aggregates each day server-side (per-user counts, never raw events), so orgs with millions of audit rows hit no fetch cap; a day that fails to load is flagged with a retry, never silently missing
+- Trend chart switchable between total logins / distinct users / both; sortable per-user table (logins, active days, last login)
+- **Never-signed-in list** — enabled users with zero logins in the window, one click to export
+- Filter everything by **security role or business unit** (instant, client-side); needs "Audit user access" enabled, sees what your audit retention keeps (both stated in the UI)
 
 ### Login History
 - User search, login/logout audit timeline
@@ -174,6 +192,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - 3 template queries to get started
 
 ### Global
+- **Sidebar organized in three sections** — Data / Develop / Admin, in decreasing frequency of use; a section whose tabs are all permission-hidden disappears entirely
 - **⌘K / Ctrl+K command palette** — jump to any module or action
 - **"What's new" popup** after each update (per-version, EN/FR)
 - **Role-based tab access** — sensitive tabs auto-hidden for non-admin users (zero flash)
@@ -191,10 +210,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Lines of code | ~11,400 |
-| API actions | 48 |
-| React components | 30 |
-| Unit tests | 215 |
+| Modules | 16 |
+| Lines of code | ~15,300 |
+| API actions | 62 |
+| React components | 35 |
+| Unit tests | 151 |
 | Build size | ~490 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |
@@ -226,7 +246,7 @@ Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 
 
 ### Access Control
 - **Role-based tab visibility** — sensitive modules auto-hidden for non-admin users (zero flash)
-- **Manifest V3** — minimal permissions (`activeTab`, `scripting`, `storage`, `declarativeContent`)
+- **Manifest V3** — minimal permissions (`scripting`, `storage`, `declarativeContent`; 3 host wildcards, dynamics.com / microsoftdynamics.us / dynamics.cn only)
 - **3 runtime dependencies** — React, React-DOM, xlsx (export-only)
 
 See [PRIVACY.md](PRIVACY.md) for the full privacy policy.

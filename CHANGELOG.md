@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.99] — 2026-07-15
+### Docs
+- **README fully refreshed** (was stale since 1.11.41): Adoption module, Builder relational filters, inline field edit + BPF manager under Show All Data, Security Audit matrix/org-wide/Teams/bulk-assign, Loader NULL token / strip HTML / date toggle / migration mode / pre-flight checks / honest accounting, corrected bypass-header names (the old text still listed the non-existent `BypassSynchronousLogic`), sidebar sections, updated stats (16 modules, ~15.3k LOC, 62 actions, 35 components, 151 tests) and the slimmed MV3 permissions.
+- **Store listing**: added relational filters to the Data Explorer section and exact server-side aggregation to the Adoption section.
+- **What's New popup** rewritten for the 1.11.67 → 1.11.99 arc (8 highlights EN/FR: Adoption, relational filters, org-wide privileges, BPF, inline edit, Loader NULL/strip-HTML/migration, loader honesty + real bypass headers, sidebar sections).
+
 ## [1.11.98] — 2026-07-15
 ### Changed — sidebar reorganized into three sections
 - **Tabs are now grouped by role, with small section captions.** DATA (Data Explorer, Data Loader, Recycle Bin, Show All Data — query → load → restore → inspect, side by side at last), DEVELOP (API Tester, Metadata, Relationships, Schema, Solutions, Translations), ADMIN (Users & Licenses, Business Units, Security Audit, Adoption, Login History, System Ops). Help stays at the bottom.

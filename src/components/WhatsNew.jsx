@@ -6,22 +6,24 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
+    "📈 NEW: Adoption — who actually uses the CRM: logins, distinct users, never-signed-in list; exact totals on any audit volume, filter by role/BU",
+    "🔍 Explorer — relational filters in the Builder: \"accounts with NO open opportunity\" without writing any() yourself",
+    "🌐 Security Audit — org-wide \"who can do what\" across every role, full privilege matrix per table, Teams tab, bulk role assign/remove",
     "⚙️ BPF manager — reopen or re-stage a locked Business Process Flow (admins)",
     "✎ Show All Data — edit fields the form marks read-only, straight through the API",
-    "🧩 Security Audit — full privilege matrix per table, exportable to Excel/CSV",
-    "👥 Security roles — Teams tab, plus bulk assign/remove for users (paste emails)",
-    "🧹 Data Loader — NULL clears a field (lookups too) · \"strip HTML\" transform · EU/US date toggle",
-    "🛡 Data Loader — a timeout can no longer silently drop rows: honest totals + retry exactly the unsent rows",
-    "🔎 Data Loader — the pre-flight example now shows exactly what will be sent (transforms applied), and file lines vs parsed records are explained",
+    "🧹 Data Loader — NULL clears a field (lookups too) · \"strip HTML\" transform · EU/US date toggle · migration mode for audit fields",
+    "🛡 Data Loader — honest to the end: timeouts can't silently drop rows, and the bypass headers are the real documented ones (now on bulk deletes too)",
+    "🗂 Sidebar reorganized — Data / Develop / Admin sections, Loader right under Explorer",
   ],
   fr: [
+    "📈 NOUVEAU : Adoption — qui utilise vraiment le CRM : connexions, utilisateurs distincts, liste des jamais-connectés ; totaux exacts quel que soit le volume, filtres rôle/BU",
+    "🔍 Explorateur — filtres relationnels dans le Builder : « les comptes SANS opportunité ouverte » sans écrire de any() vous-même",
+    "🌐 Audit de sécurité — vue org-wide « qui peut faire quoi » sur tous les rôles, matrice complète par table, onglet Teams, affectation de rôles en masse",
     "⚙️ Gestion BPF — rouvrez ou changez l'étape d'un Business Process Flow verrouillé (admins)",
     "✎ Show All Data — éditez les champs verrouillés par le formulaire, directement via l'API",
-    "🧩 Audit de sécurité — matrice complète des privilèges par table, exportable Excel/CSV",
-    "👥 Rôles de sécurité — onglet Teams, + affectation/retrait en masse (collez des e-mails)",
-    "🧹 Data Loader — NULL vide un champ (lookups compris) · transform « strip HTML » · bascule de date EU/US",
-    "🛡 Data Loader — un timeout ne peut plus perdre de lignes en silence : totaux honnêtes + retry des lignes non envoyées",
-    "🔎 Data Loader — l'aperçu pré-vol montre exactement ce qui sera envoyé (transforms appliqués), et lignes de fichier vs enregistrements expliqués",
+    "🧹 Data Loader — NULL vide un champ (lookups compris) · transform « strip HTML » · bascule de date EU/US · mode migration pour les champs d'audit",
+    "🛡 Data Loader — honnête jusqu'au bout : un timeout ne peut plus perdre de lignes, et les headers de bypass sont les vrais documentés (bulk delete compris)",
+    "🗂 Sidebar réorganisée — sections Données / Développement / Administration, le Loader juste sous l'Explorateur",
   ],
 };
 
