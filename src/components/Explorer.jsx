@@ -96,6 +96,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const loadSavedQuery=(q)=>{
     const match=entities.find(e=>e.l===q.entity);
     if(match){
+      // selEnt FIRST — it clears any pending onFieldsReady from a previous selection. The old
+      // ordering (set callback, then selEnt) let "load query A, click entity B before A's fields
+      // resolve" apply A's whole config — including rel filters — onto entity B.
+      selEnt(match);
       onFieldsReady.current=()=>{
         setSf(q.fields||[]);
         setFilterGroups(q.filterGroups||[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
@@ -110,17 +114,18 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         if(q.sqlQ) setSqlQ(q.sqlQ);
         // Relational filters need the target entity's field metadata back (types drive the
         // operator lists and OData quoting) — refetch it per saved filter, drop the ones whose
-        // target no longer resolves.
+        // target no longer resolves. Guarded by selGen: switching entity while these getFields
+        // are in flight must DISCARD the restore, not repaint the old query's filters.
         if(q.relFilters?.length){
+          const g=selGen.current;
           Promise.all(q.relFilters.map(async rf=>{
             try{
               const tf=isLive?await bridge.getFields(rf.targetEntity):FLDS;
               return {...rf, mode:rf.mode||"any", conditionLogic:rf.conditionLogic||"and", allFields:mapTargetFields(tf)};
             }catch{return null;}
-          })).then(list=>setRelFilters(list.filter(Boolean)));
+          })).then(list=>{if(selGen.current===g)setRelFilters(list.filter(Boolean));});
         }
       };
-      selEnt(match);
     } else {
       setError(`The saved query's table "${q.entity}" no longer exists on this org.`);
     }
@@ -181,6 +186,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const selEnt=(e)=>{
     fetchAbort.current = true;
     const gen=++selGen.current; // capture generation for staleness check
+    onFieldsReady.current=null; // a pending saved-query/template callback belongs to a PREVIOUS selection — never replay it on this entity
     setEnt(e);setRes(null);setPicker(false);setError("");
     setFilterGroups([{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
     setExpands([]);setLookups([]);setShowExpandPicker(false);setChildRelsLoaded(false);
@@ -253,14 +259,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
 
   const addExpand = async (lookup) => {
-    if (expands.find(x => x.navProperty === lookup.navProperty)) return;
+    if (loadingExpand || expands.find(x => x.navProperty === lookup.navProperty)) return;
     setLoadingExpand(lookup.navProperty);
     try {
       const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
       const mapped = mapTargetFields(targetFields);
       const commonNames = ["name","fullname","title","subject","accountnumber","emailaddress1","internalemailaddress","telephone1","new_sapid","new_externalid"];
       const auto = mapped.filter(f => commonNames.includes(f.l)).map(f => f.l);
-      setExpands(prev => [...prev, {
+      setExpands(prev => prev.find(x => x.navProperty === lookup.navProperty) ? prev : [...prev, {
         navProperty: lookup.navProperty,
         targetEntity: lookup.targetEntity,
         lookupField: lookup.lookupField,
@@ -297,11 +303,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
 
   const addRelFilter = async (lookup) => {
-    if (relFilters.find(x => x.navProperty === lookup.navProperty)) return;
+    if (loadingRel || relFilters.find(x => x.navProperty === lookup.navProperty)) return;
     setLoadingRel(lookup.navProperty);
     try {
       const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
-      setRelFilters(prev => [...prev, {
+      // Functional + re-checked: a double-click racing the disabled repaint must not add twice.
+      setRelFilters(prev => prev.find(x => x.navProperty === lookup.navProperty) ? prev : [...prev, {
         navProperty: lookup.navProperty,
         targetEntity: lookup.targetEntity,
         lookupField: lookup.lookupField,
@@ -412,8 +419,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const buildRelFilterClauses = () => {
     const parts = [];
     for (const rf of relFilters) {
-      const active = (rf.conditions || []).filter(c => c.field && (c.value || c.op === "is_null" || c.op === "is_not_null"));
+      const defined = (rf.conditions || []).filter(c => c.field && (c.value || c.op === "is_null" || c.op === "is_not_null"));
+      // Schema-drift guard: a condition whose field no longer exists in the target's metadata must
+      // be DROPPED, not emitted — getOdataName would fall back to the bare logical name, losing the
+      // nav prefix and silently filtering the ROOT entity's same-named column (statecode, name…).
+      const active = defined.filter(c => rf.allFields.some(f => f.l === c.field));
       if (rf.type === "collection") {
+        // If every condition was dropped, skip the whole filter — a bare any() would CHANGE the
+        // meaning from "has a matching child" to "has any child".
+        if (defined.length && !active.length) continue;
         const neg = rf.mode === "none" ? "not " : "";
         if (active.length) {
           const lambdaFields = rf.allFields.map(f => ({ ...f, odata: `o/${f.odata}` }));
@@ -1274,7 +1288,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                 <button onClick={saveCurrentQuery} disabled={!ent} title="Save this query" style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowTemplates(!showTemplates);setShowHistory(false);setShowSaved(false);}} style={{padding:"4px 8px",background:showTemplates?C.gn+"33":"transparent",border:`1px solid ${showTemplates?C.gn+"44":C.bd}`,borderRadius:4,color:showTemplates?C.gn:C.txm,cursor:"pointer",fontSize:12}} title="Query templates">📝 Templates</button>
-                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{onFieldsReady.current=()=>{setSf(fields);setFilterGroups(filters);};selEnt(ent);}} onClose={()=>setShowTemplates(false)}/>}
+                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{selEnt(ent);onFieldsReady.current=()=>{setSf(fields);setFilterGroups(filters);};}} onClose={()=>setShowTemplates(false)}/>}
                 </div>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowHistory(!showHistory);setShowSaved(false);}} style={{padding:"4px 8px",background:showHistory?C.vi+"33":"transparent",border:`1px solid ${C.bd}`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12}} title="Query history">🕐{queryHistory.length>0?` ${queryHistory.length}`:""}</button>

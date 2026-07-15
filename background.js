@@ -12,6 +12,11 @@ const D365_DOMAINS = [".dynamics.com", ".microsoftdynamics.us", ".dynamics.cn"];
 const isD365Url = (url) => url && D365_DOMAINS.some(d => url.includes(d));
 
 chrome.runtime.onInstalled.addListener(() => {
+  // Gray the icon everywhere by default; the declarativeContent rules below re-enable it on D365
+  // pages only. Without this disable(), MV3 keeps the action enabled on every tab and the rules
+  // are a no-op (the click handler was already guarded by isD365Url — this makes the affordance
+  // visible AND gives the declarativeContent permission its observable use).
+  chrome.action.disable();
   chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
     chrome.declarativeContent.onPageChanged.addRules([{
       conditions: D365_DOMAINS.map(d => new chrome.declarativeContent.PageStateMatcher({ pageUrl: { hostSuffix: d } })),

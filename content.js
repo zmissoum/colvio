@@ -23,6 +23,11 @@
   }
   function validateEntitySet(v) {
     if (!v) throw new Error("Missing entitySet");
+    // No control chars ANYWHERE — entitySet is interpolated into raw $batch request lines, where a
+    // smuggled CR/LF would inject headers into the multipart body (defense-in-depth; the panel is
+    // the only caller and is trusted, but the batch key VALUES are already ctrl-stripped — the set
+    // name must not be the one gap).
+    if (/[\x00-\x1f\x7f]/.test(v)) throw new Error(`Invalid entitySet: control characters not allowed`);
     // Full URL (nextLink) — already validated by D365
     if (v.startsWith("http")) return v;
     // Extract the entity set name (before any parenthesis, query, or path)
@@ -1236,8 +1241,10 @@
               const d = await dvRequest("GET", `audits?fetchXml=${encodeURIComponent(fx)}`);
               const vals = d.value || [];
               // ANY continuation signal — or a full page — means the aggregate was truncated by
-              // server paging: never trust it, take the exact scan instead.
-              const truncated = !!d["@Microsoft.Dynamics.CRM.fetchxmlpagingcookie"] || !!d["@odata.nextLink"] || d["@Microsoft.Dynamics.CRM.morerecords"] === true || vals.length >= 5000;
+              // server paging: never trust it, take the exact scan instead. Threshold is 500, NOT
+              // 5000: elastic tables clamp the page size to a 500 MAXIMUM (page-results doc), so
+              // count="5000" is best-effort and a 5000 threshold could never fire.
+              const truncated = !!d["@Microsoft.Dynamics.CRM.fetchxmlpagingcookie"] || !!d["@odata.nextLink"] || d["@Microsoft.Dynamics.CRM.morerecords"] === true || vals.length >= 500;
               if (truncated) {
                 result = await scanSlice();
               } else {

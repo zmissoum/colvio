@@ -128,7 +128,17 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     // Continuous bucket timeline over the window (so quiet days show as gaps, not disappear).
     const labels = [];
     const start = new Date(windowRange.from).getTime(), end = new Date(windowRange.to).getTime();
-    for (let ms = start; ms <= end; ms += (weekly ? 7 : 1) * DAY) labels.push(bucketOf(new Date(ms).toISOString()));
+    if (weekly) {
+      // Step MONDAY to MONDAY, from the first week's Monday through the LAST week's Monday.
+      // Stepping 7 days from `from` missed the final week whenever the window doesn't start on a
+      // Monday — its label was never generated and bucketSet silently dropped up to 6 trailing
+      // days from the chart (KPIs were right, chart wasn't).
+      let ms = new Date(bucketOf(new Date(start).toISOString()) + "T00:00:00Z").getTime();
+      const lastMonday = new Date(bucketOf(new Date(end).toISOString()) + "T00:00:00Z").getTime();
+      for (; ms <= lastMonday; ms += 7 * DAY) labels.push(isoDay(ms));
+    } else {
+      for (let ms = start; ms <= end; ms += DAY) labels.push(isoDay(ms));
+    }
     const bucketSet = new Set(labels);
     const byUser = new Map();
     for (const su of stats.users) {
