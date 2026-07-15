@@ -1,5 +1,8 @@
 export default {
   // Nav
+  "nav.section.data": "Data",
+  "nav.section.develop": "Develop",
+  "nav.section.admin": "Admin",
   "nav.explorer": "Data Explorer",
   "nav.explorer.desc": "Query & export",
   "nav.apitester": "API Tester",

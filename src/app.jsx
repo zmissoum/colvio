@@ -215,23 +215,26 @@ export default function App(){
     }, 1500);
   };
 
+  // Tabs are grouped into three mental buckets — daily DATA work, DEVELOP & model, ADMIN &
+  // governance — in decreasing frequency of use. The sidebar renders a small caption when the
+  // section changes; a caption disappears with its tabs when permissions hide the whole group.
   const allTabs=[
-    {id:"explorer",label:t("nav.explorer"),desc:t("nav.explorer.desc"),icon:<I.Search/>},
-    {id:"apitester",label:t("nav.apitester"),desc:t("nav.apitester.desc"),icon:<I.Zap/>},
-    {id:"show",label:t("nav.show"),desc:t("nav.show.desc"),icon:<I.Eye/>},
-    {id:"metadata",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
-    {id:"logins",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
-    {id:"adoption",label:t("nav.adoption"),desc:t("nav.adoption.desc"),icon:<I.Users/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
-    {id:"loader",label:t("nav.loader"),desc:t("nav.loader.desc"),icon:<I.Upload/>},
-    {id:"recyclebin",label:t("nav.recyclebin"),desc:t("nav.recyclebin.desc"),icon:<I.Trash/>,featureOff:!!(orgFeatures&&orgFeatures.recycleBin&&!orgFeatures.recycleBin.enabled&&!orgFeatures.recycleBin.unknown)},
-    {id:"graph",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
-    {id:"schema",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
-    {id:"solutions",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
-    {id:"translations",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
-    {id:"ops",label:t("nav.ops"),desc:t("nav.ops.desc"),icon:<I.Zap/>,requires:"canReadAllUsers"},
-    {id:"licenses",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
-    {id:"bu",label:t("nav.bu"),desc:t("nav.bu.desc"),icon:<I.Link/>,requires:"canReadAllUsers"},
-    {id:"security",label:t("nav.security"),desc:t("nav.security.desc"),icon:<I.Shield/>,requires:"canReadAllUsers"},
+    {id:"explorer",section:"data",label:t("nav.explorer"),desc:t("nav.explorer.desc"),icon:<I.Search/>},
+    {id:"loader",section:"data",label:t("nav.loader"),desc:t("nav.loader.desc"),icon:<I.Upload/>},
+    {id:"recyclebin",section:"data",label:t("nav.recyclebin"),desc:t("nav.recyclebin.desc"),icon:<I.Trash/>,featureOff:!!(orgFeatures&&orgFeatures.recycleBin&&!orgFeatures.recycleBin.enabled&&!orgFeatures.recycleBin.unknown)},
+    {id:"show",section:"data",label:t("nav.show"),desc:t("nav.show.desc"),icon:<I.Eye/>},
+    {id:"apitester",section:"develop",label:t("nav.apitester"),desc:t("nav.apitester.desc"),icon:<I.Zap/>},
+    {id:"metadata",section:"develop",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
+    {id:"graph",section:"develop",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
+    {id:"schema",section:"develop",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
+    {id:"solutions",section:"develop",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
+    {id:"translations",section:"develop",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
+    {id:"licenses",section:"admin",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
+    {id:"bu",section:"admin",label:t("nav.bu"),desc:t("nav.bu.desc"),icon:<I.Link/>,requires:"canReadAllUsers"},
+    {id:"security",section:"admin",label:t("nav.security"),desc:t("nav.security.desc"),icon:<I.Shield/>,requires:"canReadAllUsers"},
+    {id:"adoption",section:"admin",label:t("nav.adoption"),desc:t("nav.adoption.desc"),icon:<I.Users/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
+    {id:"logins",section:"admin",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
+    {id:"ops",section:"admin",label:t("nav.ops"),desc:t("nav.ops.desc"),icon:<I.Zap/>,requires:"canReadAllUsers"},
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
   // Restricted tabs appear only once permissions are CONFIRMED — during the provisional fail-open
@@ -273,12 +276,24 @@ export default function App(){
           {bp.mobile&&<button onClick={()=>setSideOpen(false)} style={{background:"none",border:"none",color:C.txm,cursor:"pointer"}}><I.X/></button>}
         </div>
         <div style={{padding:"8px 6px",flex:1,overflow:"auto"}}>
-          {tabs.map(tb=>(
-            <button key={tb.id} onClick={()=>{setTab(tb.id);setSideOpen(false);}} title={tb.featureOff?t("featuregate.tab_tooltip"):undefined} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"8px 9px",border:"none",borderRadius:6,cursor:"pointer",marginBottom:2,transition:"all .12s",background:tab===tb.id?C.sfa:"transparent",color:tab===tb.id?C.tx:C.txm,opacity:tb.featureOff?0.55:1}}>
-              <span style={{color:tab===tb.id?C.cy:C.txd,flexShrink:0}}>{tb.icon}</span>
-              <div style={{textAlign:"left",minWidth:0}}><div style={{fontSize:14,fontWeight:tab===tb.id?600:400}}>{tb.label}{tb.featureOff&&<span style={{marginLeft:6,fontSize:9,verticalAlign:"middle",color:C.yw}}>●</span>}</div><div style={{fontSize:11,color:C.txd,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tb.featureOff?t("featuregate.tab_desc"):tb.desc}</div></div>
-            </button>
-          ))}
+          {(()=>{
+            // Section captions appear when the (visible) section changes — permission filtering
+            // already happened in `tabs`, so a fully hidden group takes its caption with it.
+            const out=[];let last=null;
+            for(const tb of tabs){
+              if(tb.section&&tb.section!==last) out.push(
+                <div key={"sec-"+tb.section} style={{padding:out.length?"12px 9px 3px":"2px 9px 3px",fontSize:10,fontWeight:700,letterSpacing:"1.2px",color:C.txd,textTransform:"uppercase"}}>{t("nav.section."+tb.section)}</div>
+              );
+              if(tb.section) last=tb.section;
+              out.push(
+                <button key={tb.id} onClick={()=>{setTab(tb.id);setSideOpen(false);}} title={tb.featureOff?t("featuregate.tab_tooltip"):undefined} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"8px 9px",border:"none",borderRadius:6,cursor:"pointer",marginBottom:2,transition:"all .12s",background:tab===tb.id?C.sfa:"transparent",color:tab===tb.id?C.tx:C.txm,opacity:tb.featureOff?0.55:1}}>
+                  <span style={{color:tab===tb.id?C.cy:C.txd,flexShrink:0}}>{tb.icon}</span>
+                  <div style={{textAlign:"left",minWidth:0}}><div style={{fontSize:14,fontWeight:tab===tb.id?600:400}}>{tb.label}{tb.featureOff&&<span style={{marginLeft:6,fontSize:9,verticalAlign:"middle",color:C.yw}}>●</span>}</div><div style={{fontSize:11,color:C.txd,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tb.featureOff?t("featuregate.tab_desc"):tb.desc}</div></div>
+                </button>
+              );
+            }
+            return out;
+          })()}
           {/* Query history */}
           {queryHistory.length>0&&<div style={{marginTop:12,borderTop:`1px solid ${C.bd}`,paddingTop:8}}>
             <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 8px",marginBottom:4}}><I.Clock/><span style={{fontSize:12,color:C.txd,fontWeight:600}}>{t("sidebar.history")}</span></div>

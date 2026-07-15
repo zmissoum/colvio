@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.98] — 2026-07-15
+### Changed — sidebar reorganized into three sections
+- **Tabs are now grouped by role, with small section captions.** DATA (Data Explorer, Data Loader, Recycle Bin, Show All Data — query → load → restore → inspect, side by side at last), DEVELOP (API Tester, Metadata, Relationships, Schema, Solutions, Translations), ADMIN (Users & Licenses, Business Units, Security Audit, Adoption, Login History, System Ops). Help stays at the bottom.
+- Captions follow permissions: a group whose tabs are all hidden for the current user disappears entirely — non-admins simply don't see an ADMIN section. Nothing else changes (palette, permissions, redirects, per-tab state).
+
 ## [1.11.97] — 2026-07-10
 ### Fixed — pre-upload review pass (3 agents: Dataverse docs, Builder OData, Chrome MV3)
 - **Adoption: weekly chart no longer drops the final days of the window.** Over 92 days the chart buckets weekly, but the timeline was stepped 7 days from the window start — when the window didn't start on a Monday, the last week's label was never generated and up to 6 trailing days silently vanished from the chart (KPIs were right, chart wasn't). Labels now step Monday-to-Monday through the last week.
