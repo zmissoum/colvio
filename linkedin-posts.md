@@ -672,6 +672,45 @@ Which one hits closer to home — proving adoption, or proving who can delete wh
 
 ---
 
+## Post 24 — "Accounts with no open opportunity" in two clicks (+ a chart that refused to lie)
+
+> Release post (Colvio page voice), covers 1.11.94 → 1.11.98. Hero = Builder relational filters (1.11.94 — the Advanced-Find-style "filter by related records" gap, closed). Second = the Adoption exactness saga told as a detective story (1.11.95 server-side aggregation kills the 100k cap → 1.11.96 a user spots bars flat-lining at EXACTLY 500 → root cause: the audit table is an elastic table paging at 500 — great technical-audience content, continues the trust thread from Posts 22/23). Quick mentions: sidebar sections + slimmer permissions (1.11.97-98). HONESTY kept: Advanced Find / view designer already do relational filters INSIDE D365 — our angle is having it in the Builder next to no-cap export, plus the "not any()" existence filter that's painful to write by hand. NOTE FOR ZAKARIA: publish after Post 23, Tue/Thu cadence. Link in first comment.
+
+🔍 "Give me every account with NO open opportunity."
+
+Simple ask. In OData, it's this:
+
+not opportunity_customer_accounts/any(o:o/statecode eq 0)
+
+Nobody remembers that syntax. Colvio's query Builder now writes it for you.
+
+New: relational filters — filter the ROOT rows by their RELATED records, Advanced-Find style:
+
+↑ Condition on a parent: "contacts whose parent account is in Healthcare"
+↓ Condition on children: "accounts with at least one active contact" — or the classic auditors ask: "accounts with NO open opportunity"
+
+Pick the relation, pick the condition, Colvio generates the OData (and shows it, so you learn the syntax for free). Combines with your other filters, exports the full result — no 5,000-row ceiling, ever.
+
+📊 Also this week: a user made our Adoption chart confess.
+
+He noticed the distinct-users bars flat-lining at EXACTLY 500 on busy days. Not 498. Not 503. 500.
+
+That's never chance. Root cause, two layers down: Dataverse's audit table is an ELASTIC table (Cosmos-backed) — and elastic tables page query results at 500 rows, not the 5,000 you get everywhere else. Our per-day aggregate was silently reading page one and calling it a day.
+
+Fixed properly: the aggregation now detects ANY truncation signal and falls back to an exact scan — and when a day's data can't load at all, you get a red "INCOMPLETE" banner with a retry button, never a clean-looking chart with silent holes. His "total logins" jumped from a capped 100,000 to the real 644,000+.
+
+A chart that can't lie is worth more than a chart that loads fast. We keep choosing the former.
+
+🧹 And some housekeeping: the sidebar is now organized into Data / Develop / Admin sections (Loader finally sits next to Explorer), and the extension asks for FEWER Chrome permissions than before — we removed everything we didn't strictly need.
+
+Free, open-source, runs in your browser on your own session.
+
+What's the related-records query you always end up writing by hand? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #OData #OpenSource
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
