@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.101] — 2026-07-16
+### Fixed
+- **Loader: DELETE mode now offers the retry card too.** The "Retry N transient errors / Retry all failed" buttons (v1.11.52) only existed for CREATE/UPSERT/UPDATE — a delete run ending with 136 timeout errors offered nothing but "New import". Deletes now get the same treatment: retry only the failed rows (transient by default), at gentler concurrency (half the threads, chunks ≤50 — a cascade-heavy or throttled org is exactly why the first pass timed out), with cumulative totals ("Retry: X of Y succeeded"), preserved log, and honest error re-derivation.
+
 ## [1.11.100] — 2026-07-16
 ### Fixed
 - **Explorer: clicking a "Recent queries" entry now actually restores it.** Builder-mode entries did nothing at all (history stores the emitted query string, not the Builder's visual state, and the handler only switched the mode tab); SQL entries did nothing; OData entries pasted the text without selecting the table. A click now selects the entry's table, then reopens the recorded query in the right editor — Builder entries open in the raw-OData editor where the query is visible, editable and runnable. Note shown by design: `$filter` VALUES are redacted at save time (privacy), so the `$filter=...` placeholder stays for you to complete. If the entry's table no longer exists on the org, an explicit message says so.

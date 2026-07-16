@@ -789,6 +789,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       const startTimeD=Date.now();
       const deleteItems=[];const deleteRowMap=[];
       for(let i=0;i<rows.length;i++){
+        if(retrySet&&!retrySet.has(i)) continue; // retry pass: only re-run the previously-failed rows
         const v=rows[i][uKey.c];
         if(v===undefined||v===null||v===""){ skipped++; logEntries.push({row:i+1,status:"SKIPPED",detail:`Empty key: ${uKey.c}`,d365Id:""}); continue; }
         deleteItems.push({keyValue:v});deleteRowMap.push(i);
@@ -812,12 +813,16 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       }
       let deleted=0;
       if(deleteItems.length){
+        // Retry passes run gentler — same policy as create/upsert: half the threads, smaller chunks
+        // (a throttled or cascade-heavy org is exactly why the first pass timed out).
+        const effThreadsD=isRetry?Math.max(1,Math.floor(threads/2)):threads;
+        const effChunkD=isRetry?Math.min(batchSize,50):batchSize;
         setLoadProgress({done:0,total:deleteItems.length,current:`Deleting ${deleteItems.length} records...`});
         try{
           const res=await bridge.batchDeleteKeyed(entitySetD,uKey.d,deleteItems,isPKD,p=>{
             setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Deleting records ${p.done}/${p.total}...`});
             pushBatchLog(p.newLog,deleteRowMap,rows);
-          },()=>loadAbort.current,{chunk:batchSize,concurrency:threads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
+          },()=>loadAbort.current,{chunk:effChunkD,concurrency:effThreadsD,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
           deleted=res.deleted||0;
           if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
           if(res.aborted){const remaining=deleteItems.length-deleted;logEntries.push({row:0,status:"CANCELLED",detail:`Cancelled — ${remaining} records not processed`,d365Id:""});}
@@ -825,10 +830,29 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       }
       const elapsedD=((Date.now()-startTimeD)/1000).toFixed(1);
       const wasCancelledD=loadAbort.current;
+      // Preserve the first pass's prep entries (SKIPPED rows) across retry passes, like create/upsert.
+      if(!isRetry) prepLogRef.current=logEntries.slice();
       const batchLogD=fullLog.current.map(e=>({row:e.csvRowNumber,status:e.status,detail:e.status==="ERROR"?(e.msg||"Batch error"):"OK",d365Id:""}));
-      const combinedLogD=[...logEntries,...batchLogD];
+      const combinedLogD=[...(isRetry?prepLogRef.current:[]),...logEntries,...batchLogD];
       const resultLogD=combinedLogD.length>5000?combinedLogD.slice(0,5000):combinedLogD;
-      setResult({created:0,updated:0,deleted,errors,skipped,elapsed:elapsedD,log:resultLogD,logTruncated:combinedLogD.length>5000,logTotal:combinedLogD.length,entity:target,totalRows:total,cancelled:wasCancelledD,startedAt:launchedAt,finishedAt:new Date(),mode:"delete"});
+      // Retry candidates — same derivation as create/upsert: ERROR rows in the authoritative fullLog
+      // (which carries the correct CSV row numbers via deleteRowMap, unlike the raw batch errors).
+      const seenIdxD=new Set();const retryAllD=[];const retryTransientD=[];
+      for(const e of fullLog.current){
+        if(e.status!=="ERROR"||!(e.csvRowNumber>=2)) continue;
+        const idx=e.csvRowNumber-2; if(seenIdxD.has(idx)) continue; seenIdxD.add(idx);
+        retryAllD.push(idx); if(isTransientError(e.msg)) retryTransientD.push(idx);
+      }
+      // Cumulative accounting on a retry pass — errors re-derived from fullLog (correct rows) plus
+      // batch-level (row 0) catastrophic failures from THIS pass.
+      const fDeleted=isRetry?(prevResult?.deleted||0)+deleted:deleted;
+      const fSkippedD=isRetry?(prevResult?.skipped||0):skipped;
+      const fErrorsD=isRetry
+        ? [...fullLog.current.filter(e=>e.status==="ERROR"&&e.csvRowNumber>=2).map(e=>({row:e.csvRowNumber,msg:e.msg,payload:""})),
+           ...errors.filter(e=>e.row===0)]
+        : errors;
+      const retryInfoD=isRetry?{attempted:retrySet.size,succeeded:deleted,stillFailing:Math.max(0,retrySet.size-deleted),transientOnly:!!opts.transientOnly}:null;
+      setResult({created:0,updated:0,deleted:fDeleted,errors:fErrorsD,skipped:fSkippedD,elapsed:elapsedD,log:resultLogD,logTruncated:combinedLogD.length>5000,logTotal:combinedLogD.length,entity:target,totalRows:total,cancelled:wasCancelledD,startedAt:launchedAt,finishedAt:new Date(),mode:"delete",retryAll:retryAllD,retryTransient:retryTransientD,retryInfo:retryInfoD});
       setLoadProgress({done:total,total,current:wasCancelledD?"Cancelled":"Done"});
       setCancelling(false);
       return;
@@ -1189,7 +1213,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // 5xx / deadlocks — the errors a retry can actually fix; false re-runs every failed row (use after you
   // fixed something org-side, e.g. granted a privilege or raised a field length).
   const retryFailed=(transientOnly=true)=>{
-    if(!result||result.dryRun||result.mode==="delete") return;
+    if(!result||result.dryRun) return;
     const idxs=transientOnly?(result.retryTransient||[]):(result.retryAll||[]);
     if(!idxs.length) return;
     const retrySet=new Set(idxs);
@@ -1908,7 +1932,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 </div>
               )}
 
-              {!result.dryRun&&result.mode!=="delete"&&(result.retryAll?.length>0)&&(()=>{
+              {!result.dryRun&&(result.retryAll?.length>0)&&(()=>{
                 const tCount=result.retryTransient?.length||0;
                 const aCount=result.retryAll.length;
                 const hasTransient=tCount>0;
