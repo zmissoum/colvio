@@ -31,6 +31,17 @@ export const inp=(x)=>({width:"100%",padding:"7px 11px",background:C.bg,border:`
 export const bt=(bg,x)=>({padding:"7px 14px",background:bg||C.sfh,border:bg?"none":`1px solid ${C.bd}`,borderRadius:6,color:bg?"white":C.tx,cursor:"pointer",fontSize:13,fontWeight:600,display:"inline-flex",alignItems:"center",gap:5,transition:"all .15s",whiteSpace:"nowrap",...x});
 export const crd=(x)=>({background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,...x});
 export const ths=()=>({padding:"6px 10px",textAlign:"left",borderBottom:`2px solid ${C.bd}`,color:C.txd,fontWeight:600,fontSize:12,position:"sticky",top:0,background:C.sf,whiteSpace:"nowrap"});
+// Table-type badge — Standard/Activity render nothing. Virtual = external data via a data
+// provider (writes and filter operators depend on the provider; no audit, no recycle bin).
+// Elastic = Cosmos-backed (pages cap at 500 rows, limited joins/aggregates — the audit table).
+export const TableTypeBadge=({tt,style})=>{
+  if(tt!=="Virtual"&&tt!=="Elastic")return null;
+  const color=tt==="Virtual"?C.or:C.cy;
+  const title=tt==="Virtual"
+    ?"Virtual table — data lives in an EXTERNAL source, served by a data provider at query time. Writes and filter operators depend on the provider; no audit history, no recycle bin."
+    :"Elastic table — Cosmos DB-backed. Result pages cap at 500 rows, eventual consistency, limited joins and aggregates.";
+  return <span title={title} style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,background:color+"22",color,border:`1px solid ${color}44`,letterSpacing:".5px",flexShrink:0,cursor:"help",...style}}>{tt.toUpperCase()}</span>;
+};
 export const tds={padding:"5px 10px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:14};
 
 // ── HOOKS ─────────────────────────────────────────────────────

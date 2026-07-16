@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.102] — 2026-07-16
+### Added — Virtual / Elastic table badges
+- **Virtual and Elastic tables are now labeled** in the Data Explorer entity list, the Loader's target-entity picker and the Metadata Browser (`TableType` from the entity metadata — zero extra queries; graceful fallback on orgs whose schema doesn't expose it). Hover the badge for the limitations: Virtual = external data behind a data provider (writes and filter operators depend on the provider, no audit history, no recycle bin); Elastic = Cosmos-backed (500-row max pages, limited joins/aggregates — the audit-table gotcha).
+- **Loader warns when the target is a Virtual table** — most are read-only, so an import would fail row by row with the provider's error; the banner says so before you build the mapping.
+
 ## [1.11.101] — 2026-07-16
 ### Fixed
 - **Loader: DELETE mode now offers the retry card too.** The "Retry N transient errors / Retry all failed" buttons (v1.11.52) only existed for CREATE/UPSERT/UPDATE — a delete run ending with 136 timeout errors offered nothing but "New import". Deletes now get the same treatment: retry only the failed rows (transient by default), at gentler concurrency (half the threads, chunks ≤50 — a cascade-heavy or throttled org is exactly why the first pass timed out), with cumulative totals ("Retry: X of Y succeeded"), preserved log, and honest error re-derivation.

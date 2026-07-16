@@ -3,7 +3,7 @@ import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
@@ -166,7 +166,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(data && Array.isArray(data)){
         const mapped = data.map(e=>({
           l:e.logical, d:e.display, p:e.entitySet||e.logical+"s",
-          i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard"
+          i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",
+          tt:e.tableType||"Standard"
         })).sort((a,b)=>a.d.localeCompare(b.d));
         setEntities(mapped);
       }
@@ -989,7 +990,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             : filtered.map(e=>(
             <div key={e.l} style={{display:"flex",alignItems:"center",marginBottom:1}}>
               <button onClick={()=>selEnt(e)} style={{flex:1,display:"flex",alignItems:"center",gap:7,padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",background:ent?.l===e.l?C.sfa:"transparent",color:ent?.l===e.l?C.tx:C.txm}}>
-                <span style={{fontSize:15}}>{e.i}</span><div style={{flex:1,textAlign:"left",minWidth:0}}><div style={{fontSize:13,fontWeight:ent?.l===e.l?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.d}</div><div style={{fontSize:11,color:C.txd,...mono}}>{e.l}</div></div>{(e.c>0||entityCounts[e.l]>0)&&<span style={{fontSize:10,color:C.txd,background:C.bg,padding:"1px 5px",borderRadius:3,...mono}}>{(e.c||entityCounts[e.l]||0).toLocaleString()}</span>}
+                <span style={{fontSize:15}}>{e.i}</span><div style={{flex:1,textAlign:"left",minWidth:0}}><div style={{fontSize:13,fontWeight:ent?.l===e.l?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.d}</div><div style={{fontSize:11,color:C.txd,...mono}}>{e.l}</div></div><TableTypeBadge tt={e.tt}/>{(e.c>0||entityCounts[e.l]>0)&&<span style={{fontSize:10,color:C.txd,background:C.bg,padding:"1px 5px",borderRadius:3,...mono}}>{(e.c||entityCounts[e.l]||0).toLocaleString()}</span>}
               </button>
               <span onClick={(ev)=>{ev.stopPropagation();toggleBookmark(e.l);}} style={{cursor:"pointer",fontSize:13,padding:"2px 4px",color:bookmarks.includes(e.l)?C.yw:C.txd+"44",flexShrink:0}} title={bookmarks.includes(e.l)?"Remove bookmark":"Bookmark"}>★</span>
             </div>

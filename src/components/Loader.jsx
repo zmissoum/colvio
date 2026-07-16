@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml } from "../loaderUtils.js";
-import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge } from "../shared.jsx";
 
 // System / audit fields the loader never writes by default (platform-managed or write-protected).
 // Migration mode re-enables a small allowlist so a data migration can preserve original audit values.
@@ -305,7 +305,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(!isLive) return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",tt:e.tableType||"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);
@@ -1304,6 +1304,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                         >
                           <span style={{fontSize:14}}>{e.i}</span>
                           <span style={{flex:1,fontWeight:target===e.l?600:400}}>{e.d}</span>
+                          <TableTypeBadge tt={e.tt}/>
                           <span style={{...mono,fontSize:11,color:C.txd}}>{e.l}</span>
                         </button>
                       ))}
@@ -1316,6 +1317,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   )}
                 </div>);
               })()}
+              {(()=>{const se=entityList.find(e=>e.l===target);return se?.tt==="Virtual"&&(
+                <div style={{marginTop:6,fontSize:11.5,lineHeight:1.5,color:C.or,padding:"6px 8px",background:C.or+"11",borderRadius:4,border:`1px solid ${C.or}33`}}>
+                  ⚠ <b>Virtual table</b> — its data lives in an external source behind a data provider. Writes (create/update/delete) only work if the provider implements them; most virtual tables are <b>read-only</b> and every row will fail with the provider's error.
+                </div>
+              );})()}
             </div>
             <div style={{...crd({padding:12}),flex:1}}>
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Import mode</label>

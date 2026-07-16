@@ -256,17 +256,25 @@
             break;
           }
 
-          case "getEntities":
-            result = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsManaged,MetadataId");
-            result = (result.value || []).map(e => ({
+          case "getEntities": {
+            // TableType tells apart Virtual tables (external data via a data provider — writes and
+            // filter operators depend on the provider, no audit/recycle bin) and Elastic tables
+            // (Cosmos-backed — 500-row max pages, the audit-table gotcha). Selectable on current
+            // orgs; fall back without it so the entity list can never break on an older schema.
+            let rawE;
+            try { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsManaged,MetadataId,TableType"); }
+            catch { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsManaged,MetadataId"); }
+            result = (rawE.value || []).map(e => ({
               logical: e.LogicalName,
               display: e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName,
               entitySet: e.EntitySetName || (e.LogicalName + "s"),
               isCustom: e.IsCustomEntity || false,
               isManaged: e.IsManaged || false,
               metadataId: e.MetadataId || null,
+              tableType: e.TableType || "Standard",
             }));
             break;
+          }
 
           case "getFields": {
             validateName(params.logicalName, 'logicalName');

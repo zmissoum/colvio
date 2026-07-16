@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, exportTable, copyText, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, mono, displayType, inp, bt, crd, ths, tds, exportTable, copyText, isTrulyCustom, TableTypeBadge } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import SchemaDiff from "./SchemaDiff.jsx";
@@ -70,7 +70,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     if(!isLive)return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",tt:e.tableType||"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);
@@ -129,6 +129,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
             <button key={e.l} onClick={()=>handleSelectEntity(e)} style={{width:"100%",display:"flex",alignItems:"center",gap:6,padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm}}>
               <span style={{fontSize:15}}>{e.i}</span>
               <div style={{flex:1,textAlign:"left",minWidth:0}}><div style={{fontSize:13,fontWeight:selEnt?.l===e.l?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.d}</div><div style={{fontSize:11,color:C.txd,...mono}}>{e.l}</div></div>
+              <TableTypeBadge tt={e.tt}/>
               {e.c>0&&<span style={{fontSize:10,color:C.txd,background:C.bg,padding:"1px 5px",borderRadius:3,...mono}}>{e.c.toLocaleString()}</span>}
             </button>
           ))}
