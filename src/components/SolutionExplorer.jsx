@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd } from "../shared.jsx";
+import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -104,10 +104,25 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
         {selSol&&loadingComp&&<div style={{textAlign:"center",marginTop:60}}><Spin s={20}/></div>}
         {selSol&&!loadingComp&&(
           <div>
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:18,fontWeight:700}}>{selSol.displayName}</div>
-              <div style={{fontSize:13,color:C.txd,...mono}}>{selSol.uniqueName} · v{selSol.version} · {components.length} components</div>
-              {selSol.description&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{selSol.description}</div>}
+            <div style={{marginBottom:16,display:"flex",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:220}}>
+                <div style={{fontSize:18,fontWeight:700}}>{selSol.displayName}</div>
+                <div style={{fontSize:13,color:C.txd,...mono}}>{selSol.uniqueName} · v{selSol.version} · {components.length} components</div>
+                {selSol.description&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{selSol.description}</div>}
+              </div>
+              {components.length>0&&(()=>{
+                // Flat export over every group: one row per component with its resolved type label
+                // and name — the "what exactly is in this solution" deliverable for deployments.
+                const doExport=(format)=>{
+                  const rows=[];
+                  for(const[,group] of grouped) for(const item of group.items) rows.push([group.l,item.name||"",item.objectId||""]);
+                  exportTable(["componentType","name","objectId"],rows,`solution_${(selSol.uniqueName||"components").replace(/[^A-Za-z0-9_-]+/g,"_")}_components`,format,"Components");
+                };
+                return(<div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>doExport("csv")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> CSV</button>
+                  <button onClick={()=>doExport("xlsx")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> Excel</button>
+                </div>);
+              })()}
             </div>
             {grouped.map(([typeKey,group])=>{
               const isOpen=!collapsed[typeKey];

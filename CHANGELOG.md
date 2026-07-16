@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.105] — 2026-07-16
+### Added
+- **Solution Explorer: export a solution's components to CSV/Excel.** One row per component with its resolved type label (Entity, Web Resource, Security Role…), name and objectId — the "what exactly ships in this solution" deliverable for deployment reviews. Buttons appear next to the solution header once components are loaded; filename carries the solution's unique name.
+
 ## [1.11.104] — 2026-07-16
 ### Added — New module: Automation (plug-ins & processes inventory)
 - **The static inventory of everything registered to run in the org** — the design-time counterpart to System Ops' runtime jobs. Two sources, eight category tabs with counts: **Plug-in steps** (which class runs on which message/entity, Pre-validation/Pre-operation/Post-operation stage, Sync/Async, Enabled/Disabled, rank, filtering attributes on hover, assembly) and every process definition from the workflow table — **Workflows** (Background/Real-time mode + Create/Update/Delete triggers), **Cloud flows** (Power Automate), **Business rules**, **Actions**, **BPFs**, **Dialogs**, **Desktop flows**.
