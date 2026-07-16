@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.106] — 2026-07-16
+### Fixed — Automation: honest source classification (user-reported: "Custom only" showed msdyn_ steps)
+- **"Custom only" was equating unmanaged with yours — wrong on both counts.** Dataverse doesn't stamp authorship, and the platform registers thousands of ITS OWN steps unmanaged (the `Microsoft.Crm.ObjectModel.*` flood). The filter is now a three-way SOURCE call: **Microsoft** (publisher-prefix heuristic — `Microsoft.*` assemblies, msdyn-family names — applied BEFORE the managed flag), **Managed** (installed from a managed solution: an ISV's or your own), **Custom** (unmanaged). The Source badge explains the heuristic on hover; exports carry both `source` and the raw `managedFlag`.
+- **Internal steps hidden by default.** Stage 30 (MainOperation) and other non-10/20/40 stages are the platform's own execution machinery (workflow runners, Custom API handlers) — the Plugin Registration Tool hides them too. A toggle shows them ("internal steps (+94,551)"); the tab count now counts real registrations, not the machinery.
+
 ## [1.11.105] — 2026-07-16
 ### Added
 - **Solution Explorer: export a solution's components to CSV/Excel.** One row per component with its resolved type label (Entity, Web Resource, Security Role…), name and objectId — the "what exactly ships in this solution" deliverable for deployment reviews. Buttons appear next to the solution header once components are loaded; filename carries the solution's unique name.

@@ -18,6 +18,21 @@ const CATEGORIES = [
   { key: "6",        label: "Desktop flows" },
 ];
 const STAGE_LABEL = { 10: "Pre-validation", 20: "Pre-operation", 40: "Post-operation" };
+// The registration stages are 10/20/40 — anything else (30 = MainOperation, 5, 45…) is the
+// platform's own execution machinery (workflow runners, Custom API mains). The Plugin
+// Registration Tool hides them too; we hide them by default behind a toggle.
+const isInternalStage = (stage) => stage !== 10 && stage !== 20 && stage !== 40;
+// Dataverse does NOT stamp authorship: ismanaged only says HOW something was installed (plenty of
+// Microsoft's own steps are registered UNMANAGED by the platform). Source is therefore a two-part
+// call: publisher-prefix heuristic first (Microsoft assemblies / msdyn-family names), then the
+// managed flag (managed non-Microsoft ≈ ISV or your own managed solution; unmanaged = custom).
+const MS_ASM = /^(Microsoft\.|Msdyn|MicrosoftDynamics)/i;
+const MS_NAME = /^(msdyn|msdynce|msdynmkt|msfp|mspp|mspcat|msemail|adx)_/i;
+const sourceOf = (r, isStep) => {
+  if (isStep && MS_ASM.test(r.assembly || "")) return "microsoft";
+  if (!isStep && r.managed && MS_NAME.test(r.name || "")) return "microsoft";
+  return r.managed ? "isv" : "custom";
+};
 
 export default function AutomationInventory({ bp, orgInfo }) {
   const [steps, setSteps] = useState(null);
@@ -27,7 +42,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const [cat, setCat] = useState("steps");
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("all");   // all | active | inactive
-  const [managedFilter, setManagedFilter] = useState("all"); // all | custom | managed
+  const [sourceFilter, setSourceFilter] = useState("all"); // all | custom | isv | microsoft
+  const [showInternal, setShowInternal] = useState(false); // stage-30-and-friends platform steps
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +56,9 @@ export default function AutomationInventory({ bp, orgInfo }) {
   }, []);
 
   const counts = useMemo(() => {
-    const m = { steps: steps?.length || 0 };
+    // Steps count = actual REGISTRATIONS (10/20/40) — the platform's internal stage-30 machinery
+    // would multiply the number by ~100 on a first-party-heavy org and mean nothing to an audit.
+    const m = { steps: (steps || []).filter(r => !isInternalStage(r.stage)).length };
     for (const p of (procs || [])) { const k = String(p.category); m[k] = (m[k] || 0) + 1; }
     return m;
   }, [steps, procs]);
@@ -54,14 +72,15 @@ export default function AutomationInventory({ bp, orgInfo }) {
     const base = isStep ? (steps || []) : (procs || []).filter(p => String(p.category) === cat);
     const s = search.trim().toLowerCase();
     return base.filter(r => {
+      if (isStep && !showInternal && isInternalStage(r.stage)) return false;
       if (stateFilter === "active" && !isActive(r, isStep)) return false;
       if (stateFilter === "inactive" && isActive(r, isStep)) return false;
-      if (managedFilter === "custom" && r.managed) return false;
-      if (managedFilter === "managed" && !r.managed) return false;
+      if (sourceFilter !== "all" && sourceOf(r, isStep) !== sourceFilter) return false;
       if (!s) return true;
       return [r.name, r.entity, r.message, r.assembly, r.pluginType, r.owner].some(v => (v || "").toLowerCase().includes(s));
     });
-  }, [cat, steps, procs, search, stateFilter, managedFilter]);
+  }, [cat, steps, procs, search, stateFilter, sourceFilter, showInternal]);
+  const internalCount = useMemo(() => (steps || []).filter(r => isInternalStage(r.stage)).length, [steps]);
 
   const catLabel = CATEGORIES.find(c => c.key === cat)?.label || cat;
   const isStep = cat === "steps";
@@ -77,13 +96,13 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const exportRows = (format = "csv") => {
     if (isStep) {
       exportTable(
-        ["name", "assembly", "pluginType", "message", "entity", "stage", "mode", "state", "rank", "filteringAttributes", "managed", "modifiedOn"],
-        rows.map(r => [r.name, r.assembly, r.pluginType, r.message, r.entity, STAGE_LABEL[r.stage] || r.stage, r.mode === 1 ? "Async" : "Sync", r.state === 0 ? "Enabled" : "Disabled", r.rank, r.filteringAttributes, r.managed ? "Managed" : "Custom", r.modifiedon]),
+        ["name", "assembly", "pluginType", "message", "entity", "stage", "mode", "state", "rank", "filteringAttributes", "source", "managedFlag", "modifiedOn"],
+        rows.map(r => [r.name, r.assembly, r.pluginType, r.message, r.entity, STAGE_LABEL[r.stage] || `Internal (${r.stage})`, r.mode === 1 ? "Async" : "Sync", r.state === 0 ? "Enabled" : "Disabled", r.rank, r.filteringAttributes, srcLabel(r, true), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
         "automation_plugin_steps", format, "PluginSteps");
     } else {
       exportTable(
-        ["name", "entity", "state", "mode", "triggers", "owner", "managed", "modifiedOn"],
-        rows.map(r => [r.name, r.entity, r.state === 1 ? "Activated" : "Draft", cat === "0" ? (r.mode === 1 ? "Real-time" : "Background") : "", triggersOf(r), r.owner, r.managed ? "Managed" : "Custom", r.modifiedon]),
+        ["name", "entity", "state", "mode", "triggers", "owner", "source", "managedFlag", "modifiedOn"],
+        rows.map(r => [r.name, r.entity, r.state === 1 ? "Activated" : "Draft", cat === "0" ? (r.mode === 1 ? "Real-time" : "Background") : "", triggersOf(r), r.owner, srcLabel(r, false), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
         `automation_${catLabel.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, format, "Automation");
     }
   };
@@ -91,6 +110,13 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const Badge = ({ on, yes, no, colorYes, colorNo }) => (
     <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600, background: (on ? colorYes : colorNo) + "22", color: on ? colorYes : colorNo }}>{on ? yes : no}</span>
   );
+  const SrcBadge = ({ r, step }) => {
+    const s = sourceOf(r, step);
+    const lbl = s === "microsoft" ? "Microsoft" : s === "isv" ? "Managed" : "Custom";
+    const col = s === "microsoft" ? C.txd : s === "isv" ? C.vi : C.gn;
+    return <span title={"Source is a best-effort call: Dataverse doesn't stamp who wrote a component. Microsoft = publisher-prefix heuristic; Managed = installed from a managed solution (ISV or your own); Custom = unmanaged."} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600, cursor: "help", background: col + "22", color: col }}>{lbl}</span>;
+  };
+  const srcLabel = (r, step) => { const s = sourceOf(r, step); return s === "microsoft" ? "Microsoft" : s === "isv" ? "Managed (ISV/own)" : "Custom (unmanaged)"; };
 
   return (
     <div style={{ padding: bp.mobile ? 12 : 20, maxWidth: 1500, margin: "0 auto" }}>
@@ -118,11 +144,18 @@ export default function AutomationInventory({ bp, orgInfo }) {
             <option value="active">{isStep ? "Enabled" : "Activated"} only</option>
             <option value="inactive">{isStep ? "Disabled" : "Draft"} only</option>
           </select>
-          <select value={managedFilter} onChange={e => setManagedFilter(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
-            <option value="all">Custom + managed</option>
-            <option value="custom">Custom only</option>
-            <option value="managed">Managed only</option>
+          <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} title="Dataverse doesn't stamp authorship — source = publisher-prefix heuristic (Microsoft.* assemblies, msdyn-family names) + the ismanaged flag" style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
+            <option value="all">All sources</option>
+            <option value="custom">Custom (unmanaged)</option>
+            <option value="isv">Managed (ISV / your solutions)</option>
+            <option value="microsoft">Microsoft</option>
           </select>
+          {isStep && internalCount > 0 && (
+            <label title="MainOperation (stage 30) and other non-10/20/40 stages: the platform's own execution machinery (workflow runners, Custom API handlers). The Plugin Registration Tool hides them too." style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: C.txm, cursor: "pointer" }}>
+              <input type="checkbox" checked={showInternal} onChange={e => setShowInternal(e.target.checked)} style={{ accentColor: C.vi }} />
+              internal steps (+{internalCount.toLocaleString()})
+            </label>
+          )}
           <span style={{ fontSize: 11, color: C.txd, ...mono }}>{rows.length.toLocaleString()} shown</span>
           <div style={{ flex: 1 }} />
           <button onClick={() => exportRows("csv")} disabled={!rows.length} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: rows.length ? 1 : 0.5 })}><I.Download /> CSV</button>
@@ -142,10 +175,10 @@ export default function AutomationInventory({ bp, orgInfo }) {
                         <td style={{ ...tds, color: C.txm, maxWidth: 180 }}>{r.assembly}</td>
                         <td style={{ ...tds, ...mono, fontSize: 12, color: C.cy }}>{r.message}</td>
                         <td style={{ ...tds, ...mono, fontSize: 12 }}>{r.entity || <span style={{ color: C.txd }}>(global)</span>}</td>
-                        <td style={tds}>{STAGE_LABEL[r.stage] || r.stage}</td>
+                        <td style={tds}>{STAGE_LABEL[r.stage] || `Internal (${r.stage})`}</td>
                         <td style={tds}><Badge on={r.mode === 0} yes="Sync" no="Async" colorYes={C.or} colorNo={C.cy} /></td>
                         <td style={tds}><Badge on={r.state === 0} yes="Enabled" no="Disabled" colorYes={C.gn} colorNo={C.rd} /></td>
-                        <td style={tds}><Badge on={!r.managed} yes="Custom" no="Managed" colorYes={C.gn} colorNo={C.txd} /></td>
+                        <td style={tds}><SrcBadge r={r} step={true} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -162,7 +195,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                         {cat === "0" && <td style={tds}><Badge on={r.mode === 1} yes="Real-time" no="Background" colorYes={C.or} colorNo={C.cy} /></td>}
                         {cat === "0" && <td style={{ ...tds, fontSize: 12, color: C.txm }}>{triggersOf(r) || "—"}</td>}
                         <td style={{ ...tds, color: C.txm, maxWidth: 160 }}>{r.owner}</td>
-                        <td style={tds}><Badge on={!r.managed} yes="Custom" no="Managed" colorYes={C.gn} colorNo={C.txd} /></td>
+                        <td style={tds}><SrcBadge r={r} step={false} /></td>
                         <td style={{ ...tds, fontSize: 11, color: C.txd }}>{r.modifiedon ? new Date(r.modifiedon).toLocaleDateString() : ""}</td>
                       </tr>
                     ))}
