@@ -1274,6 +1274,66 @@
             break;
           }
 
+          case "getPluginSteps": {
+            // Static inventory of plug-in step REGISTRATIONS (what runs on which message/entity,
+            // at which stage, sync or async) — the design-time view, not the runtime jobs that
+            // System Ops shows. Paged; a heavy org has a few thousand steps at most.
+            const rowsP = [];
+            let urlP = `sdkmessageprocessingsteps?$select=sdkmessageprocessingstepid,name,stage,mode,rank,statecode,ismanaged,filteringattributes,modifiedon&$expand=plugintypeid($select=typename,assemblyname),sdkmessageid($select=name),sdkmessagefilterid($select=primaryobjecttypecode)&$orderby=name`;
+            while (urlP) {
+              const dP = await dvRequest("GET", urlP, null, { Prefer: "odata.maxpagesize=5000" });
+              (dP.value || []).forEach(s => rowsP.push({
+                id: s.sdkmessageprocessingstepid,
+                name: s.name || "",
+                stage: s.stage,            // 10 Pre-validation / 20 Pre-operation / 40 Post-operation
+                mode: s.mode,              // 0 Synchronous / 1 Asynchronous
+                rank: s.rank,
+                state: s.statecode,        // 0 Enabled / 1 Disabled
+                managed: !!s.ismanaged,
+                filteringAttributes: s.filteringattributes || "",
+                message: s.sdkmessageid?.name || "",
+                entity: s.sdkmessagefilterid?.primaryobjecttypecode || "",
+                pluginType: s.plugintypeid?.typename || "",
+                assembly: s.plugintypeid?.assemblyname || "",
+                modifiedon: s.modifiedon || "",
+              }));
+              const nlP = dP["@odata.nextLink"];
+              urlP = nlP ? nlP.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = rowsP;
+            break;
+          }
+
+          case "getProcesses": {
+            // Every PROCESS DEFINITION from the workflow table — category tells them apart:
+            // 0 classic workflow / 1 dialog / 2 business rule / 3 action / 4 BPF / 5 modern
+            // (Power Automate) cloud flow / 6 desktop flow. type eq 1 keeps definitions only
+            // (2 = per-record activations, 3 = templates).
+            const rowsW = [];
+            let urlW = `workflows?$select=workflowid,name,category,statecode,mode,primaryentity,ismanaged,triggeroncreate,triggerondelete,triggeronupdateattributelist,_ownerid_value,modifiedon&$filter=type eq 1&$orderby=name`;
+            while (urlW) {
+              const dW = await dvRequest("GET", urlW, null, { Prefer: "odata.maxpagesize=5000" });
+              (dW.value || []).forEach(w => rowsW.push({
+                id: w.workflowid,
+                name: w.name || "",
+                category: w.category,      // see mapping above
+                state: w.statecode,        // 0 Draft / 1 Activated
+                mode: w.mode,              // classic workflows: 0 Background / 1 Real-time
+                entity: w.primaryentity && w.primaryentity !== "none" ? w.primaryentity : "",
+                managed: !!w.ismanaged,
+                triggerCreate: !!w.triggeroncreate,
+                triggerDelete: !!w.triggerondelete,
+                triggerUpdate: w.triggeronupdateattributelist || "",
+                owner: w["_ownerid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                modifiedon: w.modifiedon || "",
+              }));
+              const nlW = dW["@odata.nextLink"];
+              urlW = nlW ? nlW.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = rowsW;
+            break;
+          }
+
           case "upsert": {
             validateEntitySet(params.entitySet);
             validateName(params.keyField, 'keyField');

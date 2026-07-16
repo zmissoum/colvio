@@ -37,6 +37,7 @@ const SECTIONS=[
   {cat:"admin",  icon:<I.Link/>,     titleKey:"help.bu_title",              bodyKey:"help.bu_body"},
   {cat:"admin",  icon:<I.Clock/>,    titleKey:"help.logins_title",          bodyKey:"help.logins_body"},
   {cat:"admin",  icon:<I.Users/>,    titleKey:"help.adoption_title",        bodyKey:"help.adoption_body"},
+  {cat:"schema", icon:<I.Zap/>,      titleKey:"help.automation_title",      bodyKey:"help.automation_body"},
   {cat:"schema", icon:<I.Database/>, titleKey:"help.solutions_title",       bodyKey:"help.solutions_body"},
   {cat:"schema", icon:<I.Clipboard/>,titleKey:"help.translations_title",    bodyKey:"help.translations_body"},
   {cat:"schema", icon:<I.Grid/>,     titleKey:"help.schemadiff_title",      bodyKey:"help.schemadiff_body"},

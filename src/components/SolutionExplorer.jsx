@@ -8,6 +8,7 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
   const[solutions,setSolutions]=useState([]);
   const[search,setSearch]=useState("");
+  const[solFilter,setSolFilter]=useState("all"); // all | unmanaged | managed
   const[selSol,setSelSol]=useState(null);
   const[components,setComponents]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -62,7 +63,12 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
     return Object.entries(map).sort((a,b)=>a[1].l.localeCompare(b[1].l));
   },[components]);
 
-  const filtered=solutions.filter(s=>!search||s.displayName.toLowerCase().includes(search.toLowerCase())||s.uniqueName.toLowerCase().includes(search.toLowerCase()));
+  const filtered=solutions.filter(s=>{
+    if(solFilter==="managed"&&!s.isManaged)return false;
+    if(solFilter==="unmanaged"&&s.isManaged)return false;
+    return !search||s.displayName.toLowerCase().includes(search.toLowerCase())||s.uniqueName.toLowerCase().includes(search.toLowerCase());
+  });
+  const nUnmanaged=solutions.filter(s=>!s.isManaged).length;
 
   return(
     <div style={{display:"flex",height:"100%"}}>
@@ -70,6 +76,12 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
         <div style={{padding:"12px 10px",borderBottom:`1px solid ${C.bd}`}}>
           <div style={{fontSize:16,fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>Solutions <Tooltip text={t("help.solution_explorer")}/></div>
           <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/>
+          <div style={{display:"flex",gap:2,marginTop:6,flexWrap:"wrap"}}>
+            {[["all",`All (${solutions.length})`],["unmanaged",`Unmanaged (${nUnmanaged})`],["managed",`Managed (${solutions.length-nUnmanaged})`]].map(([k,lbl])=>(
+              <button key={k} onClick={()=>setSolFilter(k)} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:solFilter===k?C.vi:"transparent",color:solFilter===k?"white":C.txd}}>{lbl}</button>
+            ))}
+          </div>
+          {solutions.length>0&&<div style={{fontSize:11,color:C.gn,marginTop:6}}>{filtered.length.toLocaleString()} solution{filtered.length===1?"":"s"}{search?" matching":solFilter!=="all"?` (${solFilter})`:""}</div>}
         </div>
         <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
           {loading&&<div style={{textAlign:"center",padding:20}}><Spin/></div>}

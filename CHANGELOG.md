@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.104] — 2026-07-16
+### Added — New module: Automation (plug-ins & processes inventory)
+- **The static inventory of everything registered to run in the org** — the design-time counterpart to System Ops' runtime jobs. Two sources, eight category tabs with counts: **Plug-in steps** (which class runs on which message/entity, Pre-validation/Pre-operation/Post-operation stage, Sync/Async, Enabled/Disabled, rank, filtering attributes on hover, assembly) and every process definition from the workflow table — **Workflows** (Background/Real-time mode + Create/Update/Delete triggers), **Cloud flows** (Power Automate), **Business rules**, **Actions**, **BPFs**, **Dialogs**, **Desktop flows**.
+- Filter by state (enabled/activated vs disabled/draft), custom vs managed, and free text (name, entity, message, assembly, owner); CSV/Excel export of any view. Empty categories stay visible with (0) — "we have zero desktop flows" is also an answer.
+- Sits in the DEVELOP section, gated like Solutions (`canReadSolutions`). Help card EN/FR.
+### Added
+- **Solution Explorer: All / Unmanaged / Managed filter chips with counts** + a total line following the filter and search — same treatment as the Metadata Browser got in 1.11.103.
+
 ## [1.11.103] — 2026-07-16
 ### Added
 - **Metadata Browser: entity counts.** The All / Standard / Custom filter buttons now show how many tables each holds, and a total line under them follows the active filter and search ("214 entities (Custom)", "3 entities matching").
