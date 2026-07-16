@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.103] — 2026-07-16
+### Added
+- **Metadata Browser: entity counts.** The All / Standard / Custom filter buttons now show how many tables each holds, and a total line under them follows the active filter and search ("214 entities (Custom)", "3 entities matching").
+
 ## [1.11.102] — 2026-07-16
 ### Added — Virtual / Elastic table badges
 - **Virtual and Elastic tables are now labeled** in the Data Explorer entity list, the Loader's target-entity picker and the Metadata Browser (`TableType` from the entity metadata — zero extra queries; graceful fallback on orgs whose schema doesn't expose it). Hover the badge for the limitations: Virtual = external data behind a data provider (writes and filter operators depend on the provider, no audit history, no recycle bin); Elastic = Cosmos-backed (500-row max pages, limited joins/aggregates — the audit-table gotcha).

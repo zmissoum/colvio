@@ -120,9 +120,10 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search entity..." style={inp({fontSize:13,padding:"6px 10px"})}/>
           <button onClick={()=>setMbPanel("diff")} title={t("schemadiff.title")} style={{width:"100%",marginTop:6,padding:"5px 10px",fontSize:11.5,border:`1px solid ${C.cy}55`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.cy,fontWeight:600}}>⇄ {t("schemadiff.title")}</button>
           <div style={{display:"flex",gap:2,marginTop:6,flexWrap:"wrap"}}>
-            <button onClick={()=>setCatFilter("all")} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter==="all"?C.vi:"transparent",color:catFilter==="all"?"white":C.txd}}>All</button>
-            {cats.map(c=><button key={c} onClick={()=>setCatFilter(c)} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter===c?C.vi:"transparent",color:catFilter===c?"white":C.txd}}>{c}</button>)}
+            <button onClick={()=>setCatFilter("all")} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter==="all"?C.vi:"transparent",color:catFilter==="all"?"white":C.txd}}>All ({entities.length.toLocaleString()})</button>
+            {cats.map(c=><button key={c} onClick={()=>setCatFilter(c)} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter===c?C.vi:"transparent",color:catFilter===c?"white":C.txd}}>{c} ({entities.filter(e=>e.cat===c).length.toLocaleString()})</button>)}
           </div>
+          {entities.length>0&&<div style={{fontSize:11,color:C.gn,padding:"6px 2px 0"}}>{filtered.length.toLocaleString()} entit{filtered.length===1?"y":"ies"}{search?" matching":catFilter!=="all"?` (${catFilter})`:""}</div>}
         </div>
         <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
           {filtered.map(e=>(
