@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.100] — 2026-07-16
+### Fixed
+- **Explorer: clicking a "Recent queries" entry now actually restores it.** Builder-mode entries did nothing at all (history stores the emitted query string, not the Builder's visual state, and the handler only switched the mode tab); SQL entries did nothing; OData entries pasted the text without selecting the table. A click now selects the entry's table, then reopens the recorded query in the right editor — Builder entries open in the raw-OData editor where the query is visible, editable and runnable. Note shown by design: `$filter` VALUES are redacted at save time (privacy), so the `$filter=...` placeholder stays for you to complete. If the entry's table no longer exists on the org, an explicit message says so.
+
 ## [1.11.99] — 2026-07-15
 ### Docs
 - **README fully refreshed** (was stale since 1.11.41): Adoption module, Builder relational filters, inline field edit + BPF manager under Show All Data, Security Audit matrix/org-wide/Teams/bulk-assign, Loader NULL token / strip HTML / date toggle / migration mode / pre-flight checks / honest accounting, corrected bypass-header names (the old text still listed the non-existent `BypassSynchronousLogic`), sidebar sections, updated stats (16 modules, ~15.3k LOC, 62 actions, 35 components, 151 tests) and the slimmed MV3 permissions.

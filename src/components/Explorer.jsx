@@ -1296,7 +1296,27 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                     <div style={{position:"absolute",top:"100%",right:0,zIndex:20,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,marginTop:4,minWidth:260,maxHeight:250,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
                       <div style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:11,fontWeight:600,color:C.txm}}>Recent queries</span><button onClick={()=>{setQueryHistory([]);if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.remove("d365_query_history");}} style={{fontSize:10,color:C.txd,background:"none",border:"none",cursor:"pointer"}}>Clear</button></div>
                       {queryHistory.map((h,i)=>(
-                        <div key={i} style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",fontSize:12}} onClick={()=>{if(h.mode)setQm(h.mode);if(h.mode==="odata"&&h.query)setRq(h.query);if(h.mode==="fetchxml"&&h.query)setFxml(h.query);setShowHistory(false);}}
+                        <div key={i} style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",fontSize:12}} onClick={()=>{
+                          // Restore = select the entry's entity, then reopen the recorded query in the
+                          // right editor. Builder state is NOT stored in history (only the emitted
+                          // OData string), so builder entries reopen in the raw-OData editor — the
+                          // query is visible and runnable. $filter VALUES are redacted to "$filter=..."
+                          // at save time (PII) — the placeholder stays visible for the user to fill.
+                          setShowHistory(false);
+                          const restore=()=>{
+                            if(h.mode==="fetchxml"){setQm("fetchxml");setFxml(h.query||"");}
+                            else if(h.mode==="sql"){setQm("sql");setSqlQ(h.query||"");}
+                            else {setQm("odata");setRq(h.query||"");}
+                          };
+                          const match=h.entity&&h.entity!=="?"?entities.find(e2=>e2.l===h.entity):null;
+                          if(match&&ent?.l!==match.l){
+                            selEnt(match);
+                            if(isLive) onFieldsReady.current=restore; // after the entity's fields load (selEnt cleared rq/fxml/sqlQ)
+                            else restore();                            // demo: selEnt is synchronous, no fields callback fires
+                          }
+                          else if(match||ent) restore();
+                          else setError(`The history entry's table "${h.entity}" no longer exists on this org.`);
+                        }}
                           onMouseEnter={e=>e.currentTarget.style.background=C.sfh} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                           <div style={{fontWeight:500,color:C.tx}}>{h.entity}</div>
                           <div style={{fontSize:11,color:C.txd,...mono,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.query?.substring(0,80)}</div>
