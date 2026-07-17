@@ -57,8 +57,11 @@ Visual SVG graph of entity relationships: N:1 parents, 1:N children, N:N many-to
 Schema (ERD)
 Interactive Entity Relationship Diagram. Add entities to a canvas, see field details with FK badges, bezier curves between lookups and target entities. Drag cards, zoom, pan. Expand/collapse fields or view tables only. Export as PNG, SVG, or Mermaid.
 
+Automation Inventory
+The static inventory of everything registered to run in the org — the design-time counterpart to System Ops' runtime jobs. Plug-in steps (class, assembly, message, entity, stage, sync/async, enabled/disabled — internal platform machinery hidden by default, like the Plugin Registration Tool) plus every process definition in category tabs with counts: classic workflows (with mode and triggers), Power Automate cloud flows, business rules, actions, BPFs, dialogs, desktop flows. Honest three-way source classification (Microsoft via publisher-prefix heuristic, Managed, Custom — Dataverse doesn't stamp authorship, and the tooltip says so), state and free-text filters, CSV/Excel export of any view. The map you want before debugging "why did this field change?" or planning a migration that bypasses plug-ins.
+
 Solution Explorer
-Browse D365 solutions and their components. 40+ component types resolved to readable names against Microsoft's official enumeration (Entity, Attribute, Web Resource, Security Role, Email Template, Model-driven App, Environment Variable, Routing/Convert Rule, SLA, and more), with component names resolved per type instead of raw GUIDs.
+Browse D365 solutions and their components — with All/Unmanaged/Managed filter counts and a CSV/Excel export of a solution's full component list (resolved type labels). 40+ component types resolved to readable names against Microsoft's official enumeration (Entity, Attribute, Web Resource, Security Role, Email Template, Model-driven App, Environment Variable, Routing/Convert Rule, SLA, and more), with component names resolved per type instead of raw GUIDs.
 
 Translation Manager
 View and edit field labels in multiple languages, each shown with its proper language name — full coverage of Dataverse-provisioned languages, no raw LCID codes. Non-renameable fields automatically locked as read-only. Export/import CSV for bulk translation workflows. Auto-publish after save.
@@ -128,7 +131,7 @@ ROLE-BASED ACCESS
 
 Some modules require elevated D365 permissions and are automatically hidden for non-admin users:
 Available to all users: Data Explorer, API Tester, Show All Data, Metadata Browser, Data Loader, Relationship Graph, Schema, Help
-Requires System Administrator or System Customizer: Solution Explorer, Translation Manager, Login History, Adoption, Users & Licenses, Business Units, Security Audit
+Requires System Administrator or System Customizer: Solution Explorer, Automation, Translation Manager, Login History, Adoption, Users & Licenses, Business Units, Security Audit
 Colvio detects your permissions at startup and only shows the tabs you can access. No error screens, no confusion.
 
 SUPPORTED REGIONS

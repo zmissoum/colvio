@@ -63,6 +63,12 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Export All OptionSets** — bulk CSV export of all Picklist/State/Status values for an entity
 - Entity record counts, field type badges, custom field indicators
 
+### Automation Inventory
+- **The static inventory of everything registered to run in the org** — the design-time counterpart to System Ops' runtime jobs
+- **Plug-in steps**: which class runs on which message/entity, Pre-validation / Pre-operation / Post-operation, Sync/Async, Enabled/Disabled, rank, filtering attributes, assembly — internal stage-30 platform machinery hidden by default (like the Plugin Registration Tool)
+- **Every process definition** from the workflow table, in category tabs with counts: classic Workflows (Background/Real-time + C/U/D triggers), Cloud flows (Power Automate), Business rules, Actions, BPFs, Dialogs, Desktop flows
+- **Honest three-way source classification** — Microsoft (publisher-prefix heuristic; Dataverse doesn't stamp authorship and registers its own steps unmanaged), Managed (ISV or your own solution), Custom (unmanaged) — plus state and free-text filters, CSV/Excel export of any view
+
 ### Data Loader
 - 5-step wizard: Source > Mapping > Lookups > Preview > Run
 - CSV / TSV / TXT drag-drop, **Excel (XLSX/XLS)** support, or paste from clipboard
@@ -210,10 +216,10 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Modules | 16 |
-| Lines of code | ~15,300 |
-| API actions | 62 |
-| React components | 35 |
+| Modules | 17 |
+| Lines of code | ~15,700 |
+| API actions | 64 |
+| React components | 36 |
 | Unit tests | 151 |
 | Build size | ~490 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
