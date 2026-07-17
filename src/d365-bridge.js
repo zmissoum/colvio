@@ -322,7 +322,7 @@ export const bridge = {
 
   async getFields(logicalName) {
     if (!isExtension) return null;
-    const k = cacheKey("fields", logicalName);
+    const k = cacheKey("fields2", logicalName); // v2: entries now carry isPrimaryId — bump invalidates pre-1.11.107 caches
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getFields", { logicalName });

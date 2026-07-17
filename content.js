@@ -328,6 +328,9 @@
                   odataName: odataName,
                   display: a.DisplayName?.UserLocalizedLabel?.Label || logicalName,
                   type: aType,
+                  // The entity's PrimaryIdAttribute marker — the RELIABLE way to find the id column
+                  // (the <entity>id heuristic breaks on activities, where the PK is activityid).
+                  isPrimaryId: a.IsPrimaryId || false,
                   isCustom: a.IsCustomAttribute || false,
                   required: a.RequiredLevel?.Value === "ApplicationRequired" || a.RequiredLevel?.Value === "SystemRequired",
                   // Writability — used by the Loader to keep read-only / calculated / rollup

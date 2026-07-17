@@ -205,11 +205,16 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         if(fieldsData && Array.isArray(fieldsData) && fieldsData.length > 0){
           const mapped=fieldsData.map(f=>({
             l:f.logical, odata:f.odataName||f.logical, d:f.display||f.logical,
-            t:f.type||"String", req:!!f.required, cust:!!(f.isCustom&&isTrulyCustom(f.logical))
+            t:f.type||"String", req:!!f.required, cust:!!(f.isCustom&&isTrulyCustom(f.logical)),
+            pk:!!f.isPrimaryId
           })).sort((a,b)=>a.l.localeCompare(b.l));
           setFields(mapped);
-          const common=mapped.filter(f=>["name","fullname","emailaddress1","telephone1","statecode","subject","title"].includes(f.l)).map(f=>f.l);
-          setSf(common.length>0?common.slice(0,5):mapped.slice(0,5).map(f=>f.l));
+          // Default SELECT: the PRIMARY KEY first (IsPrimaryId from metadata — falls back to the
+          // <entity>id heuristic on a stale field cache), then the usual identifying columns.
+          const pkField=mapped.find(f=>f.pk)?.l||(mapped.some(f=>f.l===e.l+"id")?e.l+"id":null);
+          const common=mapped.filter(f=>["name","fullname","subject","title","emailaddress1","telephone1"].includes(f.l)).map(f=>f.l);
+          const defaults=[...(pkField?[pkField]:[]),...common].slice(0,5);
+          setSf(defaults.length>0?defaults:mapped.slice(0,5).map(f=>f.l));
         } else {
           setError(`No fields returned for ${e.l}`);
         }

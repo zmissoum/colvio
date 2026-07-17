@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.107] — 2026-07-17
+### Changed
+- **Explorer: the default SELECT now starts with the entity's primary key** (accountid, fou_vesselid…) instead of including statecode. The id column is found via the metadata's `IsPrimaryId` marker — the reliable way: the `<entity>id` naming heuristic breaks on activity tables, whose PK is `activityid` (heuristic kept as fallback while a pre-update field cache expires). getFields now exposes `isPrimaryId`; field cache key bumped so fresh metadata loads immediately.
+
 ## [1.11.106] — 2026-07-16
 ### Fixed — Automation: honest source classification (user-reported: "Custom only" showed msdyn_ steps)
 - **"Custom only" was equating unmanaged with yours — wrong on both counts.** Dataverse doesn't stamp authorship, and the platform registers thousands of ITS OWN steps unmanaged (the `Microsoft.Crm.ObjectModel.*` flood). The filter is now a three-way SOURCE call: **Microsoft** (publisher-prefix heuristic — `Microsoft.*` assemblies, msdyn-family names — applied BEFORE the managed flag), **Managed** (installed from a managed solution: an ISV's or your own), **Custom** (unmanaged). The Source badge explains the heuristic on hover; exports carry both `source` and the raw `managedFlag`.
