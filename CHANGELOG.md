@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.108] — 2026-07-18
+### Fixed — Loader: the honest-accounting flush could crash on very large aborted runs
+- **A 308k-row UPDATE that hit a chunk timeout at ~20k rows produced an incoherent result screen** (tiles said 0 updated / 1 error while the log held 2,558 successes and 2,790 failures, and 288k rows went unaccounted). Root cause: when a timeout stops the run, the v1.11.85 safety net records every never-sent row as a retryable error — but it did so with `push(...arr)`, and JavaScript's argument limit (~100k) makes that throw `RangeError` when the remainder is large. The exception killed the whole batch promise AFTER the workers finished, so the totals never got assembled.
+- Fixed with loop-pushes and slice-by-5,000 delivery to the UI (plus a fence so a UI callback failure can never kill the accounting again). A timed-out big run now ends with true totals — sent, failed, and "aborted before send" rows that the Retry button can resume.
+
 ## [1.11.107] — 2026-07-17
 ### Changed
 - **Explorer: the default SELECT now starts with the entity's primary key** (accountid, fou_vesselid…) instead of including statecode. The id column is found via the metadata's `IsPrimaryId` marker — the reliable way: the `<entity>id` naming heuristic breaks on activity tables, whose PK is `activityid` (heuristic kept as fallback while a pre-update field cache expires). getFields now exposes `isPrimaryId`; field cache key bumped so fresh metadata loads immediately.

@@ -151,17 +151,32 @@ async function callD365(action, params = {}) {
 function flushNeverSent(agg, chunks, nextIdx, totalItems, processedRecords, onProgress) {
   if (!agg.aborted || nextIdx >= chunks.length) return;
   const NOT_SENT = "Aborted before send — the run stopped early (chunk timeout or cancel); retry to send this row";
-  const sErr = [], sLog = [];
+  // NO argument spreads here: the never-sent remainder can be HUNDREDS OF THOUSANDS of rows and
+  // `push(...arr)` throws RangeError (max call stack) past the JS argument limit (~100k) — which
+  // turned the honest flush itself into a crashed run on a 308k UPDATE (result screen showed
+  // 0 updated / 1 error while the log held 20k rows). Loop-push, and hand rows to the panel in
+  // bounded slices so its state updates stay responsive. A UI callback failure must never kill
+  // the accounting either — onProgress is fenced.
+  const SLICE = 5000;
+  let done = processedRecords;
+  let sErr = [], sLog = [];
+  const emit = () => {
+    if (!sLog.length) return;
+    for (const e of sErr) agg.errors.push(e);
+    for (const e of sLog) agg.log.push(e);
+    done += sLog.length;
+    try { onProgress?.({ done: Math.min(done, totalItems), total: totalItems, errorCount: agg.errors.length, newErrors: sErr, newLog: sLog }); } catch { /* accounting must survive a UI hiccup */ }
+    sErr = []; sLog = [];
+  };
   for (let ci = Math.min(nextIdx, chunks.length); ci < chunks.length; ci++) {
     const { start, slice } = chunks[ci];
     for (let i = 0; i < slice.length; i++) {
       sErr.push({ row: start + i + 1, msg: NOT_SENT, payload: "" });
       sLog.push({ row: start + i + 1, status: "ERROR", msg: NOT_SENT });
+      if (sLog.length >= SLICE) emit();
     }
   }
-  agg.errors.push(...sErr);
-  agg.log.push(...sLog);
-  onProgress?.({ done: Math.min(processedRecords + sLog.length, totalItems), total: totalItems, errorCount: agg.errors.length, newErrors: sErr, newLog: sLog });
+  emit();
 }
 
 // ── Public API ───────────────────────────────────────────────
