@@ -825,7 +825,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           },()=>loadAbort.current,{chunk:effChunkD,concurrency:effThreadsD,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
           deleted=res.deleted||0;
           if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
-          if(res.aborted){const remaining=deleteItems.length-deleted;logEntries.push({row:0,status:"CANCELLED",detail:`Cancelled — ${remaining} records not processed`,d365Id:""});}
+          if(res.aborted){const remaining=deleteItems.length-deleted;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not processed (all recorded as retryable)`,d365Id:""});}
         }catch(e){ errors.push({row:0,msg:`Batch DELETE failed: ${e.message}`,payload:""}); }
       }
       const elapsedD=((Date.now()-startTimeD)/1000).toFixed(1);
@@ -1137,7 +1137,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
         created=res.created||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
-        if(res.aborted){const remaining=createRecords.length-created;logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
+        if(res.aborted){const remaining=createRecords.length-created;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch CREATE failed: ${e.message}`,payload:""});
       }
@@ -1154,7 +1154,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         updated=res.updated||0;
         created+=res.created||0; // upsert that created (201) → count toward Created, matching the log + rollback set
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
-        if(res.aborted){const remaining=upsertItems.length-(updated+(res.created||0));logEntries.push({row:0,status:"CANCELLED",detail:`Import cancelled — ${remaining} records not sent`,d365Id:""});}
+        if(res.aborted){const remaining=upsertItems.length-(updated+(res.created||0));const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch UPSERT failed: ${e.message}`,payload:""});
       }

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.111] — 2026-07-19
+### Changed
+- **The run-stopped log marker now says WHY.** "Import cancelled — N records not sent" was written for both a user cancel and an automatic chunk-timeout stop — misleading when nobody cancelled anything. The row-0 marker now reads "Cancelled by user — …" or "Stopped early — a chunk hit the timeout (org too slow for this batch size) — …", and both note that every unsent record was recorded as retryable.
+
 ## [1.11.110] — 2026-07-18
 ### Changed — scale-safety hardening after the 308k post-mortem
 - **`flushNeverSent` moved to loaderUtils and locked by a 300k-row regression test** (survives without throwing, ≤5,000-row UI slices that re-assemble the exact remainder, rows classified retryable, a throwing UI callback can't kill the accounting). 154 tests.
