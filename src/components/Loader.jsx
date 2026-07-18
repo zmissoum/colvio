@@ -2047,17 +2047,35 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                     header="Row,Status,Detail";
                     lines=(result.log||[]).map(e=>[e.row,e.status,esc(e.detail)].join(","));
                   }
+                  // Summary counts are RECOMPUTED from the per-row log being exported — the log is
+                  // the source of truth. The result-object counters can lie when a run dies mid-
+                  // assembly (the 308k crash exported "Updated: 0 / Errors: 1" above 20k real
+                  // rows); a summary must describe the lines below it, not a broken screen. The
+                  // "unaccounted" line surfaces file rows that never reached the log at all.
+                  const logCounts={};for(const e of full)logCounts[e.status]=(logCounts[e.status]||0)+1;
+                  const accounted=full.length+(result.skipped||0);
+                  const unaccounted=Math.max(0,(result.totalRows||0)-accounted);
                   const summary=[
                     "",
-                    `# Summary`,
+                    `# Summary${full.length?" (recomputed from the per-row log above)":""}`,
                     `# Entity: ${result.entity||target}`,
                     `# Started: ${result.startedAt?result.startedAt.toLocaleString():"—"}`,
                     `# Finished: ${result.finishedAt?result.finishedAt.toLocaleString():"—"}`,
-                    `# Total rows: ${result.totalRows||0}`,
-                    `# Created: ${result.created}`,
-                    `# Updated: ${result.updated}`,
-                    `# Skipped: ${result.skipped}`,
-                    `# Errors: ${result.errors.length}`,
+                    `# Total rows in file: ${result.totalRows||0}`,
+                    ...(full.length
+                      ? [
+                          `# Rows logged: ${full.length}`,
+                          `# Created: ${logCounts.CREATED||0}`,
+                          `# Updated/Upserted: ${logCounts.UPSERTED||0}`,
+                          `# Errors: ${logCounts.ERROR||0}`,
+                        ]
+                      : [
+                          `# Created: ${result.created}`,
+                          `# Updated: ${result.updated}`,
+                          `# Errors: ${result.errors.length}`,
+                        ]),
+                    `# Skipped (prep): ${result.skipped}`,
+                    ...(unaccounted>0?[`# UNACCOUNTED (file rows never logged — run died early?): ${unaccounted}`]:[]),
                     `# Duration: ${result.elapsed}s`,
                     `# Timestamp: ${new Date().toISOString()}`,
                   ];

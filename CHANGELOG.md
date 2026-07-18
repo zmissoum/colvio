@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.109] — 2026-07-18
+### Changed
+- **Download Log: the Summary block is now recomputed from the per-row log it sits under**, instead of copying the result screen's counters — a summary must describe the lines above it, and the log is the source of truth (the 1.11.108 crash had exported "Updated: 0 / Errors: 1" on top of 20,800 real rows). It now reports rows logged, Created / Updated-Upserted / Errors counted from the log, Skipped (prep), and — when file rows never reached the log at all — an explicit "UNACCOUNTED" line with the count.
+
 ## [1.11.108] — 2026-07-18
 ### Fixed — Loader: the honest-accounting flush could crash on very large aborted runs
 - **A 308k-row UPDATE that hit a chunk timeout at ~20k rows produced an incoherent result screen** (tiles said 0 updated / 1 error while the log held 2,558 successes and 2,790 failures, and 288k rows went unaccounted). Root cause: when a timeout stops the run, the v1.11.85 safety net records every never-sent row as a retryable error — but it did so with `push(...arr)`, and JavaScript's argument limit (~100k) makes that throw `RangeError` when the remainder is large. The exception killed the whole batch promise AFTER the workers finished, so the totals never got assembled.
