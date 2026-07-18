@@ -143,41 +143,10 @@ async function callD365(action, params = {}) {
   });
 }
 
-// When a batch run stops early (a chunk timeout fired abortBatch, or the user cancelled), the
-// chunks that were never dispatched must STILL show up in the result — as retryable per-row errors —
-// otherwise the tail of the file silently disappears and the run looks "done". "Aborted" + "timeout"
-// in the message make isTransientError() classify these rows as retryable, so the post-run card
-// offers to send exactly them.
-function flushNeverSent(agg, chunks, nextIdx, totalItems, processedRecords, onProgress) {
-  if (!agg.aborted || nextIdx >= chunks.length) return;
-  const NOT_SENT = "Aborted before send — the run stopped early (chunk timeout or cancel); retry to send this row";
-  // NO argument spreads here: the never-sent remainder can be HUNDREDS OF THOUSANDS of rows and
-  // `push(...arr)` throws RangeError (max call stack) past the JS argument limit (~100k) — which
-  // turned the honest flush itself into a crashed run on a 308k UPDATE (result screen showed
-  // 0 updated / 1 error while the log held 20k rows). Loop-push, and hand rows to the panel in
-  // bounded slices so its state updates stay responsive. A UI callback failure must never kill
-  // the accounting either — onProgress is fenced.
-  const SLICE = 5000;
-  let done = processedRecords;
-  let sErr = [], sLog = [];
-  const emit = () => {
-    if (!sLog.length) return;
-    for (const e of sErr) agg.errors.push(e);
-    for (const e of sLog) agg.log.push(e);
-    done += sLog.length;
-    try { onProgress?.({ done: Math.min(done, totalItems), total: totalItems, errorCount: agg.errors.length, newErrors: sErr, newLog: sLog }); } catch { /* accounting must survive a UI hiccup */ }
-    sErr = []; sLog = [];
-  };
-  for (let ci = Math.min(nextIdx, chunks.length); ci < chunks.length; ci++) {
-    const { start, slice } = chunks[ci];
-    for (let i = 0; i < slice.length; i++) {
-      sErr.push({ row: start + i + 1, msg: NOT_SENT, payload: "" });
-      sLog.push({ row: start + i + 1, status: "ERROR", msg: NOT_SENT });
-      if (sLog.length >= SLICE) emit();
-    }
-  }
-  emit();
-}
+// flushNeverSent — when a batch run stops early, never-dispatched chunks must still land in the
+// result as retryable per-row errors. Lives in loaderUtils (pure) so the 300k-scale regression
+// test can lock its no-argument-spread contract.
+import { flushNeverSent } from "./loaderUtils.js";
 
 // ── Public API ───────────────────────────────────────────────
 export const bridge = {

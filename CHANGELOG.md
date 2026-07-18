@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.110] — 2026-07-18
+### Changed — scale-safety hardening after the 308k post-mortem
+- **`flushNeverSent` moved to loaderUtils and locked by a 300k-row regression test** (survives without throwing, ≤5,000-row UI slices that re-assemble the exact remainder, rows classified retryable, a throwing UI callback can't kill the accounting). 154 tests.
+- **Two sibling argument-spread bombs defused in the SQL mode's client-side aggregation**: `Math.min(...vals)` / `Math.max(...vals)` on per-group values → `reduce` (a GROUP BY with a >100k-value group would have thrown the same RangeError).
+
 ## [1.11.109] — 2026-07-18
 ### Changed
 - **Download Log: the Summary block is now recomputed from the per-row log it sits under**, instead of copying the result screen's counters — a summary must describe the lines above it, and the log is the source of truth (the 1.11.108 crash had exported "Updated: 0 / Errors: 1" on top of 20,800 real rows). It now reports rows logged, Created / Updated-Upserted / Errors counted from the log, Skipped (prep), and — when file rows never reached the log at all — an explicit "UNACCOUNTED" line with the count.

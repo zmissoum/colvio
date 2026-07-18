@@ -789,8 +789,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                 if(af.fn==="count")row[af.alias]=g._records.length;
                 else if(af.fn==="sum")row[af.alias]=vals.reduce((a,b)=>a+(Number(b)||0),0);
                 else if(af.fn==="avg")row[af.alias]=vals.length?vals.reduce((a,b)=>a+(Number(b)||0),0)/vals.length:0;
-                else if(af.fn==="min")row[af.alias]=vals.length?Math.min(...vals.map(Number)):null;
-                else if(af.fn==="max")row[af.alias]=vals.length?Math.max(...vals.map(Number)):null;
+                else if(af.fn==="min")row[af.alias]=vals.length?vals.reduce((m,v)=>Math.min(m,Number(v)),Infinity):null;   // reduce, not Math.min(...vals): argument spread throws RangeError past ~100k values
+                else if(af.fn==="max")row[af.alias]=vals.length?vals.reduce((m,v)=>Math.max(m,Number(v)),-Infinity):null;
               });
               delete row._key;delete row._records;
               return row;

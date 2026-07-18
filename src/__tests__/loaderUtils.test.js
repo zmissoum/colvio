@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, flushNeverSent } from "../loaderUtils.js";
 
 describe("stripHtml + strip_html transform", () => {
   it("strips tags and keeps the visible text", () =>
@@ -237,5 +237,49 @@ describe("isTransientError (retry classification)", () => {
     expect(isTransientError("")).toBe(false);
     expect(isTransientError(null)).toBe(false);
     expect(isTransientError(undefined)).toBe(false);
+  });
+});
+
+describe("flushNeverSent — scale-safe honest accounting", () => {
+  const mkChunks = (total, size) => {
+    const chunks = [];
+    for (let i = 0; i < total; i += size) chunks.push({ start: i, slice: new Array(Math.min(size, total - i)).fill(0) });
+    return chunks;
+  };
+
+  it("survives a 300k-row never-sent remainder without throwing (the 308k crash)", () => {
+    const total = 308000, chunkSize = 200;
+    const chunks = mkChunks(total, chunkSize);
+    const nextIdx = 100; // 20k rows dispatched, 288k never sent
+    const agg = { aborted: true, errors: [], log: [] };
+    const calls = [];
+    expect(() => flushNeverSent(agg, chunks, nextIdx, total, nextIdx * chunkSize, p => calls.push(p))).not.toThrow();
+    const neverSent = total - nextIdx * chunkSize;
+    expect(agg.errors.length).toBe(neverSent);
+    expect(agg.log.length).toBe(neverSent);
+    // Delivered in bounded slices, and the slices re-assemble the exact remainder
+    expect(calls.length).toBeGreaterThan(1);
+    expect(Math.max(...calls.map(c => c.newLog.length))).toBeLessThanOrEqual(5000);
+    expect(calls.reduce((n, c) => n + c.newLog.length, 0)).toBe(neverSent);
+    expect(calls[calls.length - 1].done).toBe(total);
+    // Rows are classified retryable by the transient classifier
+    expect(isTransientError(agg.errors[0].msg)).toBe(true);
+  });
+
+  it("a throwing onProgress callback cannot kill the accounting", () => {
+    const chunks = mkChunks(1000, 100);
+    const agg = { aborted: true, errors: [], log: [] };
+    expect(() => flushNeverSent(agg, chunks, 2, 1000, 200, () => { throw new Error("UI died"); })).not.toThrow();
+    expect(agg.errors.length).toBe(800);
+  });
+
+  it("does nothing when the run was not aborted or everything was dispatched", () => {
+    const chunks = mkChunks(400, 100);
+    const a1 = { aborted: false, errors: [], log: [] };
+    flushNeverSent(a1, chunks, 1, 400, 100, null);
+    expect(a1.errors.length).toBe(0);
+    const a2 = { aborted: true, errors: [], log: [] };
+    flushNeverSent(a2, chunks, 4, 400, 400, null);
+    expect(a2.errors.length).toBe(0);
   });
 });

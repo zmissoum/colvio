@@ -224,3 +224,36 @@ export function deltaEqual(orgVal, newVal) {
   }
   return false;
 }
+
+// When a batch run stops early (a chunk timeout fired abortBatch, or the user cancelled), the
+// chunks that were never dispatched must STILL show up in the result — as retryable per-row
+// errors — otherwise the tail of the file silently disappears and the run looks "done".
+// "Aborted" + "timeout" in the message make isTransientError() classify these rows as retryable.
+// SCALE-SAFE by contract (regression-tested at 300k): NO argument spreads — `push(...arr)` throws
+// RangeError past the JS argument limit (~100k), which once turned this very safety net into a
+// crashed 308k run. Rows are handed to onProgress in bounded slices; a UI callback failure must
+// never kill the accounting.
+export function flushNeverSent(agg, chunks, nextIdx, totalItems, processedRecords, onProgress) {
+  if (!agg.aborted || nextIdx >= chunks.length) return;
+  const NOT_SENT = "Aborted before send — the run stopped early (chunk timeout or cancel); retry to send this row";
+  const SLICE = 5000;
+  let done = processedRecords;
+  let sErr = [], sLog = [];
+  const emit = () => {
+    if (!sLog.length) return;
+    for (const e of sErr) agg.errors.push(e);
+    for (const e of sLog) agg.log.push(e);
+    done += sLog.length;
+    try { onProgress?.({ done: Math.min(done, totalItems), total: totalItems, errorCount: agg.errors.length, newErrors: sErr, newLog: sLog }); } catch { /* accounting must survive a UI hiccup */ }
+    sErr = []; sLog = [];
+  };
+  for (let ci = Math.min(nextIdx, chunks.length); ci < chunks.length; ci++) {
+    const { start, slice } = chunks[ci];
+    for (let i = 0; i < slice.length; i++) {
+      sErr.push({ row: start + i + 1, msg: NOT_SENT, payload: "" });
+      sLog.push({ row: start + i + 1, status: "ERROR", msg: NOT_SENT });
+      if (sLog.length >= SLICE) emit();
+    }
+  }
+  emit();
+}
