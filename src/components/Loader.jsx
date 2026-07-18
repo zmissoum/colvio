@@ -207,6 +207,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // Tunable performance knobs (à la Salesforce Inspector). Defaults match Inspector's UX.
   const[batchSize,setBatchSize]=useState(200);
   const[threads,setThreads]=useState(6);
+  const[autoResume,setAutoResume]=useState(true); // chain retry passes automatically after a chunk-timeout stop (max 3)
   // MSCRM bypass headers — off by default. Require prvBypassCustomPlugins privilege (typically System Admin).
   // Trade speed for skipped server-side logic — use only when input data is already validated externally.
   const[bypassPlugins,setBypassPlugins]=useState(false);
@@ -812,6 +813,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         return;
       }
       let deleted=0;
+      let timedOutStopD=false; // aborted by the CHUNK TIMEOUT (not by the user) — fuels auto-resume
       if(deleteItems.length){
         // Retry passes run gentler — same policy as create/upsert: half the threads, smaller chunks
         // (a throttled or cascade-heavy org is exactly why the first pass timed out).
@@ -825,7 +827,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           },()=>loadAbort.current,{chunk:effChunkD,concurrency:effThreadsD,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
           deleted=res.deleted||0;
           if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
-          if(res.aborted){const remaining=deleteItems.length-deleted;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not processed (all recorded as retryable)`,d365Id:""});}
+          if(res.aborted){if(!loadAbort.current)timedOutStopD=true;const remaining=deleteItems.length-deleted;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not processed (all recorded as retryable)`,d365Id:""});}
         }catch(e){ errors.push({row:0,msg:`Batch DELETE failed: ${e.message}`,payload:""}); }
       }
       const elapsedD=((Date.now()-startTimeD)/1000).toFixed(1);
@@ -852,9 +854,19 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
            ...errors.filter(e=>e.row===0)]
         : errors;
       const retryInfoD=isRetry?{attempted:retrySet.size,succeeded:deleted,stillFailing:Math.max(0,retrySet.size-deleted),transientOnly:!!opts.transientOnly}:null;
-      setResult({created:0,updated:0,deleted:fDeleted,errors:fErrorsD,skipped:fSkippedD,elapsed:elapsedD,log:resultLogD,logTruncated:combinedLogD.length>5000,logTotal:combinedLogD.length,entity:target,totalRows:total,cancelled:wasCancelledD,startedAt:launchedAt,finishedAt:new Date(),mode:"delete",retryAll:retryAllD,retryTransient:retryTransientD,retryInfo:retryInfoD});
+      const builtResultD={created:0,updated:0,deleted:fDeleted,errors:fErrorsD,skipped:fSkippedD,elapsed:elapsedD,log:resultLogD,logTruncated:combinedLogD.length>5000,logTotal:combinedLogD.length,entity:target,totalRows:total,cancelled:wasCancelledD,startedAt:launchedAt,finishedAt:new Date(),mode:"delete",retryAll:retryAllD,retryTransient:retryTransientD,retryInfo:retryInfoD};
+      setResult(builtResultD);
       setLoadProgress({done:total,total,current:wasCancelledD?"Cancelled":"Done"});
       setCancelling(false);
+      // AUTO-RESUME after a chunk-timeout stop — same chain as create/upsert (see below), delete
+      // retry passes already run gentler (threads/2, chunks ≤50).
+      const resumeDepthD=opts.autoResume||0;
+      if(autoResume && timedOutStopD && !wasCancelledD && retryTransientD.length>0 && resumeDepthD<3){
+        const rsD=new Set(retryTransientD);
+        fullLog.current=fullLog.current.filter(e=>!(e.csvRowNumber>=2&&rsD.has(e.csvRowNumber-2)));
+        setLoadProgress({done:0,total:rsD.size,current:`Chunk timeout — auto-resuming pass ${resumeDepthD+1}/3 (${rsD.size.toLocaleString()} rows, reduced settings)...`});
+        runLoad(false,{retrySet:rsD,prevResult:builtResultD,transientOnly:true,autoResume:resumeDepthD+1});
+      }
       return;
     }
 
@@ -1127,6 +1139,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // otherwise a 91k-row update matching only 5k records looks like it "stopped at 5k".
     const sendTotal=createRecords.length+upsertItems.length;
     const notSent=isRetry?0:Math.max(0,total-sendTotal);
+    let timedOutStop=false; // aborted by the CHUNK TIMEOUT (not by the user) — fuels auto-resume
 
     if(createRecords.length>0){
       setLoadProgress({done:0,total:sendTotal,current:`Sending ${createRecords.length.toLocaleString()} records (CREATE)...`});
@@ -1137,7 +1150,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
         created=res.created||0;
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
-        if(res.aborted){const remaining=createRecords.length-created;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
+        if(res.aborted){if(!loadAbort.current)timedOutStop=true;const remaining=createRecords.length-created;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch CREATE failed: ${e.message}`,payload:""});
       }
@@ -1154,7 +1167,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         updated=res.updated||0;
         created+=res.created||0; // upsert that created (201) → count toward Created, matching the log + rollback set
         if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
-        if(res.aborted){const remaining=upsertItems.length-(updated+(res.created||0));const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
+        if(res.aborted){if(!loadAbort.current)timedOutStop=true;const remaining=upsertItems.length-(updated+(res.created||0));const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch UPSERT failed: ${e.message}`,payload:""});
       }
@@ -1192,9 +1205,22 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
          ...errors.filter(e=>!(e.row>=2))]
       : errors;
     const retryInfo=isRetry?{attempted:retrySet.size,succeeded:created+updated,stillFailing:Math.max(0,retrySet.size-(created+updated)),transientOnly:!!opts.transientOnly}:null;
-    setResult({created:fCreated,updated:fUpdated,errors:fErrors,skipped:fSkipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date(),optionWarnings,retryAll,retryTransient,retryInfo});
+    const builtResult={created:fCreated,updated:fUpdated,errors:fErrors,skipped:fSkipped,elapsed,log:resultLog,logTruncated:combinedLog.length>5000,logTotal:combinedLog.length,entity:target,totalRows:total,cancelled:wasCancelled,startedAt:launchedAt,finishedAt:new Date(),optionWarnings,retryAll,retryTransient,retryInfo};
+    setResult(builtResult);
     setLoadProgress({done:sendTotal,total:sendTotal,current:wasCancelled?"Cancelled":(notSent>0?`Done — ${sendTotal.toLocaleString()} sent, ${notSent.toLocaleString()} not eligible (no matching record / empty key / unchanged — see the log)`:"Done")});
     setCancelling(false);
+    // AUTO-RESUME after a chunk-timeout stop (checkbox, default on): chain the SAME retry pass the
+    // Retry button would run — gentler settings, cumulative totals, abort flag reset at pass start —
+    // instead of parking 200k never-sent rows behind a click. Hard cap of 3 chained passes; a USER
+    // cancel never auto-resumes; a manual Retry restarts the budget.
+    const resumeDepth=opts.autoResume||0;
+    if(autoResume && timedOutStop && !wasCancelled && retryTransient.length>0 && resumeDepth<3){
+      const rs=new Set(retryTransient);
+      fullLog.current=fullLog.current.filter(e=>!(e.csvRowNumber>=2&&rs.has(e.csvRowNumber-2)));
+      setLoadProgress({done:0,total:rs.size,current:`Chunk timeout — auto-resuming pass ${resumeDepth+1}/3 (${rs.size.toLocaleString()} rows, reduced settings)...`});
+      runLoad(false,{retrySet:rs,prevResult:builtResult,transientOnly:true,autoResume:resumeDepth+1});
+      return;
+    }
   };
 
   // Single entry point for every run (dry / real / retry). Wraps doLoad so an uncaught failure ANYWHERE
@@ -1671,6 +1697,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 <span style={{fontSize:11,color:C.txd}}>parallel batches (1-10)</span>
               </div>
               <div style={{fontSize:11,color:C.txd,fontStyle:"italic"}}>Theoretical throughput: ~{(batchSize*threads*3).toLocaleString()} rec/sec</div>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.txm,cursor:"pointer"}}>
+                <input type="checkbox" checked={autoResume} onChange={e=>setAutoResume(e.target.checked)} style={{accentColor:C.vi}}/>
+                <span style={{fontWeight:500}}>Auto-resume after chunk timeout</span>
+                <Tooltip text="When a chunk hits the 600s timeout (org too slow for the batch size), the run automatically chains a retry pass over the unsent + transient rows at reduced settings (half the threads, chunks ≤50) — up to 3 passes — instead of stopping and waiting for a Retry click. Clicking Cancel always stops for real; totals stay cumulative across passes."/>
+              </label>
             </div>
           </div>
 

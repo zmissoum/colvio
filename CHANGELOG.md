@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.112] — 2026-07-19
+### Added — Loader: auto-resume after a chunk timeout
+- **A chunk-timeout stop no longer parks 200k rows behind a Retry click.** When a chunk hits the 600s timeout (org too slow for the batch size), the run now automatically chains the same retry pass the Retry button would run — unsent + transient rows only, at reduced settings (half the threads, chunks ≤50) — up to **3 chained passes**, with cumulative totals and the live progress announcing "Chunk timeout — auto-resuming pass 2/3…". The mechanics are the field-tested manual retry (96% of a 243k run recovered).
+- Guardrails: clicking **Cancel always stops for real** (a user cancel never auto-resumes); after 3 passes the run stops with the usual honest accounting and Retry card; a manual Retry click restarts the budget. Opt-out checkbox in the Performance card (default on). Works in CREATE/UPSERT/UPDATE and DELETE modes.
+
 ## [1.11.111] — 2026-07-19
 ### Changed
 - **The run-stopped log marker now says WHY.** "Import cancelled — N records not sent" was written for both a user cancel and an automatic chunk-timeout stop — misleading when nobody cancelled anything. The row-0 marker now reads "Cancelled by user — …" or "Stopped early — a chunk hit the timeout (org too slow for this batch size) — …", and both note that every unsent record was recorded as retryable.
