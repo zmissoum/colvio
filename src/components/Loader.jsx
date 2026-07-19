@@ -208,6 +208,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[batchSize,setBatchSize]=useState(200);
   const[threads,setThreads]=useState(6);
   const[autoResume,setAutoResume]=useState(true); // chain retry passes automatically after a chunk-timeout stop (max 3)
+  const[resumeInfo,setResumeInfo]=useState(null); // {pass, already} while an auto-resume pass runs — the bar resets to the REMAINDER, this banner says so
   // MSCRM bypass headers — off by default. Require prvBypassCustomPlugins privilege (typically System Admin).
   // Trade speed for skipped server-side logic — use only when input data is already validated externally.
   const[bypassPlugins,setBypassPlugins]=useState(false);
@@ -761,6 +762,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const retrySet=opts.retrySet||null;        // Set of original row indices (csvRowNumber-2) to re-run
     const isRetry=!!retrySet;
     const prevResult=opts.prevResult||null;
+    // Auto-resume banner: the progress bar restarts at 0/REMAINDER on a chained pass, which reads
+    // as "it started over from scratch" without this context (user-reported confusion).
+    setResumeInfo(opts.autoResume?{pass:opts.autoResume,already:(prevResult?.created||0)+(prevResult?.updated||0)+(prevResult?.deleted||0)}:null);
     setStep(4);setResult(null);
     loadAbort.current=false;setCancelling(false);
     setLiveLog({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
@@ -1822,6 +1826,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
                 <Spin s={18}/>
                 <div style={{flex:1}}>
+                  {resumeInfo&&(
+                    <div style={{fontSize:12,color:C.cy,background:C.cy+"11",border:`1px solid ${C.cy}33`,borderRadius:4,padding:"5px 8px",marginBottom:6,lineHeight:1.5}}>
+                      🔁 <b>Auto-resume pass {resumeInfo.pass}/3</b> — re-sending ONLY the unsent / transient rows from the previous pass{resumeInfo.already>0&&<> · <b>{resumeInfo.already.toLocaleString()}</b> records already succeeded and are kept</>}. The bar below counts this pass only; final totals are cumulative.
+                    </div>
+                  )}
                   <div style={{fontSize:15,fontWeight:600,color:C.tx,marginBottom:4}}>{loadProgress.current}</div>
                   <div style={{height:6,background:C.bd,borderRadius:3,overflow:"hidden"}}>
                     <div style={{width:`${loadProgress.total?Math.round(loadProgress.done/loadProgress.total*100):0}%`,height:"100%",background:`linear-gradient(90deg,${cancelling?C.rd:C.vi},${cancelling?C.or:C.cy})`,borderRadius:3,transition:"width .3s"}}/>

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.113] — 2026-07-19
+### Fixed
+- **Auto-resume no longer looks like a restart-from-scratch.** On a chained pass the progress bar resets to 0/REMAINDER (it counts only the rows being re-sent), which read as "my well-advanced load started over" (user-reported). A persistent banner now sits above the bar during every auto-resume pass: "🔁 Auto-resume pass 2/3 — re-sending ONLY the unsent / transient rows · N records already succeeded and are kept. The bar below counts this pass only; final totals are cumulative."
+
 ## [1.11.112] — 2026-07-19
 ### Added — Loader: auto-resume after a chunk timeout
 - **A chunk-timeout stop no longer parks 200k rows behind a Retry click.** When a chunk hits the 600s timeout (org too slow for the batch size), the run now automatically chains the same retry pass the Retry button would run — unsent + transient rows only, at reduced settings (half the threads, chunks ≤50) — up to **3 chained passes**, with cumulative totals and the live progress announcing "Chunk timeout — auto-resuming pass 2/3…". The mechanics are the field-tested manual retry (96% of a 243k run recovered).
