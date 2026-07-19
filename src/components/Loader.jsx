@@ -209,6 +209,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[threads,setThreads]=useState(6);
   const[autoResume,setAutoResume]=useState(true); // chain retry passes automatically after a chunk-timeout stop (max 3)
   const[resumeInfo,setResumeInfo]=useState(null); // {pass, already} while an auto-resume pass runs — the bar resets to the REMAINDER, this banner says so
+  // OPT-IN inversion of the empty-cell contract: default = empty leaves the field untouched (a
+  // partial file can never wipe data); with this ON, every empty cell in a MAPPED column sends an
+  // explicit null and CLEARS the field — all types, lookups included. Guarded by a pre-flight
+  // warning that counts exactly how many cells will clear.
+  const[emptyAsNull,setEmptyAsNull]=useState(false);
   // MSCRM bypass headers — off by default. Require prvBypassCustomPlugins privilege (typically System Admin).
   // Trade speed for skipped server-side logic — use only when input data is already validated externally.
   const[bypassPlugins,setBypassPlugins]=useState(false);
@@ -706,6 +711,18 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     setLiveLog(prev=>{const newCounts={...prev.counts};for(const e of enriched) newCounts[e.status]=(newCounts[e.status]||0)+1;return {entries:[...enriched.slice().reverse(),...prev.entries].slice(0,LIVE_LOG_BUFFER),counts:newCounts};});
   };
 
+  // How many empty cells will actively CLEAR a field if empty-as-NULL is on — fuels the pre-flight
+  // warning so the wipe is announced with an exact count before any write.
+  const emptyClearCount=useMemo(()=>{
+    if(!emptyAsNull||!csvData.r.length) return 0;
+    const cols=[...maps.filter(m=>m.d365&&!m.skip&&!isSystemField(m.d365)).map(m=>m.csv),...lookups.filter(lk=>lk.csv&&lk.nav).map(lk=>lk.csv)];
+    if(!cols.length) return 0;
+    let n=0;
+    for(const r of csvData.r){ for(const c of cols){ const v=r[c]; if(v===undefined||v===null||v==="") n++; } }
+    return n;
+    // eslint-disable-next-line
+  },[emptyAsNull,csvData,maps,lookups,migrationMode]);
+
   const buildRequestForRow=(row)=>{
     if(!row) return null;
     const entitySet=entitySetFor(target);
@@ -721,7 +738,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(!m.d365||m.skip) continue;
       if(isSystemField(m.d365)) continue;
       const rawVal=row[m.csv];
-      if(rawVal===undefined||rawVal===null||rawVal==="") continue;
+      if(rawVal===undefined||rawVal===null||rawVal===""){
+        if(emptyAsNull && !(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase()))) rec[m.d365]=null; // mirror doLoad's empty-as-NULL
+        continue;
+      }
       if(isNullToken(rawVal)){
         if(!(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase()))) rec[m.d365]=null;
         continue;
@@ -737,7 +757,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(!lk.csv||!lk.nav) continue;
       const nav=canonNav(lk.nav); // custom lookups need the SchemaName-cased nav property
       const val=row[lk.csv];
-      if(!val) continue;
+      if(!val){ if(emptyAsNull) rec[nav]=null; continue; } // mirror doLoad's empty-as-NULL clear
       if(isNullToken(val)){ rec[nav]=null; continue; } // explicit clear — mirrors doLoad
       if(lk.mode==="direct") rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
       else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${e}')`;}
@@ -996,7 +1016,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         for(const m of activeMaps){
           if(!m.d365) continue;
           const rawVal = row[m.csv];
-          if(rawVal === undefined || rawVal === null || rawVal === "") continue;
+          if(rawVal === undefined || rawVal === null || rawVal === ""){
+            // Empty-as-NULL (opt-in): an empty cell actively clears the field, like the NULL token.
+            if(emptyAsNull && !(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase()))) rec[m.d365]=null;
+            continue;
+          }
           // Explicit NULL token → clear the field (empty cells still mean "leave untouched").
           // Meaningless on migration-override audit fields, so those are just skipped.
           if(isNullToken(rawVal)){
@@ -1022,6 +1046,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const nav=canonNav(lk.nav); // custom lookups need the SchemaName-cased nav property
           const val=row[lk.csv];
           if(!val){
+            // Empty-as-NULL (opt-in) wins over the fallback policy: an empty lookup cell means
+            // "clear it" — bare nav property to null, the documented disassociate.
+            if(emptyAsNull){ rec[nav]=null; continue; }
             if(lk.fb==="error"){ errors.push({row:i+1,msg:`Empty lookup: ${lk.csv}`});logEntries.push({row:i+1,status:"ERROR",detail:`Empty lookup: ${lk.csv}`,d365Id:""});skipRow=true;break; }
             continue;
           }
@@ -1086,7 +1113,16 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 const slim={};let kept=0,binds=0;
                 for(const [k,v] of Object.entries(rec)){
                   if(k.includes("@odata.bind")){ slim[k]=v;binds++;continue; } // binds kept (cheap compare impossible)
-                  if(v===null){ slim[k]=v;kept++;continue; } // explicit NULL-token clear — always send (the org column may not even be in the delta fetch)
+                  if(v===null){
+                    // A null clear on a MAPPED column can be dropped when the org value is already
+                    // empty: the column was in the delta $select, and Dataverse omits null-valued
+                    // properties from responses — absence means "already null" → clearing is a
+                    // no-op. Lookup navs were NOT fetched, so their clears are always sent.
+                    const metaN=targetFieldsMeta.find(f=>(f.logical||f.l)===k);
+                    const colN=metaN?(metaN.odataName||k):null;
+                    if(colN&&deltaSelect&&deltaSelect.includes(colN)&&(cur[colN]===undefined||cur[colN]===null||cur[colN]==="")) continue;
+                    slim[k]=v;kept++;continue;
+                  }
                   const metaF=targetFieldsMeta.find(f=>(f.logical||f.l)===k);
                   const curV=cur[metaF&&metaF.odataName?metaF.odataName:k];
                   if(deltaEqual(curV,v)) continue;
@@ -1646,6 +1682,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             for(const lw of lengthWarnings){
               warnings.push({k:"len_"+lw.field,t:`"${lw.field}" max length is ${lw.max.toLocaleString()}, but ${lw.count.toLocaleString()} row${lw.count>1?"s":""} exceed it (longest: ${lw.maxFound.toLocaleString()} chars) — those rows will fail with a 400. Increase the field length, or trim/clean the value (common when migrating HTML / rich text).`});
             }
+            if(emptyAsNull&&emptyClearCount>0) warnings.push({k:"emptynull",t:`Empty-as-NULL is ON: ${emptyClearCount.toLocaleString()} empty cell${emptyClearCount>1?"s":""} across mapped columns will CLEAR the corresponding field on every matched record (lookups included). If a mapped column is only partially filled, those records will lose that data.`});
             if(!warnings.length) return null;
             return (<div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:600,color:C.yw,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>⚠ Pre-flight checks ({warnings.length}) — review before loading</div>
@@ -1665,7 +1702,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // run. Option-set labels can't resolve before the run loads the option maps — annotate instead.
   if(isSystemField(m.d365))return;
   const rawVal=row[m.csv];
-  if(rawVal===undefined||rawVal===null||rawVal==="")return;
+  if(rawVal===undefined||rawVal===null||rawVal===""){if(emptyAsNull&&!(migrationActive&&MIGRATION_FIELDS.includes(m.d365.toLowerCase())))rec[m.d365]=null;return;}
   const lc=m.d365.toLowerCase();
   if(isNullToken(rawVal)){if(!(migrationActive&&MIGRATION_FIELDS.includes(lc)))rec[m.d365]=null;return;}
   const val=m.transform?applyTransform(rawVal,m.transform,optionMapsRef.current?.[m.d365],dateMD):rawVal;
@@ -1674,7 +1711,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   if(migrationActive&&MIGRATION_FIELDS.includes(lc))emitMigrationField(rec,lc,shown);
   else rec[m.d365]=shown;
 });lookups.forEach(lk=>{if(!lk.csv||!lk.nav)return;const nav=canonNav(lk.nav);const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";
-  if(!val)return; // empty lookup cell → the run skips the binding entirely
+  if(!val){if(emptyAsNull)rec[nav]=null;return;} // empty lookup cell → skipped, or cleared when empty-as-NULL is on
   if(isNullToken(val)){rec[nav]=null;return;}
   if(lk.mode==="direct"){rec[`${nav}@odata.bind`]=`/${es}(${val})`;}
   else if(isAltKeyBind(lk)){rec[`${nav}@odata.bind`]=`/${es}(${lk.d365f}='${String(val).replace(/'/g,"''")}')`;}
@@ -1756,6 +1793,20 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 {migrationActive
                   ?<>✓ Active. Map <code style={{...mono,fontSize:11}}>createdon</code> (→ overriddencreatedon), <code style={{...mono,fontSize:11}}>modifiedon</code>, <code style={{...mono,fontSize:11}}>createdby</code>, <code style={{...mono,fontSize:11}}>modifiedby</code>. createdby/modifiedby take a systemuser GUID (bound automatically). Requires the <code style={{...mono,fontSize:11}}>prvOverrideCreatedOnCreatedBy</code> privilege.</>
                   :<>⚠ Applies to pure CREATE only. Remove the UPSERT/UPDATE key and turn off Delete — with a key set, these audit fields are stripped as usual.</>}
+              </div>
+            )}
+          </div>
+
+          {/* Empty-as-NULL — inverted empty-cell contract, opt-in PER RUN (never persisted). */}
+          <div style={{...crd({padding:12,borderColor:emptyAsNull?C.rd+"55":C.bd}),marginBottom:12}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+              <input type="checkbox" checked={emptyAsNull} onChange={e=>setEmptyAsNull(e.target.checked)} style={{accentColor:C.rd}}/>
+              <span>🧨 Empty cells CLEAR fields (send null)</span>
+              <Tooltip text="Default OFF: an empty cell leaves the target field untouched — only the literal word NULL clears — so a partial file can never wipe data. Turned ON, EVERY empty cell in a mapped column (lookups included) sends an explicit null and CLEARS the field on the matched record. Use only with COMPLETE files where empty really means 'must be empty'. The pre-flight warning counts exactly how many cells will clear; in delta mode, clears that match an already-empty org value are skipped."/>
+            </label>
+            {emptyAsNull&&(
+              <div style={{fontSize:11,marginTop:8,padding:"6px 8px",borderRadius:4,color:C.rd,background:C.rd+"11",border:`1px solid ${C.rd}33`,lineHeight:1.6}}>
+                ⚠ Every EMPTY cell in a mapped column now actively EMPTIES that field on the matched record{emptyClearCount>0?<> — <b>{emptyClearCount.toLocaleString()}</b> cell{emptyClearCount>1?"s":""} in this file will clear</>:null}. Make sure the file is complete: a half-filled column wipes the other half.
               </div>
             )}
           </div>

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.114] — 2026-07-19
+### Added — Loader: opt-in "Empty cells CLEAR fields"
+- **A per-run checkbox inverts the empty-cell contract**: with it ON, every empty cell in a mapped column — lookups included — sends an explicit `null` and CLEARS the field on the matched record (lookups via the bare nav property, the documented disassociate). The default stays OFF: empty leaves the field untouched, only the literal `NULL` clears — a partial file must never wipe data by accident.
+- **Guardrails**: a red warning card while the option is on, plus a pre-flight check that counts exactly how many cells will clear ("Empty-as-NULL is ON: 12,431 empty cells will CLEAR the corresponding field…"). The option takes precedence over a lookup's "empty → error" fallback. Never persisted — off again on every new import.
+- **Delta-aware**: a null clear on a mapped column whose org value is already empty is recognized as a no-op and dropped (Dataverse omits null columns from responses — absence from the delta fetch means already-null), so repeat runs converge to full skips. Lookup clears are always sent (their current value isn't fetched). Preview and per-row request log mirror the run exactly.
+
 ## [1.11.113] — 2026-07-19
 ### Fixed
 - **Auto-resume no longer looks like a restart-from-scratch.** On a chained pass the progress bar resets to 0/REMAINDER (it counts only the rows being re-sent), which read as "my well-advanced load started over" (user-reported). A persistent banner now sits above the bar during every auto-resume pass: "🔁 Auto-resume pass 2/3 — re-sending ONLY the unsent / transient rows · N records already succeeded and are kept. The bar below counts this pass only; final totals are cumulative."
