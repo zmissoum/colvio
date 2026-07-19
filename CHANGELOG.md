@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.115] — 2026-07-20
+### Changed
+- **Empty-cell contract confirmed after researching the ecosystem** (Salesforce Inspector's source clears on empty via `fieldsToNull`; Salesforce Data Loader and the Import Wizard ignore empties by default): Colvio keeps the protective default — empty leaves the field untouched, the per-run checkbox inverts it. The checkbox tooltip now names both worlds ("same default as Salesforce Data Loader" / "matches Salesforce Inspector's import behavior") so migrating users find their habits immediately.
+
 ## [1.11.114] — 2026-07-19
 ### Added — Loader: opt-in "Empty cells CLEAR fields"
 - **A per-run checkbox inverts the empty-cell contract**: with it ON, every empty cell in a mapped column — lookups included — sends an explicit `null` and CLEARS the field on the matched record (lookups via the bare nav property, the documented disassociate). The default stays OFF: empty leaves the field untouched, only the literal `NULL` clears — a partial file must never wipe data by accident.

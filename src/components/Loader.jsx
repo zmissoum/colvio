@@ -1802,7 +1802,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
               <input type="checkbox" checked={emptyAsNull} onChange={e=>setEmptyAsNull(e.target.checked)} style={{accentColor:C.rd}}/>
               <span>🧨 Empty cells CLEAR fields (send null)</span>
-              <Tooltip text="Default OFF: an empty cell leaves the target field untouched — only the literal word NULL clears — so a partial file can never wipe data. Turned ON, EVERY empty cell in a mapped column (lookups included) sends an explicit null and CLEARS the field on the matched record. Use only with COMPLETE files where empty really means 'must be empty'. The pre-flight warning counts exactly how many cells will clear; in delta mode, clears that match an already-empty org value are skipped."/>
+              <Tooltip text="Default OFF: an empty cell leaves the target field untouched — only the literal word NULL clears — so a partial file can never wipe data (same default as Salesforce Data Loader). Turned ON, EVERY empty cell in a mapped column (lookups included) sends an explicit null and CLEARS the field on the matched record — this matches Salesforce Inspector's import behavior, if that's what you're used to. Use only with COMPLETE files where empty really means 'must be empty'. The pre-flight warning counts exactly how many cells will clear; in delta mode, clears that match an already-empty org value are skipped."/>
             </label>
             {emptyAsNull&&(
               <div style={{fontSize:11,marginTop:8,padding:"6px 8px",borderRadius:4,color:C.rd,background:C.rd+"11",border:`1px solid ${C.rd}33`,lineHeight:1.6}}>
