@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.120] — 2026-07-21
+### Added — API Tester: download the response
+- **⬇ Download button next to Copy** in the response panel: saves the body as a file — pretty-printed **.json** when the response parsed as JSON, raw **.txt** otherwise. Filename is derived from the request path's last segment (entity set or function name) + date&time, e.g. `api_accounts_20260721_143012.json`, so a metadata dump like `StatusAttributeMetadata?$expand=OptionSet` lands as a sensibly named file instead of a 20 KB clipboard paste.
+
 ## [1.11.119] — 2026-07-21
 ### Added — Apps: view inspector + form subgrids ("why doesn't my record show in that list?")
 - **View inspector**: every view in the Apps module is now clickable → its FetchXML **filters decoded to plain language** (field display name + logical name, operator label, value, nested AND/OR groups, conditions targeting linked tables) and its **columns** from layoutxml (display names, hover for logical + width), plus sort order and the raw FetchXML. Linked tables show their join and a warning when it's an **inner join — rows without a match are hidden**, one of the sneaky reasons a record vanishes from a list. A filterless view says so explicitly.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, copyText } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, copyText, dl, expName } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
@@ -412,6 +412,17 @@ export default function ApiTester({ bp, orgInfo, theme }) {
                 <button onClick={() => { setRespTab("body"); }} style={{ padding: "2px 8px", fontSize: 11, background: respTab === "body" ? C.vi : "transparent", color: respTab === "body" ? "white" : C.txm, border: `1px solid ${C.bd}`, borderRadius: 3, cursor: "pointer" }}>Body</button>
                 <button onClick={() => { setRespTab("headers"); }} style={{ padding: "2px 8px", fontSize: 11, background: respTab === "headers" ? C.vi : "transparent", color: respTab === "headers" ? "white" : C.txm, border: `1px solid ${C.bd}`, borderRadius: 3, cursor: "pointer" }}>Headers ({Object.keys(resp.headers || {}).length})</button>
                 <button onClick={() => cp(resp.bodyParsed ? JSON.stringify(resp.bodyParsed, null, 2) : (resp.body || ""), "resp")} style={{ padding: "2px 8px", fontSize: 11, background: "transparent", color: C.cy, border: `1px solid ${C.bd}`, borderRadius: 3, cursor: "pointer" }}>{copied === "resp" ? "✓ Copied" : "Copy"}</button>
+                <button
+                  onClick={() => {
+                    // Filename from the request path's first segment (entity set / function name).
+                    const seg = (path || "response").split("?")[0].split("/").filter(Boolean).pop() || "response";
+                    const base = `api_${seg.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/\.+$/, "").slice(0, 60) || "response"}`;
+                    if (resp.bodyParsed) dl(JSON.stringify(resp.bodyParsed, null, 2), "application/json", expName(base, "json", true));
+                    else dl(resp.body || "", "text/plain", expName(base, "txt", true));
+                  }}
+                  title="Download the response body as a file (.json when the body is JSON, .txt otherwise)"
+                  style={{ padding: "2px 8px", fontSize: 11, background: "transparent", color: C.cy, border: `1px solid ${C.bd}`, borderRadius: 3, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
+                ><I.Download /> Download</button>
               </>
             )}
           </div>
