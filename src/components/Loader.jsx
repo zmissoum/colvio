@@ -957,7 +957,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         const opts=await bridge.getOptionSet(target,m.d365,attrType);
         if(Array.isArray(opts)){
           const map={};
+          // The user's-language labels first, then EVERY provisioned language (Label.LocalizedLabels)
+          // — a FR org loading an EN export (or vice versa) now resolves. On the rare cross-language
+          // collision (same text → different values), the user's language wins (inserted first).
           for(const o of opts){ if(o&&o.label!=null&&o.value!=null) map[String(o.label).toLowerCase().trim()]=o.value; }
+          for(const o of opts){ if(!o||o.value==null) continue; for(const l of (o.labels||[])){ const k=String(l).toLowerCase().trim(); if(!(k in map)) map[k]=o.value; } }
           optionMaps[m.d365]=map;
         }
       }catch{}

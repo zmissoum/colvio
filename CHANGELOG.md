@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.116] — 2026-07-20
+### Added — Loader: option-set labels match in EVERY provisioned language
+- **The picklist/statecode transform now resolves labels in all the org's languages**, not just the connected user's. A French org loading an English export (or vice versa) no longer reports "Inactive customer" as an unmatched label when the user's UI language is French — every `LocalizedLabel` of every option is matched (zero extra queries: the labels were already in the metadata response). On the rare cross-language collision (the same text meaning different values), the user's language wins. Option-set cache key bumped so fresh metadata loads immediately.
+
 ## [1.11.115] — 2026-07-20
 ### Changed
 - **Empty-cell contract confirmed after researching the ecosystem** (Salesforce Inspector's source clears on empty via `fieldsToNull`; Salesforce Data Loader and the Import Wizard ignore empties by default): Colvio keeps the protective default — empty leaves the field untouched, the per-run checkbox inverts it. The checkbox tooltip now names both worlds ("same default as Salesforce Data Loader" / "matches Salesforce Inspector's import behavior") so migrating users find their habits immediately.

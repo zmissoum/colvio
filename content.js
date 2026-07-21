@@ -1063,6 +1063,9 @@
               result = options.map(o => ({
                 value: o.Value,
                 label: o.Label?.UserLocalizedLabel?.Label || `Value ${o.Value}`,
+                // Every provisioned language's label — lets the Loader match a file whose labels
+                // are in another org language than the connected user's (FR org + EN export…).
+                labels: (o.Label?.LocalizedLabels || []).map(l => l && l.Label).filter(Boolean),
                 color: o.Color || null,
                 description: o.Description?.UserLocalizedLabel?.Label || "",
                 isDefault: o.IsDefaultValue || false,
@@ -1077,6 +1080,7 @@
                 result = options2.map(o => ({
                   value: o.Value,
                   label: o.Label?.UserLocalizedLabel?.Label || `Value ${o.Value}`,
+                  labels: (o.Label?.LocalizedLabels || []).map(l => l && l.Label).filter(Boolean),
                   color: o.Color || null,
                   description: o.Description?.UserLocalizedLabel?.Label || "",
                 }));

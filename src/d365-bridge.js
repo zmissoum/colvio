@@ -603,7 +603,7 @@ export const bridge = {
       { value: 0, label: "Active", color: null },
       { value: 1, label: "Inactive", color: null },
     ];
-    const k = cacheKey("optset", `${entityName}.${fieldName}`);
+    const k = cacheKey("optset2", `${entityName}.${fieldName}`); // v2: entries now carry all-language labels
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getOptionSet", { entityName, fieldName, attrType });
