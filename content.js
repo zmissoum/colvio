@@ -1281,6 +1281,35 @@
             break;
           }
 
+          case "exportTranslations": {
+            // Official whole-solution translation export (the CrmTranslations.xml zip) — covers
+            // form tabs/sections/labels, views, charts, dashboards, sitemap, option sets and
+            // custom ribbon LocLabels. ExportTranslation is BOUND to the solutions COLLECTION.
+            const sName = String(params.solutionName || "");
+            if (!/^[A-Za-z0-9_]+$/.test(sName)) throw new Error("Invalid solution unique name");
+            const dT = await dvRequest("POST", "solutions/Microsoft.Dynamics.CRM.ExportTranslation", { SolutionName: sName });
+            result = { fileB64: dT?.ExportTranslationFile || "" };
+            break;
+          }
+
+          case "importTranslations": {
+            // Unbound ImportTranslation: TranslationFile = base64 zip, ImportJobId = caller-supplied
+            // GUID that materializes in the importjob table (progress trackable there).
+            const b64T = String(params.fileB64 || "");
+            if (!b64T || !/^[A-Za-z0-9+/=]+$/.test(b64T)) throw new Error("Invalid translation file (expected base64 zip)");
+            validateGuid(params.importJobId);
+            await dvRequest("POST", "ImportTranslation", { TranslationFile: b64T, ImportJobId: params.importJobId });
+            result = { ok: true, importJobId: params.importJobId };
+            break;
+          }
+
+          case "publishAll": {
+            // PublishAllXml — required after a translation import for the labels to show up.
+            await dvRequest("POST", "PublishAllXml", {});
+            result = { ok: true };
+            break;
+          }
+
           case "getPluginSteps": {
             // Static inventory of plug-in step REGISTRATIONS (what runs on which message/entity,
             // at which stage, sync or async) — the design-time view, not the runtime jobs that

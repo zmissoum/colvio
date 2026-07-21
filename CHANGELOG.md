@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.117] — 2026-07-21
+### Added — Translation Manager: solution-wide translations (forms, views, sitemap…)
+- **Export / import a solution's full translation file via Microsoft's official mechanism** (`ExportTranslation` / `ImportTranslation` Web API actions, signatures verified against the docs). One zip covers everything Dataverse deems localizable: **form tabs, sections and label overrides, views, charts, dashboards, sitemap, option sets, custom ribbon LocLabels** — the elements the per-field editor can't reach. Flow: pick a solution → download `CrmTranslations_<name>.zip` → edit in Excel → import it back.
+- **Colvio never parses the XML** — it transports the file and Dataverse does the work, so nothing can be corrupted in transit. Import runs as a tracked job (progress shown live, also visible in System Ops), with an optional publish-all on completion (default on), production confirmation, and hidden entirely for users without publish rights.
+
 ## [1.11.116] — 2026-07-20
 ### Added — Loader: option-set labels match in EVERY provisioned language
 - **The picklist/statecode transform now resolves labels in all the org's languages**, not just the connected user's. A French org loading an English export (or vice versa) no longer reports "Inactive customer" as an unmatched label when the user's UI language is French — every `LocalizedLabel` of every option is matched (zero extra queries: the labels were already in the metadata response). On the rare cross-language collision (the same text meaning different values), the user's language wins. Option-set cache key bumped so fresh metadata loads immediately.

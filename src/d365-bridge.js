@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getLoginEvents" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getLoginEvents" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -722,6 +722,20 @@ export const bridge = {
     };
     await Promise.all(Array.from({ length: Math.min(3, slices.length) }, () => worker()));
     return { users: [...users.values()], failedDays, sliceCount: slices.length };
+  },
+
+  // ── Solution translations (official ExportTranslation / ImportTranslation actions) ──
+  async exportTranslations(solutionName) {
+    if (!isExtension) return { fileB64: "" }; // demo: nothing to export
+    return callD365("exportTranslations", { solutionName });
+  },
+  async importTranslations(fileB64, importJobId) {
+    if (!isExtension) return { ok: false };
+    return callD365("importTranslations", { fileB64, importJobId });
+  },
+  async publishAll() {
+    if (!isExtension) return { ok: true };
+    return callD365("publishAll");
   },
 
   // ── Automation inventory (static registrations, not runtime jobs) ──

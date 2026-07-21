@@ -326,7 +326,7 @@ export default {
   "help.solutions_title": "Solutions",
   "help.solutions_body": "Browse installed solutions and their components. 40+ component types are resolved to readable names against Microsoft's official enumeration (Security Role, Email Template, Web Resource, Model-driven App, Environment Variable, SLA, Routing/Convert Rule, Plugin Type/Assembly…), and each component's display name is resolved per type instead of a raw GUID.",
   "help.translations_title": "Translations",
-  "help.translations_body": "View and edit field labels across languages — each shown with its proper language name (full coverage of Dataverse-provisioned languages, no raw LCID codes). Non-renameable fields are locked read-only. Export/import translations as CSV for bulk editing; auto-publish after save.",
+  "help.translations_body": "View and edit field labels across languages — each shown with its proper language name (full coverage of Dataverse-provisioned languages, no raw LCID codes). Non-renameable fields are locked read-only. Export/import translations as CSV for bulk editing; auto-publish after save. NEW: solution-wide translations via the official ExportTranslation/ImportTranslation actions — export a solution's CrmTranslations zip (covers form tabs, sections and labels, views, charts, dashboards, sitemap, option sets, custom ribbon LocLabels), edit it in Excel, import it back with job tracking and auto-publish. Colvio transports the file; Dataverse parses it — nothing can be corrupted in transit.",
   "help.logins_title": "Login History",
   "help.logins_body": "Search for any D365 user and view their login/logout audit timeline. See session duration, access stats, and export as CSV.",
   "help.adoption_title": "Adoption",

@@ -22,6 +22,73 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const fRef=useRef(null);
   const selGen=useRef(0); // guards against a slow load from a previous entity overwriting the current one
 
+  // ── Solution-wide translations via the OFFICIAL ExportTranslation / ImportTranslation actions ──
+  // One zip covers everything Microsoft deems localizable: form tabs/sections/labels, views,
+  // charts, dashboards, sitemap, option sets, custom ribbon LocLabels. Colvio never parses the
+  // XML — it transports the file; Dataverse does the work (zero corruption risk).
+  const[solutions,setSolutions]=useState([]);
+  const[selSolName,setSelSolName]=useState("");
+  const[solBusy,setSolBusy]=useState("");        // "export" | "import" | "publish" | ""
+  const[solMsg,setSolMsg]=useState(null);        // {ok, text}
+  const[importJob,setImportJob]=useState(null);  // {id, progress, done}
+  const[autoPublish,setAutoPublish]=useState(true);
+  const zipRef=useRef(null);
+  const jobPollRef=useRef(null);
+  useEffect(()=>{
+    if(isLive) bridge.getSolutions().then(d=>setSolutions((d||[]).slice().sort((a,b)=>(a.isManaged?1:0)-(b.isManaged?1:0)||String(a.displayName).localeCompare(String(b.displayName))))).catch(()=>{});
+    return ()=>{ if(jobPollRef.current) clearInterval(jobPollRef.current); };
+  },[]);
+
+  const doExportTranslations=async()=>{
+    if(!selSolName) return;
+    setSolBusy("export");setSolMsg(null);
+    try{
+      const r=await bridge.exportTranslations(selSolName);
+      if(!r?.fileB64) throw new Error("Empty file returned");
+      const bin=atob(r.fileB64);const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      const url=URL.createObjectURL(new Blob([bytes],{type:"application/zip"}));
+      const a=document.createElement("a");a.href=url;a.download=`CrmTranslations_${selSolName}.zip`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),5000);
+      setSolMsg({ok:true,text:"Exported — edit CrmTranslations.xml inside the zip (Excel opens it), keep the structure, then import the zip back here."});
+    }catch(e){setSolMsg({ok:false,text:`Export failed: ${e.message}`});}
+    setSolBusy("");
+  };
+
+  const doImportTranslations=async(file)=>{
+    if(!file) return;
+    if(!confirmProd(orgInfo?.isProduction,`Import translations "${file.name}" — labels across forms, views, sitemap and option sets will be overwritten for the languages in the file.`)) return;
+    setSolBusy("import");setSolMsg(null);setImportJob(null);
+    try{
+      const buf=await file.arrayBuffer();
+      // base64-encode in 32k chunks — String.fromCharCode(...wholeArray) would blow the JS
+      // argument limit on a multi-MB zip (the flushNeverSent lesson, applied preemptively).
+      let s="";const bytes=new Uint8Array(buf);const CH=0x8000;
+      for(let i=0;i<bytes.length;i+=CH) s+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
+      const jobId=crypto.randomUUID();
+      await bridge.importTranslations(btoa(s),jobId);
+      setSolBusy("");
+      setImportJob({id:jobId,progress:0,done:false});
+      jobPollRef.current=setInterval(async()=>{
+        try{
+          const d=await bridge.query("importjobs",{filter:`importjobid eq ${jobId}`,select:"progress,completedon"});
+          const j=d?.records?.[0];
+          if(!j) return;
+          setImportJob(prev=>prev?{...prev,progress:Math.round(j.progress||0),done:!!j.completedon}:prev);
+          if(j.completedon){
+            clearInterval(jobPollRef.current);jobPollRef.current=null;
+            if(autoPublish){
+              setSolBusy("publish");
+              try{ await bridge.publishAll(); setSolMsg({ok:true,text:"Translations imported and published — reload D365 forms to see the new labels."}); }
+              catch(e2){ setSolMsg({ok:false,text:`Imported, but publish failed: ${e2.message} — publish customizations manually.`}); }
+              setSolBusy("");
+            } else setSolMsg({ok:true,text:"Translations imported — publish customizations to apply them."});
+          }
+        }catch{/* transient poll failure — next tick retries */}
+      },5000);
+    }catch(e){ setSolMsg({ok:false,text:`Import failed: ${e.message}`}); setSolBusy(""); }
+  };
+
   useEffect(()=>{
     bridge.getOrgLanguages().then(d=>{if(d){setLanguages(d);setSelLangs(d.map(l=>l.code));}}).catch(()=>{});
     if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d})))}).catch(()=>{});
@@ -121,6 +188,33 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
         </div>
       </div>
       <div style={{flex:1,overflow:"auto",padding:16}}>
+        {/* Solution-wide translations — the official export/import zip, everything at once */}
+        {isLive&&!readOnly&&(
+          <div style={{...crd({padding:12}),marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>🌐 Solution translations — forms (tabs, sections, labels), views, sitemap, option sets…</div>
+            <div style={{fontSize:11.5,color:C.txm,marginBottom:8,lineHeight:1.5}}>The official Dataverse mechanism, in two clicks: export a solution's <span style={{...mono}}>CrmTranslations</span> zip, edit it in Excel, import it back. Colvio never touches the XML — Dataverse parses it, so nothing can be corrupted in transit.</div>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <select value={selSolName} onChange={e=>setSelSolName(e.target.value)} style={inp({width:"auto",maxWidth:280,fontSize:12,padding:"5px 8px"})}>
+                <option value="">— pick a solution —</option>
+                {solutions.map(s=><option key={s.id} value={s.uniqueName}>{s.displayName}{s.isManaged?" (managed)":""}</option>)}
+              </select>
+              <button onClick={doExportTranslations} disabled={!selSolName||!!solBusy} style={bt(C.cy,{fontSize:12,padding:"5px 12px",opacity:(!selSolName||solBusy)?0.5:1})}>{solBusy==="export"?<Spin s={12}/>:<I.Download/>} Export translations (zip)</button>
+              <button onClick={()=>zipRef.current?.click()} disabled={!!solBusy||!!importJob&&!importJob.done} style={bt(C.vi,{fontSize:12,padding:"5px 12px",opacity:(solBusy||(importJob&&!importJob.done))?0.5:1})}>{solBusy==="import"?<Spin s={12}/>:<I.Upload/>} Import translations (zip)</button>
+              <input ref={zipRef} type="file" accept=".zip" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];e.target.value="";doImportTranslations(f);}}/>
+              <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11.5,color:C.txm,cursor:"pointer"}}>
+                <input type="checkbox" checked={autoPublish} onChange={e=>setAutoPublish(e.target.checked)} style={{accentColor:C.vi}}/>
+                publish all after import
+              </label>
+            </div>
+            {importJob&&!importJob.done&&(
+              <div style={{marginTop:8,fontSize:12,color:C.txm,display:"flex",alignItems:"center",gap:8}}>
+                <Spin s={12}/> Import job running — {importJob.progress}% <span style={{fontSize:10.5,color:C.txd}}>(also visible in System Ops · job {importJob.id.slice(0,8)}…)</span>
+              </div>
+            )}
+            {solBusy==="publish"&&<div style={{marginTop:8,fontSize:12,color:C.txm,display:"flex",alignItems:"center",gap:8}}><Spin s={12}/> Publishing all customizations…</div>}
+            {solMsg&&<div style={{marginTop:8,fontSize:12,color:solMsg.ok?C.gn:C.rd}}>{solMsg.ok?"✓":"⚠"} {solMsg.text}</div>}
+          </div>
+        )}
         {!selEnt&&<div style={{textAlign:"center",color:C.txd,marginTop:60}}>Select an entity to manage translations</div>}
         {selEnt&&loading&&<div style={{textAlign:"center",marginTop:60}}><Spin s={20}/></div>}
         {selEnt&&!loading&&(
