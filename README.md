@@ -69,6 +69,15 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Every process definition** from the workflow table, in category tabs with counts: classic Workflows (Background/Real-time + C/U/D triggers), Cloud flows (Power Automate), Business rules, Actions, BPFs, Dialogs, Desktop flows
 - **Honest three-way source classification** — Microsoft (publisher-prefix heuristic; Dataverse doesn't stamp authorship and registers its own steps unmanaged), Managed (ISV or your own solution), Custom (unmanaged) — plus state and free-text filters, CSV/Excel export of any view
 
+### App Inventory
+- **What each model-driven app actually exposes** — tables, forms, views and modern commands, read straight from the runtime tables (`appmodule`, `appmodulecomponent`, `systemform`, `savedquery`, `appaction`)
+- **The invisible include-all flag, made visible**: when a maker leaves "All forms" / "All views" checked, Dataverse creates no component rows and stores no flag — Colvio infers it from the absence of explicit registrations, independently for forms and views, and badges the table **ALL FORMS / ALL VIEWS** (meaning every current *and future* form/view will surface in that app)
+- Per-table accordion with **EXPLICIT** (hand-picked in the designer) vs **IMPLICIT** (auto-surfaced) badges on every form and view
+- **Modern command-bar buttons** classified by their three scopes: app-specific, entity-global (every app exposing that table), or table-generic templates (every app)
+- **Reverse search** — type a form/view/button name and see *which apps expose it*: the impact map before editing a shared component
+- On-demand **dependency analysis**: which attributes and option sets an app's forms/views actually drag in (200k-edge cap with an honest truncation banner)
+- CSV/Excel export of the flat inventory (selected app or all apps); apps with blank display names (internal placeholders) hidden
+
 ### Data Loader
 - 5-step wizard: Source > Mapping > Lookups > Preview > Run
 - CSV / TSV / TXT drag-drop, **Excel (XLSX/XLS)** support, or paste from clipboard
@@ -216,12 +225,12 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Modules | 17 |
-| Lines of code | ~15,700 |
-| API actions | 64 |
-| React components | 36 |
-| Unit tests | 151 |
-| Build size | ~490 KB panel (+430 KB xlsx chunk on demand) |
+| Modules | 18 |
+| Lines of code | ~16,500 |
+| API actions | 70 |
+| React components | 37 |
+| Unit tests | 162 |
+| Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |
 

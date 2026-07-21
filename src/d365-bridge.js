@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getLoginEvents" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll";
+    const isLongOp = isBatchOp || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "getLoginEvents" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -306,7 +306,7 @@ export const bridge = {
 
   async getFields(logicalName) {
     if (!isExtension) return null;
-    const k = cacheKey("fields2", logicalName); // v2: entries now carry isPrimaryId — bump invalidates pre-1.11.107 caches
+    const k = cacheKey("fields3", logicalName); // v3: entries now carry metadataId (dependency-graph resolution)
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getFields", { logicalName });
@@ -722,6 +722,49 @@ export const bridge = {
     };
     await Promise.all(Array.from({ length: Math.min(3, slices.length) }, () => worker()));
     return { users: [...users.values()], failedDays, sliceCount: slices.length };
+  },
+
+  // ── App inventory (model-driven app components) ──
+  async getAppModules() {
+    if (!isExtension) return [
+      { id: "app1", uid: "uidS", name: "Sales Hub", uniqueName: "msdynce_saleshub", description: "" },
+      { id: "app2", uid: "uidV", name: "Customer Service Hub", uniqueName: "msdynce_servicehub", description: "" },
+    ];
+    return callD365("getAppModules");
+  },
+  async getAppComponents() {
+    if (!isExtension) return [
+      { objectId: "meta-account", componentType: 1, appUid: "uidS" },
+      { objectId: "f-main", componentType: 60, appUid: "uidS" },
+      { objectId: "meta-account", componentType: 1, appUid: "uidV" },
+      { objectId: "v-active", componentType: 26, appUid: "uidV" },
+    ];
+    return callD365("getAppComponents");
+  },
+  async getAllForms() {
+    if (!isExtension) return [
+      { id: "f-main", name: "Account Main", entity: "account", type: 2, typeLabel: "Main" },
+      { id: "f-qc", name: "Account Quick Create", entity: "account", type: 7, typeLabel: "Quick Create" },
+    ];
+    return callD365("getAllForms");
+  },
+  async getAllViews() {
+    if (!isExtension) return [
+      { id: "v-active", name: "Active Accounts", entity: "account" },
+      { id: "v-my", name: "My Accounts", entity: "account" },
+    ];
+    return callD365("getAllViews");
+  },
+  async getAppActions() {
+    if (!isExtension) return [
+      { id: "a-mail", name: "SendEmail", label: "Send Email", contextValue: "account", appId: "" },
+      { id: "a-new", name: "New", label: "New", contextValue: "", appId: "" },
+    ];
+    return callD365("getAppActions");
+  },
+  async getFormViewDependencies() {
+    if (!isExtension) return { edges: [], truncated: false };
+    return callD365("getFormViewDependencies");
   },
 
   // ── Solution translations (official ExportTranslation / ImportTranslation actions) ──

@@ -6,24 +6,24 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
-    "📈 NEW: Adoption — who actually uses the CRM: logins, distinct users, never-signed-in list; exact totals on any audit volume, filter by role/BU",
+    "📱 NEW: Apps — every model-driven app's real inventory: the invisible \"include all forms/views\" made visible, EXPLICIT/IMPLICIT badges, reverse \"which apps expose this?\" search",
+    "⚡ NEW: Automation — plug-in steps + every workflow/flow/rule/action, with honest Microsoft/Managed/Custom source classification",
+    "📈 NEW: Adoption — who actually uses the CRM: logins, distinct users, never-signed-in list; exact totals on any audit volume",
     "🔍 Explorer — relational filters in the Builder: \"accounts with NO open opportunity\" without writing any() yourself",
-    "🌐 Security Audit — org-wide \"who can do what\" across every role, full privilege matrix per table, Teams tab, bulk role assign/remove",
-    "⚙️ BPF manager — reopen or re-stage a locked Business Process Flow (admins)",
-    "✎ Show All Data — edit fields the form marks read-only, straight through the API",
-    "🧹 Data Loader — NULL clears a field (lookups too) · \"strip HTML\" transform · EU/US date toggle · migration mode for audit fields",
-    "🛡 Data Loader — honest to the end: timeouts can't silently drop rows, and the bypass headers are the real documented ones (now on bulk deletes too)",
-    "🗂 Sidebar reorganized — Data / Develop / Admin sections, Loader right under Explorer",
+    "🌐 Security Audit — org-wide \"who can do what\" across every role, privilege matrix per table, bulk role assign/remove",
+    "🔁 Data Loader — auto-resume after a timeout, honest accounting (no silently dropped rows), retry pass, opt-in \"empty cells clear fields\"",
+    "🧹 Data Loader — NULL clears a field (lookups too) · strip-HTML transform · EU/US date toggle · migration mode for audit fields",
+    "🗂 Sidebar reorganized — Data / Develop / Admin sections · virtual/elastic table badges everywhere",
   ],
   fr: [
-    "📈 NOUVEAU : Adoption — qui utilise vraiment le CRM : connexions, utilisateurs distincts, liste des jamais-connectés ; totaux exacts quel que soit le volume, filtres rôle/BU",
+    "📱 NOUVEAU : Applications — le vrai inventaire de chaque app model-driven : le « tous les formulaires/vues » invisible rendu visible, badges EXPLICIT/IMPLICIT, recherche inversée « quelles apps exposent ceci ? »",
+    "⚡ NOUVEAU : Automatisations — étapes de plug-ins + tous les workflows/flows/règles/actions, avec classification honnête Microsoft/Managed/Custom",
+    "📈 NOUVEAU : Adoption — qui utilise vraiment le CRM : connexions, utilisateurs distincts, jamais-connectés ; totaux exacts quel que soit le volume",
     "🔍 Explorateur — filtres relationnels dans le Builder : « les comptes SANS opportunité ouverte » sans écrire de any() vous-même",
-    "🌐 Audit de sécurité — vue org-wide « qui peut faire quoi » sur tous les rôles, matrice complète par table, onglet Teams, affectation de rôles en masse",
-    "⚙️ Gestion BPF — rouvrez ou changez l'étape d'un Business Process Flow verrouillé (admins)",
-    "✎ Show All Data — éditez les champs verrouillés par le formulaire, directement via l'API",
-    "🧹 Data Loader — NULL vide un champ (lookups compris) · transform « strip HTML » · bascule de date EU/US · mode migration pour les champs d'audit",
-    "🛡 Data Loader — honnête jusqu'au bout : un timeout ne peut plus perdre de lignes, et les headers de bypass sont les vrais documentés (bulk delete compris)",
-    "🗂 Sidebar réorganisée — sections Données / Développement / Administration, le Loader juste sous l'Explorateur",
+    "🌐 Audit de sécurité — vue org-wide « qui peut faire quoi » sur tous les rôles, matrice par table, affectation de rôles en masse",
+    "🔁 Data Loader — reprise auto après timeout, comptes honnêtes (aucune ligne perdue en silence), passe de retry, option « cellules vides = vider »",
+    "🧹 Data Loader — NULL vide un champ (lookups compris) · transform strip-HTML · bascule de date EU/US · mode migration pour les champs d'audit",
+    "🗂 Sidebar réorganisée — sections Données / Développement / Administration · badges tables virtuelles/élastiques partout",
   ],
 };
 

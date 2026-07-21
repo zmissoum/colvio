@@ -60,6 +60,9 @@ Interactive Entity Relationship Diagram. Add entities to a canvas, see field det
 Automation Inventory
 The static inventory of everything registered to run in the org — the design-time counterpart to System Ops' runtime jobs. Plug-in steps (class, assembly, message, entity, stage, sync/async, enabled/disabled — internal platform machinery hidden by default, like the Plugin Registration Tool) plus every process definition in category tabs with counts: classic workflows (with mode and triggers), Power Automate cloud flows, business rules, actions, BPFs, dialogs, desktop flows. Honest three-way source classification (Microsoft via publisher-prefix heuristic, Managed, Custom — Dataverse doesn't stamp authorship, and the tooltip says so), state and free-text filters, CSV/Excel export of any view. The map you want before debugging "why did this field change?" or planning a migration that bypasses plug-ins.
 
+App Inventory
+What each model-driven app actually EXPOSES — tables, forms, views and modern command-bar buttons, read straight from the runtime tables. The headline: the "include all forms/views" state the maker portal never shows. When a maker leaves it checked, Dataverse stores no flag and creates no component rows — Colvio infers it from the absence of explicit registrations (independently for forms and views) and badges the table ALL FORMS / ALL VIEWS, meaning every current AND FUTURE form/view will surface in that app. Every form and view carries an EXPLICIT (hand-picked) or IMPLICIT (auto-surfaced) badge; modern commands are classified by their three scopes (app-specific, entity-global, table-generic). A reverse search answers the other direction — "which apps expose this form/view/button?" — the impact map to check before editing a shared component. On-demand dependency analysis lists the attributes and option sets an app's forms and views actually pull in. CSV/Excel export of the full inventory.
+
 Solution Explorer
 Browse D365 solutions and their components — with All/Unmanaged/Managed filter counts and a CSV/Excel export of a solution's full component list (resolved type labels). 40+ component types resolved to readable names against Microsoft's official enumeration (Entity, Attribute, Web Resource, Security Role, Email Template, Model-driven App, Environment Variable, Routing/Convert Rule, SLA, and more), with component names resolved per type instead of raw GUIDs.
 
@@ -130,7 +133,7 @@ All write operations respect your D365 security roles — Colvio cannot bypass s
 ROLE-BASED ACCESS
 
 Some modules require elevated D365 permissions and are automatically hidden for non-admin users:
-Available to all users: Data Explorer, API Tester, Show All Data, Metadata Browser, Data Loader, Relationship Graph, Schema, Help
+Available to all users: Data Explorer, API Tester, Show All Data, Metadata Browser, Data Loader, App Inventory, Relationship Graph, Schema, Help
 Requires System Administrator or System Customizer: Solution Explorer, Automation, Translation Manager, Login History, Adoption, Users & Licenses, Business Units, Security Audit
 Colvio detects your permissions at startup and only shows the tabs you can access. No error screens, no confusion.
 

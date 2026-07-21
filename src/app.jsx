@@ -12,6 +12,7 @@ import ApiTesterTabs from "./components/ApiTesterTabs.jsx";
 import LoginHistory from "./components/LoginHistory.jsx";
 import Adoption from "./components/Adoption.jsx";
 import AutomationInventory from "./components/AutomationInventory.jsx";
+import AppInventory from "./components/AppInventory.jsx";
 import Loader from "./components/Loader.jsx";
 import RecycleBin from "./components/RecycleBin.jsx";
 import SystemOps from "./components/SystemOps.jsx";
@@ -227,6 +228,7 @@ export default function App(){
     {id:"apitester",section:"develop",label:t("nav.apitester"),desc:t("nav.apitester.desc"),icon:<I.Zap/>},
     {id:"metadata",section:"develop",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
     {id:"automation",section:"develop",label:t("nav.automation"),desc:t("nav.automation.desc"),icon:<I.Zap/>,requires:"canReadSolutions"},
+    {id:"apps",section:"develop",label:t("nav.apps"),desc:t("nav.apps.desc"),icon:<I.Grid/>},
     {id:"graph",section:"develop",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
     {id:"schema",section:"develop",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
     {id:"solutions",section:"develop",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
@@ -350,6 +352,7 @@ export default function App(){
           {tab==="show"&&<ErrorBoundary><ShowAllData bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures} permissions={permissions}/></ErrorBoundary>}
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="automation"&&<ErrorBoundary><AutomationInventory bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
+          {tab==="apps"&&<ErrorBoundary><AppInventory bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="adoption"&&<ErrorBoundary><Adoption bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {/* Loader stays MOUNTED (display toggle, like Explorer) so switching nav tabs during an

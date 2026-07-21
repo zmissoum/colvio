@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.118] — 2026-07-21
+### Added — NEW module: Apps (model-driven app inventory)
+- **What each model-driven app actually exposes**, read straight from the runtime tables (`appmodule`, `appmodulecomponent`, `systemform`, `savedquery`, `appaction`): its tables, and per table its forms and views, each badged **EXPLICIT** (hand-picked in the app designer) or **IMPLICIT** (surfaced automatically).
+- **The invisible include-all flag, made visible.** When a maker leaves "All forms" / "All views" checked, Dataverse creates NO component rows and stores NO flag saying so — Colvio infers it from the absence of explicit form (or view) components for a registered table, **independently for forms and views**, and badges the table ALL FORMS / ALL VIEWS. That badge means every form/view of the table — current **and future** — surfaces in the app, a fact you cannot see anywhere in the maker portal. The tooltip explains the inference honestly.
+- **Modern command-bar buttons** (appaction) classified by their three scopes: app-specific (EXPLICIT, one app), entity-global (IMPLICIT in every app exposing that table), table-generic templates (IMPLICIT everywhere). Classic RibbonDiffXml customizations are out of scope and the UI says so. Orgs without the appaction table simply show no commands section.
+- **Reverse search** — type a form/view/button name and see which apps expose it, with the explicit/implicit reason: the impact map to check before editing a shared component.
+- **On-demand dependency analysis** per app: walks the `dependencies` entity to list the attributes and option sets the app's in-scope forms/views actually drag in (attribute names resolved via metadata `MetadataId`; capped at 200k edges with an honest truncation banner on very large orgs).
+- CSV/Excel export of the flat inventory (selected app or all apps). Apps with blank display names (internal placeholders) are hidden. Read-only module, visible to all users — it reads the same runtime tables every app user already reads. Logic is pure and unit-tested (8 new tests, 162 total); `getFields` now returns each attribute's `MetadataId` (fields cache key bumped).
+
 ## [1.11.117] — 2026-07-21
 ### Added — Translation Manager: solution-wide translations (forms, views, sitemap…)
 - **Export / import a solution's full translation file via Microsoft's official mechanism** (`ExportTranslation` / `ImportTranslation` Web API actions, signatures verified against the docs). One zip covers everything Dataverse deems localizable: **form tabs, sections and label overrides, views, charts, dashboards, sitemap, option sets, custom ribbon LocLabels** — the elements the per-field editor can't reach. Flow: pick a solution → download `CrmTranslations_<name>.zip` → edit in Excel → import it back.

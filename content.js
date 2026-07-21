@@ -331,6 +331,8 @@
                   // The entity's PrimaryIdAttribute marker — the RELIABLE way to find the id column
                   // (the <entity>id heuristic breaks on activities, where the PK is activityid).
                   isPrimaryId: a.IsPrimaryId || false,
+                  // MetadataId — the key dependency-graph edges use to reference an attribute.
+                  metadataId: a.MetadataId || null,
                   isCustom: a.IsCustomAttribute || false,
                   required: a.RequiredLevel?.Value === "ApplicationRequired" || a.RequiredLevel?.Value === "SystemRequired",
                   // Writability — used by the Loader to keep read-only / calculated / rollup
@@ -1278,6 +1280,97 @@
               if (/401|403|privilege|permission|expired/i.test(msg)) throw e;
               result = await scanSlice();
             }
+            break;
+          }
+
+          case "getAppModules": {
+            // Model-driven apps. Components reference apps via appmoduleidUNIQUE — appactions via
+            // appmoduleid — so both ids travel (the classic join trap).
+            const rowsA = [];
+            let urlA = `appmodules?$select=appmoduleid,appmoduleidunique,name,uniquename,description`;
+            while (urlA) {
+              const dA = await dvRequest("GET", urlA, null, { Prefer: "odata.maxpagesize=5000" });
+              (dA.value || []).forEach(a => rowsA.push({ id: a.appmoduleid, uid: a.appmoduleidunique, name: a.name || "", uniqueName: a.uniquename || "", description: a.description || "" }));
+              const nl = dA["@odata.nextLink"]; urlA = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = rowsA;
+            break;
+          }
+
+          case "getAppComponents": {
+            // App Module Components, Tables/Views/Forms only. CRITICAL QUIRK (why the inventory
+            // logic exists at all): "include all forms/views" does NOT materialize components —
+            // include-all is INFERRED from the absence of explicit form/view components for a
+            // registered table. No flag exposes it.
+            const rowsC = [];
+            let urlC = `appmodulecomponents?$filter=componenttype eq 1 or componenttype eq 26 or componenttype eq 60&$select=objectid,componenttype,_appmoduleidunique_value`;
+            while (urlC) {
+              const dC = await dvRequest("GET", urlC, null, { Prefer: "odata.maxpagesize=5000" });
+              (dC.value || []).forEach(c => rowsC.push({ objectId: c.objectid, componentType: c.componenttype, appUid: c._appmoduleidunique_value }));
+              const nl = dC["@odata.nextLink"]; urlC = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = rowsC;
+            break;
+          }
+
+          case "getAllForms": {
+            const rowsF = [];
+            let urlF = `systemforms?$select=formid,name,objecttypecode,type`;
+            while (urlF) {
+              const dF = await dvRequest("GET", urlF, null, { Prefer: "odata.maxpagesize=5000" });
+              (dF.value || []).forEach(f => rowsF.push({ id: f.formid, name: f.name || "", entity: f.objecttypecode || "", type: f.type, typeLabel: f["type@OData.Community.Display.V1.FormattedValue"] || "" }));
+              const nl = dF["@odata.nextLink"]; urlF = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = rowsF;
+            break;
+          }
+
+          case "getAllViews": {
+            const rowsV = [];
+            let urlV = `savedqueries?$select=savedqueryid,name,returnedtypecode`;
+            while (urlV) {
+              const dV = await dvRequest("GET", urlV, null, { Prefer: "odata.maxpagesize=5000" });
+              (dV.value || []).forEach(v => rowsV.push({ id: v.savedqueryid, name: v.name || "", entity: v.returnedtypecode || "" }));
+              const nl = dV["@odata.nextLink"]; urlV = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = rowsV;
+            break;
+          }
+
+          case "getAppActions": {
+            // Modern command-bar buttons. Three scopes: app-specific (_appmoduleid_value set),
+            // entity-global (context entity set, no app), table-generic templates (neither — New/
+            // Save/Export surface everywhere). Classic RibbonDiffXml buttons are NOT appactions.
+            // Older orgs may not expose the table at all → empty list, module degrades gracefully.
+            const rowsAc = [];
+            try {
+              let urlAc = `appactions?$filter=statecode eq 0&$select=appactionid,name,buttonlabeltext,contextvalue,_appmoduleid_value`;
+              while (urlAc) {
+                const dAc = await dvRequest("GET", urlAc, null, { Prefer: "odata.maxpagesize=5000" });
+                (dAc.value || []).forEach(a => rowsAc.push({ id: a.appactionid, name: a.name || "", label: a.buttonlabeltext || a.name || "", contextValue: a.contextvalue || "", appId: a._appmoduleid_value || "" }));
+                const nl = dAc["@odata.nextLink"]; urlAc = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              }
+            } catch { /* appaction table absent on this org version */ }
+            result = rowsAc;
+            break;
+          }
+
+          case "getFormViewDependencies": {
+            // The dependency graph edges whose DEPENDENT is a Form (60) or View (26) — how
+            // attributes (2) / option sets (9) / relationships (10) reach an app: never as App
+            // Module Components, only because a form/view references them. Can be very large on
+            // mature orgs → hard cap with an honest truncation flag.
+            const CAPD = 200000;
+            const rowsD = [];
+            let truncatedD = false;
+            let urlD = `dependencies?$filter=dependentcomponenttype eq 60 or dependentcomponenttype eq 26&$select=requiredcomponentobjectid,requiredcomponenttype,dependentcomponentobjectid,dependentcomponenttype`;
+            while (urlD) {
+              if (rowsD.length >= CAPD) { truncatedD = true; break; }
+              const dD = await dvRequest("GET", urlD, null, { Prefer: "odata.maxpagesize=5000" });
+              (dD.value || []).forEach(e => rowsD.push({ requiredId: e.requiredcomponentobjectid, requiredType: e.requiredcomponenttype, dependentId: e.dependentcomponentobjectid, dependentType: e.dependentcomponenttype }));
+              const nl = dD["@odata.nextLink"]; urlD = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = { edges: rowsD.slice(0, CAPD), truncated: truncatedD };
             break;
           }
 
