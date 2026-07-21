@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.119] — 2026-07-21
+### Added — Apps: view inspector + form subgrids ("why doesn't my record show in that list?")
+- **View inspector**: every view in the Apps module is now clickable → its FetchXML **filters decoded to plain language** (field display name + logical name, operator label, value, nested AND/OR groups, conditions targeting linked tables) and its **columns** from layoutxml (display names, hover for logical + width), plus sort order and the raw FetchXML. Linked tables show their join and a warning when it's an **inner join — rows without a match are hidden**, one of the sneaky reasons a record vanishes from a list. A filterless view says so explicitly.
+- **Form subgrids**: a ⊞ button on every form lazily parses its `formxml` and lists each child grid — caption, target table, **the view it renders** (resolved by ViewId), the relationship linking child rows to the open record, and a VIEW PICKER badge when users can switch views (so what they see may not be the default). Subgrids pointing at a **personal view** (`userquery`) or a deleted view can't be inspected — the inspector says so honestly instead of erroring cryptically.
+- **Open in Explorer**: one click loads the view's FetchXML into the Explorer's FetchXML mode (new lightweight handoff: one-shot slot + window event; app.jsx switches the tab, the active query tab consumes — Explorer stays mounted so there is no race). Add a filter on your parent record and see exactly why a row matches or not.
+- Under the hood: new pure `src/viewInspectorUtils.js` (minimal dependency-free XML parser — DOMParser doesn't exist in the node test env — + FetchXML filter-tree/layout/subgrid extractors, ~40 operator labels incl. the `last-x-days` family; unknown operators pass through raw rather than being hidden). 2 new read-only content.js actions: `getViewDetail` (savedquery fetchxml+layoutxml), `getFormXml`. **10 new tests (172 total)**, including the parser regression where a spaced self-closing tag (`<x a="1" />`) used to flatten the whole filter tree.
+
 ## [1.11.118] — 2026-07-21
 ### Added — NEW module: Apps (model-driven app inventory)
 - **What each model-driven app actually exposes**, read straight from the runtime tables (`appmodule`, `appmodulecomponent`, `systemform`, `savedquery`, `appaction`): its tables, and per table its forms and views, each badged **EXPLICIT** (hand-picked in the app designer) or **IMPLICIT** (surfaced automatically).

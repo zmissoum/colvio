@@ -766,6 +766,21 @@ export const bridge = {
     if (!isExtension) return { edges: [], truncated: false };
     return callD365("getFormViewDependencies");
   },
+  async getViewDetail(viewId) {
+    if (!isExtension) return {
+      id: viewId, name: "Active Accounts", entity: "account",
+      fetchxml: `<fetch version="1.0" output-format="xml-platform" mapping="logical"><entity name="account"><attribute name="name" /><attribute name="primarycontactid" /><attribute name="telephone1" /><order attribute="name" descending="false" /><filter type="and"><condition attribute="statecode" operator="eq" value="0" /></filter></entity></fetch>`,
+      layoutxml: `<grid name="resultset" object="1" jump="name" select="1"><row name="result" id="accountid"><cell name="name" width="300" /><cell name="primarycontactid" width="150" /><cell name="telephone1" width="120" /></row></grid>`,
+    };
+    return callD365("getViewDetail", { viewId });
+  },
+  async getFormXml(formId) {
+    if (!isExtension) return {
+      id: formId, name: "Account Main",
+      formxml: `<form><tabs><tab><columns><column><sections><section><rows><row><cell id="{c1}"><labels><label description="Contacts" languagecode="1033" /></labels><control id="Contacts" classid="{E7A81278-8635-4d9e-8D4D-59480B391C5B}"><parameters><TargetEntityType>contact</TargetEntityType><ViewId>{v-active}</ViewId><EnableViewPicker>false</EnableViewPicker><RelationshipName>contact_customer_accounts</RelationshipName></parameters></control></cell></row></rows></section></sections></column></columns></tab></tabs></form>`,
+    };
+    return callD365("getFormXml", { formId });
+  },
 
   // ── Solution translations (official ExportTranslation / ImportTranslation actions) ──
   async exportTranslations(solutionName) {

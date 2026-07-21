@@ -144,6 +144,14 @@ export default function App(){
 
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
 
+  // Apps module "Open in Explorer": switch to the Explorer tab — the active query tab
+  // (kept mounted) consumes window.__colvioPendingQuery and applies the view's FetchXML.
+  useEffect(()=>{
+    const h=()=>setTab("explorer");
+    window.addEventListener("colvio:open-fetchxml",h);
+    return()=>window.removeEventListener("colvio:open-fetchxml",h);
+  },[]);
+
   // ── Auto-connect if running as Chrome extension ──
   useEffect(() => {
     const ext = detectExtension();

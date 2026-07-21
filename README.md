@@ -76,6 +76,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Modern command-bar buttons** classified by their three scopes: app-specific, entity-global (every app exposing that table), or table-generic templates (every app)
 - **Reverse search** — type a form/view/button name and see *which apps expose it*: the impact map before editing a shared component
 - On-demand **dependency analysis**: which attributes and option sets an app's forms/views actually drag in (200k-edge cap with an honest truncation banner)
+- **View inspector** — click any view to see its **filters decoded to plain language** (field, operator, value, AND/OR groups, linked-table joins) and its **columns**: the answer to "why doesn't my record show in that list?" (usual culprit: the `statecode = 0` filter hiding inactive rows)
+- **Form subgrids** — the ⊞ button on a form lists its child grids: which view each renders, through which relationship, and whether the view picker lets users switch views; **Open in Explorer** loads the view's FetchXML so you add your parent's filter and test exactly why a row matches or not
 - CSV/Excel export of the flat inventory (selected app or all apps); apps with blank display names (internal placeholders) hidden
 
 ### Data Loader
@@ -226,10 +228,10 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Metric | Value |
 |--------|-------|
 | Modules | 18 |
-| Lines of code | ~16,500 |
-| API actions | 70 |
+| Lines of code | ~17,000 |
+| API actions | 72 |
 | React components | 37 |
-| Unit tests | 162 |
+| Unit tests | 172 |
 | Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |

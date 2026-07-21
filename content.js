@@ -1374,6 +1374,25 @@
             break;
           }
 
+          case "getViewDetail": {
+            // A system view's full definition: fetchxml = the FILTERS (why a row is excluded),
+            // layoutxml = the COLUMNS shown. Personal views live in userquery, not savedquery —
+            // a subgrid pointing at one 404s here and the UI says so honestly.
+            validateGuid(params.viewId);
+            const dVd = await dvRequest("GET", `savedqueries(${params.viewId})?$select=savedqueryid,name,returnedtypecode,fetchxml,layoutxml`);
+            result = { id: dVd.savedqueryid, name: dVd.name || "", entity: dVd.returnedtypecode || "", fetchxml: dVd.fetchxml || "", layoutxml: dVd.layoutxml || "" };
+            break;
+          }
+
+          case "getFormXml": {
+            // Raw form definition — parsed client-side to list the SUBGRID controls (which child
+            // view each one renders, through which relationship, view picker on or off).
+            validateGuid(params.formId);
+            const dFx = await dvRequest("GET", `systemforms(${params.formId})?$select=formid,name,formxml`);
+            result = { id: dFx.formid, name: dFx.name || "", formxml: dFx.formxml || "" };
+            break;
+          }
+
           case "exportTranslations": {
             // Official whole-solution translation export (the CrmTranslations.xml zip) — covers
             // form tabs/sections/labels, views, charts, dashboards, sitemap, option sets and

@@ -6,7 +6,7 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
-    "📱 NEW: Apps — every model-driven app's real inventory: the invisible \"include all forms/views\" made visible, EXPLICIT/IMPLICIT badges, reverse \"which apps expose this?\" search",
+    "📱 NEW: Apps — every model-driven app's real inventory: the invisible \"include all forms/views\" made visible, reverse \"which apps expose this?\" search, and a view inspector that decodes any view's filters & columns (why doesn't my row show?)",
     "⚡ NEW: Automation — plug-in steps + every workflow/flow/rule/action, with honest Microsoft/Managed/Custom source classification",
     "📈 NEW: Adoption — who actually uses the CRM: logins, distinct users, never-signed-in list; exact totals on any audit volume",
     "🔍 Explorer — relational filters in the Builder: \"accounts with NO open opportunity\" without writing any() yourself",
@@ -16,7 +16,7 @@ const HIGHLIGHTS = {
     "🗂 Sidebar reorganized — Data / Develop / Admin sections · virtual/elastic table badges everywhere",
   ],
   fr: [
-    "📱 NOUVEAU : Applications — le vrai inventaire de chaque app model-driven : le « tous les formulaires/vues » invisible rendu visible, badges EXPLICIT/IMPLICIT, recherche inversée « quelles apps exposent ceci ? »",
+    "📱 NOUVEAU : Applications — le vrai inventaire de chaque app model-driven : le « tous les formulaires/vues » invisible rendu visible, recherche inversée « quelles apps exposent ceci ? », et un inspecteur de vue qui décode filtres & colonnes (pourquoi ma ligne n'apparaît pas ?)",
     "⚡ NOUVEAU : Automatisations — étapes de plug-ins + tous les workflows/flows/règles/actions, avec classification honnête Microsoft/Managed/Custom",
     "📈 NOUVEAU : Adoption — qui utilise vraiment le CRM : connexions, utilisateurs distincts, jamais-connectés ; totaux exacts quel que soit le volume",
     "🔍 Explorateur — filtres relationnels dans le Builder : « les comptes SANS opportunité ouverte » sans écrire de any() vous-même",

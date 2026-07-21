@@ -238,6 +238,26 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     }
   };
 
+  // Consume a view's FetchXML handed off by the Apps module ("Open in Explorer"). Ref-held
+  // handler so the mount-once listener always sees current entities/selEnt; only the ACTIVE
+  // query tab consumes the one-shot slot (every tab instance stays mounted and hears the event).
+  const openHandoffRef=useRef(null);
+  openHandoffRef.current=()=>{
+    const d=window.__colvioPendingQuery;
+    if(!d||!active) return;
+    const match=entities.find(x=>x.l===d.entity);
+    if(!match){window.__colvioPendingQuery=null;setError(`Table "${d.entity}" was not found on this org.`);return;}
+    window.__colvioPendingQuery=null;
+    selEnt(match);
+    const apply=()=>{setQm("fetchxml");setFxml(d.fetchxml);};
+    if(isLive) onFieldsReady.current=apply; else apply(); // demo: selEnt sets fields synchronously, the callback never fires
+  };
+  useEffect(()=>{
+    const h=()=>openHandoffRef.current&&openHandoffRef.current();
+    window.addEventListener("colvio:open-fetchxml",h);
+    return()=>window.removeEventListener("colvio:open-fetchxml",h);
+  },[]);
+
   // Map a getFields() payload to the internal field shape — shared by expands and relational filters.
   const mapTargetFields = (targetFields) => (targetFields || [])
     .map(f => ({

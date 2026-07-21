@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, copyText } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { buildAppInventory, buildReverseIndex, deriveAppDependencies } from "../appInventoryUtils.js";
+import { parseViewFetchXml, parseViewLayoutXml, parseFormSubgrids } from "../viewInspectorUtils.js";
 
 // Apps — what each model-driven app actually EXPOSES: tables (with the include-all forms/views
 // status the maker portal never shows), forms and views (explicit vs implicit), modern command-bar
@@ -11,6 +12,26 @@ import { buildAppInventory, buildReverseIndex, deriveAppDependencies } from "../
 const Badge = ({ label, color, title }) => (
   <span title={title} style={{ fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: color + "22", color, border: `1px solid ${color}44`, letterSpacing: ".4px", flexShrink: 0, cursor: title ? "help" : "default" }}>{label}</span>
 );
+
+// Readable filter tree of a view's FetchXML — the "why doesn't my row show?" answer.
+const FilterTree = ({ group, fieldMap, depth = 0 }) => {
+  if (!group) return <div style={{ fontSize: 12, color: C.txd }}>No filter — the view shows every row; visibility then depends only on the subgrid's relationship and on security.</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingLeft: depth ? 12 : 0, borderLeft: depth ? `2px solid ${C.bd}` : "none" }}>
+      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".4px", color: group.logic === "OR" ? C.yw : C.cy }}>{group.logic === "OR" ? "ANY of (OR)" : "ALL of (AND)"}</span>
+      {group.items.map((it, i) => it.kind === "group"
+        ? <FilterTree key={i} group={it} fieldMap={fieldMap} depth={depth + 1} />
+        : (
+          <div key={i} style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+            <span style={{ color: C.tx, fontWeight: 600 }}>{fieldMap?.get(it.attribute) || it.attribute}</span>
+            <span style={{ ...mono, fontSize: 10.5, color: C.txd }}>{it.attribute}{it.entityname ? ` (on ${it.entityname})` : ""}</span>
+            <span style={{ color: C.cy }}>{it.opLabel}</span>
+            {it.value !== "" && <span style={{ ...mono, fontSize: 11.5, color: C.tx }}>{it.value}</span>}
+          </div>
+        ))}
+    </div>
+  );
+};
 
 export default function AppInventory({ bp, orgInfo }) {
   const [inv, setInv] = useState(null);          // {apps, byApp, rows}
@@ -22,6 +43,9 @@ export default function AppInventory({ bp, orgInfo }) {
   const [collapsed, setCollapsed] = useState({});
   const [deps, setDeps] = useState(null);         // {attributes, optionSets, relationships, truncated} for selUid
   const [depsBusy, setDepsBusy] = useState(false);
+  const [viewsById, setViewsById] = useState(() => new Map()); // resolve subgrid ViewId → view name
+  const [inspector, setInspector] = useState(null); // {viewId,name,entity,loading,error,parsed,cols,fieldMap}
+  const [subgrids, setSubgrids] = useState({});     // formId -> {open,loading,list,error}
   const depsCache = useRef({});                    // uid -> deps (edges are org-wide; re-derive per app)
   const edgesCache = useRef(null);
 
@@ -36,6 +60,7 @@ export default function AppInventory({ bp, orgInfo }) {
       // getEntities returns null in demo mode — supply the entity the demo components reference.
       const entities = ents ? ents.map(e => ({ metadataId: e.metadataId, logical: e.logical, display: e.display }))
         : [{ metadataId: "meta-account", logical: "account", display: "Account" }];
+      setViewsById(new Map((views || []).map(v => [v.id, v])));
       setInv(buildAppInventory({ apps: apps || [], components: components || [], forms: forms || [], views: views || [], entities, actions: actions || [] }));
       setLoading(false);
     }).catch(e => { if (!cancelled) { setError(e.message || String(e)); setLoading(false); } });
@@ -88,6 +113,47 @@ export default function AppInventory({ bp, orgInfo }) {
     setDepsBusy(false);
   };
 
+  // View inspector: fetch the savedquery's fetchxml (filters) + layoutxml (columns), resolve
+  // field display names from metadata (best-effort — logical names shown regardless).
+  const openInspector = async (viewId, name, entity) => {
+    setInspector({ viewId, name, entity, loading: true });
+    try {
+      const det = await bridge.getViewDetail(viewId);
+      const entLogical = det.entity || entity || "";
+      const fieldMap = new Map();
+      try {
+        const fs = await bridge.getFields(entLogical);
+        for (const f of (fs || [])) fieldMap.set(f.logical || f.l, f.display || f.d || f.logical || f.l);
+      } catch { /* display names stay logical */ }
+      setInspector({ viewId, name: det.name || name, entity: entLogical, loading: false, parsed: parseViewFetchXml(det.fetchxml), cols: parseViewLayoutXml(det.layoutxml), fieldMap });
+    } catch (e) {
+      const msg = /not exist|not found|404/i.test(e.message || "")
+        ? "View not found in savedquery — a subgrid can point at a PERSONAL view (userquery) or a deleted one; only system views can be inspected."
+        : (e.message || String(e));
+      setInspector({ viewId, name, entity, loading: false, error: msg });
+    }
+  };
+
+  // Hand the view's FetchXML to the Explorer (FetchXML mode) — one-shot slot + window event;
+  // app.jsx switches the tab, the active Explorer query tab consumes and applies.
+  const openInExplorer = (entity, fetchxml) => {
+    window.__colvioPendingQuery = { entity, fetchxml };
+    window.dispatchEvent(new CustomEvent("colvio:open-fetchxml"));
+    setInspector(null);
+  };
+
+  const toggleSubgrids = async (form) => {
+    const cur = subgrids[form.id];
+    if (cur && (cur.list || cur.error)) { setSubgrids(p => ({ ...p, [form.id]: { ...p[form.id], open: !p[form.id].open } })); return; }
+    setSubgrids(p => ({ ...p, [form.id]: { open: true, loading: true } }));
+    try {
+      const fx = await bridge.getFormXml(form.id);
+      setSubgrids(p => ({ ...p, [form.id]: { open: true, list: parseFormSubgrids(fx.formxml) } }));
+    } catch (e) {
+      setSubgrids(p => ({ ...p, [form.id]: { open: true, error: e.message || String(e) } }));
+    }
+  };
+
   const exportApp = (format = "csv") => {
     if (!inv) return;
     const rows = (selUid ? inv.rows.filter(r => r.appUid === selUid) : inv.rows)
@@ -129,7 +195,11 @@ export default function AppInventory({ bp, orgInfo }) {
             {reverseHits.map(h => (
               <div key={h.objectId} style={{ ...crd({ padding: "8px 12px" }), marginBottom: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>{h.name}</span>
+                  <span
+                    onClick={h.componentType === "View" ? () => openInspector(h.objectId, h.name, h.entity) : undefined}
+                    title={h.componentType === "View" ? "Inspect this view's filters & columns" : undefined}
+                    style={{ fontWeight: 600, fontSize: 13, ...(h.componentType === "View" ? { cursor: "pointer", textDecoration: "underline dotted", textDecorationColor: C.bd } : {}) }}
+                  >{h.name}</span>
                   <Badge label={h.componentType} color={C.cy} />
                   {h.entity && <span style={{ ...mono, fontSize: 11, color: C.txd }}>{h.entity}</span>}
                 </div>
@@ -174,19 +244,43 @@ export default function AppInventory({ bp, orgInfo }) {
                     <div style={{ padding: "6px 12px 10px", display: "flex", gap: 18, flexWrap: "wrap" }}>
                       <div style={{ minWidth: 220, flex: 1 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.txd, margin: "4px 0" }}>FORMS ({tb.forms.length})</div>
-                        {tb.forms.map(f => (
-                          <div key={f.id} style={{ fontSize: 12, padding: "2px 0", display: "flex", gap: 6, alignItems: "center" }}>
-                            <span style={{ color: C.tx }}>{f.name}</span>
-                            {f.typeLabel && <span style={{ fontSize: 10, color: C.txd }}>{f.typeLabel}</span>}
-                            <Badge label={f.inclusion} color={f.inclusion === "EXPLICIT" ? C.gn : C.cy} />
-                          </div>
-                        ))}
+                        {tb.forms.map(f => {
+                          const sg = subgrids[f.id];
+                          return (
+                            <div key={f.id}>
+                              <div style={{ fontSize: 12, padding: "2px 0", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                <span style={{ color: C.tx }}>{f.name}</span>
+                                {f.typeLabel && <span style={{ fontSize: 10, color: C.txd }}>{f.typeLabel}</span>}
+                                <Badge label={f.inclusion} color={f.inclusion === "EXPLICIT" ? C.gn : C.cy} />
+                                <button onClick={() => toggleSubgrids(f)} title="List this form's subgrids — which child view each renders, through which relationship" style={{ fontSize: 10, padding: "1px 7px", borderRadius: 3, border: `1px solid ${C.bd}`, background: sg?.open ? C.sfa : "transparent", color: C.txm, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>{sg?.loading ? <Spin s={9} /> : "⊞ subgrids"}</button>
+                              </div>
+                              {sg?.open && !sg.loading && (
+                                <div style={{ margin: "2px 0 6px 10px", paddingLeft: 8, borderLeft: `2px solid ${C.bd}` }}>
+                                  {sg.error && <div style={{ fontSize: 11, color: C.rd }}>{sg.error}</div>}
+                                  {sg.list && sg.list.length === 0 && <div style={{ fontSize: 11, color: C.txd }}>No subgrid on this form.</div>}
+                                  {(sg.list || []).map((g, gi) => {
+                                    const v = viewsById.get(g.viewId);
+                                    return (
+                                      <div key={g.controlId + gi} style={{ fontSize: 11.5, padding: "2px 0", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                        <span style={{ color: C.tx, fontWeight: 600 }}>{g.label}</span>
+                                        <span style={{ ...mono, fontSize: 10.5, color: C.txd }}>{g.targetEntity}</span>
+                                        <span onClick={() => openInspector(g.viewId, v?.name || "", g.targetEntity)} title="Inspect this view's filters & columns" style={{ color: C.cy, cursor: "pointer", textDecoration: "underline dotted" }}>{v ? v.name : "unresolved view (personal?)"}</span>
+                                        {g.relationshipName && <span title="Relationship linking the child rows to the open record" style={{ ...mono, fontSize: 10, color: C.txd }}>{g.relationshipName}</span>}
+                                        {g.viewPicker && <Badge label="VIEW PICKER" color={C.yw} title="Users can switch this subgrid to another view — what they currently see may not be this default view" />}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                       <div style={{ minWidth: 220, flex: 1 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.txd, margin: "4px 0" }}>VIEWS ({tb.views.length})</div>
                         {tb.views.map(v => (
                           <div key={v.id} style={{ fontSize: 12, padding: "2px 0", display: "flex", gap: 6, alignItems: "center" }}>
-                            <span style={{ color: C.tx }}>{v.name}</span>
+                            <span onClick={() => openInspector(v.id, v.name, tb.entity)} title="Inspect this view's filters & columns" style={{ color: C.tx, cursor: "pointer", textDecoration: "underline dotted", textDecorationColor: C.bd }}>{v.name}</span>
                             <Badge label={v.inclusion} color={v.inclusion === "EXPLICIT" ? C.gn : C.cy} />
                           </div>
                         ))}
@@ -238,6 +332,59 @@ export default function AppInventory({ bp, orgInfo }) {
           </div>
         )}
       </div>
+
+      {/* View inspector — filters (why a row is excluded) + columns (what's shown) */}
+      {inspector && (
+        <div onClick={() => setInspector(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 660, maxWidth: "94vw", maxHeight: "86vh", overflow: "auto", background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 18, boxShadow: "0 16px 48px rgba(0,0,0,.55)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>🔎 {inspector.name || "View"}</span>
+              {inspector.entity && <span style={{ ...mono, fontSize: 11, color: C.txd }}>{inspector.entity}</span>}
+              <button onClick={() => setInspector(null)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: C.txd, cursor: "pointer", fontSize: 15 }}>✕</button>
+            </div>
+            {inspector.loading && <div style={{ padding: 16, textAlign: "center" }}><Spin /></div>}
+            {inspector.error && <div style={{ fontSize: 12.5, color: C.rd, padding: "8px 0" }}>{inspector.error}</div>}
+            {inspector.parsed && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.txd, margin: "10px 0 6px", letterSpacing: ".4px" }}>FILTERS <span style={{ fontWeight: 400 }}>— a row must pass ALL of this to appear</span></div>
+                <FilterTree group={inspector.parsed.filter} fieldMap={inspector.fieldMap} />
+                {inspector.parsed.linkEntities.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.txd, marginBottom: 4, letterSpacing: ".4px" }}>LINKED TABLES</div>
+                    {inspector.parsed.linkEntities.map((le, i) => (
+                      <div key={i} style={{ fontSize: 12, marginBottom: 6 }}>
+                        <span style={{ ...mono, color: C.tx }}>{le.name}</span>
+                        <span style={{ color: C.txd }}> — {le.type} join on {le.to} = {le.from}</span>
+                        {le.type === "inner" && <span style={{ color: C.yw }}> · inner join: rows WITHOUT a matching {le.name} are hidden</span>}
+                        {le.filter && <div style={{ marginTop: 3 }}><FilterTree group={le.filter} fieldMap={inspector.fieldMap} depth={1} /></div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.txd, margin: "12px 0 6px", letterSpacing: ".4px" }}>COLUMNS ({inspector.cols.length}) <span style={{ fontWeight: 400 }}>— a field absent here isn't missing data, it just isn't displayed</span></div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {inspector.cols.map((c, i) => (
+                    <span key={c.name + i} style={{ fontSize: 11.5, padding: "2px 8px", borderRadius: 4, background: C.sfh, color: C.txm }} title={`${c.name}${c.width ? ` · ${c.width}px` : ""}`}>
+                      {inspector.fieldMap?.get(c.name) || c.name}
+                    </span>
+                  ))}
+                </div>
+                {inspector.parsed.orders.length > 0 && (
+                  <div style={{ fontSize: 11.5, color: C.txd, marginTop: 8 }}>Sorted by {inspector.parsed.orders.map(o => `${inspector.fieldMap?.get(o.attribute) || o.attribute} ${o.desc ? "↓" : "↑"}`).join(", ")}</div>
+                )}
+                <details style={{ marginTop: 12 }}>
+                  <summary style={{ fontSize: 11.5, color: C.txd, cursor: "pointer" }}>Raw FetchXML</summary>
+                  <pre style={{ fontSize: 10.5, ...mono, background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 6, padding: 8, overflow: "auto", maxHeight: 200, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{inspector.parsed.raw}</pre>
+                </details>
+                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => copyText(inspector.parsed.raw)} style={bt(null, { fontSize: 12 })}><I.Copy /> Copy FetchXML</button>
+                  <button onClick={() => openInExplorer(inspector.entity, inspector.parsed.raw)} title="Load this FetchXML in the Explorer — add a filter on your parent record to test why a row matches or not" style={bt(C.vi, { fontSize: 12 })}><I.Arrow /> Open in Explorer</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
