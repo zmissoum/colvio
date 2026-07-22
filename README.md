@@ -120,8 +120,9 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### System Ops
 - **System Jobs monitor** — quick filters for failed / waiting / in-progress jobs, bulk **Cancel** and **Resume** with the documented state transitions (admin-gated)
-- **Plugin Trace viewer** — exceptions highlighted, full trace text, duration warnings, CSV export; enablement and the 24h auto-purge documented in-UI
-- Both panels **paginate** (page size + Load more, no hard cap) with **server-side filters**: date range on both, name search on jobs, text + minimum-duration on traces
+- **Plugin Trace viewer** — exceptions highlighted, full trace text, duration warnings, CSV export; enablement and the 24h auto-purge documented in-UI; **quick time windows** (last 15 min / hour / 6 h) instead of a pointless calendar — the platform purges traces after ~24 h
+- **Cloud Flow Runs** — the Power Automate run history of **solution** cloud flows, read from the org-side `flowrun` table (~28-day retention): status badges with a Failed filter, duration, trigger, error message, CSV/Excel export; "My flows" outside solutions and older orgs without the table get honest messages
+- All panels **paginate** (page size + Load more, no hard cap) with **server-side filters**; name search on jobs, text + minimum-duration on traces
 
 ### Schema snapshot & diff
 - Export the org schema as JSON, load a snapshot from another environment and get a **ranked diff** (missing tables/columns, type mismatches) with CSV export — deployment prep in two clicks

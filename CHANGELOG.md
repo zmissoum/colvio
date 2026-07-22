@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.121] — 2026-07-22
+### Added — System Ops: Cloud Flow Runs tab
+- **The Power Automate run history, inside Colvio** — a third System Ops panel reading the `flowrun` table Dataverse keeps org-side for SOLUTION cloud flows (~28-day retention, backed by the flow service): flow name, status badge (Succeeded / **Failed** / Cancelled / Running), start/end, duration, trigger type and the error message on failures. Status filter (the "exceptions view" for flows), date range (default: last 7 days), name search, Load more pagination, CSV/Excel export.
+- **Honest limits, stated in the UI**: flows outside a solution ("My flows") never write to Dataverse — their history only exists in make.powerautomate.com; orgs without the table get a clear message instead of a raw 404; and if the provider-backed table rejects server-side filters, Colvio falls back to a bare fetch and says the filters now apply client-side to the loaded rows only.
+### Changed — Plugin Traces: quick time windows instead of a date range
+- The platform purges plug-in traces after ~24 h, so a calendar date-range picker was pointless (any past date returned nothing — user-reported). Replaced with **quick windows**: everything retained (~24 h) / last 15 min / last hour / last 6 h — still filtered server-side. System Jobs keeps its real date range (jobs live longer).
+
 ## [1.11.120] — 2026-07-21
 ### Added — API Tester: download the response
 - **⬇ Download button next to Copy** in the response panel: saves the body as a file — pretty-printed **.json** when the response parsed as JSON, raw **.txt** otherwise. Filename is derived from the request path's last segment (entity set or function name) + date&time, e.g. `api_accounts_20260721_143012.json`, so a metadata dump like `StatusAttributeMetadata?$expand=OptionSet` lands as a sensibly named file instead of a 20 KB clipboard paste.

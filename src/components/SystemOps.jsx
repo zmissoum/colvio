@@ -43,8 +43,9 @@ function PluginTraces({ bp, orgFeatures, theme }) {
   const [error, setError] = useState("");
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  // Quick time windows instead of a date-range picker: the platform purges traces after ~24h,
+  // so calendar dates are pointless here — "how far back within today" is the real question.
+  const [win, setWin] = useState("");   // minutes back; "" = everything still retained
   const [minMs, setMinMs] = useState("");
   const [pageSize, setPageSize] = useState(100);
   const [nextLink, setNextLink] = useState(null);   // @odata.nextLink → another page exists
@@ -60,7 +61,8 @@ function PluginTraces({ bp, orgFeatures, theme }) {
     if (onlyErrors) f.push("exceptiondetails ne null");
     const s = search.trim();
     if (s) f.push(`(contains(typename,'${odEsc(s)}') or contains(messagename,'${odEsc(s)}') or contains(primaryentity,'${odEsc(s)}'))`);
-    f.push(...dateConds("createdon", dateFrom, dateTo));
+    const mins = parseInt(win, 10);
+    if (mins > 0) f.push(`createdon ge ${new Date(Date.now() - mins * 60000).toISOString()}`);
     const ms = parseInt(minMs, 10);
     if (ms > 0) f.push(`performanceexecutionduration gt ${ms}`);
     return f.join(" and ");
@@ -100,11 +102,11 @@ function PluginTraces({ bp, orgFeatures, theme }) {
     const id = setTimeout(load, 350);
     return () => clearTimeout(id);
     /* eslint-disable-next-line */
-  }, [onlyErrors, pageSize, search, dateFrom, dateTo, minMs]);
+  }, [onlyErrors, pageSize, search, win, minMs]);
 
   const filtered = rows || [];   // filtering is server-side now
-  const anyFilter = !!(search.trim() || dateFrom || dateTo || (parseInt(minMs, 10) > 0) || onlyErrors);
-  const resetFilters = () => { setSearch(""); setDateFrom(""); setDateTo(""); setMinMs(""); setOnlyErrors(false); };
+  const anyFilter = !!(search.trim() || win || (parseInt(minMs, 10) > 0) || onlyErrors);
+  const resetFilters = () => { setSearch(""); setWin(""); setMinMs(""); setOnlyErrors(false); };
 
   const exportCsv = (format = "csv") => {
     const headers = ["createdon", "typename", "messagename", "primaryentity", "mode", "duration_ms", "exception"];
@@ -118,11 +120,12 @@ function PluginTraces({ bp, orgFeatures, theme }) {
       <div style={{ fontSize: 12, color: C.txd, marginBottom: 10, lineHeight: 1.6 }}>{t("ops.traces_hint")}</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("ops.traces_search")} style={inp({ fontSize: 13, maxWidth: 240 })} />
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title={t("ops.date_from")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
-          <span style={{ color: C.txd }}>→</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title={t("ops.date_to")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
-        </span>
+        <select value={win} onChange={e => setWin(e.target.value)} title={t("ops.win_title")} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
+          <option value="">{t("ops.win_all")}</option>
+          <option value="15">{t("ops.win_15")}</option>
+          <option value="60">{t("ops.win_60")}</option>
+          <option value="360">{t("ops.win_360")}</option>
+        </select>
         <input type="number" min="0" value={minMs} onChange={e => setMinMs(e.target.value)} placeholder={t("ops.min_ms")} title={t("ops.min_ms")} style={inp({ width: 96, fontSize: 12, padding: "5px 8px" })} />
         <label style={{ fontSize: 12.5, color: C.txm, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
           <input type="checkbox" checked={onlyErrors} onChange={e => setOnlyErrors(e.target.checked)} style={{ accentColor: C.rd }} />
@@ -363,6 +366,170 @@ function SystemJobs({ bp, isAdmin, theme }) {
   );
 }
 
+// Cloud flow runs — the flowrun table: run history of SOLUTION cloud flows that Dataverse keeps
+// org-side (~28-day retention, backed by the Power Automate service). "My flows" outside a
+// solution never appear here — their history lives only in make.powerautomate.com. The table is
+// absent on older orgs (honest message instead of a raw 404), and being provider-backed it may
+// reject $filter/$orderby — we then fall back to a bare fetch and filter client-side.
+const FLOW_STATUS_COLOR = (s) => {
+  const v = String(s || "").toLowerCase();
+  return v === "succeeded" ? C.gn : v === "failed" ? C.rd : v === "cancelled" || v === "canceled" ? C.yw : v === "running" ? C.cy : C.txm;
+};
+// The flow lookup's exact name can drift across org versions — find any workflow lookup's
+// formatted value rather than hard-coding one.
+const flowNameOf = (r) => {
+  const k = Object.keys(r).find(k => /^_workflow.*_value@/.test(k) && k.endsWith("FormattedValue"));
+  return (k && r[k]) || r.name || "(unnamed flow)";
+};
+const runDurationS = (r) => {
+  if (r.starttime && r.endtime) return Math.max(0, (new Date(r.endtime) - new Date(r.starttime)) / 1000);
+  return typeof r.duration === "number" ? r.duration / 1000 : null;
+};
+
+function FlowRuns({ bp, theme }) {
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notSupported, setNotSupported] = useState(false);
+  const [status, setStatus] = useState("");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState("");
+  const [serverFiltered, setServerFiltered] = useState(true);
+  const [nextLink, setNextLink] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const load = async () => {
+    setLoading(true); setError(""); setNotSupported(false);
+    try {
+      const filter = dateConds("starttime", dateFrom, dateTo).join(" and ");
+      const opts = { orderby: "starttime desc", maxpagesize: "100" };
+      if (filter) opts.filter = filter;
+      let data;
+      try {
+        data = await bridge.query("flowruns", opts);
+        setServerFiltered(true);
+      } catch (e1) {
+        if (/does not exist|Resource not found|404/i.test(e1.message || "")) throw e1;
+        data = await bridge.query("flowruns", { maxpagesize: "100" });
+        setServerFiltered(false);
+      }
+      setRows(data?.records || []);
+      setNextLink(data?.nextLink || null);
+    } catch (e) {
+      if (/does not exist|Resource not found|404/i.test(e.message || "")) setNotSupported(true);
+      else setError(e.message);
+      setRows([]); setNextLink(null);
+    }
+    setLoading(false);
+  };
+  const loadMore = async () => {
+    if (!nextLink || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await bridge.query(nextLink, {});
+      setRows(prev => [...(prev || []), ...(data?.records || [])]);
+      setNextLink(data?.nextLink || null);
+    } catch (e) { setError(e.message); }
+    setLoadingMore(false);
+  };
+  const firstRef = useRef(true);
+  useEffect(() => {
+    if (firstRef.current) { firstRef.current = false; load(); return; }
+    const id = setTimeout(load, 350);
+    return () => clearTimeout(id);
+    /* eslint-disable-next-line */
+  }, [dateFrom, dateTo]);
+
+  // Status + name filters stay CLIENT-side: status values are provider strings and the flow
+  // name only exists as a formatted value — neither is reliably filterable server-side.
+  const inRange = (r) => {
+    if (serverFiltered || !r.starttime) return true;
+    const d = r.starttime.slice(0, 10);
+    return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+  };
+  const filtered = (rows || []).filter(r => {
+    if (status && String(r.status || "").toLowerCase() !== status) return false;
+    const s = search.trim().toLowerCase();
+    if (s && !flowNameOf(r).toLowerCase().includes(s)) return false;
+    return inRange(r);
+  });
+
+  const exportCsv = (format = "csv") => {
+    const headers = ["flow", "status", "started", "ended", "duration_s", "trigger", "error"];
+    const rowsX = filtered.map(r => [flowNameOf(r), r.status || "", r.starttime || "", r.endtime || "", runDurationS(r) != null ? runDurationS(r).toFixed(1) : "", r.triggertype || "", ((r.errormessage || r.errorcode || "")).toString().substring(0, 500)]);
+    exportTable(headers, rowsX, "cloud_flow_runs", format, "Flow Runs", true);
+  };
+
+  if (notSupported) return (
+    <div style={{ padding: "14px 16px", background: C.yw + "14", border: `1px solid ${C.yw}44`, borderRadius: 8, color: C.txm, fontSize: 13, lineHeight: 1.7 }}>
+      {t("ops.flowruns_missing")}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: C.txd, marginBottom: 10, lineHeight: 1.6 }}>{t("ops.flowruns_hint")}</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("ops.flowruns_search")} style={inp({ fontSize: 13, maxWidth: 240 })} />
+        <select value={status} onChange={e => setStatus(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
+          <option value="">{t("ops.flow_all")}</option>
+          <option value="succeeded">Succeeded</option>
+          <option value="failed">Failed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="running">Running</option>
+        </select>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title={t("ops.date_from")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
+          <span style={{ color: C.txd }}>→</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title={t("ops.date_to")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
+        </span>
+        <button onClick={load} disabled={loading} style={bt(null, { fontSize: 12, padding: "5px 10px" })}>{loading ? <Spin s={12} /> : "↻"}</button>
+        <div style={{ flex: 1 }} />
+        {filtered.length > 0 && <>
+          <button onClick={() => exportCsv("csv")} style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>
+          <button onClick={() => exportCsv("xlsx")} style={bt(null, { fontSize: 12 })}><I.Download /> Excel</button>
+        </>}
+      </div>
+      {!serverFiltered && <div style={{ fontSize: 11.5, color: C.yw, marginBottom: 8 }}>⚠ {t("ops.flowruns_clientfilter")}</div>}
+      {error && <div style={{ color: C.rd, fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {loading && !rows && <div style={{ textAlign: "center", padding: 30 }}><Spin /></div>}
+      {rows && (
+        <div style={{ ...crd({ overflow: "auto" }) }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr>
+              <th style={ths()}>{t("ops.flow_col")}</th><th style={ths()}>Status</th><th style={ths()}>Started</th><th style={ths()}>Ended</th><th style={ths()}>Duration</th><th style={ths()}>Trigger</th><th style={ths()}>Error</th>
+            </tr></thead>
+            <tbody>
+              {filtered.map((r, i) => {
+                const durS = runDurationS(r);
+                const err = r.errormessage || r.errorcode || "";
+                return (
+                  <tr key={(r.flowrunid || r.name || i) + i} style={{ borderBottom: `1px solid ${C.bd}` }}>
+                    <td style={{ ...tds, maxWidth: 280 }} title={flowNameOf(r)}>{flowNameOf(r)}</td>
+                    <td style={{ ...tds }}><span style={{ fontSize: 11, fontWeight: 700, padding: "1px 8px", borderRadius: 3, background: FLOW_STATUS_COLOR(r.status) + "22", color: FLOW_STATUS_COLOR(r.status) }}>{r.status || "?"}</span></td>
+                    <td style={{ ...tds, ...mono, fontSize: 12 }}>{fmtDate(r.starttime)}</td>
+                    <td style={{ ...tds, ...mono, fontSize: 12 }}>{fmtDate(r.endtime)}</td>
+                    <td style={{ ...tds, ...mono, fontSize: 12 }}>{durS != null ? `${durS.toFixed(1)}s` : ""}</td>
+                    <td style={{ ...tds, fontSize: 12, color: C.txm }}>{r.triggertype || ""}</td>
+                    <td style={{ ...tds, maxWidth: 320, color: err ? C.rd : C.txd, fontSize: 12 }} title={err}>{err ? String(err).substring(0, 160) : ""}</td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: C.txd, fontSize: 13 }}>{t("ops.flowruns_empty")}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {nextLink && (
+        <div style={{ textAlign: "center", marginTop: 10 }}>
+          <button onClick={loadMore} disabled={loadingMore} style={bt(null, { fontSize: 12 })}>{loadingMore ? <Spin s={12} /> : t("ops.load_more")}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SystemOps({ bp, orgInfo, theme, permissions, orgFeatures }) {
   const [panel, setPanel] = useState("jobs");
   const isAdmin = permissions?.canBypassPlugins === true; // job cancel/resume needs write on asyncoperation — sysadmin proxy
@@ -371,14 +538,14 @@ export default function SystemOps({ bp, orgInfo, theme, permissions, orgFeatures
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}><I.Zap /> {t("ops.title")}</h2>
       <p style={{ color: C.txm, fontSize: 14, marginBottom: 12 }}>{t("ops.subtitle")}</p>
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {[["jobs", t("ops.tab_jobs")], ["traces", t("ops.tab_traces")]].map(([id, label]) => (
+        {[["jobs", t("ops.tab_jobs")], ["traces", t("ops.tab_traces")], ["flowruns", t("ops.tab_flowruns")]].map(([id, label]) => (
           <button key={id} onClick={() => setPanel(id)}
             style={{ padding: "6px 16px", fontSize: 13, fontWeight: 600, borderRadius: 6, cursor: "pointer", border: `1px solid ${panel === id ? C.vi : C.bd}`, background: panel === id ? C.vi + "22" : "transparent", color: panel === id ? C.tx : C.txm }}>
             {label}
           </button>
         ))}
       </div>
-      {panel === "traces" ? <PluginTraces bp={bp} orgFeatures={orgFeatures} theme={theme} /> : <SystemJobs bp={bp} isAdmin={isAdmin} theme={theme} />}
+      {panel === "traces" ? <PluginTraces bp={bp} orgFeatures={orgFeatures} theme={theme} /> : panel === "flowruns" ? <FlowRuns bp={bp} theme={theme} /> : <SystemJobs bp={bp} isAdmin={isAdmin} theme={theme} />}
     </div>
   );
 }
