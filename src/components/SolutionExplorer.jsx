@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
+import { compareComponents, groupByType, compareExportRows } from "../solutionCompareUtils.js";
 
 export default function SolutionExplorer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
@@ -15,6 +16,12 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const[loadingComp,setLoadingComp]=useState(false);
   const[collapsed,setCollapsed]=useState({});
   const[compCounts,setCompCounts]=useState({});
+  // Compare mode: selSol = side A (its components are already loaded), cmpSol = side B.
+  const[cmpSol,setCmpSol]=useState(null);
+  const[cmpComponents,setCmpComponents]=useState(null);
+  const[cmpLoading,setCmpLoading]=useState(false);
+  const[cmpError,setCmpError]=useState("");
+  const cmpGen=useRef(0);
 
   useEffect(()=>{bridge.getSolutions().then(d=>{setSolutions(d||[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
 
@@ -48,9 +55,20 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const handleSelect=async(sol)=>{
     const gen=++selGen.current;
     setSelSol(sol);setLoadingComp(true);setCollapsed({});
+    setCmpSol(null);setCmpComponents(null);setCmpError(""); // side B belonged to the previous side A
     try{const d=await bridge.getSolutionComponents(sol.id);if(selGen.current!==gen)return;setComponents(d||[]);}catch{if(selGen.current===gen)setComponents([]);}
     if(selGen.current===gen)setLoadingComp(false);
   };
+
+  const startCompare=async(solB)=>{
+    const gen=++cmpGen.current;
+    setCmpSol(solB);setCmpComponents(null);setCmpError("");setCmpLoading(true);
+    try{const d=await bridge.getSolutionComponents(solB.id);if(cmpGen.current!==gen)return;setCmpComponents(d||[]);}
+    catch(e){if(cmpGen.current===gen)setCmpError(e.message||String(e));}
+    if(cmpGen.current===gen)setCmpLoading(false);
+  };
+  const stopCompare=()=>{++cmpGen.current;setCmpSol(null);setCmpComponents(null);setCmpError("");setCmpLoading(false);};
+  const diff=useMemo(()=>cmpSol&&cmpComponents?compareComponents(components,cmpComponents):null,[cmpSol,cmpComponents,components]);
 
   const grouped=useMemo(()=>{
     const map={};
@@ -118,13 +136,77 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
                   for(const[,group] of grouped) for(const item of group.items) rows.push([group.l,item.name||"",item.objectId||""]);
                   exportTable(["componentType","name","objectId"],rows,`solution_${(selSol.uniqueName||"components").replace(/[^A-Za-z0-9_-]+/g,"_")}_components`,format,"Components");
                 };
-                return(<div style={{display:"flex",gap:6,flexShrink:0}}>
-                  <button onClick={()=>doExport("csv")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> CSV</button>
-                  <button onClick={()=>doExport("xlsx")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> Excel</button>
+                return(<div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center",flexWrap:"wrap"}}>
+                  <select value={cmpSol?.id||""} title="Compare this solution's components with another solution of this org" onChange={e=>{const s=solutions.find(x=>x.id===e.target.value);if(s)startCompare(s);else stopCompare();}} style={inp({width:"auto",maxWidth:220,fontSize:11,padding:"4px 8px"})}>
+                    <option value="">⇄ Compare with…</option>
+                    {solutions.filter(s=>s.id!==selSol.id).map(s=><option key={s.id} value={s.id}>{s.displayName}{s.isManaged?" (managed)":""}</option>)}
+                  </select>
+                  {!cmpSol&&<>
+                    <button onClick={()=>doExport("csv")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> CSV</button>
+                    <button onClick={()=>doExport("xlsx")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> Excel</button>
+                  </>}
                 </div>);
               })()}
             </div>
-            {grouped.map(([typeKey,group])=>{
+            {cmpSol&&(
+              <div>
+                {cmpLoading&&<div style={{textAlign:"center",padding:30}}><Spin s={18}/><div style={{fontSize:12,color:C.txd,marginTop:6}}>Loading {cmpSol.displayName}…</div></div>}
+                {cmpError&&<div style={{color:C.rd,fontSize:13,marginBottom:10}}>{cmpError}</div>}
+                {diff&&(()=>{
+                  const SECTIONS=[
+                    ["onlyA",`Only in ${selSol.displayName}`,C.cy],
+                    ["both","In both",C.yw],
+                    ["onlyB",`Only in ${cmpSol.displayName}`,C.vi],
+                  ];
+                  const bothUnmanaged=!selSol.isManaged&&!cmpSol.isManaged;
+                  const expName_=`solution_compare_${(selSol.uniqueName||"A").replace(/[^A-Za-z0-9_-]+/g,"_")}_vs_${(cmpSol.uniqueName||"B").replace(/[^A-Za-z0-9_-]+/g,"_")}`;
+                  const CAP=200; // "both" on fat solutions can be thousands of rows — the export has everything
+                  return(
+                    <div>
+                      <div style={{fontSize:13,color:C.txm,marginBottom:10}}>⇄ Comparing with <b>{cmpSol.displayName}</b> <span style={{...mono,fontSize:11,color:C.txd}}>{cmpSol.uniqueName} · v{cmpSol.version}</span> — pick "⇄ Compare with…" again to change, or its first entry to close.</div>
+                      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"flex-start"}}>
+                        {SECTIONS.map(([k,label,color])=>(
+                          <div key={k} style={{...crd({padding:"8px 14px"}),borderColor:color+"55"}}>
+                            <div style={{fontSize:20,fontWeight:700,color}}>{diff[k].length.toLocaleString()}</div>
+                            <div style={{fontSize:11,color:C.txd,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={label}>{label}</div>
+                          </div>
+                        ))}
+                        <div style={{flex:1}}/>
+                        <div style={{display:"flex",gap:6}}>
+                          <button onClick={()=>exportTable(["presence","componentType","name","objectId"],compareExportRows(diff,COMP_TYPES),expName_,"csv","Compare")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> CSV</button>
+                          <button onClick={()=>exportTable(["presence","componentType","name","objectId"],compareExportRows(diff,COMP_TYPES),expName_,"xlsx","Compare")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> Excel</button>
+                        </div>
+                      </div>
+                      {bothUnmanaged&&diff.both.length>0&&(
+                        <div style={{padding:"8px 12px",background:C.yw+"14",border:`1px solid ${C.yw}44`,borderRadius:8,color:C.yw,fontSize:12.5,marginBottom:10,lineHeight:1.5}}>
+                          ⚠ {diff.both.length.toLocaleString()} component{diff.both.length>1?"s":""} live in BOTH unmanaged solutions — the classic source of layering conflicts: whoever publishes last wins, and "my change vanished" starts here.
+                        </div>
+                      )}
+                      {SECTIONS.map(([k,label,color])=>(
+                        <div key={k} style={{marginBottom:14}}>
+                          <div style={{fontSize:12,fontWeight:700,color,margin:"6px 0",letterSpacing:".4px"}}>{label.toUpperCase()} ({diff[k].length.toLocaleString()})</div>
+                          {diff[k].length===0&&<div style={{fontSize:12,color:C.txd,marginBottom:4}}>—</div>}
+                          {groupByType(diff[k],COMP_TYPES).map(([tk,g])=>(
+                            <div key={tk} style={{...crd({overflow:"hidden"}),marginBottom:4}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",background:C.sfh,fontSize:13,fontWeight:600,color:C.tx}}>
+                                <span>{g.i}</span><span>{g.l}</span><span style={{marginLeft:"auto",fontSize:11,color:C.txd,fontWeight:400}}>{g.items.length.toLocaleString()}</span>
+                              </div>
+                              <div style={{padding:"4px 12px 6px"}}>
+                                {g.items.slice(0,CAP).map((it,i)=>(
+                                  <div key={(it.objectId||i)+i} style={{fontSize:12,...mono,color:it.name?C.tx:C.txd,padding:"2px 0"}}>{it.name||it.objectId}</div>
+                                ))}
+                                {g.items.length>CAP&&<div style={{fontSize:11,color:C.txd,padding:"3px 0"}}>+{(g.items.length-CAP).toLocaleString()} more — the CSV/Excel export has every row.</div>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            {!cmpSol&&grouped.map(([typeKey,group])=>{
               const isOpen=!collapsed[typeKey];
               return(
                 <div key={typeKey} style={{marginBottom:6,...crd({overflow:"hidden"})}}>

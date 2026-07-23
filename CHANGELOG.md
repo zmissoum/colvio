@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.122] — 2026-07-22
+### Added — Solution Explorer: compare two solutions (same org)
+- **"⇄ Compare with…"** next to a selected solution's export buttons: pick any other solution of the org and get the component diff — **Only in A / In both / Only in B** — with count tiles, per-type grouping (resolved labels, not GUIDs), and a full **CSV/Excel export** (`presence, componentType, name, objectId`).
+- **The overlap is the point**: when BOTH solutions are unmanaged and share components, a warning names the classic layering conflict — whoever publishes last wins, and "my change vanished" starts there.
+- Honest scope stated in Help: **same-org comparison of component MEMBERSHIP** — it says nothing about content differences between two versions of the same form (that's solution-zip parsing, a different beast). Matching is (type, objectId) with case-insensitive GUIDs, duplicates collapsed, and the name taken from whichever side resolved one. Display capped at 200 rows per group (the export has everything); switching side A clears side B (stale-compare guard); pure logic in `src/solutionCompareUtils.js` — **6 new tests (178 total)**.
+
 ## [1.11.121] — 2026-07-22
 ### Added — System Ops: Cloud Flow Runs tab
 - **The Power Automate run history, inside Colvio** — a third System Ops panel reading the `flowrun` table Dataverse keeps org-side for SOLUTION cloud flows (~28-day retention, backed by the flow service): flow name, status badge (Succeeded / **Failed** / Cancelled / Running), start/end, duration, trigger type and the error message on failures. Status filter (the "exceptions view" for flows), date range (default: last 7 days), name search, Load more pagination, CSV/Excel export.

@@ -146,6 +146,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Browse solutions and components grouped by type
 - **40+ component types resolved to display names** against Microsoft's official enumeration (Entity, Attribute, OptionSet, View, Web Resource, Security Role, Email Template, Model-driven App, Environment Variable, SLA, Routing/Convert Rule, Plugin Type/Assembly, SDK Step, Canvas App…); each component's name resolved per type instead of a raw GUID
 - Managed/Unmanaged badges, component counts
+- **⇄ Compare two solutions** — component diff of any two solutions of the org: Only in A / In both / Only in B, grouped by type, CSV/Excel export of the full diff, and a warning when two **unmanaged** solutions share components (the classic layering conflict — whoever publishes last wins)
 
 ### Translation Manager
 - View and edit field labels across multiple languages inline — each language shown with its proper name (full Dataverse language coverage, no raw LCID codes)
@@ -232,7 +233,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~17,000 |
 | API actions | 72 |
 | React components | 37 |
-| Unit tests | 172 |
+| Unit tests | 178 |
 | Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |
