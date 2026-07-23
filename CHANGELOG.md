@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.124] — 2026-07-22
+### Added — Adoption: export the never-signed-in list
+- **CSV/Excel buttons on the "Never signed in" card** — the full list (not just the 300 chips shown), with `user, email, businessUnit, licenseType, userId`. The license type is included on purpose: paid seats that never log in ARE the finding, whether for license cleanup or onboarding follow-up. Fixes the misleading "+N more (export for all)" hint, which pointed at the main export — that one only ever contained users WITH logins.
+
 ## [1.11.123] — 2026-07-22
 ### Added — Solution Explorer: CROSS-ORG compare (DEV vs PROD drift)
 - **"Compare file"** downloads the selected solution's component list as a versioned .json (`colvio-solution-components@1`: org, date, solution descriptor, components). On the **other org**, select the counterpart solution and **"Load file"** — the same three-bucket diff (Only here / In both / Only there), with the source org and export date shown, and a **version-drift note** when it's the same solution on both sides.

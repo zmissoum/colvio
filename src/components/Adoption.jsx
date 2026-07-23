@@ -210,6 +210,14 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     exportTable(["user", "businessUnit", "logins", "activeDays", "lastLogin"], rows, `adoption_logins_${preset}`, format, "Adoption");
   };
 
+  // The never-signed-in list is its own deliverable (license cleanup, onboarding follow-up) —
+  // the license type is included on purpose: paid seats that never log in are the finding.
+  const exportNever = (format = "csv") => {
+    if (!agg) return;
+    const rows = agg.never.map(u => [u.fullname || "", u.email || "", u.buName || "", u.calTypeLabel || "", u.id]);
+    exportTable(["user", "email", "businessUnit", "licenseType", "userId"], rows, `adoption_never_signed_in_${preset}`, format, "Never signed in");
+  };
+
   const KPI = ({ label, value, color, hint }) => (
     <div style={{ ...crd({ padding: "12px 16px" }), flex: 1, minWidth: 120 }}>
       <div style={{ fontSize: 22, fontWeight: 700, color: color || C.tx }}>{value}</div>
@@ -347,10 +355,16 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
 
         {agg.never.length > 0 && (
           <div style={{ ...crd({ padding: "10px 14px" }), marginTop: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.rd, marginBottom: 6 }}>Never signed in this window ({agg.never.length}) — enabled users, no login recorded</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.rd }}>Never signed in this window ({agg.never.length}) — enabled users, no login recorded</span>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                <button onClick={() => exportNever("csv")} title="Export the full never-signed-in list (name, email, BU, license type)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> CSV</button>
+                <button onClick={() => exportNever("xlsx")} title="Export the full never-signed-in list (name, email, BU, license type)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> Excel</button>
+              </div>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 140, overflow: "auto" }}>
               {agg.never.slice(0, 300).map(u => <span key={u.id} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.sfh, color: C.txm }} title={u.buName}>{u.fullname || u.email || u.id}</span>)}
-              {agg.never.length > 300 && <span style={{ fontSize: 11, color: C.txd }}>+{agg.never.length - 300} more (export for all)</span>}
+              {agg.never.length > 300 && <span style={{ fontSize: 11, color: C.txd }}>+{agg.never.length - 300} more — the export has the full list</span>}
             </div>
           </div>
         )}
