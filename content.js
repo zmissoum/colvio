@@ -1393,6 +1393,69 @@
             break;
           }
 
+          case "getEnvVars": {
+            // Environment variables = definition (with the DEFAULT value) + optional value row
+            // (the per-environment OVERRIDE). The classic post-deployment trap is a definition
+            // with NEITHER — surfaced prominently by the UI. Secret (100000005) values are Key
+            // Vault REFERENCES, never the secret itself.
+            const defs = [];
+            let urlEv = `environmentvariabledefinitions?$select=environmentvariabledefinitionid,schemaname,displayname,defaultvalue,type,ismanaged,description&$orderby=displayname asc`;
+            while (urlEv) {
+              const d = await dvRequest("GET", urlEv, null, { Prefer: "odata.maxpagesize=5000" });
+              (d.value || []).forEach(v => defs.push({
+                id: v.environmentvariabledefinitionid,
+                schemaName: v.schemaname || "",
+                displayName: v.displayname || v.schemaname || "",
+                type: v.type ?? 100000000,
+                typeLabel: v["type@OData.Community.Display.V1.FormattedValue"] || "",
+                defaultValue: v.defaultvalue ?? null,
+                isManaged: !!v.ismanaged,
+                description: v.description || "",
+                valueId: null, value: null,
+              }));
+              const nl = d["@odata.nextLink"]; urlEv = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            const byDef = new Map(defs.map(x => [x.id, x]));
+            let urlVv = `environmentvariablevalues?$select=environmentvariablevalueid,value,_environmentvariabledefinitionid_value`;
+            while (urlVv) {
+              const d = await dvRequest("GET", urlVv, null, { Prefer: "odata.maxpagesize=5000" });
+              (d.value || []).forEach(v => {
+                const def = byDef.get(v._environmentvariabledefinitionid_value);
+                if (def) { def.valueId = v.environmentvariablevalueid; def.value = v.value ?? null; }
+              });
+              const nl = d["@odata.nextLink"]; urlVv = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = defs;
+            break;
+          }
+
+          case "setEnvVarValue": {
+            // Update the per-environment override — PATCH the existing value row, or POST a new
+            // one bound to the definition. Server enforces customizer rights; unmanaged-layer
+            // consequences are the caller's concern (warned in UI on managed definitions).
+            validateGuid(params.definitionId);
+            if (params.valueId) {
+              validateGuid(params.valueId);
+              await dvRequest("PATCH", `environmentvariablevalues(${params.valueId})`, { value: String(params.value ?? "") });
+              result = { valueId: params.valueId };
+            } else {
+              const created = await dvRequest("POST", "environmentvariablevalues", {
+                value: String(params.value ?? ""),
+                "environmentvariabledefinitionid@odata.bind": `/environmentvariabledefinitions(${params.definitionId})`,
+              }, { Prefer: "return=representation" });
+              result = { valueId: created?.environmentvariablevalueid || null };
+            }
+            break;
+          }
+
+          case "deleteEnvVarValue": {
+            // Remove the override → the variable falls back to its definition default.
+            validateGuid(params.valueId);
+            await dvRequest("DELETE", `environmentvariablevalues(${params.valueId})`);
+            result = { ok: true };
+            break;
+          }
+
           case "exportTranslations": {
             // Official whole-solution translation export (the CrmTranslations.xml zip) — covers
             // form tabs/sections/labels, views, charts, dashboards, sitemap, option sets and

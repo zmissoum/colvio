@@ -6,24 +6,20 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
-    "📱 NEW: Apps — every model-driven app's real inventory: the invisible \"include all forms/views\" made visible, reverse \"which apps expose this?\" search, and a view inspector that decodes any view's filters & columns (why doesn't my row show?)",
-    "⚡ NEW: Automation — plug-in steps + every workflow/flow/rule/action, with honest Microsoft/Managed/Custom source classification",
-    "📈 NEW: Adoption — who actually uses the CRM: logins, distinct users, never-signed-in list; exact totals on any audit volume",
-    "🔍 Explorer — relational filters in the Builder: \"accounts with NO open opportunity\" without writing any() yourself",
-    "🌐 Security Audit — org-wide \"who can do what\" across every role, privilege matrix per table, bulk role assign/remove",
-    "🔁 Data Loader — auto-resume after a timeout, honest accounting (no silently dropped rows), retry pass, opt-in \"empty cells clear fields\"",
-    "🧹 Data Loader — NULL clears a field (lookups too) · strip-HTML transform · EU/US date toggle · migration mode for audit fields",
-    "🗂 Sidebar reorganized — Data / Develop / Admin sections · virtual/elastic table badges everywhere",
+    "🧩 NEW: Env Variables — defaults, per-environment overrides, and the ⚠ NO VALUE trap surfaced first; typed editing (yes/no, JSON validated), Key Vault references handled honestly",
+    "⇄ Solutions — COMPARE two solutions (Only in A / In both / Only in B) with an unmanaged-overlap warning; export a compare file on DEV, load it on PROD to see environment drift",
+    "📈 Adoption rebuilt — honest \"access events\" (Dataverse logs ≤1 per ~4 h), DAU/WAU/MAU + stickiness, per-BU adoption rates, license & inactivity view, service accounts in their own section",
+    "🌊 System Ops — NEW Cloud Flow Runs tab (solution flows' run history, Failed filter, error messages) · plugin traces get quick time windows (traces purge after ~24 h — calendars lied)",
+    "🔎 Apps — view inspector (filters decoded + columns), form subgrids with their views, \"Open in Explorer\" to replay any view's FetchXML",
+    "⬇ API Tester — download the response as .json/.txt with a sensible filename",
   ],
   fr: [
-    "📱 NOUVEAU : Applications — le vrai inventaire de chaque app model-driven : le « tous les formulaires/vues » invisible rendu visible, recherche inversée « quelles apps exposent ceci ? », et un inspecteur de vue qui décode filtres & colonnes (pourquoi ma ligne n'apparaît pas ?)",
-    "⚡ NOUVEAU : Automatisations — étapes de plug-ins + tous les workflows/flows/règles/actions, avec classification honnête Microsoft/Managed/Custom",
-    "📈 NOUVEAU : Adoption — qui utilise vraiment le CRM : connexions, utilisateurs distincts, jamais-connectés ; totaux exacts quel que soit le volume",
-    "🔍 Explorateur — filtres relationnels dans le Builder : « les comptes SANS opportunité ouverte » sans écrire de any() vous-même",
-    "🌐 Audit de sécurité — vue org-wide « qui peut faire quoi » sur tous les rôles, matrice par table, affectation de rôles en masse",
-    "🔁 Data Loader — reprise auto après timeout, comptes honnêtes (aucune ligne perdue en silence), passe de retry, option « cellules vides = vider »",
-    "🧹 Data Loader — NULL vide un champ (lookups compris) · transform strip-HTML · bascule de date EU/US · mode migration pour les champs d'audit",
-    "🗂 Sidebar réorganisée — sections Données / Développement / Administration · badges tables virtuelles/élastiques partout",
+    "🧩 NOUVEAU : Variables d'env. — défauts, overrides par environnement, et le piège ⚠ NO VALUE mis en avant ; édition typée (yes/no, JSON validé), références Key Vault traitées honnêtement",
+    "⇄ Solutions — COMPAREZ deux solutions (Uniquement dans A / Dans les deux / Uniquement dans B) avec alerte de chevauchement unmanaged ; exportez un fichier sur DEV, chargez-le sur PROD pour voir la dérive",
+    "📈 Adoption refondue — « événements d'accès » honnêtes (Dataverse journalise ≤1 par ~4 h), DAU/WAU/MAU + stickiness, taux par BU, vue licences & inactivité, comptes de service dans leur propre section",
+    "🌊 System Ops — NOUVEL onglet Runs cloud flows (historique des flows de solution, filtre Failed, messages d'erreur) · traces plug-ins en fenêtres rapides (purge à ~24 h — le calendrier mentait)",
+    "🔎 Applications — inspecteur de vues (filtres décodés + colonnes), subgrids des formulaires avec leurs vues, « Open in Explorer » pour rejouer le FetchXML d'une vue",
+    "⬇ API Tester — téléchargez la réponse en .json/.txt avec un nom de fichier parlant",
   ],
 };
 

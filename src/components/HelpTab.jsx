@@ -40,6 +40,7 @@ const SECTIONS=[
   {cat:"schema", icon:<I.Zap/>,      titleKey:"help.automation_title",      bodyKey:"help.automation_body"},
   {cat:"schema", icon:<I.Grid/>,     titleKey:"help.apps_title",            bodyKey:"help.apps_body"},
   {cat:"schema", icon:<I.Database/>, titleKey:"help.solutions_title",       bodyKey:"help.solutions_body"},
+  {cat:"schema", icon:<I.Zap/>,      titleKey:"help.envvars_title",         bodyKey:"help.envvars_body"},
   {cat:"schema", icon:<I.Clipboard/>,titleKey:"help.translations_title",    bodyKey:"help.translations_body"},
   {cat:"schema", icon:<I.Grid/>,     titleKey:"help.schemadiff_title",      bodyKey:"help.schemadiff_body"},
   {cat:"schema", icon:<I.Link/>,     titleKey:"help.graph_title",           bodyKey:"help.graph_body"},

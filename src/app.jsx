@@ -13,6 +13,7 @@ import LoginHistory from "./components/LoginHistory.jsx";
 import Adoption from "./components/Adoption.jsx";
 import AutomationInventory from "./components/AutomationInventory.jsx";
 import AppInventory from "./components/AppInventory.jsx";
+import EnvVariables from "./components/EnvVariables.jsx";
 import Loader from "./components/Loader.jsx";
 import RecycleBin from "./components/RecycleBin.jsx";
 import SystemOps from "./components/SystemOps.jsx";
@@ -240,6 +241,7 @@ export default function App(){
     {id:"graph",section:"develop",label:t("nav.graph"),desc:t("nav.graph.desc"),icon:<I.Link/>},
     {id:"schema",section:"develop",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
     {id:"solutions",section:"develop",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
+    {id:"envvars",section:"develop",label:t("nav.envvars"),desc:t("nav.envvars.desc"),icon:<I.Zap/>,requires:"canReadSolutions"},
     {id:"translations",section:"develop",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
     {id:"licenses",section:"admin",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
     {id:"bu",section:"admin",label:t("nav.bu"),desc:t("nav.bu.desc"),icon:<I.Link/>,requires:"canReadAllUsers"},
@@ -361,6 +363,7 @@ export default function App(){
           {tab==="metadata"&&<ErrorBoundary><MetadataBrowser bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="automation"&&<ErrorBoundary><AutomationInventory bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="apps"&&<ErrorBoundary><AppInventory bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
+          {tab==="envvars"&&<ErrorBoundary><EnvVariables bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="logins"&&<ErrorBoundary><LoginHistory bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="adoption"&&<ErrorBoundary><Adoption bp={bp} orgInfo={orgInfo} theme={theme} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {/* Loader stays MOUNTED (display toggle, like Explorer) so switching nav tabs during an

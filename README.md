@@ -80,6 +80,12 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Form subgrids** — the ⊞ button on a form lists its child grids: which view each renders, through which relationship, and whether the view picker lets users switch views; **Open in Explorer** loads the view's FetchXML so you add your parent's filter and test exactly why a row matches or not
 - CSV/Excel export of the flat inventory (selected app or all apps); apps with blank display names (internal placeholders) hidden
 
+### Environment Variables
+- **Defaults, per-environment overrides, and the ⚠ NO VALUE trap surfaced first** — a variable with neither override nor default reads as an empty string in flows and plug-ins, which fail three screens later; Colvio counts them in a banner and a dedicated filter
+- **Typed editing of the override**: yes/no for Booleans (the documented convention), JSON validated before save, numbers checked; "Clear override" falls back to the default; production asks for confirmation
+- **Secrets handled honestly** — the value is a Key Vault *reference*, never the secret itself, and the UI says so; overriding a managed definition is flagged as the normal per-environment pattern
+- Filters (No value / Overridden / Secrets), search, CSV/Excel export with each variable's effective source
+
 ### Data Loader
 - 5-step wizard: Source > Mapping > Lookups > Preview > Run
 - CSV / TSV / TXT drag-drop, **Excel (XLSX/XLS)** support, or paste from clipboard
@@ -234,11 +240,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Modules | 18 |
+| Modules | 19 |
 | Lines of code | ~17,000 |
 | API actions | 72 |
 | React components | 37 |
-| Unit tests | 192 |
+| Unit tests | 197 |
 | Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |

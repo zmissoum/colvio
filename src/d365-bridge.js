@@ -782,6 +782,26 @@ export const bridge = {
     return callD365("getFormXml", { formId });
   },
 
+  // ── Environment variables (definition = default, value row = per-environment override) ──
+  async getEnvVars() {
+    if (!isExtension) return [
+      { id: "ev1", schemaName: "new_ApiBaseUrl", displayName: "API Base URL", type: 100000000, typeLabel: "String", defaultValue: "https://dev.api.contoso.com", isManaged: true, description: "Base URL of the integration API", valueId: "evv1", value: "https://prod.api.contoso.com" },
+      { id: "ev2", schemaName: "new_MaxRetries", displayName: "Max Retries", type: 100000001, typeLabel: "Number", defaultValue: "3", isManaged: true, description: "", valueId: null, value: null },
+      { id: "ev3", schemaName: "new_FeatureFlagX", displayName: "Feature Flag X", type: 100000002, typeLabel: "Boolean", defaultValue: null, isManaged: false, description: "Enables the X flow", valueId: null, value: null },
+      { id: "ev4", schemaName: "new_RoutingConfig", displayName: "Routing Config", type: 100000003, typeLabel: "JSON", defaultValue: '{"queue":"default"}', isManaged: true, description: "", valueId: "evv4", value: '{"queue":"priority","fallback":"default"}' },
+      { id: "ev5", schemaName: "new_ApiKeyRef", displayName: "API Key (Key Vault)", type: 100000005, typeLabel: "Secret", defaultValue: null, isManaged: true, description: "Key Vault reference", valueId: "evv5", value: "/subscriptions/xxx/resourceGroups/rg/providers/Microsoft.KeyVault/vaults/kv/secrets/api-key" },
+    ];
+    return callD365("getEnvVars");
+  },
+  async setEnvVarValue(definitionId, valueId, value) {
+    if (!isExtension) return { valueId: valueId || "evv-new" };
+    return callD365("setEnvVarValue", { definitionId, valueId, value });
+  },
+  async deleteEnvVarValue(valueId) {
+    if (!isExtension) return { ok: true };
+    return callD365("deleteEnvVarValue", { valueId });
+  },
+
   // ── Solution translations (official ExportTranslation / ImportTranslation actions) ──
   async exportTranslations(solutionName) {
     if (!isExtension) return { fileB64: "" }; // demo: nothing to export

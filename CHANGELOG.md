@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.127] — 2026-07-24
+### Added — NEW module: Environment Variables (19th)
+- **Definition default + per-environment override, side by side** for every environment variable, with type badges (String, Number, Boolean, JSON, Data source, Secret) and managed/unmanaged. The headline is the **⚠ NO VALUE filter and banner**: a variable with neither override nor default reads as an empty string in flows and plug-ins — they fail three screens later and nobody thinks to check here. The classic post-deployment trap, now impossible to miss.
+- **Typed editing of the override** (`environmentvariablevalue` PATCH, or POST bound to the definition when none exists): Booleans get a yes/no picker (the documented string convention), JSON and Data-source values are parsed before save, numbers checked; empty input is rejected with a pointer to **Clear override** (DELETE → falls back to the default). Production asks for confirmation; the server still enforces customizer rights.
+- **Honesty notes in the editor**: overriding a MANAGED definition is the normal per-environment pattern (your override lives in the unmanaged layer, the modal says so); **Secret** variables hold a Key Vault *reference* path, never the secret itself — Colvio shows and edits the reference only.
+- Search, filters (All / No value / Overridden / Secrets), copy current value, CSV/Excel export with each variable's effective source (override / default / none). Pure logic in `src/envVarUtils.js` — **5 new tests (197 total)**. Gated like Solutions (customizer read).
+
 ## [1.11.126] — 2026-07-24
 ### Added — Adoption: dedicated Service & application accounts section
 - **Their own card, always visible** whatever the human-metrics toggle: every enabled Non-Interactive / Support / Delegated Admin / **Application (S2S)** account with its **access-event count, active days and last access** over the window, plus CSV/Excel export. How they're told apart: `accessmode` 3/4/5 on systemuser, and `applicationid` set = S2S application user (the label "Application (S2S)" wins over its accessmode).
