@@ -53,3 +53,76 @@ export function compareExportRows(diff, compTypes = {}) {
   }
   return rows;
 }
+
+// ── Cross-org comparison (DEV vs PROD drift, via an exported file) ───────────
+// GUIDs are NOT comparable across orgs for METADATA components: MetadataIds are generated
+// locally at import time. But solution-TRANSPORTED components (forms, views, workflows, web
+// resources…) keep their GUIDs. So: pass 1 matches on (type, objectId) — catches transported
+// components; pass 2 matches the remainder on (type, resolved name), but ONLY when that name
+// is unambiguous on both sides — two forms named "Information" on different tables must not
+// cross-match (if they were the same form, pass 1 would have caught them). Unnamed leftovers
+// can't be matched at all and are flagged rather than silently piled into "only".
+
+const norm = s => String(s || "").trim().toLowerCase();
+
+export function compareComponentsCrossOrg(compsA = [], compsB = []) {
+  const keyId = c => `${c.type}|${norm(c.objectId)}`;
+  const keyName = c => `${c.type}|${norm(c.name)}`;
+  const dedupe = (list) => { const m = new Map(); for (const c of list) { const k = keyId(c); if (!m.has(k) || !m.get(k).name) m.set(k, c); } return [...m.values()]; };
+  const A = dedupe(compsA), B = dedupe(compsB);
+
+  const bById = new Map(B.map(c => [keyId(c), c]));
+  const usedB = new Set();
+  const both = [], restA = [];
+  for (const c of A) {
+    const hit = bById.get(keyId(c));
+    if (hit && !usedB.has(hit)) { both.push({ type: c.type, objectId: c.objectId, name: c.name || hit.name || "", matchedBy: "id" }); usedB.add(hit); }
+    else restA.push(c);
+  }
+  const restB = B.filter(c => !usedB.has(c));
+
+  const groupByName = (list) => { const m = new Map(); for (const c of list) { if (!norm(c.name)) continue; const k = keyName(c); if (!m.has(k)) m.set(k, []); m.get(k).push(c); } return m; };
+  const gA = groupByName(restA), gB = groupByName(restB);
+  const matchedA = new Set();
+  for (const [k, listA] of gA) {
+    const listB = gB.get(k);
+    if (listA.length === 1 && listB && listB.length === 1) {
+      both.push({ type: listA[0].type, objectId: listA[0].objectId, name: listA[0].name, matchedBy: "name" });
+      matchedA.add(listA[0]); usedB.add(listB[0]);
+    }
+  }
+  const onlyA = restA.filter(c => !matchedA.has(c)).map(c => ({ type: c.type, objectId: c.objectId, name: c.name || "", unnamed: !norm(c.name) }));
+  const onlyB = restB.filter(c => !usedB.has(c)).map(c => ({ type: c.type, objectId: c.objectId, name: c.name || "", unnamed: !norm(c.name) }));
+  const stats = {
+    idMatches: both.filter(x => x.matchedBy === "id").length,
+    nameMatches: both.filter(x => x.matchedBy === "name").length,
+    unnamedA: onlyA.filter(c => c.unnamed).length,
+    unnamedB: onlyB.filter(c => c.unnamed).length,
+  };
+  return { onlyA, onlyB, both, stats };
+}
+
+// ── Compare file (export on org 1, load on org 2) ────────────────────────────
+export const COMPARE_FILE_FORMAT = "colvio-solution-components@1";
+
+export function buildCompareFile(solution, components, org) {
+  return {
+    format: COMPARE_FILE_FORMAT,
+    exportedAt: new Date().toISOString(),
+    org: org || "",
+    solution: { uniqueName: solution.uniqueName || "", displayName: solution.displayName || "", version: solution.version || "", isManaged: !!solution.isManaged },
+    components: (components || []).map(c => ({ type: c.type, objectId: c.objectId || "", name: c.name || "" })),
+  };
+}
+
+/** Validate a parsed JSON object as a compare file — throws a descriptive error otherwise. */
+export function parseCompareFile(obj) {
+  if (!obj || typeof obj !== "object") throw new Error("Not a JSON object");
+  if (obj.format !== COMPARE_FILE_FORMAT) throw new Error(`Not a Colvio solution compare file (expected format "${COMPARE_FILE_FORMAT}")`);
+  if (!obj.solution || typeof obj.solution.uniqueName !== "string") throw new Error("Compare file has no solution descriptor");
+  if (!Array.isArray(obj.components)) throw new Error("Compare file has no components array");
+  const components = obj.components
+    .filter(c => c && (typeof c.type === "number" || typeof c.type === "string"))
+    .map(c => ({ type: typeof c.type === "string" ? parseInt(c.type, 10) : c.type, objectId: String(c.objectId || ""), name: String(c.name || "") }));
+  return { org: String(obj.org || ""), exportedAt: String(obj.exportedAt || ""), solution: obj.solution, components };
+}

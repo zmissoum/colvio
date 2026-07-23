@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd, exportTable } from "../shared.jsx";
+import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd, exportTable, dl, expName } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
-import { compareComponents, groupByType, compareExportRows } from "../solutionCompareUtils.js";
+import { compareComponents, compareComponentsCrossOrg, groupByType, compareExportRows, buildCompareFile, parseCompareFile } from "../solutionCompareUtils.js";
 
 export default function SolutionExplorer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
@@ -21,7 +21,9 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const[cmpComponents,setCmpComponents]=useState(null);
   const[cmpLoading,setCmpLoading]=useState(false);
   const[cmpError,setCmpError]=useState("");
+  const[crossOrg,setCrossOrg]=useState(null); // {org, exportedAt} when side B comes from a file
   const cmpGen=useRef(0);
+  const fileInputRef=useRef(null);
 
   useEffect(()=>{bridge.getSolutions().then(d=>{setSolutions(d||[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
 
@@ -55,20 +57,44 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const handleSelect=async(sol)=>{
     const gen=++selGen.current;
     setSelSol(sol);setLoadingComp(true);setCollapsed({});
-    setCmpSol(null);setCmpComponents(null);setCmpError(""); // side B belonged to the previous side A
+    setCmpSol(null);setCmpComponents(null);setCmpError("");setCrossOrg(null); // side B belonged to the previous side A
     try{const d=await bridge.getSolutionComponents(sol.id);if(selGen.current!==gen)return;setComponents(d||[]);}catch{if(selGen.current===gen)setComponents([]);}
     if(selGen.current===gen)setLoadingComp(false);
   };
 
   const startCompare=async(solB)=>{
     const gen=++cmpGen.current;
-    setCmpSol(solB);setCmpComponents(null);setCmpError("");setCmpLoading(true);
+    setCmpSol(solB);setCmpComponents(null);setCmpError("");setCrossOrg(null);setCmpLoading(true);
     try{const d=await bridge.getSolutionComponents(solB.id);if(cmpGen.current!==gen)return;setCmpComponents(d||[]);}
     catch(e){if(cmpGen.current===gen)setCmpError(e.message||String(e));}
     if(cmpGen.current===gen)setCmpLoading(false);
   };
-  const stopCompare=()=>{++cmpGen.current;setCmpSol(null);setCmpComponents(null);setCmpError("");setCmpLoading(false);};
-  const diff=useMemo(()=>cmpSol&&cmpComponents?compareComponents(components,cmpComponents):null,[cmpSol,cmpComponents,components]);
+  const stopCompare=()=>{++cmpGen.current;setCmpSol(null);setCmpComponents(null);setCmpError("");setCrossOrg(null);setCmpLoading(false);};
+  const diff=useMemo(()=>cmpSol&&cmpComponents?(crossOrg?compareComponentsCrossOrg(components,cmpComponents):compareComponents(components,cmpComponents)):null,[cmpSol,cmpComponents,components,crossOrg]);
+
+  // Cross-org: export this solution's component list as a file, load it on another org.
+  const exportCompareFile=()=>{
+    const f=buildCompareFile(selSol,components,orgInfo?.orgUrl?new URL(orgInfo.orgUrl).hostname:orgInfo?.orgName||"");
+    dl(JSON.stringify(f,null,1),"application/json",expName(`colvio_compare_${(selSol.uniqueName||"solution").replace(/[^A-Za-z0-9_-]+/g,"_")}`,"json"));
+  };
+  const loadCompareFile=(file)=>{
+    if(!file)return;
+    const gen=++cmpGen.current;
+    setCmpError("");
+    const reader=new FileReader();
+    reader.onload=()=>{
+      if(cmpGen.current!==gen)return;
+      try{
+        const parsed=parseCompareFile(JSON.parse(String(reader.result)));
+        setCmpSol({id:"__file__",displayName:parsed.solution.displayName||parsed.solution.uniqueName,uniqueName:parsed.solution.uniqueName,version:parsed.solution.version||"?",isManaged:!!parsed.solution.isManaged});
+        setCmpComponents(parsed.components);
+        setCrossOrg({org:parsed.org,exportedAt:parsed.exportedAt});
+        setCmpLoading(false);
+      }catch(e){setCmpError(`Compare file: ${e.message}`);}
+    };
+    reader.onerror=()=>{if(cmpGen.current===gen)setCmpError("Could not read the file.");};
+    reader.readAsText(file);
+  };
 
   const grouped=useMemo(()=>{
     const map={};
@@ -144,26 +170,39 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
                   {!cmpSol&&<>
                     <button onClick={()=>doExport("csv")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> CSV</button>
                     <button onClick={()=>doExport("xlsx")} style={bt(C.cy,{fontSize:11,padding:"4px 10px"})}><I.Download/> Excel</button>
+                    <button onClick={exportCompareFile} title="Download a compare file (.json) — load it on ANOTHER org to diff this solution across environments (DEV vs PROD drift)" style={bt(null,{fontSize:11,padding:"4px 10px"})}><I.Download/> Compare file</button>
+                    <button onClick={()=>fileInputRef.current?.click()} title="Load a compare file exported from another org — diffs it against THIS solution" style={bt(null,{fontSize:11,padding:"4px 10px"})}><I.Upload/> Load file</button>
+                    <input ref={fileInputRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={e=>{loadCompareFile(e.target.files?.[0]);e.target.value="";}}/>
                   </>}
                 </div>);
               })()}
             </div>
+            {!cmpSol&&cmpError&&<div style={{color:C.rd,fontSize:13,marginBottom:10}}>{cmpError}</div>}
             {cmpSol&&(
               <div>
                 {cmpLoading&&<div style={{textAlign:"center",padding:30}}><Spin s={18}/><div style={{fontSize:12,color:C.txd,marginTop:6}}>Loading {cmpSol.displayName}…</div></div>}
                 {cmpError&&<div style={{color:C.rd,fontSize:13,marginBottom:10}}>{cmpError}</div>}
                 {diff&&(()=>{
                   const SECTIONS=[
-                    ["onlyA",`Only in ${selSol.displayName}`,C.cy],
+                    ["onlyA",`Only in ${selSol.displayName}${crossOrg?" (this org)":""}`,C.cy],
                     ["both","In both",C.yw],
-                    ["onlyB",`Only in ${cmpSol.displayName}`,C.vi],
+                    ["onlyB",`Only in ${cmpSol.displayName}${crossOrg?` (${crossOrg.org||"file"})`:""}`,C.vi],
                   ];
-                  const bothUnmanaged=!selSol.isManaged&&!cmpSol.isManaged;
-                  const expName_=`solution_compare_${(selSol.uniqueName||"A").replace(/[^A-Za-z0-9_-]+/g,"_")}_vs_${(cmpSol.uniqueName||"B").replace(/[^A-Za-z0-9_-]+/g,"_")}`;
+                  const bothUnmanaged=!crossOrg&&!selSol.isManaged&&!cmpSol.isManaged;
+                  const expName_=`solution_compare_${(selSol.uniqueName||"A").replace(/[^A-Za-z0-9_-]+/g,"_")}_vs_${(cmpSol.uniqueName||"B").replace(/[^A-Za-z0-9_-]+/g,"_")}${crossOrg?"_crossorg":""}`;
                   const CAP=200; // "both" on fat solutions can be thousands of rows — the export has everything
                   return(
                     <div>
-                      <div style={{fontSize:13,color:C.txm,marginBottom:10}}>⇄ Comparing with <b>{cmpSol.displayName}</b> <span style={{...mono,fontSize:11,color:C.txd}}>{cmpSol.uniqueName} · v{cmpSol.version}</span> — pick "⇄ Compare with…" again to change, or its first entry to close.</div>
+                      {!crossOrg&&<div style={{fontSize:13,color:C.txm,marginBottom:10}}>⇄ Comparing with <b>{cmpSol.displayName}</b> <span style={{...mono,fontSize:11,color:C.txd}}>{cmpSol.uniqueName} · v{cmpSol.version}</span> — pick "⇄ Compare with…" again to change, or its first entry to close.</div>}
+                      {crossOrg&&(
+                        <div style={{marginBottom:10}}>
+                          <div style={{fontSize:13,color:C.txm}}>⇄ Comparing with file: <b>{cmpSol.displayName}</b> <span style={{...mono,fontSize:11,color:C.txd}}>{cmpSol.uniqueName} · v{cmpSol.version}</span> exported from <b>{crossOrg.org||"(unknown org)"}</b>{crossOrg.exportedAt?` on ${new Date(crossOrg.exportedAt).toLocaleString()}`:""} — <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={stopCompare}>close</span>.</div>
+                          {selSol.uniqueName===cmpSol.uniqueName&&selSol.version!==cmpSol.version&&<div style={{fontSize:12,color:C.yw,marginTop:3}}>Same solution, different versions: v{selSol.version} here vs v{cmpSol.version} there.</div>}
+                          <div style={{fontSize:11.5,color:C.txd,marginTop:3,lineHeight:1.5}}>
+                            Cross-org matching: {diff.stats.idMatches.toLocaleString()} matched by GUID (solution-transported components keep their id), {diff.stats.nameMatches.toLocaleString()} by type+name (MetadataIds differ across orgs). Caveats: orgs in different base languages can show false differences on name-matched components{(diff.stats.unnamedA>0||diff.stats.unnamedB>0)?`; ${(diff.stats.unnamedA+diff.stats.unnamedB).toLocaleString()} unnamed components could not be matched and sit in the "only" buckets`:""}.
+                          </div>
+                        </div>
+                      )}
                       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"flex-start"}}>
                         {SECTIONS.map(([k,label,color])=>(
                           <div key={k} style={{...crd({padding:"8px 14px"}),borderColor:color+"55"}}>

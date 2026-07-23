@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.123] — 2026-07-22
+### Added — Solution Explorer: CROSS-ORG compare (DEV vs PROD drift)
+- **"Compare file"** downloads the selected solution's component list as a versioned .json (`colvio-solution-components@1`: org, date, solution descriptor, components). On the **other org**, select the counterpart solution and **"Load file"** — the same three-bucket diff (Only here / In both / Only there), with the source org and export date shown, and a **version-drift note** when it's the same solution on both sides.
+- **Two-pass matching, explained on screen**: GUIDs first — solution-transported components (forms, views, workflows, web resources…) keep their id across orgs; then **type + resolved name** for metadata components whose `MetadataId` is org-local — matched ONLY when unambiguous on both sides (two forms named "Information" on different tables must not cross-match; if they were the same form, the GUID pass would have caught them). The banner reports how many matched by which pass, warns that different base languages can create false name differences, and counts unnamed components that couldn't be matched at all.
+- Malformed or foreign .json files are rejected with a readable error; the export mirrors the intra-org diff format. Pure logic extended in `solutionCompareUtils.js` — **6 new tests (184 total)**: GUID-match despite renamed labels, name-match across differing MetadataIds, ambiguity refusal, unnamed flagging, file round-trip, bad-file rejection.
+
 ## [1.11.122] — 2026-07-22
 ### Added — Solution Explorer: compare two solutions (same org)
 - **"⇄ Compare with…"** next to a selected solution's export buttons: pick any other solution of the org and get the component diff — **Only in A / In both / Only in B** — with count tiles, per-type grouping (resolved labels, not GUIDs), and a full **CSV/Excel export** (`presence, componentType, name, objectId`).
