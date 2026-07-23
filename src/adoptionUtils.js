@@ -17,6 +17,16 @@ export function isServiceAccount(u) {
   return !!u && (u.accessMode === 3 || u.accessMode === 4 || u.accessMode === 5 || !!u.isApp);
 }
 
+/** Human label for a service account's kind — isApp wins (more specific than its accessmode). */
+export function serviceTypeLabel(u) {
+  if (!u) return "";
+  if (u.isApp) return "Application (S2S)";
+  if (u.accessMode === 4) return "Non-Interactive";
+  if (u.accessMode === 3) return "Support";
+  if (u.accessMode === 5) return "Delegated Admin";
+  return "";
+}
+
 /**
  * DAU/WAU/MAU + stickiness over a window.
  * @param daySets  array of Set<iso-day> — one per in-scope user (their active days in-window)

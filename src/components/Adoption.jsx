@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
-import { isServiceAccount, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
+import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
 
 // Adoption — turns user-access audit rows (action 64) into usage analytics: access events, distinct
 // users, DAU/WAU/MAU + stickiness, the trend, weekday profile, per-BU adoption rates, per-user
@@ -216,13 +216,24 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     // Per-BU adoption ignores the BU filter (it IS the BU dimension) but respects role + service.
     const buScope = users.filter(u => !u.disabled && svcOk(String(u.id).toLowerCase()) && (!roleMembers || roleMembers.has(String(u.id).toLowerCase())));
     const buRows = buAdoption(buScope.map(u => ({ buName: u.buName, active: activeIds.has(String(u.id).toLowerCase()) || prep.byUser.has(String(u.id).toLowerCase()) })));
+    // Service & application accounts get their OWN section, always — regardless of the toggle
+    // that governs whether they pollute the human metrics. Their API access IS access-audited
+    // (same ≤1-event-per-interval rule), so the event counts are comparable.
+    const svcRows = users
+      .filter(u => !u.disabled && isServiceAccount(u) && passUser(String(u.id).toLowerCase()))
+      .map(u => {
+        const id = String(u.id).toLowerCase();
+        const a = prep.byUser.get(id);
+        return { id, name: u.fullname || u.email || id, type: serviceTypeLabel(u), bu: u.buName || "", logins: a?.logins || 0, days: a ? a.days.size : 0, last: a?.last || "" };
+      })
+      .sort((a, b) => b.logins - a.logins || a.name.localeCompare(b.name));
     return {
       total,
       unique: perUser.length,
       avg: perUser.length ? total / perUser.length : 0,
       scopeCount: scopeUsers.length,
       never: neverIn,
-      series, weekly: prep.weekly, perUser, scopeRows, buRows,
+      series, weekly: prep.weekly, perUser, scopeRows, buRows, svcRows,
       engagement: computeEngagement(daySets, windowRange.from, windowRange.to),
       weekday: weekdayTotals(byDayMaps),
     };
@@ -295,6 +306,12 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     if (!agg) return;
     const rows = agg.never.map(u => [u.fullname || "", u.email || "", u.buName || "", u.calTypeLabel || "", u.id]);
     exportTable(["user", "email", "businessUnit", "licenseType", "userId"], rows, `adoption_never_signed_in_${preset}`, format, "Never signed in");
+  };
+
+  const exportSvc = (format = "csv") => {
+    if (!agg) return;
+    const rows = agg.svcRows.map(u => [u.name, u.type, u.bu, u.logins, u.days, u.last ? new Date(u.last).toLocaleString() : ""]);
+    exportTable(["account", "type", "businessUnit", "accessEvents", "activeDays", "lastAccess"], rows, `adoption_service_accounts_${preset}`, format, "Service accounts");
   };
 
   const KPI = ({ label, value, color, hint, extra }) => (
@@ -522,6 +539,36 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
               {agg.never.length === 0 && <span style={{ fontSize: 11.5, color: C.txd }}>Everyone in scope signed in during this window. 🎉</span>}
               {agg.never.slice(0, 300).map(u => <span key={u.id} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.sfh, color: C.txm }} title={u.buName}>{u.fullname || u.email || u.id}</span>)}
               {agg.never.length > 300 && <span style={{ fontSize: 11, color: C.txd }}>+{agg.never.length - 300} more — the export has the full list</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Service & application accounts — their own section, whatever the human-metrics toggle:
+            an integration that STOPPED calling (0 events) is as interesting as one that hammers. */}
+        {agg.svcRows.length > 0 && (
+          <div style={{ ...crd({ padding: "10px 14px" }), marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.cy }}>🔌 Service & application accounts ({agg.svcRows.length})</span>
+              <span style={{ fontSize: 10.5, color: C.txd }}>API access is audited too (same ≤1 event / {orgFeatures?.accessInterval ?? 4} h rule) — kept out of the human metrics above{includeService ? " (toggle currently includes them)" : ""}</span>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                <button onClick={() => exportSvc("csv")} style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> CSV</button>
+                <button onClick={() => exportSvc("xlsx")} style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> Excel</button>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 130px 1fr 80px 85px 1fr", padding: "6px 0", fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+              <span>Account</span><span>Type</span><span>Business Unit</span><span>Events</span><span>Active days</span><span>Last access</span>
+            </div>
+            <div style={{ maxHeight: 220, overflow: "auto" }}>
+              {agg.svcRows.map(u => (
+                <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 130px 1fr 80px 85px 1fr", padding: "4px 0", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...mono, fontSize: 11.5 }} title={u.name}>{u.name}</span>
+                  <span><span style={{ fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: (u.type === "Application (S2S)" ? C.vi : C.cy) + "22", color: u.type === "Application (S2S)" ? C.vi : C.cy }}>{u.type}</span></span>
+                  <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.bu}>{u.bu || "—"}</span>
+                  <span style={{ ...mono, color: u.logins ? C.vi : C.rd }} title={u.logins ? "" : "No access event in the window — a silent integration can be a finding too"}>{u.logins.toLocaleString()}</span>
+                  <span style={{ ...mono, color: u.days ? C.cy : C.txd }}>{u.days}</span>
+                  <span style={{ color: C.txm, fontSize: 11 }}>{u.last ? new Date(u.last).toLocaleString() : "—"}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}

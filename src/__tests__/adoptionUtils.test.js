@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isServiceAccount, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
+import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
 
 describe("isServiceAccount", () => {
   it("flags Support / Non-Interactive / Delegated Admin and S2S app users", () => {
@@ -13,6 +13,13 @@ describe("isServiceAccount", () => {
     expect(isServiceAccount({ accessMode: 1 })).toBe(false);
     expect(isServiceAccount({ accessMode: 2 })).toBe(false);
     expect(isServiceAccount(null)).toBe(false);
+  });
+  it("labels the kind — Application (S2S) wins over its accessmode", () => {
+    expect(serviceTypeLabel({ accessMode: 4, isApp: true })).toBe("Application (S2S)");
+    expect(serviceTypeLabel({ accessMode: 4 })).toBe("Non-Interactive");
+    expect(serviceTypeLabel({ accessMode: 3 })).toBe("Support");
+    expect(serviceTypeLabel({ accessMode: 5 })).toBe("Delegated Admin");
+    expect(serviceTypeLabel({ accessMode: 0 })).toBe("");
   });
 });
 

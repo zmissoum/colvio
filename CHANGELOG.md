@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.126] — 2026-07-24
+### Added — Adoption: dedicated Service & application accounts section
+- **Their own card, always visible** whatever the human-metrics toggle: every enabled Non-Interactive / Support / Delegated Admin / **Application (S2S)** account with its **access-event count, active days and last access** over the window, plus CSV/Excel export. How they're told apart: `accessmode` 3/4/5 on systemuser, and `applicationid` set = S2S application user (the label "Application (S2S)" wins over its accessmode).
+- API access IS audited under the same ≤1-event-per-interval rule, so the counts are comparable — and a service account at **zero events is highlighted**: an integration that silently stopped calling is as much a finding as one that hammers the API.
+
 ## [1.11.125] — 2026-07-22
 ### Changed — Adoption: honest numbers (accuracy pack)
 - **"Total logins" → "Access events"**, because that's what it is: Dataverse logs a user's access AT MOST once per `UserAccessAuditingInterval` (**default 4 h** — doc-verified; the KPI hint shows the org's actual value, now read from `organizations`). A stable activity proxy, not literal logins or clicks. Trends and comparisons stay valid; the wording stops overselling.
