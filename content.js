@@ -1778,7 +1778,7 @@
           case "getAllUsers": {
             const ACCESS_MODES = { 0: "Read-Write", 1: "Admin", 2: "Read", 3: "Support", 4: "Non-Interactive", 5: "Delegated Admin" };
             const CAL_TYPES = { 0: "Full", 1: "Admin", 2: "Basic", 3: "Device Full", 4: "Device Basic", 5: "Essential", 6: "Device Essential", 7: "Enterprise", 8: "Device Enterprise", 9: "Sales", 10: "Service", 11: "Field Service", 12: "Project Service" };
-            const fields = "systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value,address1_telephone1,mobilephone,_parentsystemuserid_value";
+            const fields = "systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value,address1_telephone1,mobilephone,_parentsystemuserid_value,applicationid";
             const mapUser = (u) => ({
               id: u.systemuserid,
               fullname: u.fullname || "",
@@ -1795,6 +1795,7 @@
               phone: u.address1_telephone1 || "",
               mobile: u.mobilephone || "",
               createdOn: u.createdon,
+              isApp: !!u.applicationid, // S2S application user — never logs in interactively by design
             });
             // Cursor-based pagination: fetch in batches ordered by systemuserid,
             // each page filters systemuserid > lastId. This avoids paging cookie
@@ -2214,11 +2215,14 @@
             // once per session — module tabs/banners read it, they never re-probe.
             const out = { auditEnabled: null, pluginTraceSetting: null, recycleBin: { enabled: false, retentionDays: null } };
             try {
-              const org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting&$top=1");
+              const org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting,useraccessauditinginterval&$top=1");
               const row = org?.value?.[0];
               if (row) {
                 out.auditEnabled = row.isauditenabled !== false;
                 out.pluginTraceSetting = typeof row.plugintracelogsetting === "number" ? row.plugintracelogsetting : null;
+                // Adoption's honesty hint: Dataverse logs user access AT MOST once per this many
+                // hours per user — "access events", not literal logins. Default 4.
+                out.accessInterval = typeof row.useraccessauditinginterval === "number" ? row.useraccessauditinginterval : null;
               }
             } catch { /* unknown — fail-open (null = don't gate) */ }
             try {

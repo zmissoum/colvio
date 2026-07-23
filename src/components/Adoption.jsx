@@ -2,11 +2,17 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
+import { isServiceAccount, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
 
-// Adoption — turns user-login audit rows (action 64) into usage analytics: how many logins, how
-// many distinct users, the daily trend, per-user activity, and who never signed in — over a
-// configurable window, filterable by security role and business unit. Read-only. Needs "Audit user
-// access" enabled; only sees rows still inside the org's audit retention.
+// Adoption — turns user-access audit rows (action 64) into usage analytics: access events, distinct
+// users, DAU/WAU/MAU + stickiness, the trend, weekday profile, per-BU adoption rates, per-user
+// activity with license & inactivity, and who never signed in — over a configurable window,
+// filterable by security role and business unit. Read-only. Needs "Audit user access" enabled;
+// only sees rows still inside the org's audit retention.
+// HONESTY RULE (doc-verified): Dataverse logs user access AT MOST once per
+// UserAccessAuditingInterval (default 4 h) — so counts are ACCESS EVENTS, a stable activity
+// proxy, not literal logins or clicks. The KPI says so. Service accounts (Non-Interactive,
+// S2S application users…) are excluded by default — they never sign in interactively by design.
 const DAY = 86400000;
 const isoDay = (d) => new Date(d).toISOString().slice(0, 10);
 // Dataverse (CrmDateTime) rejects dates before 1753-01-01; login audit can't predate ~2000 anyway.
@@ -34,6 +40,10 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [userSearch, setUserSearch] = useState("");
   const [userSort, setUserSort] = useState("logins"); // logins | days | last
   const [chartMetric, setChartMetric] = useState("both"); // both | logins | users
+  const [includeService, setIncludeService] = useState(false); // service accounts excluded by default
+  const [tableMode, setTableMode] = useState("active");        // active | all (adds license + inactivity)
+  const [inactFilter, setInactFilter] = useState("");           // "", "30", "60", "90" — all-mode only
+  const [cmp, setCmp] = useState(null);                          // previous-period comparison {loading,key,total,unique}
   const roleMemberCache = useRef(new Map());
   const gen = useRef(0);
   const lastValidWin = useRef(null); // remembers the last well-formed window so a bad keystroke doesn't re-query
@@ -156,6 +166,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
         days: new Set(Object.keys(su.byDay || {})),
         last: su.last || "",
         byBucket,
+        byDay: su.byDay || {}, // raw per-day counts — weekday profile needs days even in weekly bucketing
       });
     }
     return { weekly, labels, byUser };
@@ -164,50 +175,118 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
 
   // LIGHT pass — reacts to role/BU filters. Reduces over USERS only (a few thousand at most),
   // re-summing their pre-computed per-bucket counts, instead of re-scanning every login event.
+  // Service accounts (Non-Interactive, S2S app users, Support, Delegated Admin) — excluded from
+  // every number unless the toggle says otherwise: they never sign in interactively by design.
+  const svcIds = useMemo(() => {
+    const s = new Set();
+    users.forEach(u => { if (isServiceAccount(u)) s.add(String(u.id).toLowerCase()); });
+    return s;
+  }, [users]);
+
   const agg = useMemo(() => {
     if (!prep) return null;
+    const svcOk = (id) => includeService || !svcIds.has(id);
     const idx = new Map(prep.labels.map((l, i) => [l, i]));
     const logins = new Array(prep.labels.length).fill(0);
     const distinct = new Array(prep.labels.length).fill(0);
     let total = 0;
-    const perUser = [];
+    const perUser = [], daySets = [], byDayMaps = [];
     for (const u of prep.byUser.values()) {
-      if (!passUser(u.id)) continue;
+      if (!passUser(u.id) || !svcOk(u.id)) continue;
       total += u.logins;
       perUser.push({ id: u.id, name: u.name, bu: u.bu, logins: u.logins, days: u.days.size, last: u.last });
+      daySets.push(u.days);
+      byDayMaps.push(u.byDay);
       for (const [label, c] of u.byBucket) {
         const i = idx.get(label);
         if (i !== undefined) { logins[i] += c; distinct[i] += 1; } // one bucket entry per user ⇒ distinct users
       }
     }
     const series = prep.labels.map((label, i) => ({ label, logins: logins[i], users: distinct[i] }));
-    // Never-signed-in = users in scope (role/BU) with zero logins in the window.
-    const scopeUsers = users.filter(u => passUser(String(u.id).toLowerCase()));
     const activeIds = new Set(perUser.map(u => u.id));
-    const neverIn = scopeUsers.filter(u => !activeIds.has(String(u.id).toLowerCase()) && !u.disabled);
+    // Scope = ENABLED, human (unless toggled), role/BU-filtered users — the adoption denominator.
+    const scopeUsers = users.filter(u => !u.disabled && passUser(String(u.id).toLowerCase()) && svcOk(String(u.id).toLowerCase()));
+    const neverIn = scopeUsers.filter(u => !activeIds.has(String(u.id).toLowerCase()));
+    // All-users rows for the license & inactivity view (activity joined per scope user).
+    const scopeRows = scopeUsers.map(u => {
+      const id = String(u.id).toLowerCase();
+      const a = prep.byUser.get(id);
+      return { id, name: u.fullname || u.email || id, bu: u.buName || "", email: u.email || "", license: u.calTypeLabel || "", logins: a?.logins || 0, days: a ? a.days.size : 0, last: a?.last || "" };
+    });
+    // Per-BU adoption ignores the BU filter (it IS the BU dimension) but respects role + service.
+    const buScope = users.filter(u => !u.disabled && svcOk(String(u.id).toLowerCase()) && (!roleMembers || roleMembers.has(String(u.id).toLowerCase())));
+    const buRows = buAdoption(buScope.map(u => ({ buName: u.buName, active: activeIds.has(String(u.id).toLowerCase()) || prep.byUser.has(String(u.id).toLowerCase()) })));
     return {
       total,
       unique: perUser.length,
       avg: perUser.length ? total / perUser.length : 0,
       scopeCount: scopeUsers.length,
       never: neverIn,
-      series, weekly: prep.weekly, perUser,
+      series, weekly: prep.weekly, perUser, scopeRows, buRows,
+      engagement: computeEngagement(daySets, windowRange.from, windowRange.to),
+      weekday: weekdayTotals(byDayMaps),
     };
     // eslint-disable-next-line
-  }, [prep, roleMembers, buFilter, users, userMeta]);
+  }, [prep, roleMembers, buFilter, users, userMeta, includeService, svcIds, windowRange.from, windowRange.to]);
 
   const shownUsers = useMemo(() => {
     if (!agg) return [];
     const s = userSearch.trim().toLowerCase();
-    const list = agg.perUser.filter(u => !s || u.name.toLowerCase().includes(s) || u.bu.toLowerCase().includes(s));
-    const cmp = { logins: (a, b) => b.logins - a.logins, days: (a, b) => b.days - a.days, last: (a, b) => (b.last || "").localeCompare(a.last || "") }[userSort];
-    return list.sort(cmp);
-  }, [agg, userSearch, userSort]);
+    let list;
+    if (tableMode === "all") {
+      const nowMs = Date.now();
+      list = agg.scopeRows.map(u => ({ ...u, inact: inactivityDays(u.last, nowMs) }));
+      const th = parseInt(inactFilter, 10);
+      // inact == null → no access IN WINDOW: only claim "inactive ≥ th" when the window covers th days.
+      if (th > 0) list = list.filter(u => (u.inact == null ? windowRange.days >= th : u.inact >= th));
+    } else {
+      list = agg.perUser;
+    }
+    list = list.filter(u => !s || u.name.toLowerCase().includes(s) || (u.bu || "").toLowerCase().includes(s));
+    const cmpF = { logins: (a, b) => b.logins - a.logins, days: (a, b) => b.days - a.days, last: (a, b) => (b.last || "").localeCompare(a.last || "") }[userSort];
+    return [...list].sort(cmpF);
+  }, [agg, userSearch, userSort, tableMode, inactFilter, windowRange.days]);
 
   const exportUsers = (format = "csv") => {
     if (!agg) return;
-    const rows = agg.perUser.map(u => [u.name, u.bu, u.logins, u.days, u.last ? new Date(u.last).toLocaleString() : ""]);
-    exportTable(["user", "businessUnit", "logins", "activeDays", "lastLogin"], rows, `adoption_logins_${preset}`, format, "Adoption");
+    if (tableMode === "all") {
+      // Exports the FILTERED view on purpose — "everyone inactive ≥ 60 days" IS the deliverable.
+      const rows = shownUsers.map(u => [u.name, u.email, u.bu, u.license, u.logins, u.days, u.last ? new Date(u.last).toLocaleString() : "", u.inact != null ? u.inact : `>${windowRange.days}`]);
+      exportTable(["user", "email", "businessUnit", "licenseType", "accessEvents", "activeDays", "lastAccess", "inactiveDays"], rows, `adoption_users_inactivity_${preset}`, format, "Adoption");
+    } else {
+      const rows = agg.perUser.map(u => [u.name, u.bu, u.logins, u.days, u.last ? new Date(u.last).toLocaleString() : ""]);
+      exportTable(["user", "businessUnit", "accessEvents", "activeDays", "lastAccess"], rows, `adoption_logins_${preset}`, format, "Adoption");
+    }
+  };
+
+  // Previous-period comparison — lazy (doubles the scan cost, so only on demand). Key ties the
+  // result to window+filters: any change invalidates it back to the button.
+  const cmpKey = `${windowRange.from}|${windowRange.to}|${roleFilter}|${buFilter}|${includeService}`;
+  const loadCompare = async () => {
+    const key = cmpKey;
+    setCmp({ loading: true, key });
+    try {
+      const lenMs = Date.parse(windowRange.to) - Date.parse(windowRange.from);
+      const prevTo = new Date(Date.parse(windowRange.from) - 1000).toISOString();
+      const prevFrom = new Date(Date.parse(windowRange.from) - 1000 - lenMs).toISOString();
+      const st = await bridge.getLoginStats(prevFrom, prevTo, null);
+      let total = 0; const uniq = new Set();
+      for (const su of (st?.users || [])) {
+        const id = String(su.id).toLowerCase();
+        if (!passUser(id)) continue;
+        if (!includeService && svcIds.has(id)) continue;
+        total += su.total || 0; uniq.add(id);
+      }
+      setCmp({ loading: false, key, total, unique: uniq.size, failedDays: (st?.failedDays || []).length });
+    } catch (e) { setCmp({ loading: false, key, error: e.message || String(e) }); }
+  };
+  const cmpValid = cmp && !cmp.loading && cmp.key === cmpKey && !cmp.error;
+  const deltaPct = (cur, prev) => prev > 0 ? ((cur - prev) / prev) * 100 : null;
+  const Delta = ({ cur, prev }) => {
+    const p = deltaPct(cur, prev);
+    if (p == null) return <span style={{ fontSize: 10, color: C.txd }}>prev: {prev}</span>;
+    const up = p >= 0;
+    return <span style={{ fontSize: 10.5, fontWeight: 700, color: up ? C.gn : C.rd }} title={`Previous period: ${prev.toLocaleString()}`}>{up ? "▲" : "▼"} {Math.abs(p).toFixed(0)}%</span>;
   };
 
   // The never-signed-in list is its own deliverable (license cleanup, onboarding follow-up) —
@@ -218,9 +297,9 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     exportTable(["user", "email", "businessUnit", "licenseType", "userId"], rows, `adoption_never_signed_in_${preset}`, format, "Never signed in");
   };
 
-  const KPI = ({ label, value, color, hint }) => (
+  const KPI = ({ label, value, color, hint, extra }) => (
     <div style={{ ...crd({ padding: "12px 16px" }), flex: 1, minWidth: 120 }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color: color || C.tx }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: color || C.tx, display: "flex", alignItems: "baseline", gap: 8 }}>{value}{extra}</div>
       <div style={{ fontSize: 11, color: C.txd, marginTop: 2 }}>{label}</div>
       {hint && <div style={{ fontSize: 10, color: C.txd, marginTop: 2 }}>{hint}</div>}
     </div>
@@ -305,11 +384,26 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
             <button onClick={() => setRetryKey(k => k + 1)} disabled={loading} style={{ ...bt(C.rd, { fontSize: 11, padding: "3px 10px" }), opacity: loading ? 0.5 : 1 }}>Retry</button>
           </div>
         )}
-        <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-          <KPI label="Total logins" value={agg.total.toLocaleString()} color={C.vi} />
-          <KPI label="Distinct users signed in" value={agg.unique.toLocaleString()} color={C.cy} hint={agg.scopeCount ? `of ${agg.scopeCount.toLocaleString()} in scope` : undefined} />
-          <KPI label="Avg logins / active user" value={agg.avg ? agg.avg.toFixed(1) : "0"} />
-          <KPI label="Never signed in (window)" value={agg.never.length.toLocaleString()} color={agg.never.length ? C.rd : C.gn} hint="enabled users, 0 logins" />
+        <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <KPI label="Access events" value={agg.total.toLocaleString()} color={C.vi}
+            hint={`Dataverse logs ≤1 event / user / ${orgFeatures?.accessInterval ?? 4} h — an activity proxy, not literal logins`}
+            extra={cmpValid ? <Delta cur={agg.total} prev={cmp.total} /> : undefined} />
+          <KPI label="Distinct users signed in" value={agg.unique.toLocaleString()} color={C.cy}
+            hint={agg.scopeCount ? `of ${agg.scopeCount.toLocaleString()} enabled users in scope` : undefined}
+            extra={cmpValid ? <Delta cur={agg.unique} prev={cmp.unique} /> : undefined} />
+          <KPI label="Avg events / active user" value={agg.avg ? agg.avg.toFixed(1) : "0"} />
+          <KPI label="Never signed in (window)" value={agg.never.length.toLocaleString()} color={agg.never.length ? C.rd : C.gn} hint={includeService ? "enabled users, 0 events" : "enabled human users, 0 events (service accounts excluded)"} />
+        </div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "stretch" }}>
+          <KPI label="Avg daily active users" value={agg.engagement.dauAvg.toFixed(1)} hint="quiet days count as 0" />
+          {agg.engagement.wau != null && <KPI label="WAU (last 7 d of window)" value={agg.engagement.wau.toLocaleString()} />}
+          {agg.engagement.mau != null && <KPI label="MAU (last 30 d of window)" value={agg.engagement.mau.toLocaleString()} />}
+          {agg.engagement.stickiness != null && <KPI label="Stickiness (DAU÷MAU)" value={`${(agg.engagement.stickiness * 100).toFixed(0)}%`} hint="how many monthly users show up on a given day" />}
+          <div style={{ ...crd({ padding: "12px 16px" }), display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
+            {!cmpValid && <button onClick={loadCompare} disabled={cmp?.loading} style={bt(null, { fontSize: 11, padding: "5px 10px" })}>{cmp?.loading ? <Spin s={12} /> : "⇄ vs previous period"}</button>}
+            {cmpValid && <span style={{ fontSize: 10.5, color: C.txd, maxWidth: 170, lineHeight: 1.5 }}>▲▼ vs the {windowRange.days}-day period before{cmp.failedDays ? ` (${cmp.failedDays} day(s) failed)` : ""} — may be truncated by audit retention.</span>}
+            {cmp?.error && cmp.key === cmpKey && <span style={{ fontSize: 10.5, color: C.rd }}>{cmp.error}</span>}
+          </div>
         </div>
 
         <div style={{ ...crd({ padding: 14 }), marginBottom: 14 }}>
@@ -322,47 +416,110 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
               ))}
             </div>
           </div>
-          {agg.series.some(s => s.logins > 0) ? <Chart series={agg.series} metric={chartMetric} /> : <div style={{ color: C.txd, fontSize: 12, padding: 10 }}>No logins in this window / filter.</div>}
+          {agg.series.some(s => s.logins > 0) ? <Chart series={agg.series} metric={chartMetric} /> : <div style={{ color: C.txd, fontSize: 12, padding: 10 }}>No access events in this window / filter.</div>}
+        </div>
+
+        <div style={{ display: "flex", gap: 14, marginBottom: 14, flexWrap: "wrap", alignItems: "stretch" }}>
+          {/* Weekday profile — where the activity concentrates */}
+          <div style={{ ...crd({ padding: 14 }), flex: 1, minWidth: 260 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Access events by weekday</div>
+            {(() => {
+              const max = Math.max(1, ...agg.weekday.map(w => w.events));
+              return (
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 90 }}>
+                  {agg.weekday.map(w => (
+                    <div key={w.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, height: "100%", justifyContent: "flex-end" }} title={`${w.label}: ${w.events.toLocaleString()} events`}>
+                      <span style={{ fontSize: 9, color: C.txd, ...mono }}>{w.events > 0 ? w.events.toLocaleString() : ""}</span>
+                      <div style={{ width: "70%", height: `${Math.max(2, (w.events / max) * 60)}px`, background: C.vi, opacity: 0.7, borderRadius: 3 }} />
+                      <span style={{ fontSize: 10, color: C.txm }}>{w.label}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+          {/* Per-BU adoption — where adoption lags (ignores the BU filter: it IS the BU dimension) */}
+          <div style={{ ...crd({ padding: 14 }), flex: 2, minWidth: 320 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Adoption by business unit</span>
+              <span style={{ fontSize: 10.5, color: C.txd }}>active ÷ enabled users in window{roleFilter ? " · role filter applied" : ""}</span>
+              <button onClick={() => exportTable(["businessUnit", "enabledUsers", "activeUsers", "adoptionRate"], agg.buRows.map(r => [r.bu, r.enrolled, r.active, `${(r.rate * 100).toFixed(0)}%`]), `adoption_by_bu_${preset}`, "csv", "By BU")} style={{ ...bt(null, { fontSize: 10.5, padding: "2px 8px" }), marginLeft: "auto" }}><I.Download /> CSV</button>
+            </div>
+            <div style={{ maxHeight: 170, overflow: "auto" }}>
+              {agg.buRows.map(r => (
+                <div key={r.bu} style={{ display: "grid", gridTemplateColumns: "1.4fr 70px 70px 1fr", gap: 8, alignItems: "center", padding: "3px 0", fontSize: 12 }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.bu}>{r.bu}</span>
+                  <span style={{ ...mono, color: C.txm }}>{r.active}/{r.enrolled}</span>
+                  <span style={{ ...mono, fontWeight: 700, color: r.rate >= 0.7 ? C.gn : r.rate >= 0.4 ? C.yw : C.rd }}>{(r.rate * 100).toFixed(0)}%</span>
+                  <div style={{ background: C.sfh, borderRadius: 3, height: 8, overflow: "hidden" }}><div style={{ width: `${r.rate * 100}%`, height: "100%", background: r.rate >= 0.7 ? C.gn : r.rate >= 0.4 ? C.yw : C.rd, opacity: 0.8 }} /></div>
+                </div>
+              ))}
+              {agg.buRows.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No users in scope.</div>}
+            </div>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Per user</span>
-          <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users…" style={inp({ fontSize: 12, maxWidth: 200, padding: "4px 8px" })} />
           <div style={{ display: "flex", border: `1px solid ${C.bd}`, borderRadius: 5, overflow: "hidden" }}>
-            {[["logins", "Most logins"], ["days", "Active days"], ["last", "Recent"]].map(([k, lbl]) => (
+            {[["active", "Active users"], ["all", "All in scope (license & inactivity)"]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setTableMode(k)} style={{ padding: "4px 11px", fontSize: 12, fontWeight: tableMode === k ? 600 : 400, border: "none", cursor: "pointer", background: tableMode === k ? C.vi + "22" : "transparent", color: tableMode === k ? C.vi : C.txm }}>{lbl}</button>
+            ))}
+          </div>
+          <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Filter users…" style={inp({ fontSize: 12, maxWidth: 200, padding: "4px 8px" })} />
+          {tableMode === "all" && (
+            <select value={inactFilter} onChange={e => setInactFilter(e.target.value)} title="Inactivity is measured from the last access IN THE LOADED WINDOW — users with no access at all only qualify when the window covers the threshold" style={inp({ width: "auto", fontSize: 12, padding: "4px 8px" })}>
+              <option value="">Everyone</option>
+              {[30, 60, 90].map(th => <option key={th} value={th} disabled={windowRange.days < th}>Inactive ≥ {th} d{windowRange.days < th ? ` (needs a ≥${th} d window)` : ""}</option>)}
+            </select>
+          )}
+          <div style={{ display: "flex", border: `1px solid ${C.bd}`, borderRadius: 5, overflow: "hidden" }}>
+            {[["logins", "Most events"], ["days", "Active days"], ["last", "Recent"]].map(([k, lbl]) => (
               <button key={k} onClick={() => setUserSort(k)} style={{ padding: "3px 9px", fontSize: 11, border: "none", cursor: "pointer", background: userSort === k ? C.cy + "22" : "transparent", color: userSort === k ? C.cy : C.txm }}>{lbl}</button>
             ))}
           </div>
           <span style={{ fontSize: 11, color: C.txd, ...mono }}>{shownUsers.length} users</span>
         </div>
-        <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.2fr 80px 90px 1fr", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
-            <span>User</span><span>Business Unit</span><span>Logins</span><span>Active days</span><span>Last login</span>
-          </div>
-          <div style={{ maxHeight: 460, overflow: "auto" }}>
-            {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No active users match.</div>}
-            {shownUsers.map(u => (
-              <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 1.2fr 80px 90px 1fr", padding: "5px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center" }}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.name}>{u.name}</span>
-                <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.bu}>{u.bu || "—"}</span>
-                <span style={{ ...mono, color: C.vi }}>{u.logins.toLocaleString()}</span>
-                <span style={{ ...mono, color: C.cy }}>{u.days}</span>
-                <span style={{ color: C.txm, fontSize: 11 }}>{u.last ? new Date(u.last).toLocaleString() : "—"}</span>
+        {(() => {
+          const cols = tableMode === "all" ? "1.5fr 1fr 90px 75px 75px 1fr 85px" : "1.6fr 1.2fr 80px 90px 1fr";
+          return (
+            <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
+              <div style={{ display: "grid", gridTemplateColumns: cols, padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                <span>User</span><span>Business Unit</span>{tableMode === "all" && <span>License</span>}<span>Events</span><span>Active days</span><span>Last access</span>{tableMode === "all" && <span>Inactive</span>}
               </div>
-            ))}
-          </div>
-        </div>
+              <div style={{ maxHeight: 460, overflow: "auto" }}>
+                {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match.</div>}
+                {shownUsers.map(u => (
+                  <div key={u.id} style={{ display: "grid", gridTemplateColumns: cols, padding: "5px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.name}>{u.name}</span>
+                    <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.bu}>{u.bu || "—"}</span>
+                    {tableMode === "all" && <span style={{ fontSize: 11, color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.license}>{u.license || "—"}</span>}
+                    <span style={{ ...mono, color: u.logins ? C.vi : C.txd }}>{u.logins.toLocaleString()}</span>
+                    <span style={{ ...mono, color: u.days ? C.cy : C.txd }}>{u.days}</span>
+                    <span style={{ color: C.txm, fontSize: 11 }}>{u.last ? new Date(u.last).toLocaleString() : "—"}</span>
+                    {tableMode === "all" && <span style={{ ...mono, fontSize: 11, fontWeight: 600, color: u.inact == null ? C.rd : u.inact >= 30 ? C.yw : C.gn }} title={u.inact == null ? `No access in the loaded ${windowRange.days}-day window` : "Days since last access"}>{u.inact == null ? `>${windowRange.days} d` : `${u.inact} d`}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
-        {agg.never.length > 0 && (
+        {/* Always rendered — the service-account toggle lives here and must stay reachable at 0 */}
+        {(
           <div style={{ ...crd({ padding: "10px 14px" }), marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.rd }}>Never signed in this window ({agg.never.length}) — enabled users, no login recorded</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: agg.never.length ? C.rd : C.gn }}>Never signed in this window ({agg.never.length}) — enabled {includeService ? "" : "human "}users, no access recorded</span>
+              <label title="Non-Interactive, Support, Delegated Admin and S2S application users never sign in interactively BY DESIGN — including them pollutes this list with false positives" style={{ fontSize: 11, color: C.txm, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                <input type="checkbox" checked={includeService} onChange={e => setIncludeService(e.target.checked)} style={{ accentColor: C.yw }} />
+                include service accounts
+              </label>
               <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                 <button onClick={() => exportNever("csv")} title="Export the full never-signed-in list (name, email, BU, license type)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> CSV</button>
                 <button onClick={() => exportNever("xlsx")} title="Export the full never-signed-in list (name, email, BU, license type)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> Excel</button>
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 140, overflow: "auto" }}>
+              {agg.never.length === 0 && <span style={{ fontSize: 11.5, color: C.txd }}>Everyone in scope signed in during this window. 🎉</span>}
               {agg.never.slice(0, 300).map(u => <span key={u.id} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.sfh, color: C.txm }} title={u.buName}>{u.fullname || u.email || u.id}</span>)}
               {agg.never.length > 300 && <span style={{ fontSize: 11, color: C.txd }}>+{agg.never.length - 300} more — the export has the full list</span>}
             </div>

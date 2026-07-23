@@ -187,10 +187,13 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated, read-only
 
 ### Adoption
-- **Who's actually using the CRM?** Total logins, distinct active users, average per active user — over 7/30/90 days or any custom window
+- **Who's actually using the CRM?** Access events, distinct active users, **DAU/WAU/MAU + stickiness** — over 7/30/90 days or any custom window
+- **Honest by construction**: Dataverse logs access at most once per `UserAccessAuditingInterval` (default 4 h) — the KPI says "access events", an activity proxy, not literal logins; **service accounts** (non-interactive, S2S application users) are excluded from every number by default (toggle to include)
 - **Exact totals whatever the audit volume** — Dataverse aggregates each day server-side (per-user counts, never raw events), so orgs with millions of audit rows hit no fetch cap; a day that fails to load is flagged with a retry, never silently missing
-- Trend chart switchable between total logins / distinct users / both; sortable per-user table (logins, active days, last login)
-- **Never-signed-in list** — enabled users with zero logins in the window, one click to export
+- Trend chart (events / distinct users / both), **events-by-weekday profile**, **adoption rate per business unit** (active ÷ enabled, with export)
+- **"⇄ vs previous period"** — on-demand comparison with the preceding window of the same length, ▲▼ deltas on events and distinct users
+- Per-user table in two modes: active users, or **all in scope with license type and inactivity** (days since last access, ≥30/60/90 filter) — the license-cleanup deliverable
+- **Never-signed-in list** — enabled human users with zero events in the window; export includes email and license type
 - Filter everything by **security role or business unit** (instant, client-side); needs "Audit user access" enabled, sees what your audit retention keeps (both stated in the UI)
 
 ### Login History
@@ -234,7 +237,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~17,000 |
 | API actions | 72 |
 | React components | 37 |
-| Unit tests | 184 |
+| Unit tests | 191 |
 | Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |

@@ -82,7 +82,7 @@ Login History
 User login/logout audit timeline from D365 audit logs. Session duration, access type stats, CSV export.
 
 Adoption Analytics
-Who is actually using the CRM you pay for? Total logins, distinct active users and average per active user — over 7/30/90 days or any custom window. A trend chart switchable between total logins, distinct users, or both. A sortable, searchable per-user table (logins, active days, last login). And the list nobody has ready when management asks: enabled users who NEVER signed in during the window — one click to export. Filter everything by security role or business unit ("are the people we licensed for Sales actually signing in?"). Totals are EXACT whatever the audit volume: Colvio asks Dataverse to aggregate each day server-side (per-user counts, never raw events), so orgs with millions of audit rows hit no fetch cap — and a day that fails to load is flagged with a retry button, never silently missing. Built on Dataverse's own user-access audit: requires "Audit user access" enabled, and sees what your audit retention keeps — Colvio states both in the UI.
+Who is actually using the CRM you pay for? Access events, distinct active users, DAU/WAU/MAU and stickiness — over 7/30/90 days or any custom window, with an honest KPI: Dataverse logs access at most once per interval (default 4 h), so Colvio says "access events" (a stable activity proxy) instead of pretending to count logins. Service accounts (non-interactive, S2S application users) are excluded from every number by default — they never sign in by design. A trend chart, an events-by-weekday profile, and an adoption-rate table per business unit (active ÷ enabled, exportable). Compare with the previous period in one click (▲▼ deltas). The per-user table has two modes: active users, or ALL users in scope with license type and days-since-last-access — filter inactive ≥30/60/90 days and export: paid seats that never log in are the finding. And the list nobody has ready when management asks: enabled users who NEVER signed in — export includes email and license type. Filter everything by security role or business unit. Totals are EXACT whatever the audit volume (per-day server-side aggregation, failed days flagged with retry, never silently missing). Requires "Audit user access" enabled; sees what your audit retention keeps — both stated in the UI.
 
 Help & Onboarding
 Built-in feature guide, first-launch tour, keyboard shortcuts panel, contextual tooltips.
@@ -172,4 +172,4 @@ English, French
 6. Security Audit — roles and privileges viewer, with the Users sub-tab showing who holds the role
 7. Metadata Browser — entity fields with Export buttons and OptionSet viewer
 8. Recycle Bin — deleted records with who-deleted / created / modified columns and restore
-9. Adoption — login trend chart with role/BU filters and the never-signed-in list
+9. Adoption — DAU/WAU/MAU, per-BU adoption rates, license & inactivity, and the never-signed-in list

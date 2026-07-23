@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.125] — 2026-07-22
+### Changed — Adoption: honest numbers (accuracy pack)
+- **"Total logins" → "Access events"**, because that's what it is: Dataverse logs a user's access AT MOST once per `UserAccessAuditingInterval` (**default 4 h** — doc-verified; the KPI hint shows the org's actual value, now read from `organizations`). A stable activity proxy, not literal logins or clicks. Trends and comparisons stay valid; the wording stops overselling.
+- **Service accounts excluded from every number by default** — Non-Interactive (accessmode 4), Support (3), Delegated Admin (5) and S2S application users (`applicationid` set, now returned by getAllUsers): they never sign in interactively BY DESIGN, so they were false positives in the never-signed-in list and noise in the denominators. A checkbox on the never-signed-in card re-includes them; the card now stays visible at zero (the toggle must remain reachable) and the scope KPI counts ENABLED users only.
+### Added — Adoption: engagement metrics, per-BU rates, inactivity, previous-period compare
+- **DAU (avg, quiet days count as zero) / WAU / MAU / stickiness (DAU÷MAU)** — WAU/MAU hidden on windows shorter than 7/30 days rather than shown misleadingly.
+- **Access events by weekday** (Monday-first profile) and **adoption rate per business unit** (active ÷ enabled, role filter applied, BU filter deliberately ignored — it IS the BU dimension; CSV export).
+- **"⇄ vs previous period"** — lazily loads the preceding window of the same length (on demand: it doubles the scan cost) and shows ▲▼ deltas on access events and distinct users, with a retention-truncation caveat; invalidated by any window/filter change.
+- **Per-user table gets an "All in scope" mode** — license type + inactivity column: days since last access, honest `>N d` when there was no access in the loaded window, and an inactive ≥30/60/90 filter that only enables when the window covers the threshold. The filtered view exports on purpose ("everyone inactive ≥60 days" IS the deliverable: user, email, BU, license, events, days, last access, inactive days).
+- Pure metrics logic in `src/adoptionUtils.js` — **7 new tests (191 total)**. Help EN/FR rewritten around what the numbers actually mean.
+
 ## [1.11.124] — 2026-07-22
 ### Added — Adoption: export the never-signed-in list
 - **CSV/Excel buttons on the "Never signed in" card** — the full list (not just the 300 chips shown), with `user, email, businessUnit, licenseType, userId`. The license type is included on purpose: paid seats that never log in ARE the finding, whether for license cleanup or onboarding follow-up. Fixes the misleading "+N more (export for all)" hint, which pointed at the main export — that one only ever contained users WITH logins.
