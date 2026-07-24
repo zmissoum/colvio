@@ -2278,7 +2278,11 @@
             // once per session — module tabs/banners read it, they never re-probe.
             const out = { auditEnabled: null, pluginTraceSetting: null, recycleBin: { enabled: false, retentionDays: null } };
             try {
-              const org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting,useraccessauditinginterval&$top=1");
+              // auditretentionperiodv2 (days; -1 = forever) may be absent on older schemas — the
+              // whole $select would 400, so fall back without it rather than losing auditEnabled.
+              let org;
+              try { org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting,useraccessauditinginterval,auditretentionperiodv2&$top=1"); }
+              catch { org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting,useraccessauditinginterval&$top=1"); }
               const row = org?.value?.[0];
               if (row) {
                 out.auditEnabled = row.isauditenabled !== false;
@@ -2286,6 +2290,7 @@
                 // Adoption's honesty hint: Dataverse logs user access AT MOST once per this many
                 // hours per user — "access events", not literal logins. Default 4.
                 out.accessInterval = typeof row.useraccessauditinginterval === "number" ? row.useraccessauditinginterval : null;
+                out.auditRetentionDays = typeof row.auditretentionperiodv2 === "number" ? row.auditretentionperiodv2 : null;
               }
             } catch { /* unknown — fail-open (null = don't gate) */ }
             try {

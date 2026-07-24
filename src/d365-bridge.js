@@ -714,7 +714,9 @@ export const bridge = {
             if (!u.name && row.userName) u.name = row.userName;
           }
         } catch (e) {
-          failedDays.push(s.day); // surfaced in the UI — totals must not silently exclude a day
+          // Surfaced in the UI WITH the reason — totals must not silently exclude a day, and
+          // "failed" without a why is undiagnosable (retention? timeout? privilege?).
+          failedDays.push({ day: s.day, error: (e?.message || String(e)).slice(0, 200) });
         }
         done++;
         onProgress?.({ done, total: slices.length });

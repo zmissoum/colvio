@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.130] — 2026-07-24
+### Changed — Adoption: failed days now say WHY, and retention is explained up front
+- **Failed-day banner carries the reasons** (user report: a since-January window showed "96 days failed to load" with no way to know why — the per-day error was swallowed). The scan now records each failed day's error message and the banner shows the distinct reasons — retention, timeout, privilege, throttling… each points to a different fix, so hiding them made the banner undiagnosable.
+- **Proactive retention banner**: Colvio now reads the org's audit retention (`auditretentionperiodv2`, with a fallback for older schemas) and, when the window starts before `now − retention`, says it plainly — days before that date have **no data by design** (purged, shown as zero, NOT failures), users active only before it will appear as "never signed in", and covering the window would need retention ≥ N days. A wider window cannot conjure purged audit rows back.
+
 ## [1.11.129] — 2026-07-24
 ### Added — Adoption: BU filter can include the whole subtree
 - **"+ child BUs" checkbox** next to the business-unit filter: widens the scope from the selected BU alone to **the BU plus every descendant** (BFS over the org hierarchy, cycle-safe), with the resulting BU count shown. Pick a region-level parent and see all its teams at once.

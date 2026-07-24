@@ -437,12 +437,33 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       {loading && !agg && <div style={{ textAlign: "center", marginTop: 40 }}><Spin s={18} /> Aggregating login audit{scanProg && scanProg.total > 1 ? ` — day ${scanProg.done}/${scanProg.total}` : ""}…</div>}
 
       {agg && (<>
-        {stats?.failedDays?.length > 0 && (
-          <div style={{ ...crd({ padding: "8px 12px", background: C.rd + "0c", borderColor: C.rd + "55" }), marginBottom: 12, fontSize: 12, color: C.rd, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span>⚠ {stats.failedDays.length} day{stats.failedDays.length > 1 ? "s" : ""} failed to load ({stats.failedDays.slice(0, 4).join(", ")}{stats.failedDays.length > 4 ? "…" : ""}) — totals below EXCLUDE {stats.failedDays.length > 1 ? "them" : "it"}.</span>
-            <button onClick={() => setRetryKey(k => k + 1)} disabled={loading} style={{ ...bt(C.rd, { fontSize: 11, padding: "3px 10px" }), opacity: loading ? 0.5 : 1 }}>Retry</button>
-          </div>
-        )}
+        {/* Retention truth: days before now − retention have NO data BY DESIGN — that's not a
+            failure, and a wider window can't conjure purged audit rows back. */}
+        {(() => {
+          const ret = orgFeatures?.auditRetentionDays;
+          if (!(ret > 0)) return null;
+          const floorMs = Date.now() - ret * DAY;
+          if (Date.parse(windowRange.from) >= floorMs) return null;
+          return (
+            <div style={{ ...crd({ padding: "8px 12px", background: C.yw + "0c", borderColor: C.yw + "55" }), marginBottom: 12, fontSize: 12, color: C.yw, lineHeight: 1.5 }}>
+              ℹ This org keeps audit logs for <b>{ret} days</b> — your window starts earlier, but days before <b>{isoDay(floorMs)}</b> have no data BY DESIGN (purged, shown as zero). Users active only before that date will appear as "never signed in". To cover this window, retention would need to be ≥ {Math.ceil((Date.now() - Date.parse(windowRange.from)) / DAY)} days (Power Platform admin center → environment → audit settings).
+            </div>
+          );
+        })()}
+        {stats?.failedDays?.length > 0 && (() => {
+          // failedDays = [{day, error}] since v1.11.130 (plain strings from older cached shapes tolerated).
+          const days = stats.failedDays.map(f => (typeof f === "string" ? { day: f, error: "" } : f));
+          const reasons = [...new Set(days.map(f => f.error).filter(Boolean))].slice(0, 2);
+          return (
+            <div style={{ ...crd({ padding: "8px 12px", background: C.rd + "0c", borderColor: C.rd + "55" }), marginBottom: 12, fontSize: 12, color: C.rd, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ lineHeight: 1.5 }}>
+                ⚠ {days.length} day{days.length > 1 ? "s" : ""} failed to load ({days.slice(0, 4).map(f => f.day).join(", ")}{days.length > 4 ? "…" : ""}) — totals below EXCLUDE {days.length > 1 ? "them" : "it"}.
+                {reasons.length > 0 && <><br />Reason{reasons.length > 1 ? "s" : ""}: {reasons.map((r, i) => <i key={i}>"{r}"{i < reasons.length - 1 ? " · " : ""}</i>)}</>}
+              </span>
+              <button onClick={() => setRetryKey(k => k + 1)} disabled={loading} style={{ ...bt(C.rd, { fontSize: 11, padding: "3px 10px" }), opacity: loading ? 0.5 : 1 }}>Retry</button>
+            </div>
+          );
+        })()}
         <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           <KPI label="Access events" value={agg.total.toLocaleString()} color={C.vi}
             hint={`Dataverse logs ≤1 event / user / ${orgFeatures?.accessInterval ?? 4} h — an activity proxy, not literal logins`}
