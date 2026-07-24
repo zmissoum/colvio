@@ -97,10 +97,16 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
     return out;
   }, [bus]);
 
+  // BU on/off filter — like search, it breaks the parent-child chain (a matching child may have
+  // a filtered-out parent), so any active filter switches the list to flat rendering.
+  const [buStatus, setBuStatus] = useState("all"); // all | on | off
   const filteredTree = useMemo(() => {
     const s = search.trim().toLowerCase();
-    return s ? tree.filter(b => b.name.toLowerCase().includes(s)) : tree;
-  }, [tree, search]);
+    return tree.filter(b =>
+      (buStatus === "all" || (buStatus === "off" ? b.disabled : !b.disabled)) &&
+      (!s || b.name.toLowerCase().includes(s)));
+  }, [tree, search, buStatus]);
+  const flatList = !!search.trim() || buStatus !== "all";
 
   const selBu = bus?.find(b => b.id === sel);
   const selUsers = usersByBu[sel] || [];
@@ -188,17 +194,22 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
             <button onClick={() => { setShowChart(true); setChartZoom(1); setChartExpanded(new Set(rootIdsOf(bus || []))); }} disabled={!bus?.length} title="Full-screen org chart of the BU hierarchy — starts folded to two levels, click the +N chips to expand branches" style={{ ...bt(null, { fontSize: 11, padding: "3px 10px" }), marginLeft: "auto" }}>🌳 Org chart</button>
           </div>
           <input placeholder="Search a business unit…" value={search} onChange={e => setSearch(e.target.value)} style={inp({ fontSize: 13 })} />
-          {!loading && bus && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{bus.length} BUs · {totalUsers} users</div>}
+          <div style={{ display: "flex", gap: 2, marginTop: 6 }}>
+            {[["all", `All (${bus?.length || 0})`], ["on", `Active (${(bus || []).filter(b => !b.disabled).length})`], ["off", `Off (${(bus || []).filter(b => b.disabled).length})`]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setBuStatus(k)} style={{ padding: "3px 9px", fontSize: 11, border: `1px solid ${C.bd}`, borderRadius: 3, cursor: "pointer", background: buStatus === k ? C.vi : "transparent", color: buStatus === k ? "white" : C.txd }}>{lbl}</button>
+            ))}
+          </div>
+          {!loading && bus && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{filteredTree.length} of {bus.length} BUs · {totalUsers} users</div>}
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
           {loading && <div style={{ textAlign: "center", padding: 20 }}><Spin /> Loading…</div>}
           {error && !loading && <div style={{ padding: 10, color: C.rd, fontSize: 12 }}>{error}</div>}
           {filteredTree.map(b => (
             <button key={b.id} onClick={() => { setSel(b.id); setUserSearch(""); }}
-              style={{ width: "100%", textAlign: "left", padding: "6px 8px", paddingLeft: 8 + (search.trim() ? 0 : b.depth * 16), border: "none", borderRadius: 6, cursor: "pointer", marginBottom: 1, background: sel === b.id ? C.sfa : "transparent", color: sel === b.id ? C.tx : C.txm, fontSize: 13 }}>
+              style={{ width: "100%", textAlign: "left", padding: "6px 8px", paddingLeft: 8 + (flatList ? 0 : b.depth * 16), border: "none", borderRadius: 6, cursor: "pointer", marginBottom: 1, background: sel === b.id ? C.sfa : "transparent", color: sel === b.id ? C.tx : C.txm, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                 <span style={{ fontWeight: sel === b.id ? 600 : 400, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {!search.trim() && b.depth > 0 && <span style={{ color: C.txd }}>└ </span>}{b.name}
+                  {!flatList && b.depth > 0 && <span style={{ color: C.txd }}>└ </span>}{b.name}
                 </span>
                 {b.disabled && <Badge label="off" color={C.rd} />}
                 <span style={{ fontSize: 11, color: cnt(b.id) ? C.cy : C.txd, ...mono, flexShrink: 0 }}>{cnt(b.id)}</span>

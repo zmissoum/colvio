@@ -1884,12 +1884,22 @@
           }
 
           case "getUserCountsByBu": {
-            // One grouped-aggregate query → user count per business unit. Drives the BU-tree badges
-            // without loading every user row up front. Subject to Dataverse's aggregate record limit
-            // on very large orgs, so the caller treats this as best-effort (badges just go blank).
-            const dC = await dvRequest("GET", "systemusers?$apply=groupby((_businessunitid_value),aggregate($count as count))");
+            // One grouped-aggregate query → user count per business unit. The aggregate hits
+            // Dataverse's AggregateQueryRecordLimit (~50k scanned rows) on large orgs and used to
+            // fail into blank badges ("0 users" everywhere until a BU was clicked) — now it falls
+            // back to a paged scan of JUST the BU column: exact counts whatever the user volume.
             const counts = {};
-            (dC.value || []).forEach(r => { counts[r._businessunitid_value || ""] = r.count || 0; });
+            try {
+              const dC = await dvRequest("GET", "systemusers?$apply=groupby((_businessunitid_value),aggregate($count as count))");
+              (dC.value || []).forEach(r => { counts[r._businessunitid_value || ""] = r.count || 0; });
+            } catch {
+              let urlC = "systemusers?$select=_businessunitid_value";
+              while (urlC) {
+                const p = await dvRequest("GET", urlC, null, { Prefer: "odata.maxpagesize=5000" });
+                (p.value || []).forEach(r => { const k = r._businessunitid_value || ""; counts[k] = (counts[k] || 0) + 1; });
+                const nl = p["@odata.nextLink"]; urlC = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              }
+            }
             result = counts;
             break;
           }

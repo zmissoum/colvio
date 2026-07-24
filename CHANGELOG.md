@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.133] — 2026-07-24
+### Fixed — Business Units: user counts no longer show 0 on large orgs
+- The per-BU count badge came from ONE grouped-aggregate query that silently hits Dataverse's ~50k-scanned-rows aggregate limit on large orgs — every BU then showed **0 users until you clicked it** (user report). The action now **falls back to a paged scan of just the BU column** when the aggregate fails: exact counts at load, whatever the user volume (a 5,000-user page costs one request).
+### Added — Business Units: on/off filter
+- **All / Active / Off chips** above the BU tree (with counts): filter the list to enabled or disabled business units. Like search, an active filter switches to a flat list — a matching child's parent may be filtered out, so indentation would lie. The header shows "X of N BUs".
+
 ## [1.11.132] — 2026-07-24
 ### Changed — BU org chart: folds by default (user report: 1,177 BUs = an endless scrollbar)
 - **The chart now opens folded to two levels** (roots + their direct children) — a 1,000+-BU org laid flat is hundreds of thousands of pixels wide, which made the scrollbar useless. Every BU with children carries a **±N chip**: "+12" tells how many child BUs are hidden, one click unfolds that branch, "−" folds it back. Only unfolded branches are laid out.
