@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.129] — 2026-07-24
+### Added — Adoption: BU filter can include the whole subtree
+- **"+ child BUs" checkbox** next to the business-unit filter: widens the scope from the selected BU alone to **the BU plus every descendant** (BFS over the org hierarchy, cycle-safe), with the resulting BU count shown. Pick a region-level parent and see all its teams at once.
+- **Parent BUs are now selectable even with no direct users** — the BU dropdown is built from the real `businessunit` hierarchy (one cheap query, loaded once) instead of only the BUs that happen to appear on user records; without this, filtering on "Europe" whose users all sit in sub-BUs was impossible.
+- The subtree scope flows through everything: KPIs, engagement metrics, charts, never-signed-in, service accounts, previous-period compare and the PPTX report (scope label says "+ child BUs"). **2 new tests (203 total)** including the cyclic-hierarchy guard.
+
 ## [1.11.128] — 2026-07-24
 ### Added — Adoption: one-click PowerPoint report
 - **📊 Report (.pptx)** — a 5-slide management deck built from the data on screen, honoring the active window and role/BU filters: (1) title with org, window and scope; (2) KPI grid (access events, distinct users, DAU/WAU/MAU, stickiness, never-signed-in) **with the honesty note on the slide** — the ≤1-event-per-interval proxy caveat travels with the numbers into the meeting; (3) activity trend; (4) weekday profile + per-BU adoption rates (top 15, remainder noted); (5) findings — never-signed-in **split by license type**, inactivity ≥30/60/90 (only thresholds the window can assert), and silent service accounts.

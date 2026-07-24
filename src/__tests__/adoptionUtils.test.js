@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
+import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption, buSubtreeIds } from "../adoptionUtils.js";
 
 describe("isServiceAccount", () => {
   it("flags Support / Non-Interactive / Delegated Admin and S2S app users", () => {
@@ -62,6 +62,25 @@ describe("inactivityDays", () => {
     expect(inactivityDays("2026-06-22T12:00:00Z", NOW)).toBe(30);
     expect(inactivityDays("", NOW)).toBeNull();
     expect(inactivityDays(null, NOW)).toBeNull();
+  });
+});
+
+describe("buSubtreeIds", () => {
+  const BUS = [
+    { id: "root", parentId: null },
+    { id: "eu", parentId: "root" },
+    { id: "fr", parentId: "eu" },
+    { id: "uk", parentId: "eu" },
+    { id: "us", parentId: "root" },
+  ];
+  it("returns the BU plus every descendant, not siblings", () => {
+    expect([...buSubtreeIds("eu", BUS)].sort()).toEqual(["eu", "fr", "uk"]);
+    expect([...buSubtreeIds("fr", BUS)]).toEqual(["fr"]);
+    expect(buSubtreeIds("root", BUS).size).toBe(5);
+  });
+  it("survives a cyclic hierarchy (partial set, no infinite loop)", () => {
+    const cyclic = [{ id: "a", parentId: "b" }, { id: "b", parentId: "a" }];
+    expect([...buSubtreeIds("a", cyclic)].sort()).toEqual(["a", "b"]);
   });
 });
 

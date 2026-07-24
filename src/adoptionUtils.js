@@ -89,6 +89,30 @@ export function inactivityDays(lastIso, nowMs) {
 }
 
 /**
+ * The selected BU plus every descendant — BFS over parentId, cycle-safe (a corrupted
+ * hierarchy must degrade to a partial set, never an infinite loop).
+ * @param rootId  selected businessunit id
+ * @param bus     [{id, parentId}] — the whole org's BU list
+ * @returns Set<id>
+ */
+export function buSubtreeIds(rootId, bus = []) {
+  const children = new Map();
+  for (const b of bus) {
+    if (!b.parentId) continue;
+    if (!children.has(b.parentId)) children.set(b.parentId, []);
+    children.get(b.parentId).push(b.id);
+  }
+  const out = new Set([rootId]);
+  const queue = [rootId];
+  while (queue.length) {
+    for (const c of (children.get(queue.shift()) || [])) {
+      if (!out.has(c)) { out.add(c); queue.push(c); }
+    }
+  }
+  return out;
+}
+
+/**
  * Per-BU adoption: rows [{bu, enrolled, active, rate}] sorted by enrolled desc.
  * @param users  [{buName, active: bool}] — already scoped (enabled, human, role-filtered)
  */

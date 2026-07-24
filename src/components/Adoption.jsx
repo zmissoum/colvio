@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable, expName } from "../shared.jsx";
 import { t } from "../i18n.js";
-import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
+import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption, buSubtreeIds } from "../adoptionUtils.js";
 import { buildReportModel, exportAdoptionPptx } from "../adoptionPptx.js";
 
 // Adoption — turns user-access audit rows (action 64) into usage analytics: access events, distinct
@@ -36,6 +36,8 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [error, setError] = useState("");
   const [roleFilter, setRoleFilter] = useState("");  // role NAME, "" = all
   const [buFilter, setBuFilter] = useState("");       // buId, "" = all
+  const [buSubtree, setBuSubtree] = useState(false);  // include the selected BU's whole subtree
+  const [buList, setBuList] = useState([]);            // org BU hierarchy [{id, name, parentId}]
   const [roleMembers, setRoleMembers] = useState(null); // Set<userId> for the selected role, or null
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [userSearch, setUserSearch] = useState("");
@@ -85,11 +87,18 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       bridge.getLoginStats(windowRange.from, windowRange.to, p => { if (gen.current === g) setScanProg(p); }),
       users.length ? Promise.resolve(null) : bridge.getAllUsers().catch(() => []),
       roles.length ? Promise.resolve(null) : bridge.getAllRoles().catch(() => []),
-    ]).then(([st, us, rs]) => {
+      // BU hierarchy — needed for parent BUs (selectable even without direct users) + subtree filter.
+      buList.length ? Promise.resolve(null) : (isLive
+        ? bridge.query("businessunits", { select: "businessunitid,name,_parentbusinessunitid_value", orderby: "name asc" })
+          .then(d => (d?.records || []).map(b => ({ id: b.businessunitid, name: b.name || "(unnamed)", parentId: b._parentbusinessunitid_value || null })))
+          .catch(() => [])
+        : Promise.resolve([{ id: "bu1", name: "Contoso", parentId: null }, { id: "bu2", name: "Contoso FR", parentId: "bu1" }, { id: "bu3", name: "Contoso UK", parentId: "bu1" }])),
+    ]).then(([st, us, rs, bl]) => {
       if (gen.current !== g) return;
       setStats(st || { users: [], failedDays: [] });
       if (us) setUsers(us);
       if (rs) setRoles(rs);
+      if (bl) setBuList(bl);
       setLoading(false); setScanProg(null);
     }).catch(e => { if (gen.current === g) { setError(e.message || String(e)); setLoading(false); setScanProg(null); } });
     // eslint-disable-next-line
@@ -117,14 +126,19 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     users.forEach(u => m.set(String(u.id).toLowerCase(), { name: u.fullname || "", buId: u.buId || "", bu: u.buName || "", disabled: !!u.disabled }));
     return m;
   }, [users]);
+  // BU options come from the real hierarchy when we have it (parent BUs with no direct users
+  // stay selectable — meaningful with the subtree option); fallback to the users' BUs.
   const buOptions = useMemo(() => {
+    if (buList.length) return buList.map(b => [b.id, b.name]).sort((a, b) => a[1].localeCompare(b[1]));
     const m = new Map();
     users.forEach(u => { if (u.buId) m.set(u.buId, u.buName || u.buId); });
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [users]);
+  }, [users, buList]);
+  // The BU filter as a SET: the BU alone, or its whole subtree when the checkbox is on.
+  const buSet = useMemo(() => !buFilter ? null : (buSubtree ? buSubtreeIds(buFilter, buList) : new Set([buFilter])), [buFilter, buSubtree, buList]);
   const roleOptions = useMemo(() => [...new Set(roles.map(r => r.name))].sort((a, b) => a.localeCompare(b)), [roles]);
 
-  const passUser = (id) => (!roleMembers || roleMembers.has(id)) && (!buFilter || userMeta.get(id)?.buId === buFilter);
+  const passUser = (id) => (!roleMembers || roleMembers.has(id)) && (!buSet || buSet.has(userMeta.get(id)?.buId));
 
   // HEAVY pass — runs ONCE per window (stats/window/userMeta), NOT on filter change. The server
   // already aggregated per user per day; here we just re-bucket days (weekly over 92d) and attach
@@ -240,7 +254,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       weekday: weekdayTotals(byDayMaps),
     };
     // eslint-disable-next-line
-  }, [prep, roleMembers, buFilter, users, userMeta, includeService, svcIds, windowRange.from, windowRange.to]);
+  }, [prep, roleMembers, buSet, users, userMeta, includeService, svcIds, windowRange.from, windowRange.to]);
 
   const shownUsers = useMemo(() => {
     if (!agg) return [];
@@ -274,7 +288,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
 
   // Previous-period comparison — lazy (doubles the scan cost, so only on demand). Key ties the
   // result to window+filters: any change invalidates it back to the button.
-  const cmpKey = `${windowRange.from}|${windowRange.to}|${roleFilter}|${buFilter}|${includeService}`;
+  const cmpKey = `${windowRange.from}|${windowRange.to}|${roleFilter}|${buFilter}|${buSubtree}|${includeService}`;
   const loadCompare = async () => {
     const key = cmpKey;
     setCmp({ loading: true, key });
@@ -319,7 +333,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       const model = buildReportModel({
         orgName: orgInfo?.orgName || "",
         windowRange, roleFilter,
-        buLabel: buFilter ? (buOptions.find(([id]) => id === buFilter)?.[1] || "") : "",
+        buLabel: buFilter ? `${buOptions.find(([id]) => id === buFilter)?.[1] || ""}${buSubtree ? " + child BUs" : ""}` : "",
         interval: orgFeatures?.accessInterval ?? 4,
         agg, failedDays: stats?.failedDays?.length || 0,
         nowMs: Date.now(),
@@ -405,6 +419,12 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
           <option value="">All business units</option>
           {buOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
+        {buFilter && (
+          <label title="Also include every business unit UNDER the selected one (the whole subtree) — pick a parent BU like a region and see all its teams at once" style={{ fontSize: 12, color: buSubtree ? C.vi : C.txm, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+            <input type="checkbox" checked={buSubtree} onChange={e => setBuSubtree(e.target.checked)} style={{ accentColor: C.vi }} />
+            + child BUs{buSubtree && buSet ? ` (${buSet.size})` : ""}
+          </label>
+        )}
         {(loadingMembers || loading) && <Spin s={13} />}
         {loading && scanProg && scanProg.total > 1 && <span style={{ fontSize: 11, color: C.txd, ...mono }}>{scanProg.done}/{scanProg.total} days</span>}
         <div style={{ flex: 1 }} />
