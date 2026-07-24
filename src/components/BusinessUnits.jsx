@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
+import { layoutBuTree } from "../buTreeUtils.js";
 
 // Business Units — the org's BU hierarchy with the users assigned to each. Users are grouped by
 // their _businessunitid_value (every user sits in exactly one BU). Read-only.
@@ -26,6 +27,9 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
   const [sel, setSel] = useState(null);            // selected BU id
   const [userSearch, setUserSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all | enabled | disabled
+  const [showChart, setShowChart] = useState(false);       // full-screen org-chart overlay
+  const [chartZoom, setChartZoom] = useState(1);
+  const chartSvgRef = useRef(null);
 
   // Mount: load only the BU hierarchy + per-BU counts (one cheap aggregate query). Member rows are
   // fetched lazily per BU when one is opened — so the module stays snappy on orgs with 50k+ users.
@@ -175,7 +179,10 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
       {/* Left — BU hierarchy */}
       <div style={{ width: bp.mobile ? "100%" : 320, borderRight: `1px solid ${C.bd}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
         <div style={{ padding: "12px 10px", borderBottom: `1px solid ${C.bd}` }}>
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><I.Link /> Business Units</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+            <I.Link /> Business Units
+            <button onClick={() => { setShowChart(true); setChartZoom(1); }} disabled={!bus?.length} title="Full-screen org chart of the BU hierarchy — click a box to select the BU, export as PNG" style={{ ...bt(null, { fontSize: 11, padding: "3px 10px" }), marginLeft: "auto" }}>🌳 Org chart</button>
+          </div>
           <input placeholder="Search a business unit…" value={search} onChange={e => setSearch(e.target.value)} style={inp({ fontSize: 13 })} />
           {!loading && bus && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{bus.length} BUs · {totalUsers} users</div>}
         </div>
@@ -262,6 +269,67 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
           </div>
         )}
       </div>
+
+      {/* Org-chart overlay — the hierarchy as an actual organigram (boxes + connectors), not an
+          indented list. Click a box to select that BU; PNG export for docs and slide decks. */}
+      {showChart && bus && (() => {
+        const lay = layoutBuTree(bus);
+        const PAD = 20;
+        const w = lay.width + PAD * 2, h = lay.height + PAD * 2;
+        const exportPng = () => {
+          const svg = chartSvgRef.current;
+          if (!svg) return;
+          const str = new XMLSerializer().serializeToString(svg);
+          const scale = 2;
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+          const ctx = canvas.getContext("2d");
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const a = document.createElement("a");
+            a.href = canvas.toDataURL("image/png"); a.download = "colvio_bu_orgchart.png"; a.click();
+          };
+          img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(str);
+        };
+        return (
+          <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 270, display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: `1px solid ${C.bd}`, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>🌳 Business unit org chart</span>
+              <span style={{ fontSize: 11.5, color: C.txd }}>{bus.length} BUs · click a box to open it · user counts are direct members</span>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                <button onClick={() => setChartZoom(z => Math.max(0.4, +(z - 0.2).toFixed(2)))} style={bt(null, { fontSize: 13, padding: "3px 10px" })}>−</button>
+                <span style={{ fontSize: 11.5, color: C.txm, ...mono, minWidth: 40, textAlign: "center" }}>{Math.round(chartZoom * 100)}%</span>
+                <button onClick={() => setChartZoom(z => Math.min(2, +(z + 0.2).toFixed(2)))} style={bt(null, { fontSize: 13, padding: "3px 10px" })}>+</button>
+                <button onClick={exportPng} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> PNG</button>
+                <button onClick={() => setShowChart(false)} style={bt(null, { fontSize: 12, padding: "4px 12px" })}>✕ Close</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
+              <svg ref={chartSvgRef} width={w * chartZoom} height={h * chartZoom} viewBox={`0 0 ${w} ${h}`} xmlns="http://www.w3.org/2000/svg" style={{ display: "block", margin: "0 auto" }}>
+                <rect x="0" y="0" width={w} height={h} fill={C.bg} />
+                {lay.edges.map((e, i) => {
+                  const midY = (e.y1 + e.y2) / 2;
+                  return <path key={i} d={`M ${e.x1 + PAD} ${e.y1 + PAD} V ${midY + PAD} H ${e.x2 + PAD} V ${e.y2 + PAD}`} fill="none" stroke={C.bd} strokeWidth="1.5" />;
+                })}
+                {lay.nodes.map(n => {
+                  const isSel = n.id === sel;
+                  const name = n.name.length > 22 ? n.name.slice(0, 21) + "…" : n.name;
+                  return (
+                    <g key={n.id} onClick={() => { setSel(n.id); setUserSearch(""); setShowChart(false); }} style={{ cursor: "pointer" }}>
+                      <rect x={n.x + PAD} y={n.y + PAD} width={lay.nodeW} height={lay.nodeH} rx="8"
+                        fill={isSel ? C.sfa : C.sf} stroke={isSel ? C.vi : n.disabled ? C.rd + "66" : C.bd} strokeWidth={isSel ? 2 : 1}
+                        strokeDasharray={n.disabled ? "4 3" : "none"} />
+                      <text x={n.x + PAD + lay.nodeW / 2} y={n.y + PAD + 22} textAnchor="middle" fontSize="12.5" fontWeight="600" fill={n.disabled ? C.txd : C.tx} fontFamily="'Segoe UI',sans-serif">{name}{n.name.length > 22 ? <title>{n.name}</title> : null}</text>
+                      <text x={n.x + PAD + lay.nodeW / 2} y={n.y + PAD + 41} textAnchor="middle" fontSize="10.5" fill={cnt(n.id) ? C.cy : C.txd} fontFamily="'DM Mono',monospace">{cnt(n.id)} user{cnt(n.id) === 1 ? "" : "s"}{n.disabled ? " · off" : ""}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -188,6 +188,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Business Units
 - **BU hierarchy** as an indented tree (search), each with its **direct user count** and a disabled badge
+- **🌳 Full-screen org chart** — the hierarchy as an actual organigram (boxes + connectors, parents centered over their subtree): user counts per BU, disabled BUs dashed, zoom, click a box to open that BU, **PNG export** for docs and decks
 - Pick a BU to list its **direct members** — name, email, access mode / CAL type, enabled/disabled — with a filter
 - **CSV export with scope choice**: just this BU's members, or **this BU + every sub-BU beneath it** (the export keeps a Business Unit column); even works when the BU itself has no direct members
 - Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated, read-only
@@ -245,7 +246,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~17,000 |
 | API actions | 72 |
 | React components | 37 |
-| Unit tests | 203 |
+| Unit tests | 207 |
 | Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |

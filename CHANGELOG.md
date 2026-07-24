@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.131] — 2026-07-24
+### Added — Business Units: full-screen org chart
+- **🌳 Org chart** button in the Business Units module: the hierarchy as an actual **organigram** — boxes and elbow connectors, tidy top-down layout (each parent centered over its subtree), user count per BU, disabled BUs dashed, the currently selected BU highlighted. Zoom −/+, **click a box to open that BU** (drops you on its member list), and **PNG export** (2× resolution) for documentation and slide decks.
+- Layout is pure and unit-tested (`src/buTreeUtils.js`, **4 new tests — 207 total**): parents centered over children, no sibling overlap, orphaned BUs (invisible parent) laid as roots, and **cyclic hierarchies survive as fallback roots** instead of disappearing or hanging — same defensive stance as the Adoption subtree filter.
+
 ## [1.11.130] — 2026-07-24
 ### Changed — Adoption: failed days now say WHY, and retention is explained up front
 - **Failed-day banner carries the reasons** (user report: a since-January window showed "96 days failed to load" with no way to know why — the per-day error was swallowed). The scan now records each failed day's error message and the banner shows the distinct reasons — retention, timeout, privilege, throttling… each points to a different fix, so hiding them made the banner undiagnosable.
