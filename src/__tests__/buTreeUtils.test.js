@@ -1,7 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { layoutBuTree } from "../buTreeUtils.js";
+import { layoutBuTree, visibleBuList } from "../buTreeUtils.js";
 
 const OPTS = { nodeW: 100, nodeH: 50, hGap: 10, vGap: 40 };
+
+describe("visibleBuList", () => {
+  const BUS = [
+    { id: "root", name: "Root", parentId: null },
+    { id: "eu", name: "EU", parentId: "root" },
+    { id: "fr", name: "FR", parentId: "eu" },
+    { id: "us", name: "US", parentId: "root" },
+  ];
+  it("nothing expanded → roots only; expanding reveals one level at a time", () => {
+    expect(visibleBuList(BUS, new Set()).list.map(b => b.id)).toEqual(["root"]);
+    expect(visibleBuList(BUS, new Set(["root"])).list.map(b => b.id).sort()).toEqual(["eu", "root", "us"]);
+    expect(visibleBuList(BUS, new Set(["root", "eu"])).list.map(b => b.id).sort()).toEqual(["eu", "fr", "root", "us"]);
+  });
+  it("childCount comes from the FULL hierarchy (collapsed nodes badge what they hide)", () => {
+    const { childCount } = visibleBuList(BUS, new Set());
+    expect(childCount.get("root")).toBe(2);
+    expect(childCount.get("eu")).toBe(1);
+    expect(childCount.has("fr")).toBe(false);
+  });
+  it("expanding a hidden node has no effect until its ancestors are expanded", () => {
+    expect(visibleBuList(BUS, new Set(["eu"])).list.map(b => b.id)).toEqual(["root"]);
+  });
+});
 
 describe("layoutBuTree", () => {
   it("centers a parent over its two children; children don't overlap", () => {

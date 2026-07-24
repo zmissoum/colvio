@@ -5,6 +5,37 @@
 // a BU we can't see) and true roots are laid side by side. A visited guard keeps a corrupted
 // (cyclic) hierarchy from looping forever — same defensive stance as the subtree filter.
 
+/**
+ * Expand/collapse support for big hierarchies (a 1000+-BU org laid flat is hundreds of
+ * thousands of pixels wide — the chart must start folded). A node is visible when every
+ * ancestor is expanded; its children stay hidden until it is expanded itself.
+ * @param bus        [{id, name, parentId, disabled}]
+ * @param expandedIds Set<id> — nodes whose CHILDREN are shown
+ * @returns {list: visible nodes, childCount: Map<id, total direct children>} — childCount is
+ * computed on the FULL hierarchy so a collapsed node can badge how much it hides.
+ */
+export function visibleBuList(bus = [], expandedIds = new Set()) {
+  const ids = new Set(bus.map(b => b.id));
+  const children = new Map();
+  for (const b of bus) {
+    if (b.parentId && ids.has(b.parentId)) {
+      if (!children.has(b.parentId)) children.set(b.parentId, []);
+      children.get(b.parentId).push(b);
+    }
+  }
+  const childCount = new Map();
+  for (const [id, kids] of children) childCount.set(id, kids.length);
+  const list = [], seen = new Set();
+  const walk = (b) => {
+    if (seen.has(b.id)) return;
+    seen.add(b.id);
+    list.push(b);
+    if (expandedIds.has(b.id)) for (const k of (children.get(b.id) || [])) walk(k);
+  };
+  bus.filter(b => !b.parentId || !ids.has(b.parentId)).forEach(walk);
+  return { list, childCount };
+}
+
 export function layoutBuTree(bus = [], { nodeW = 180, nodeH = 56, hGap = 16, vGap = 46 } = {}) {
   const ids = new Set(bus.map(b => b.id));
   const children = new Map();

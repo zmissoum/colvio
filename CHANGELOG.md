@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.132] — 2026-07-24
+### Changed — BU org chart: folds by default (user report: 1,177 BUs = an endless scrollbar)
+- **The chart now opens folded to two levels** (roots + their direct children) — a 1,000+-BU org laid flat is hundreds of thousands of pixels wide, which made the scrollbar useless. Every BU with children carries a **±N chip**: "+12" tells how many child BUs are hidden, one click unfolds that branch, "−" folds it back. Only unfolded branches are laid out.
+- Toolbar additions: **Fit** (zoom so the whole current chart fits the window width), **Expand all** (with a "can get VERY wide" warning in the tooltip) / **Collapse all**, and **hide disabled** (removes disabled BUs and everything beneath them — the "Dump"/archive branches stop eating space). The header counts "showing X of N BUs", and the PNG export captures what's currently unfolded.
+- `visibleBuList()` added to the pure layout utils — **3 new tests (210 total)**: one-level-at-a-time reveal, child counts computed on the full hierarchy so collapsed chips badge what they hide, expanding a hidden node is inert until its ancestors are expanded.
+
 ## [1.11.131] — 2026-07-24
 ### Added — Business Units: full-screen org chart
 - **🌳 Org chart** button in the Business Units module: the hierarchy as an actual **organigram** — boxes and elbow connectors, tidy top-down layout (each parent centered over its subtree), user count per BU, disabled BUs dashed, the currently selected BU highlighted. Zoom −/+, **click a box to open that BU** (drops you on its member list), and **PNG export** (2× resolution) for documentation and slide decks.
