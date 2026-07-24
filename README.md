@@ -202,6 +202,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Never-signed-in list** — enabled human users with zero events in the window; export includes email and license type
 - **Service & application accounts section** — Non-Interactive / Support / Delegated Admin / S2S application users listed separately with their own event counts and last access (API access is audited too); zero events highlighted — an integration that silently stopped calling is a finding
 - Filter everything by **security role or business unit** (instant, client-side); needs "Audit user access" enabled, sees what your audit retention keeps (both stated in the UI)
+- **📊 One-click PowerPoint report** — a 5-slide management deck with **native editable charts** (not images): title, KPI grid with the honesty note, trend, weekday & per-BU adoption charts, findings (never-signed-in by license, inactivity, silent service accounts); the ~370 KB PowerPoint library loads only when you click
 
 ### Login History
 - User search, login/logout audit timeline
@@ -244,7 +245,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~17,000 |
 | API actions | 72 |
 | React components | 37 |
-| Unit tests | 197 |
+| Unit tests | 201 |
 | Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |

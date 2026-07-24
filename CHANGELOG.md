@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.128] — 2026-07-24
+### Added — Adoption: one-click PowerPoint report
+- **📊 Report (.pptx)** — a 5-slide management deck built from the data on screen, honoring the active window and role/BU filters: (1) title with org, window and scope; (2) KPI grid (access events, distinct users, DAU/WAU/MAU, stickiness, never-signed-in) **with the honesty note on the slide** — the ≤1-event-per-interval proxy caveat travels with the numbers into the meeting; (3) activity trend; (4) weekday profile + per-BU adoption rates (top 15, remainder noted); (5) findings — never-signed-in **split by license type**, inactivity ≥30/60/90 (only thresholds the window can assert), and silent service accounts.
+- **Charts are NATIVE PowerPoint charts, not images** — the recipient can restyle, retitle and edit the data (pptxgenjs, MIT). The ~370 KB library is **dynamic-imported on click**, same pattern as the lazy xlsx chunk — zero cost until used. Excel-with-charts was evaluated and honestly declined: SheetJS Community can't create charts (Pro feature) and hand-writing OOXML chart parts isn't worth the fragility.
+- Pure `buildReportModel()` separated from the renderer — **4 new tests (201 total)**: honesty hint present, license split sorted, inactivity thresholds gated by window length, BU top-15 cap counted.
+
 ## [1.11.127] — 2026-07-24
 ### Added — NEW module: Environment Variables (19th)
 - **Definition default + per-environment override, side by side** for every environment variable, with type badges (String, Number, Boolean, JSON, Data source, Secret) and managed/unmanaged. The headline is the **⚠ NO VALUE filter and banner**: a variable with neither override nor default reads as an empty string in flows and plug-ins — they fail three screens later and nobody thinks to check here. The classic post-deployment trap, now impossible to miss.

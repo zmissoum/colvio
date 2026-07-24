@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, expName } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption } from "../adoptionUtils.js";
+import { buildReportModel, exportAdoptionPptx } from "../adoptionPptx.js";
 
 // Adoption — turns user-access audit rows (action 64) into usage analytics: access events, distinct
 // users, DAU/WAU/MAU + stickiness, the trend, weekday profile, per-BU adoption rates, per-user
@@ -44,6 +45,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [tableMode, setTableMode] = useState("active");        // active | all (adds license + inactivity)
   const [inactFilter, setInactFilter] = useState("");           // "", "30", "60", "90" — all-mode only
   const [cmp, setCmp] = useState(null);                          // previous-period comparison {loading,key,total,unique}
+  const [pptxBusy, setPptxBusy] = useState(false);
   const roleMemberCache = useRef(new Map());
   const gen = useRef(0);
   const lastValidWin = useRef(null); // remembers the last well-formed window so a bad keystroke doesn't re-query
@@ -308,6 +310,25 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     exportTable(["user", "email", "businessUnit", "licenseType", "userId"], rows, `adoption_never_signed_in_${preset}`, format, "Never signed in");
   };
 
+  // One-click management deck — native (editable) PowerPoint charts, built from what's on screen
+  // with the active filters; the pptx library is dynamic-imported so it costs nothing until here.
+  const exportPptx = async () => {
+    if (!agg || pptxBusy) return;
+    setPptxBusy(true);
+    try {
+      const model = buildReportModel({
+        orgName: orgInfo?.orgName || "",
+        windowRange, roleFilter,
+        buLabel: buFilter ? (buOptions.find(([id]) => id === buFilter)?.[1] || "") : "",
+        interval: orgFeatures?.accessInterval ?? 4,
+        agg, failedDays: stats?.failedDays?.length || 0,
+        nowMs: Date.now(),
+      });
+      await exportAdoptionPptx(model, expName("colvio_adoption_report", "pptx"));
+    } catch (e) { setError(`PPTX export: ${e.message || String(e)}`); }
+    setPptxBusy(false);
+  };
+
   const exportSvc = (format = "csv") => {
     if (!agg) return;
     const rows = agg.svcRows.map(u => [u.name, u.type, u.bu, u.logins, u.days, u.last ? new Date(u.last).toLocaleString() : ""]);
@@ -389,6 +410,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
         <div style={{ flex: 1 }} />
         <button onClick={() => exportUsers("csv")} disabled={!agg} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}><I.Download /> CSV</button>
         <button onClick={() => exportUsers("xlsx")} disabled={!agg} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}><I.Download /> Excel</button>
+        <button onClick={exportPptx} disabled={!agg || pptxBusy} title="5-slide management deck with NATIVE (editable) PowerPoint charts — KPIs, trend, weekday & per-BU adoption, findings; honors the active filters" style={bt(C.vi, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}>{pptxBusy ? <Spin s={12} /> : <>📊 Report (.pptx)</>}</button>
       </div>
 
       {error && <div style={{ ...crd({ padding: 14, borderColor: C.rd + "55" }), color: C.rd, fontSize: 13, marginBottom: 12 }}>{error}</div>}
