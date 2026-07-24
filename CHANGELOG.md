@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.134] — 2026-07-24
+### Fixed — sidebar showed the raw "nav.apps" key instead of the Apps label
+- The v1.11.127 locale edit inserted the Environment Variables keys using `"nav.apps"` as its anchor and silently **deleted that key from both locales** — the sidebar tab then displayed the literal key (user report/screenshot). Re-added `nav.apps` ("Apps" / "Applications").
+### Added — i18n coverage test (so this whole bug class dies)
+- New test file scans the source for every key referenced as a string literal (`t("…")`, HelpTab's `titleKey`/`bodyKey`) and asserts each exists in **both** locales, plus a key-for-key **symmetry check** between en and fr — **3 new tests (213 total)**. It fails the build the next time an anchored edit eats a key.
+
 ## [1.11.133] — 2026-07-24
 ### Fixed — Business Units: user counts no longer show 0 on large orgs
 - The per-BU count badge came from ONE grouped-aggregate query that silently hits Dataverse's ~50k-scanned-rows aggregate limit on large orgs — every BU then showed **0 users until you clicked it** (user report). The action now **falls back to a paged scan of just the BU column** when the aggregate fails: exact counts at load, whatever the user volume (a 5,000-user page costs one request).
