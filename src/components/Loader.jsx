@@ -985,6 +985,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // verified) are errored per-row and never PATCHed — so no create can occur even if the org
     // doesn't honor If-Match on the key. Query failures degrade to per-row errors, not an abort.
     let existCheck=null;
+    // Hoisted OUT of the if-block below: the null-clear no-op check in the build loop reads it
+    // too — as a const inside the block it was out of scope there, and every delta run hitting a
+    // NULL clear on a mapped column died with "deltaSelect is not defined" (user-reported).
+    let deltaSelect=null;
     // Dry run always resolves existence when a key is set (that's how it classifies
     // would-update vs would-create vs would-fail); real runs only when the user opted in.
     const wantDelta=deltaMode && uKey.d && uKey.c && !deleteMode;
@@ -995,7 +999,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       const keyIsNumeric=NUMERIC_TYPES.has(keyMeta?.type||keyMeta?.t);
       const uniqueKeyVals=[...new Set(rows.map(r=>r[uKey.c]).filter(v=>v!==undefined&&v!==null&&v!==""))];
       // Delta mode needs the current org values of the mapped columns (OData names for lookups).
-      const deltaSelect=wantDelta?activeMaps.map(m=>{const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);return meta&&meta.odataName?meta.odataName:m.d365;}).filter(Boolean):null;
+      deltaSelect=wantDelta?activeMaps.map(m=>{const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);return meta&&meta.odataName?meta.odataName:m.d365;}).filter(Boolean):null;
       existCheck=await resolveExistingKeys(entitySet,uKey.d,isPKupd,uniqueKeyVals,keyIsNumeric,deltaSelect);
     }
 

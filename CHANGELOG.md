@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.135] — 2026-07-24
+### Fixed — Loader delta runs crashed with "deltaSelect is not defined"
+- Scope bug (user-reported): `deltaSelect` was a `const` inside the existence-check `if` block, but the **null-clear no-op check** in the build loop (added in v1.11.114) reads it from OUTSIDE that block — a `const` is block-scoped, so the moment a **delta run** hit a `NULL` clear (or empty-as-null) on a mapped non-lookup column, the run died with a ReferenceError. Declaration hoisted next to `existCheck`; behavior unchanged otherwise. Affected only delta mode + null clears; plain delta runs and non-delta modes never touched that line.
+
 ## [1.11.134] — 2026-07-24
 ### Fixed — sidebar showed the raw "nav.apps" key instead of the Apps label
 - The v1.11.127 locale edit inserted the Environment Variables keys using `"nav.apps"` as its anchor and silently **deleted that key from both locales** — the sidebar tab then displayed the literal key (user report/screenshot). Re-added `nav.apps` ("Apps" / "Applications").
