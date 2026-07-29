@@ -115,7 +115,7 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
   const shownUsers = useMemo(() => {
     const s = userSearch.trim().toLowerCase();
     return selUsers.filter(u => passStatus(u) && (!s || [u.fullname, u.email, u.title].some(v => (v || "").toLowerCase().includes(s))));
-    // eslint-disable-next-line
+     
   }, [selUsers, userSearch, statusFilter]);
 
   // Counts come from the cheap aggregate (true totals even before any member rows are loaded);
@@ -140,7 +140,7 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
     return ids;
   }, [sel, childMap]);
   // Subtree member count from the aggregate — accurate without fetching every sub-BU's rows.
-  const subCount = useMemo(() => subtreeBuIds.reduce((a, id) => a + cnt(id), 0), [subtreeBuIds, countsByBu, usersByBu]); // eslint-disable-line
+  const subCount = useMemo(() => subtreeBuIds.reduce((a, id) => a + cnt(id), 0), [subtreeBuIds, countsByBu, usersByBu]);  
   const selDirectCount = cnt(sel);
   const hasSub = subtreeBuIds.length > 1 && subCount > selDirectCount;
 

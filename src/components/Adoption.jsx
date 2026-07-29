@@ -75,7 +75,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     const win = { from: new Date(now - days * DAY).toISOString(), to: new Date(now).toISOString(), days, valid: true };
     lastValidWin.current = win;
     return win;
-    // eslint-disable-next-line
+     
   }, [preset, customFrom, customTo]);
 
   // Load login stats whenever the WINDOW changes (role/BU filters are applied client-side, instant).
@@ -101,7 +101,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       if (bl) setBuList(bl);
       setLoading(false); setScanProg(null);
     }).catch(e => { if (gen.current === g) { setError(e.message || String(e)); setLoading(false); setScanProg(null); } });
-    // eslint-disable-next-line
+     
   }, [windowRange.from, windowRange.to, retryKey]);
 
   // Role filter → fetch (and cache) the role's members across every BU copy. Guarded by its OWN
@@ -186,7 +186,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       });
     }
     return { weekly, labels, byUser };
-    // eslint-disable-next-line
+     
   }, [stats, windowRange.from, windowRange.to, windowRange.days, userMeta]);
 
   // LIGHT pass — reacts to role/BU filters. Reduces over USERS only (a few thousand at most),
@@ -253,7 +253,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
       engagement: computeEngagement(daySets, windowRange.from, windowRange.to),
       weekday: weekdayTotals(byDayMaps),
     };
-    // eslint-disable-next-line
+     
   }, [prep, roleMembers, buSet, users, userMeta, includeService, svcIds, windowRange.from, windowRange.to]);
 
   const shownUsers = useMemo(() => {

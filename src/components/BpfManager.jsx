@@ -30,7 +30,7 @@ export default function BpfManager({ entity, recordId, orgInfo }) {
     }).catch(e => { if (gen.current === g) { setErr(e.message || String(e)); setInstances([]); } });
   };
 
-  useEffect(() => { if (entity && recordId) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entity, recordId]);
+  useEffect(() => { if (entity && recordId) load(); /* deps intentionally partial */ }, [entity, recordId]);
 
   const statusOf = (inst) => inst.stateCode === 0 ? "active" : (inst.statusCode === 3 ? "aborted" : "finished");
   const colorOf = (st) => st === "active" ? C.gn : st === "aborted" ? C.rd : C.cy;

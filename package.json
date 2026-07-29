@@ -1,6 +1,6 @@
 {
   "name": "colvio-d365",
-  "version": "1.11.135",
+  "version": "1.11.136",
   "description": "Colvio — Data Explorer, Loader & Inspector for Microsoft Dynamics 365 / Dataverse",
   "private": true,
   "type": "module",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "pack": "npm run build && node scripts/pack.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint ."
   },
   "dependencies": {
     "pptxgenjs": "^4.0.1",
@@ -20,6 +21,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.5.2",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
     "vite": "^6.3.5",
     "vitest": "^4.1.2"
   }

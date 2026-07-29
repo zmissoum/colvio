@@ -101,7 +101,7 @@ function PluginTraces({ bp, orgFeatures, theme }) {
     if (firstRef.current) { firstRef.current = false; load(); return; }
     const id = setTimeout(load, 350);
     return () => clearTimeout(id);
-    /* eslint-disable-next-line */
+     
   }, [onlyErrors, pageSize, search, win, minMs]);
 
   const filtered = rows || [];   // filtering is server-side now
@@ -189,7 +189,7 @@ function PluginTraces({ bp, orgFeatures, theme }) {
   );
 }
 
-function SystemJobs({ bp, isAdmin, theme }) {
+function SystemJobs({ bp, isAdmin, theme, orgInfo }) {
   const [filterId, setFilterId] = useState("failed");
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -253,7 +253,7 @@ function SystemJobs({ bp, isAdmin, theme }) {
     if (firstRef.current) { firstRef.current = false; load(); return; }
     const id = setTimeout(() => load(), 350);
     return () => clearTimeout(id);
-    /* eslint-disable-next-line */
+     
   }, [pageSize, search, dateFrom, dateTo]);
   const anyFilter = !!(search.trim() || dateFrom || dateTo);
   const resetFilters = () => { setSearch(""); setDateFrom(""); setDateTo(""); };
@@ -438,7 +438,7 @@ function FlowRuns({ bp, theme }) {
     if (firstRef.current) { firstRef.current = false; load(); return; }
     const id = setTimeout(load, 350);
     return () => clearTimeout(id);
-    /* eslint-disable-next-line */
+     
   }, [dateFrom, dateTo]);
 
   // Status + name filters stay CLIENT-side: status values are provider strings and the flow
@@ -545,7 +545,7 @@ export default function SystemOps({ bp, orgInfo, theme, permissions, orgFeatures
           </button>
         ))}
       </div>
-      {panel === "traces" ? <PluginTraces bp={bp} orgFeatures={orgFeatures} theme={theme} /> : panel === "flowruns" ? <FlowRuns bp={bp} theme={theme} /> : <SystemJobs bp={bp} isAdmin={isAdmin} theme={theme} />}
+      {panel === "traces" ? <PluginTraces bp={bp} orgFeatures={orgFeatures} theme={theme} /> : panel === "flowruns" ? <FlowRuns bp={bp} theme={theme} /> : <SystemJobs bp={bp} isAdmin={isAdmin} theme={theme} orgInfo={orgInfo} />}
     </div>
   );
 }

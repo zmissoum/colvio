@@ -259,7 +259,7 @@ export default function App(){
   // bounce to the first allowed tab instead of leaving its content mounted to throw a raw 403.
   useEffect(()=>{
     if(connected&&tab&&!tabs.some(tb=>tb.id===tab)) setTab(tabs[0]?.id||"explorer");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // deps intentionally partial (load-once semantics)
   },[connected,permsConfirmed,permissions,orgFeatures,tab]);
   const paletteActions=[
     {label:t("palette.a_theme"),hint:"dark / light",icon:"🌓",run:toggleTheme},

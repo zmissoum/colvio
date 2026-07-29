@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.136] — 2026-07-24
+### Fixed — two more latent crashes of the "deltaSelect" class, found by sweeping the whole codebase
+- After the v1.11.135 scope bug, the honest question was "are there others?" — answered with a tool, not a guess: **ESLint is now part of the project** (`npm run lint`), configured for real-bug rules only (`no-undef`, `no-dupe-keys`, `no-redeclare`, `no-unreachable`…, zero style noise). First full sweep found exactly two more:
+  - **Automation**: the empty-state message referenced `managedFilter`, renamed to `sourceFilter` in the v1.11.106 three-way-source refactor — **the tab crashed whenever a filter emptied a category** (the one path that renders that message).
+  - **System Jobs**: bulk Cancel/Resume called `confirmProd(orgInfo…)` but the sub-component never received `orgInfo` — **the buttons crashed on click** (and the production confirmation they were supposed to show never could). Prop now passed through.
+- Everything else came back clean (the sweep also cleared stale/unused lint directives). The lint runs standalone via `npm run lint` — the "variable used outside its scope" class is now catchable before shipping instead of in your hands.
+
 ## [1.11.135] — 2026-07-24
 ### Fixed — Loader delta runs crashed with "deltaSelect is not defined"
 - Scope bug (user-reported): `deltaSelect` was a `const` inside the existence-check `if` block, but the **null-clear no-op check** in the build loop (added in v1.11.114) reads it from OUTSIDE that block — a `const` is block-scoped, so the moment a **delta run** hit a `NULL` clear (or empty-as-null) on a mapped non-lookup column, the run died with a ReferenceError. Declaration hoisted next to `existCheck`; behavior unchanged otherwise. Affected only delta mode + null clears; plain delta runs and non-delta modes never touched that line.

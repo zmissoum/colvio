@@ -203,7 +203,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                 </>
               )}
             </table>
-            {rows.length === 0 && <div style={{ padding: 16, color: C.txd, fontSize: 13 }}>No {catLabel.toLowerCase()} match{search || stateFilter !== "all" || managedFilter !== "all" ? " the current filters" : ""}.</div>}
+            {rows.length === 0 && <div style={{ padding: 16, color: C.txd, fontSize: 13 }}>No {catLabel.toLowerCase()} match{search || stateFilter !== "all" || sourceFilter !== "all" ? " the current filters" : ""}.</div>}
           </div>
         </div>
       </>)}
