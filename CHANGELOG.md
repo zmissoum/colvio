@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.141] — 2026-07-24
+### Added — Loader pre-flight: business values mapped onto a GUID field (incl. the primary key)
+- Follow-up on the Edm.Guid report — the user's payload showed the REAL culprit wasn't a lookup: their business incident number was **mapped onto the table's primary-key column** (`fou_paymentincidentid`), a GUID Dataverse generates itself. The pre-flight now samples every mapped column that targets a `Uniqueidentifier` field and warns before the run — with a special, explicit message when the target **is the PK**: map the business number to a text/number field (or use it as the alternate-key match key) and unmap the primary key.
+- Together with v1.11.140 (direct-bind lookups) both roads to "Cannot convert to Edm.Guid" are now caught before anything is sent.
+
 ## [1.11.140] — 2026-07-24
 ### Added — Loader pre-flight: non-GUID values in a direct-bind lookup
 - User hit `Cannot convert the literal '3276711868' to the expected type 'Edm.Guid'` — a lookup in **direct (GUID) mode** fed with a business code. Direct mode ships the cell verbatim into `/entityset(<value>)`, so anything that isn't GUID-shaped fails every row with that unreadable message. The pre-flight now samples each direct-bind lookup column and warns **before the run** with an example value and the fix named: switch to "resolve" mode (or alt-key binding) matching on the business field. Complements the existing Salesforce-ID detection, which stays first when both would fire.
