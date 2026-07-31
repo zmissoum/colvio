@@ -410,6 +410,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // almost certainly a Salesforce record id, NOT a Dataverse GUID. Binding one straight to a lookup
   // (direct mode) or to a migration owner/created-by field fails (400/404) — the user needs resolve
   // mode against an external-id column, or to convert the id to the matching D365 GUID first.
+  // The table's real primary key (IsPrimaryId metadata — the <entity>id heuristic breaks on
+  // activities). Used to badge it in the mapping picker: its name is often ONE character away
+  // from a business field, and mapping a business number onto it is a guaranteed Edm.Guid 400.
+  const pkLogical=(()=>{const m0=targetFieldsMeta.find(f=>f.isPrimaryId||f.pk);return m0?(m0.logical||m0.l):(target?target+"id":"");})();
+
   const sfIdWarnings=useMemo(()=>{
     if(deleteMode||!csvData.r.length) return [];
     const looksSF=(v)=>{const s=String(v).trim();return (s.length===15||s.length===18)&&/^[A-Za-z0-9]+$/.test(s)&&/[A-Za-z]/.test(s)&&/[0-9]/.test(s);};
@@ -1594,7 +1599,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 return (<tr key={i} style={{borderBottom:`1px solid ${C.bd}`,opacity:isSystem?0.4:1}}>
                 <td style={tds}><span style={{color:C.cy,...mono,fontSize:12}}>{m.csv}</span></td>
                 <td style={{...tds,textAlign:"center",color:isSystem?skipColor:isPicklist?C.or:m.d365?C.gn:C.txd}}>{isSystem?"⚠":isPicklist?"⚙":m.d365?<I.Arrow/>:"—"}</td>
-                <td style={tds}>{isSystem?<span style={{fontSize:11,color:skipColor,...mono}}>{skipLabel}</span>:<><input value={m.d365} onChange={e=>{const u=[...maps];u[i]={...m,d365:e.target.value};setMaps(u);}} placeholder="(skip)" list={`dl${i}`} style={inp({fontSize:12,...mono,padding:"4px 10px",color:m.d365?C.tx:C.txd})}/><datalist id={`dl${i}`}>{targetFields.map(f=><option key={f} value={f}/>)}</datalist></>}</td>
+                <td style={tds}>{isSystem?<span style={{fontSize:11,color:skipColor,...mono}}>{skipLabel}</span>:<><input value={m.d365} onChange={e=>{const u=[...maps];u[i]={...m,d365:e.target.value};setMaps(u);}} placeholder="(skip)" list={`dl${i}`} style={inp({fontSize:12,...mono,padding:"4px 10px",color:m.d365?C.tx:C.txd})}/><datalist id={`dl${i}`}>{targetFields.map(f=><option key={f} value={f} label={f===pkLogical?"🔑 PRIMARY KEY — Dataverse generates it":undefined}/>)}</datalist>
+                  {m.d365===pkLogical&&!m.skip&&<div style={{fontSize:10.5,color:C.yw,marginTop:2}}>🔑 This is the table's PRIMARY KEY (a GUID Dataverse generates) — business numbers belong in a text/number field or the alternate-key match. Watch for a similarly-named field.</div>}</>}</td>
                 <td style={tds}>{!isSystem&&<select value={m.transform} onChange={e=>{const u=[...maps];u[i]={...m,transform:e.target.value};setMaps(u);}} style={inp({width:"auto",fontSize:11,padding:"2px 4px",color:isPicklist&&!m.transform?C.or:C.tx})}>
                   <option value="">{isPicklist?"⚠ choose":"—"}</option>
                   <option value="statecode">statecode (Active→0, Inactive→1)</option>

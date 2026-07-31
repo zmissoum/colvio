@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.142] — 2026-07-24
+### Added — mapping step: the primary key is now visibly marked
+- Epilogue of the Edm.Guid saga: the user had simply picked the wrong field — the PK's name was one character away from the business field they meant. Two selection-time guards so that near-miss can't happen silently again: the field picker **badges the primary key** ("🔑 PRIMARY KEY — Dataverse generates it") in the suggestion list, and choosing it shows an **inline warning under the input** — business numbers belong in a text/number field or the alternate-key match; watch for a similarly-named field. The PK is resolved from `IsPrimaryId` metadata (correct on activities too), and the v1.11.141 pre-flight remains the safety net before the run.
+
 ## [1.11.141] — 2026-07-24
 ### Added — Loader pre-flight: business values mapped onto a GUID field (incl. the primary key)
 - Follow-up on the Edm.Guid report — the user's payload showed the REAL culprit wasn't a lookup: their business incident number was **mapped onto the table's primary-key column** (`fou_paymentincidentid`), a GUID Dataverse generates itself. The pre-flight now samples every mapped column that targets a `Uniqueidentifier` field and warns before the run — with a special, explicit message when the target **is the PK**: map the business number to a text/number field (or use it as the alternate-key match key) and unmap the primary key.
