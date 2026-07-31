@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.138] — 2026-07-24
+### Fixed — Loader: the cryptic "IEEE754Compatible" 400 on numeric fields
+- User report: `Cannot convert a value to target type 'Edm.Decimal' because of conflict between input format string/number and parameter 'IEEE754Compatible'`. Root cause: **without a transform, the raw CSV value — a string — was sent as-is**, and Dataverse requires Decimal/Money/Integer/Double as JSON **numbers** (and Boolean as JSON booleans). Even a clean-looking `"123.45"` in quotes is rejected.
+- **Type-aware coercion at build time** (metadata-driven, pure `coerceForFieldType`, 4 tests — 217 total): clean values are converted to real numbers/booleans automatically in the run, the preview and the request log; **ambiguous ones fail the ROW with a readable reason** instead of the server's cryptic 400 — `"1,5"` could be 1.5 or 1500, that's exactly what the "Number (locale)" transform is for, and the error says so. Integers reject decimals by name; Booleans accept true/false, 1/0, yes/no.
+- **New pre-flight check**: mapped columns targeting numeric/Boolean fields are scanned before the run (transforms mirrored) — "field X is Decimal but 214 values in column Y won't parse (e.g. \"1,5\")" with the fix named, before anything is sent.
+
 ## [1.11.137] — 2026-07-24
 ### Fixed — history restore looked "truncated" and 400'd (Explorer)
 - User report: restoring a Builder query from the history opened the OData editor with `$filter=...` and executing gave Dataverse's cryptic *"Expression expected at position 0 in '…'"*. The `...` is **not truncation** — it's the privacy redaction (filter VALUES are never persisted in history, as advertised in the store listing) — but nothing said so. Now: **restoring a redacted entry explains it immediately** (placeholder, not truncation; replace or delete the clause; use Saved Queries for complete filters), and **Execute intercepts the placeholder client-side** with the same message instead of letting the 400 do the talking.

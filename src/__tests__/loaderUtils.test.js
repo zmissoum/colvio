@@ -1,5 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, flushNeverSent } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, flushNeverSent, coerceForFieldType } from "../loaderUtils.js";
+
+describe("coerceForFieldType — Edm string/number 400 killer", () => {
+  it("coerces clean dot-decimal strings to JSON numbers for Decimal/Money/Double", () => {
+    expect(coerceForFieldType("123.45", "Decimal")).toEqual({ ok: true, value: 123.45 });
+    expect(coerceForFieldType(" -7 ", "Money")).toEqual({ ok: true, value: -7 });
+    expect(coerceForFieldType("1e3", "Double")).toEqual({ ok: true, value: 1000 });
+  });
+  it("refuses comma decimals and junk with a readable reason (locale transform's job)", () => {
+    expect(coerceForFieldType("1,5", "Decimal").ok).toBe(false);
+    expect(coerceForFieldType("1,5", "Decimal").reason).toContain("Number transform");
+    expect(coerceForFieldType("abc", "Money").ok).toBe(false);
+  });
+  it("Integer/BigInt accept whole numbers only, naming the decimal problem", () => {
+    expect(coerceForFieldType("42", "Integer")).toEqual({ ok: true, value: 42 });
+    expect(coerceForFieldType("1.5", "Integer").reason).toContain("decimals");
+    expect(coerceForFieldType("1 000", "BigInt").ok).toBe(false);
+  });
+  it("Booleans accept true/false, 1/0, yes/no; already-typed values and other types pass through", () => {
+    expect(coerceForFieldType("Yes", "Boolean")).toEqual({ ok: true, value: true });
+    expect(coerceForFieldType("0", "Boolean")).toEqual({ ok: true, value: false });
+    expect(coerceForFieldType("oui", "Boolean").ok).toBe(false);
+    expect(coerceForFieldType(3.14, "Decimal")).toEqual({ ok: true, value: 3.14 });
+    expect(coerceForFieldType("hello", "String")).toEqual({ ok: true, value: "hello" });
+  });
+});
 
 describe("stripHtml + strip_html transform", () => {
   it("strips tags and keeps the visible text", () =>

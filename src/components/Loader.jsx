@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES } from "../loaderUtils.js";
 import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge } from "../shared.jsx";
 
 // System / audit fields the loader never writes by default (platform-managed or write-protected).
@@ -352,6 +352,31 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     }
     return checks.filter(c=>c.count>0);
   },[csvData.r,maps,targetFieldsMeta,deleteMode]);
+
+  // Pre-flight number/boolean check — a CSV string in an Edm.Decimal/Int/Boolean field 400s
+  // server-side with the unreadable IEEE754Compatible message; the run now errors those rows
+  // with a clear reason, and this warns BEFORE the run (mirrors the run's transform+coercion).
+  const numericWarnings=useMemo(()=>{
+    if(deleteMode||!csvData.r.length||!targetFieldsMeta.length) return [];
+    const checks=[];
+    for(const m of maps){
+      if(!m.d365||m.skip||m.transform==="picklist"||m.transform==="statecode") continue;
+      const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
+      const ty=meta?(meta.type||meta.t):null;
+      if(ty&&(COERCE_NUMERIC_TYPES.has(ty)||ty==="Boolean")) checks.push({field:m.d365,col:m.csv,transform:m.transform,type:ty,count:0,example:""});
+    }
+    if(!checks.length) return [];
+    for(const row of csvData.r){
+      for(const c of checks){
+        const v=row[c.col];
+        if(v===undefined||v===null||v===""||isNullToken(v)) continue;
+        const t=applyTransform(v,c.transform,undefined,dateMD);
+        if(t===null||t===undefined||t==="") continue;
+        if(!coerceForFieldType(t,c.type).ok){ c.count++; if(!c.example) c.example=String(v); }
+      }
+    }
+    return checks.filter(c=>c.count>0);
+  },[csvData.r,maps,targetFieldsMeta,deleteMode,dateMD]);
 
   // Pre-flight key health: empty key cells (UPSERT silently CREATES them as new keyless records;
   // UPDATE-only errors them) and duplicate key values (multiple rows hit the same record → last wins).
@@ -749,8 +774,13 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       const val=applyTransform(rawVal,m.transform,optionMapsRef.current[m.d365],dateMD);
       if(val!==null&&val!==undefined&&val!==""){
         const lc=m.d365.toLowerCase();
-        if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,val);
-        else rec[m.d365]=val;
+        // Mirror the run's type coercion; an unparseable value previews as a visible warning
+        // (the run will ERROR that row with the same reason).
+        const metaC=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
+        const co=coerceForFieldType(val,metaC?(metaC.type||metaC.t):undefined);
+        const shownV=co.ok?co.value:`⚠ ${co.reason}`;
+        if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,shownV);
+        else rec[m.d365]=shownV;
       }
     }
     for(const lk of lookups){
@@ -1010,6 +1040,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     setLoadProgress({done:0,total,current:`Preparing ${(total||rows.length).toLocaleString()} records — no writes yet…`});
     await new Promise(r=>setTimeout(r,0));
 
+    // Field type per logical name — drives string→number/boolean coercion at build time
+    // (Dataverse rejects a string in an Edm.Decimal with the cryptic IEEE754Compatible 400).
+    const typeByField=new Map(targetFieldsMeta.map(f=>[(f.logical||f.l),(f.type||f.t)]));
+
     for(let i=0;i<rows.length;i++){
       if(loadAbort.current) break; // allow Cancel to interrupt the (potentially long) prep phase, not just the batch
       if(retrySet&&!retrySet.has(i)) continue; // retry pass: only re-run the previously-failed rows
@@ -1021,6 +1055,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       const rec={};
 
       try{
+        let badCoerce=null;
         for(const m of activeMaps){
           if(!m.d365) continue;
           const rawVal = row[m.csv];
@@ -1038,14 +1073,23 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const val=applyTransform(rawVal,m.transform,optionMaps[m.d365],dateMD);
           if(val!==null && val!==undefined && val!==""){
             const lc=m.d365.toLowerCase();
-            if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,val);
-            else rec[m.d365]=val;
+            // Numeric/Boolean fields must carry JSON numbers/booleans — a leftover CSV string
+            // 400s server-side with an unreadable message; fail the ROW with a readable one.
+            const co=coerceForFieldType(val,typeByField.get(m.d365));
+            if(!co.ok){ badCoerce={col:m.csv,field:m.d365,reason:co.reason}; break; }
+            if(migrationActive&&MIGRATION_FIELDS.includes(lc)) emitMigrationField(rec,lc,co.value);
+            else rec[m.d365]=co.value;
           }
           else if((m.transform==="picklist"||m.transform==="statecode") && optionMaps[m.d365]){
             // Transform returned null with a loaded option map → unmatched label (numeric values
             // and known labels never return null). Track it instead of dropping silently.
             (unmatchedOpts[m.d365]||(unmatchedOpts[m.d365]=new Set())).add(String(rawVal));
           }
+        }
+        if(badCoerce){
+          const msg=`${badCoerce.col} → ${badCoerce.field}: ${badCoerce.reason}`;
+          errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});
+          continue;
         }
 
         let skipRow=false;
@@ -1690,6 +1734,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             for(const lw of lengthWarnings){
               warnings.push({k:"len_"+lw.field,t:`"${lw.field}" max length is ${lw.max.toLocaleString()}, but ${lw.count.toLocaleString()} row${lw.count>1?"s":""} exceed it (longest: ${lw.maxFound.toLocaleString()} chars) — those rows will fail with a 400. Increase the field length, or trim/clean the value (common when migrating HTML / rich text).`});
             }
+            // Numbers/booleans that won't parse — the run errors these rows with the same reason.
+            for(const nw of numericWarnings){
+              warnings.push({k:"num_"+nw.field,t:`"${nw.field}" is ${nw.type} but ${nw.count.toLocaleString()} value${nw.count>1?"s":""} in "${nw.col}" won't parse (e.g. "${nw.example}") — ${nw.type==="Boolean"?"expected true/false, 1/0 or yes/no (or the Boolean transform)":'comma decimals and thousand separators need the "Number (locale)" transform'}. Those rows will be errored with a clear message instead of a cryptic 400.`});
+            }
             if(emptyAsNull&&emptyClearCount>0) warnings.push({k:"emptynull",t:`Empty-as-NULL is ON: ${emptyClearCount.toLocaleString()} empty cell${emptyClearCount>1?"s":""} across mapped columns will CLEAR the corresponding field on every matched record (lookups included). If a mapped column is only partially filled, those records will lose that data.`});
             if(!warnings.length) return null;
             return (<div style={{...crd({padding:"10px 12px",background:C.yw+"0c",borderColor:C.yw+"55"}),marginBottom:12}}>
@@ -1714,8 +1762,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const lc=m.d365.toLowerCase();
   if(isNullToken(rawVal)){if(!(migrationActive&&MIGRATION_FIELDS.includes(lc)))rec[m.d365]=null;return;}
   const val=m.transform?applyTransform(rawVal,m.transform,optionMapsRef.current?.[m.d365],dateMD):rawVal;
-  const shown=(val===null&&String(rawVal).trim()!==""&&(m.transform==="picklist"||m.transform==="statecode"))?`${rawVal} → (option value resolved at run time)`:val;
+  let shown=(val===null&&String(rawVal).trim()!==""&&(m.transform==="picklist"||m.transform==="statecode"))?`${rawVal} → (option value resolved at run time)`:val;
   if(shown===null||shown===undefined||shown==="")return;
+  const metaX=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
+  const coX=typeof shown==="string"&&!shown.includes("resolved at run time")?coerceForFieldType(shown,metaX?(metaX.type||metaX.t):undefined):{ok:true,value:shown};
+  shown=coX.ok?coX.value:`⚠ ${coX.reason}`;
   if(migrationActive&&MIGRATION_FIELDS.includes(lc))emitMigrationField(rec,lc,shown);
   else rec[m.d365]=shown;
 });lookups.forEach(lk=>{if(!lk.csv||!lk.nav)return;const nav=canonNav(lk.nav);const val=row[lk.csv];const es=entitySetFor(lk.entity)||"?";

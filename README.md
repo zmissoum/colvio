@@ -246,7 +246,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~17,000 |
 | API actions | 72 |
 | React components | 37 |
-| Unit tests | 213 |
+| Unit tests | 217 |
 | Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
 | Languages | EN / FR |
 | Price | Free |

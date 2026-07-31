@@ -103,6 +103,32 @@ export const BOOLEAN_YESNO = { yes: true, no: false, oui: true, non: false, true
 
 // Convert a raw CSV value into the Dataverse-ready value for the chosen transform.
 // optionMap (optional): { "<label lowercased>": <int value> } enables label→value for option sets.
+// Dataverse serializes Edm.Decimal/Int/Double/Money as JSON NUMBERS (no IEEE754Compatible
+// header) and Edm.Boolean as JSON booleans — a raw CSV STRING in those fields 400s with the
+// cryptic "conflict between input format string/number and parameter 'IEEE754Compatible'".
+// Coerce clean values by field TYPE at build time; refuse ambiguous ones with a readable
+// reason ("1,5" could be 1.5 or 1500 — that's what the locale Number transform is for).
+export const COERCE_NUMERIC_TYPES = new Set(["Integer", "BigInt", "Decimal", "Double", "Money"]);
+export function coerceForFieldType(val, fieldType) {
+  if (typeof val !== "string") return { ok: true, value: val }; // transforms already produced a typed value
+  const s = val.trim();
+  if (COERCE_NUMERIC_TYPES.has(fieldType)) {
+    if (fieldType === "Integer" || fieldType === "BigInt") {
+      if (/^-?\d+$/.test(s)) return { ok: true, value: Number(s) };
+      if (/^-?\d+[.,]\d+$/.test(s)) return { ok: false, reason: `"${val}" has decimals but the field is ${fieldType}` };
+      return { ok: false, reason: `"${val}" is not a whole number — for locale formats (thousand separators) use the Number transform` };
+    }
+    if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s)) return { ok: true, value: Number(s) };
+    return { ok: false, reason: `"${val}" is not a valid number for a ${fieldType} field — comma decimals ("1,5") and thousand separators need the locale Number transform` };
+  }
+  if (fieldType === "Boolean") {
+    if (/^(true|1|yes)$/i.test(s)) return { ok: true, value: true };
+    if (/^(false|0|no)$/i.test(s)) return { ok: true, value: false };
+    return { ok: false, reason: `"${val}" is not a boolean — expected true/false, 1/0 or yes/no (or use the Boolean transform for FR/EN words)` };
+  }
+  return { ok: true, value: val };
+}
+
 export function applyTransform(val, transform, optionMap, dateMD = false) {
   if (val === undefined || val === null || val === "") return null;
   const low = String(val).toLowerCase().trim();
