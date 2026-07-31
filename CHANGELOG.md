@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.137] — 2026-07-24
+### Fixed — history restore looked "truncated" and 400'd (Explorer)
+- User report: restoring a Builder query from the history opened the OData editor with `$filter=...` and executing gave Dataverse's cryptic *"Expression expected at position 0 in '…'"*. The `...` is **not truncation** — it's the privacy redaction (filter VALUES are never persisted in history, as advertised in the store listing) — but nothing said so. Now: **restoring a redacted entry explains it immediately** (placeholder, not truncation; replace or delete the clause; use Saved Queries for complete filters), and **Execute intercepts the placeholder client-side** with the same message instead of letting the 400 do the talking.
+- Second real bug found on the way: history entries were capped at **200 characters at save time**, which could chop a long `$select` mid-token — a restored entry was then broken for a second, sneakier reason. Cap raised to 1000 (the dropdown display still shows 80).
+
 ## [1.11.136] — 2026-07-24
 ### Fixed — two more latent crashes of the "deltaSelect" class, found by sweeping the whole codebase
 - After the v1.11.135 scope bug, the honest question was "are there others?" — answered with a tool, not a guess: **ESLint is now part of the project** (`npm run lint`), configured for real-bug rules only (`no-undef`, `no-dupe-keys`, `no-redeclare`, `no-unreachable`…, zero style noise). First full sweep found exactly two more:

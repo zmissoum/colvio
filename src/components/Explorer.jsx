@@ -64,7 +64,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
   const addToHistory=(entity,query,mode,fieldCount)=>{
     // Strip $filter values from stored query to avoid persisting PII (emails, names, etc.)
-    const safeQuery=(query||"").replace(/\$filter=[^&]*/,"$filter=...").substring(0,200);
+    // 1000 (was 200): the old cap could chop a long $select mid-token, so a restored entry was
+    // broken for a SECOND reason besides the redacted filter. Display still truncates at 80.
+    const safeQuery=(query||"").replace(/\$filter=[^&]*/,"$filter=...").substring(0,1000);
     const entry={entity:entity?.l||"?",query:safeQuery,mode,fields:fieldCount,ts:Date.now()};
     setQueryHistory(prev=>{
       const updated=[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20);
@@ -846,6 +848,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // ── OData raw mode: execute the user-typed OData URL directly ──
     if(qm==="odata"){
       if(!rq.trim()){setError("OData query is empty");return;}
+      // The history redacts filter VALUES to "$filter=..." (they're never persisted — privacy).
+      // Executing the placeholder verbatim gets Dataverse's cryptic "Expression expected at
+      // position 0 in '…'" — explain it here instead of letting the 400 do the talking.
+      if(/\$filter=\.\.\.(&|$)/.test(rq)){setError('This query came from the history, where filter VALUES are never stored (privacy). Replace "$filter=..." with your condition — or delete that clause to run unfiltered. Use Saved Queries (💾) to keep complete filters.');return;}
       setLoading(true);
       const t0=Date.now();
       try{
@@ -1333,6 +1339,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                             if(h.mode==="fetchxml"){setQm("fetchxml");setFxml(h.query||"");}
                             else if(h.mode==="sql"){setQm("sql");setSqlQ(h.query||"");}
                             else {setQm("odata");setRq(h.query||"");}
+                            // Say it up front, not via a cryptic 400 later: the "..." isn't
+                            // truncation, it's the privacy redaction of filter values.
+                            if(/\$filter=\.\.\./.test(h.query||"")) setError('ℹ Restored from history: filter VALUES are never stored there (privacy) — "$filter=..." is a placeholder, not truncation. Replace "..." with your condition, or delete the clause to run unfiltered. Use Saved Queries (💾) to keep complete filters.');
                           };
                           const match=h.entity&&h.entity!=="?"?entities.find(e2=>e2.l===h.entity):null;
                           if(match&&ent?.l!==match.l){
