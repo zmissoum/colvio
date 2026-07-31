@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.139] — 2026-07-24
+### Fixed — Excel import could silently TRUNCATE decimals (display format ≠ cell value)
+- User report right after v1.11.138: "same file, my decimals got stripped." Root cause was in the **Excel reader all along**: cells were read as their **formatted display text** (chosen to preserve leading zeros and displayed dates) — but an Excel display format like `0` or `# ##0` HIDES decimals, so a cell holding `123.45` displayed as `123` was parsed as `"123"`. Before v138 those rows died on the IEEE754 400, which masked the truncation; v138 made them pass — with the display value.
+- **Hybrid cell reading now**: numeric cells take their **raw full-precision value**; text cells (where leading zeros live) and date cells (detected via `cellDates`) keep the display text — dates and account numbers behave exactly as before. A hidden-format cell (`;;;`) now honestly contributes its real value too.
+- ⚠ If a run already wrote truncated numbers: reload the extension, reload the file and **re-run in delta mode** — the correct decimals now parse, delta updates exactly the fields that differ.
+
 ## [1.11.138] — 2026-07-24
 ### Fixed — Loader: the cryptic "IEEE754Compatible" 400 on numeric fields
 - User report: `Cannot convert a value to target type 'Edm.Decimal' because of conflict between input format string/number and parameter 'IEEE754Compatible'`. Root cause: **without a transform, the raw CSV value — a string — was sent as-is**, and Dataverse requires Decimal/Money/Integer/Double as JSON **numbers** (and Boolean as JSON booleans). Even a clean-looking `"123.45"` in quotes is rejected.

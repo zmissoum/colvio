@@ -155,12 +155,21 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(isExcel){
         // Lazy-load the heavy xlsx lib only when an Excel file is actually dropped.
         // Read the sheet straight to rows (header:1) — no CSV round-trip, so quoted/comma cells
-        // can't be mangled. raw:false keeps the cell's displayed text (preserves formatting).
+        // can't be mangled. HYBRID cell reading (user-reported truncation): the formatted text
+        // (raw:false) preserves leading zeros and displayed dates, but a display format like "0"
+        // HIDES decimals — "123,45" parsed as "123" and the org got truncated numbers. Numeric
+        // cells now take their RAW value (full precision); text and dates keep the display text
+        // (cellDates makes date cells Date objects in the raw pass, so they're left alone).
         try{
           const m=await import("xlsx"); const XLSX=m.read?m:(m.default||m);
-          const wb=XLSX.read(ev.target.result,{type:"array"});
+          const wb=XLSX.read(ev.target.result,{type:"array",cellDates:true});
           const ws=wb.Sheets[wb.SheetNames[0]];
-          const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
+          const fmtAoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
+          const rawAoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:true});
+          const aoa=fmtAoa.map((row,ri)=>row.map((cell,ci)=>{
+            const rv=rawAoa[ri]?.[ci];
+            return (typeof rv==="number"&&Number.isFinite(rv))?String(rv):cell;
+          }));
           if(!ingestAoa(aoa)){setParseInfo({rawLines:0,maxNl:0,maxNlRow:0,badParse:true,parsedRecords:Math.max(0,(aoa?.length||0)-1)});return;}
           setParseInfo(null); // line-count diagnostics are CSV-only (no "lines" in a sheet)
         }catch(err){ setCsvData({h:[],r:[]}); setCsvFile(null); }
