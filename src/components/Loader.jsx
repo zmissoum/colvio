@@ -420,9 +420,21 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       return seen>0 && hit/seen>=0.6;
     };
     const out=[];
+    // Generic non-GUID guard (user hit "Cannot convert the literal '3276711868' to Edm.Guid"):
+    // a direct bind ships the cell verbatim into /set(<value>) — anything that isn't GUID-shaped
+    // 400s per row with an unreadable message. Sample the column and say it up front.
+    const looksGuid=(v)=>/^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$/.test(String(v).trim());
+    const majorityNonGuid=(col)=>{
+      if(!col) return null;
+      let seen=0,bad=0,example="";
+      for(const r of csvData.r){const v=r[col];if(v==null||String(v).trim()===""||isNullToken(v))continue;seen++;if(!looksGuid(v)){bad++;if(!example)example=String(v).trim();}if(seen>=200)break;}
+      return seen>0&&bad/seen>=0.6?{example}:null;
+    };
     for(const lk of lookups){ // lookups bound directly as a GUID
       if(lk.mode!=="direct"||!lk.csv) continue;
-      if(majoritySF(lk.csv)) out.push(`Lookup column "${lk.csv}" looks like Salesforce IDs — a direct bind needs a Dataverse GUID. Switch this lookup to "resolve" mode and match on an external-id field instead.`);
+      if(majoritySF(lk.csv)){ out.push(`Lookup column "${lk.csv}" looks like Salesforce IDs — a direct bind needs a Dataverse GUID. Switch this lookup to "resolve" mode and match on an external-id field instead.`); continue; }
+      const ng=majorityNonGuid(lk.csv);
+      if(ng) out.push(`Lookup column "${lk.csv}" is bound DIRECTLY as a GUID, but its values aren't GUID-shaped (e.g. "${ng.example}") — every row will fail with "Cannot convert to Edm.Guid". If this is a business code, switch the lookup to "resolve" mode (or alt-key binding) matching on that field.`);
     }
     if(migrationMode){ // owner / created-by / modified-by override must be systemuser GUIDs
       for(const m of maps){

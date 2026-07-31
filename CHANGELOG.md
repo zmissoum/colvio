@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.140] — 2026-07-24
+### Added — Loader pre-flight: non-GUID values in a direct-bind lookup
+- User hit `Cannot convert the literal '3276711868' to the expected type 'Edm.Guid'` — a lookup in **direct (GUID) mode** fed with a business code. Direct mode ships the cell verbatim into `/entityset(<value>)`, so anything that isn't GUID-shaped fails every row with that unreadable message. The pre-flight now samples each direct-bind lookup column and warns **before the run** with an example value and the fix named: switch to "resolve" mode (or alt-key binding) matching on the business field. Complements the existing Salesforce-ID detection, which stays first when both would fire.
+
 ## [1.11.139] — 2026-07-24
 ### Fixed — Excel import could silently TRUNCATE decimals (display format ≠ cell value)
 - User report right after v1.11.138: "same file, my decimals got stripped." Root cause was in the **Excel reader all along**: cells were read as their **formatted display text** (chosen to preserve leading zeros and displayed dates) — but an Excel display format like `0` or `# ##0` HIDES decimals, so a cell holding `123.45` displayed as `123` was parsed as `"123"`. Before v138 those rows died on the IEEE754 400, which masked the truncation; v138 made them pass — with the display value.
