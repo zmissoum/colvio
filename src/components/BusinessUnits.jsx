@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
 import { layoutBuTree, visibleBuList } from "../buTreeUtils.js";
 
 // Business Units — the org's BU hierarchy with the users assigned to each. Users are grouped by
@@ -13,8 +13,9 @@ const DEMO_BUS = [
   { businessunitid: "b4", name: "Sales France", _parentbusinessunitid_value: "b2", isdisabled: false },
 ];
 
-export default function BusinessUnits({ bp, orgInfo, theme }) {
+export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeatures }) {
   const isLive = orgInfo?.isExtension;
+  const isAdmin = permissions?.canBypassPlugins === true; // moving users needs write on systemuser — sysadmin proxy
   const [bus, setBus] = useState(null);            // [{id,name,parentId,disabled}]
   const [countsByBu, setCountsByBu] = useState({});// { buId: count } — cheap, drives the tree badges
   const [usersByBu, setUsersByBu] = useState({});  // { buId: [user,...] } — lazy cache, loaded on select
@@ -33,6 +34,14 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
   const [chartHideDisabled, setChartHideDisabled] = useState(false);
   const chartSvgRef = useRef(null);
   const chartBoxRef = useRef(null);
+  // Bulk move-to-BU (admin): checkbox selection over the member list + a confirm modal that
+  // tells the ROLES truth before anything is written.
+  const [checkedUsers, setCheckedUsers] = useState(() => new Set());
+  const [moveModal, setMoveModal] = useState(false);
+  const [moveTarget, setMoveTarget] = useState("");
+  const [moving, setMoving] = useState(false);
+  const [moveResults, setMoveResults] = useState(null);
+  useEffect(() => { setCheckedUsers(new Set()); setMoveResults(null); }, [sel]);
   const rootIdsOf = (list) => { const ids = new Set(list.map(b => b.id)); return list.filter(b => !b.parentId || !ids.has(b.parentId)).map(b => b.id); };
 
   // Mount: load only the BU hierarchy + per-BU counts (one cheap aggregate query). Member rows are
@@ -255,19 +264,24 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
                     ))}
                   </div>
                   <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{selUsers.length}</span>
+                  {isAdmin && checkedUsers.size > 0 && (
+                    <button onClick={() => { setMoveTarget(""); setMoveResults(null); setMoveModal(true); }} style={bt(C.vi, { fontSize: 11, padding: "4px 10px" })}>➡ Move to BU ({checkedUsers.size})</button>
+                  )}
                   <button onClick={() => exportUsers("this", "csv")} title="Export the direct members of this BU" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> CSV (this BU)</button>
                   <button onClick={() => exportUsers("this", "xlsx")} title="Export the direct members of this BU to Excel" style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel (this BU)</button>
                   {hasSub && <button onClick={() => exportUsers("subtree", "csv")} disabled={exporting} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: exporting ? 0.5 : 1 })}><I.Download /> {exporting ? "Loading sub-BUs…" : `+ sub-BUs (${subCount.toLocaleString()})`}</button>}
                   {hasSub && <button onClick={() => exportUsers("subtree", "xlsx")} disabled={exporting} title="Export this BU plus every sub-BU beneath it to Excel" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: exporting ? 0.5 : 1 })}><I.Download /> Excel + sub-BUs</button>}
                 </div>
                 <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 90px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "26px 1.4fr 1.7fr 1fr 90px" : "1.4fr 1.7fr 1fr 90px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
+                    {isAdmin && <input type="checkbox" checked={shownUsers.length > 0 && shownUsers.every(u => checkedUsers.has(u.id))} onChange={e => { const n = new Set(checkedUsers); shownUsers.forEach(u => e.target.checked ? n.add(u.id) : n.delete(u.id)); setCheckedUsers(n); }} title="Select all visible users" style={{ accentColor: C.vi }} />}
                     <span>Name</span><span>Email</span><span>Access / CAL</span><span>Status</span>
                   </div>
                   <div style={{ maxHeight: "calc(100vh - 320px)", minHeight: 200, overflow: "auto" }}>
                     {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match this filter</div>}
                     {shownUsers.map((u, i) => (
-                      <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.7fr 1fr 90px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
+                      <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: isAdmin ? "26px 1.4fr 1.7fr 1fr 90px" : "1.4fr 1.7fr 1fr 90px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
+                        {isAdmin && <input type="checkbox" checked={checkedUsers.has(u.id)} onChange={e => { const n = new Set(checkedUsers); e.target.checked ? n.add(u.id) : n.delete(u.id); setCheckedUsers(n); }} style={{ accentColor: C.vi }} />}
                         <span style={{ minWidth: 0, overflow: "hidden" }} title={u.title ? `${u.fullname} — ${u.title}` : u.fullname}>
                           <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.fullname || "(no name)"}</span>
                           {u.title && <span style={{ display: "block", fontSize: 10, color: C.txd, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.title}</span>}
@@ -284,6 +298,70 @@ export default function BusinessUnits({ bp, orgInfo, theme }) {
           </div>
         )}
       </div>
+
+      {/* Move-to-BU modal — the ROLES truth is stated BEFORE anything is written: legacy orgs
+          strip every security role on a BU change; modern orgs can retain them (org setting). */}
+      {moveModal && (() => {
+        const retain = orgFeatures?.retainRolesOnBuChange; // true kept | false removed | null unknown
+        const targetBu = bus?.find(b => b.id === moveTarget);
+        const doMove = async () => {
+          if (!moveTarget || moving) return;
+          if (!confirmProd(orgInfo?.isProduction, `Move ${checkedUsers.size} user${checkedUsers.size > 1 ? "s" : ""} to "${targetBu?.name}"`)) return;
+          setMoving(true); setMoveResults(null);
+          try {
+            const res = await bridge.moveUsersToBu(moveTarget, [...checkedUsers]) || [];
+            const okIds = new Set(res.filter(r => r.ok).map(r => String(r.id).toLowerCase()));
+            // Local truth update: moved users leave this BU's cached list; the target's cache is
+            // invalidated (lazy reload); count badges follow.
+            setUsersByBu(prev => { const n = { ...prev }; if (n[sel]) n[sel] = n[sel].filter(u => !okIds.has(String(u.id).toLowerCase())); delete n[moveTarget]; return n; });
+            setCountsByBu(prev => ({ ...prev, [sel]: Math.max(0, (prev[sel] || 0) - okIds.size), [moveTarget]: (prev[moveTarget] || 0) + okIds.size }));
+            setMoveResults(res);
+            setCheckedUsers(new Set(res.filter(r => !r.ok).map(r => r.id))); // failures stay selected for a retry
+          } catch (e) { setMoveResults([{ id: "", ok: false, error: e.message || String(e) }]); }
+          setMoving(false);
+        };
+        const nameOf = (id) => (selUsers.find(u => String(u.id).toLowerCase() === String(id).toLowerCase())?.fullname) || id;
+        return (
+          <div onClick={() => !moving && setMoveModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 265, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 520, maxWidth: "92vw", background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 18 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>➡ Move {checkedUsers.size} user{checkedUsers.size > 1 ? "s" : ""} to another business unit</div>
+              {!moveResults && <>
+                <select value={moveTarget} onChange={e => setMoveTarget(e.target.value)} style={inp({ fontSize: 13 })}>
+                  <option value="">— pick the target business unit —</option>
+                  {(bus || []).filter(b => b.id !== sel).sort((a, b) => a.name.localeCompare(b.name)).map(b => <option key={b.id} value={b.id}>{b.name}{b.disabled ? " (disabled)" : ""}</option>)}
+                </select>
+                <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12.5, lineHeight: 1.6,
+                  background: (retain === true ? C.gn : retain === false ? C.rd : C.yw) + "14",
+                  border: `1px solid ${(retain === true ? C.gn : retain === false ? C.rd : C.yw)}44`,
+                  color: retain === true ? C.gn : retain === false ? C.rd : C.yw }}>
+                  {retain === true && <>✅ This org KEEPS security roles when a user changes business unit — access is preserved.</>}
+                  {retain === false && <>⚠ This org REMOVES ALL security roles when a user changes business unit — the moved users will lose access until roles are re-assigned (Security Audit → role → "Assign users" does it in bulk).</>}
+                  {retain == null && <>ℹ Couldn't read this org's "retain roles on BU change" setting — on LEGACY behavior every security role is removed by the move. Verify on one user first, or check Power Platform admin center → feature settings.</>}
+                </div>
+                <div style={{ fontSize: 11.5, color: C.txd, marginTop: 8, lineHeight: 1.5 }}>Records owned by the moved users get their owning business unit recalculated server-side — users owning many records take longer (low-concurrency, one result per user).</div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+                  <button onClick={() => setMoveModal(false)} disabled={moving} style={bt(null, { fontSize: 12 })}>Cancel</button>
+                  <button onClick={doMove} disabled={!moveTarget || moving} style={bt(C.vi, { fontSize: 12, opacity: moveTarget ? 1 : 0.5 })}>{moving ? <Spin s={12} /> : `Move ${checkedUsers.size}`}</button>
+                </div>
+              </>}
+              {moveResults && (() => {
+                const ok = moveResults.filter(r => r.ok).length, ko = moveResults.filter(r => !r.ok);
+                return (<>
+                  <div style={{ fontSize: 13, color: ok ? C.gn : C.txm }}>✅ {ok} moved to {targetBu?.name || "target BU"}.</div>
+                  {ko.length > 0 && <div style={{ marginTop: 8, fontSize: 12, color: C.rd, maxHeight: 160, overflow: "auto" }}>
+                    ⚠ {ko.length} failed (still selected — fix and retry):
+                    {ko.map((r, i) => <div key={i} style={{ marginTop: 3 }}>{nameOf(r.id)}: <i>{r.error}</i></div>)}
+                  </div>}
+                  {retain === false && ok > 0 && <div style={{ marginTop: 8, fontSize: 12, color: C.rd }}>Reminder: their security roles were removed by the move — re-assign via Security Audit.</div>}
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                    <button onClick={() => setMoveModal(false)} style={bt(C.vi, { fontSize: 12 })}>Close</button>
+                  </div>
+                </>);
+              })()}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Org-chart overlay — the hierarchy as an actual organigram (boxes + connectors), not an
           indented list. Click a box to select that BU; PNG export for docs and slide decks. */}

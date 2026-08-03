@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.144] — 2026-07-24
+### Added — Business Units: bulk move users to another BU (System Administrators)
+- **Checkbox selection on the member list + "➡ Move to BU"** — re-parent many users in one pass (`PATCH systemuser.businessunitid`, low concurrency, per-user results; failures stay selected for a retry). The exact need: assigning a batch of users to the same BU without clicking through the admin UI one by one.
+- **The roles truth is stated BEFORE confirming** — the classic Dataverse trap: on legacy behavior, changing a user's BU **removes every security role** (they lose access until re-assigned); modern orgs can retain roles via an org setting. Colvio reads `donotremoverolesonchangebusinessunit` and shows which applies (✅ kept / ⚠ removed with a pointer to Security Audit's bulk role assign / ℹ unknown on older schemas — verify on one user first). Owned-records note included: their owning BU is recalculated server-side, heavy owners take longer.
+- Production confirmation; counts and member lists update locally after the move (target BU's cache invalidated). Server enforces write privileges on systemuser — Colvio grants nothing.
+
 ## [1.11.143] — 2026-07-24
 ### Changed — the panel opens right next to your D365 tab
 - Clicking the Colvio icon used to append the panel at the far end of the tab strip (user request). It now opens **immediately to the right of the Dynamics tab** you clicked from — and if a panel tab already exists, it's **moved** next to the current D365 tab before being reused. `openerTabId` is set too: closing the panel returns focus to the D365 tab, and the panel joins the org tab's tab group when there is one.

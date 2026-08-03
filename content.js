@@ -2200,6 +2200,35 @@
             break;
           }
 
+          case "moveUsersToBu": {
+            // Bulk re-parent users to another business unit — PATCH systemuser.businessunitid.
+            // THE gotcha (surfaced in the UI before confirming): on orgs without the "retain
+            // roles on BU change" setting, Dataverse REMOVES the user's security roles on the
+            // move. Owned records get their owning BU recalculated server-side — heavy owners
+            // take longer, hence the low concurrency. Per-user results — one failure never
+            // aborts the batch; the server enforces write privileges on systemuser.
+            validateGuid(params.buId);
+            const idsM = Array.isArray(params.userIds) ? params.userIds : [];
+            idsM.forEach(validateGuid);
+            if (!idsM.length) { result = []; break; }
+            const outM = [];
+            let idxM = 0;
+            const workM = async () => {
+              while (idxM < idsM.length) {
+                const uid = idsM[idxM++];
+                try {
+                  await dvRequest("PATCH", `systemusers(${uid})`, { "businessunitid@odata.bind": `/businessunits(${params.buId})` });
+                  outM.push({ id: uid, ok: true });
+                } catch (e) {
+                  outM.push({ id: uid, ok: false, error: (e?.message || String(e)).slice(0, 300) });
+                }
+              }
+            };
+            await Promise.all(Array.from({ length: Math.min(3, idsM.length) }, () => workM()));
+            result = outM;
+            break;
+          }
+
           case "assignRoleUsers": {
             // Bulk assign/remove a security role to/from users — the N:N systemuserroles_association.
             // THE gotcha: a role exists as one copy PER BUSINESS UNIT, and you must associate the copy
@@ -2291,7 +2320,7 @@
               // auditretentionperiodv2 (days; -1 = forever) may be absent on older schemas — the
               // whole $select would 400, so fall back without it rather than losing auditEnabled.
               let org;
-              try { org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting,useraccessauditinginterval,auditretentionperiodv2&$top=1"); }
+              try { org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting,useraccessauditinginterval,auditretentionperiodv2,donotremoverolesonchangebusinessunit&$top=1"); }
               catch { org = await dvRequest("GET", "organizations?$select=isauditenabled,plugintracelogsetting,useraccessauditinginterval&$top=1"); }
               const row = org?.value?.[0];
               if (row) {
@@ -2301,6 +2330,9 @@
                 // hours per user — "access events", not literal logins. Default 4.
                 out.accessInterval = typeof row.useraccessauditinginterval === "number" ? row.useraccessauditinginterval : null;
                 out.auditRetentionDays = typeof row.auditretentionperiodv2 === "number" ? row.auditretentionperiodv2 : null;
+                // BU-move gotcha flag: true = roles KEPT on business-unit change; false = legacy
+                // behavior, roles REMOVED; null/undefined column = unknown (older schema).
+                out.retainRolesOnBuChange = typeof row.donotremoverolesonchangebusinessunit === "boolean" ? row.donotremoverolesonchangebusinessunit : null;
               }
             } catch { /* unknown — fail-open (null = don't gate) */ }
             try {

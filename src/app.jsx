@@ -377,7 +377,7 @@ export default function App(){
           {tab==="solutions"&&<ErrorBoundary><SolutionExplorer bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="translations"&&<ErrorBoundary><TranslationManager bp={bp} orgInfo={orgInfo} theme={theme} canPublish={permissions?.canPublish!==false}/></ErrorBoundary>}
           {tab==="licenses"&&<ErrorBoundary><UserLicenseMonitor bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
-          {tab==="bu"&&<ErrorBoundary><BusinessUnits bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="bu"&&<ErrorBoundary><BusinessUnits bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="security"&&<ErrorBoundary><SecurityAudit bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{if(loaderBusy&&!window.confirm("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?"))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>

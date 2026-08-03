@@ -191,7 +191,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **🌳 Full-screen org chart** — the hierarchy as an actual organigram (boxes + connectors, parents centered over their subtree): opens FOLDED to two levels with ±N chips per branch (a 1,000+-BU org stays readable), Fit/Expand all/Collapse all/hide-disabled controls, user counts per BU, click a box to open that BU, **PNG export** for docs and decks
 - Pick a BU to list its **direct members** — name, email, access mode / CAL type, enabled/disabled — with a filter
 - **CSV export with scope choice**: just this BU's members, or **this BU + every sub-BU beneath it** (the export keeps a Business Unit column); even works when the BU itself has no direct members
-- Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated, read-only
+- **➡ Bulk move users to another BU** (System Administrators) — tick members, pick the target, per-user results with failures kept selected for a retry; **the roles truth is stated before confirming**: legacy orgs remove every security role on a BU change, modern orgs retain them — Colvio reads the org setting and says which applies (and points to Security Audit's bulk role assign when needed)
+- Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated
 
 ### Adoption
 - **Who's actually using the CRM?** Access events, distinct active users, **DAU/WAU/MAU + stickiness** — over 7/30/90 days or any custom window
