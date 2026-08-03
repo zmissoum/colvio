@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.143] — 2026-07-24
+### Changed — the panel opens right next to your D365 tab
+- Clicking the Colvio icon used to append the panel at the far end of the tab strip (user request). It now opens **immediately to the right of the Dynamics tab** you clicked from — and if a panel tab already exists, it's **moved** next to the current D365 tab before being reused. `openerTabId` is set too: closing the panel returns focus to the D365 tab, and the panel joins the org tab's tab group when there is one.
+
 ## [1.11.142] — 2026-07-24
 ### Added — mapping step: the primary key is now visibly marked
 - Epilogue of the Edm.Guid saga: the user had simply picked the wrong field — the PK's name was one character away from the business field they meant. Two selection-time guards so that near-miss can't happen silently again: the field picker **badges the primary key** ("🔑 PRIMARY KEY — Dataverse generates it") in the suggestion list, and choosing it shows an **inline warning under the input** — business numbers belong in a text/number field or the alternate-key match; watch for a similarly-named field. The PK is resolved from `IsPrimaryId` metadata (correct on activities too), and the v1.11.141 pre-flight remains the safety net before the run.

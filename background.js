@@ -36,12 +36,15 @@ chrome.action.onClicked.addListener(async (tab) => {
   const orgUrl = new URL(tab.url).origin;
   const panelUrl = chrome.runtime.getURL(`panel.html?orgUrl=${encodeURIComponent(orgUrl)}&tabId=${tab.id}`);
 
-  // Reuse existing panel tab or open a new one
+  // Reuse existing panel tab or open a new one — always PLACED RIGHT NEXT to the D365 tab
+  // (index + 1) instead of the far end of the tab strip; openerTabId makes closing the panel
+  // return focus to the D365 tab, and keeps it in the same tab group if the org tab is in one.
   const existing = await chrome.tabs.query({ url: chrome.runtime.getURL("panel.html*") });
   if (existing.length > 0) {
+    try { await chrome.tabs.move(existing[0].id, { windowId: tab.windowId, index: tab.index + 1 }); } catch { /* dragged mid-move or pinned — keep it where it is */ }
     await chrome.tabs.update(existing[0].id, { active: true, url: panelUrl });
   } else {
-    await chrome.tabs.create({ url: panelUrl });
+    await chrome.tabs.create({ url: panelUrl, index: tab.index + 1, openerTabId: tab.id });
   }
 });
 
