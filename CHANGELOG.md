@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.146] — 2026-07-24
+### Added — Explorer: one Cancel button for bulk update AND bulk delete
+- While a bulk operation runs, a red **✕ Cancel** appears next to the action buttons (user request — one button serving both). Deletes stop **between chunks** (the in-flight chunk completes — there's no way to recall an HTTP $batch mid-flight); updates stop **before the next record**. Everything already written stays written, and the feedback says so honestly: "Cancelled — 1,240 deleted, 5,532 untouched".
+- Bulk update also gained a **live counter** ("Updating 320/6,772…") — it had a mute spinner while the delete side already showed progress.
+
 ## [1.11.145] — 2026-07-24
 ### Fixed — Explorer bulk delete was sequential (tens of minutes on a few thousand rows)
 - User report: deleting ~6,700 selected records from the results view crawled. The Explorer's bulk delete issued **one DELETE at a time, awaited each** — at typical Dataverse latency that's 20-45 minutes for that volume, while the Loader's DELETE mode had the fast machinery all along. The Explorer now **reuses the Loader's `$batch` pipeline**: chunks of 100 records × 4 parallel workers, one changeset per record (a failing row never rolls back its chunk), automatic 429 retry — typically **10-30× faster**. The Delete button shows live progress ("Deleting 1,200/6,772…").

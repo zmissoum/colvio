@@ -34,8 +34,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   };
   const executeBulkUpdate=async()=>{
     const ids=[...selected];
-    setBulkUpdating(true);
-    let ok=0,fail=0;
+    setBulkUpdating(true);abortRef.current=false;setUpdProg({done:0,total:ids.length});
+    let ok=0,fail=0,cancelled=false;
     const odataField=res.odataFieldMap?.[bulkUpdate.field]||bulkUpdate.field;
     let val=bulkUpdate.value;
     if(val===""||val==="null") val=null;
@@ -43,14 +43,16 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     else if(val==="false") val=false;
     else if(!isNaN(val)&&val.trim()!=="") val=Number(val);
     for(const id of ids){
+      if(abortRef.current){cancelled=true;break;} // ✕ Cancel — already-written PATCHes stay written
       try{
         await bridge.update(res.entity.p, id, {[odataField]:val});
         ok++;
       }catch{fail++;}
+      setUpdProg({done:ok+fail,total:ids.length});
     }
-    setBulkUpdating(false);
+    setBulkUpdating(false);setUpdProg(null);
     setBulkUpdate(null);
-    showFeedback(`${t("results.bulk_update")} ${ok} ${t("results.updated")}${fail?`, ${fail} ${t("results.failed")}`:""}`);
+    showFeedback(`${cancelled?"Cancelled — ":""}${t("results.bulk_update")} ${ok} ${t("results.updated")}${fail?`, ${fail} ${t("results.failed")}`:""}${cancelled?`, ${ids.length-ok-fail} untouched`:""}`);
   };
   // Pre-check WRITE access before entering inline-edit, so the user learns they can't edit
   // BEFORE typing a value (instead of a 403 on commit). One RetrievePrincipalAccess call per
@@ -117,6 +119,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const[selected,setSelected]=useState(new Set());
   const[deleting,setDeleting]=useState(false);
   const[delProg,setDelProg]=useState(null); // {done,total} while the batched delete runs
+  const[updProg,setUpdProg]=useState(null); // {done,total} while the bulk update runs
+  const abortRef=useRef(false);             // one cancel flag serving BOTH bulk operations
 
   // Canonical id resolver (shared with the parent's post-delete row removal so they can't disagree).
   const getRecordId=(r)=>recordId(r,res.entity?.l);
@@ -129,15 +133,16 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     setSelected(prev=>{const s=new Set(prev);visibleIds.forEach(id=>allVisibleSelected?s.delete(id):s.add(id));return s;});
   };
   const executeDelete=async()=>{
-    setDeleting(true);setDelProg({done:0,total:selected.size});
+    setDeleting(true);abortRef.current=false;setDelProg({done:0,total:selected.size});
     try{
       // Same $batch machinery as the Loader's DELETE mode (chunks of 100 × 4 parallel workers,
       // per-record changesets, 429 retry) — the old path issued ONE sequential DELETE per record,
-      // which took tens of minutes on a few thousand rows (user-reported).
+      // which took tens of minutes on a few thousand rows (user-reported). shouldAbort is checked
+      // between chunks: ✕ Cancel lets in-flight chunks finish, nothing else is sent.
       const ids=Array.from(selected);
       const result=await bridge.batchDeleteKeyed(res.entity.p,`${res.entity.l}id`,ids.map(id=>({keyValue:id})),true,
-        p=>setDelProg({done:p.done,total:p.total}),()=>false,{chunk:100,concurrency:4});
-      showFeedback(`${result.deleted} deleted${result.errors?.length?`, ${result.errors.length} error(s)`:""}`);
+        p=>setDelProg({done:p.done,total:p.total}),()=>abortRef.current,{chunk:100,concurrency:4});
+      showFeedback(`${result.aborted?"Cancelled — ":""}${result.deleted} deleted${result.errors?.length?`, ${result.errors.length} error(s)`:""}${result.aborted?`, ${ids.length-(result.deleted||0)} untouched`:""}`);
       if(onDeleteDone) onDeleteDone(selected);
       setSelected(new Set());
     }catch(e){
@@ -310,7 +315,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
                     <input value={bulkUpdate.value} onChange={e=>setBulkUpdate({...bulkUpdate,value:e.target.value})} placeholder="null, true, false, or value..." style={{width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:13,...mono,outline:"none",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter")doBulkUpdate();}}/>
                   </div>
                   <div style={{display:"flex",gap:6}}>
-                    <button onClick={doBulkUpdate} disabled={bulkUpdating} style={bt(`linear-gradient(135deg,${C.cy},${C.vi})`,{fontSize:12,flex:1,justifyContent:"center"})}>{bulkUpdating?<><Spin s={10}/> Updating...</>:<><I.Zap/> Update {selected.size}</>}</button>
+                    <button onClick={doBulkUpdate} disabled={bulkUpdating} style={bt(`linear-gradient(135deg,${C.cy},${C.vi})`,{fontSize:12,flex:1,justifyContent:"center"})}>{bulkUpdating?<><Spin s={10}/> {updProg?`Updating ${updProg.done.toLocaleString()}/${updProg.total.toLocaleString()}…`:"Updating..."}</>:<><I.Zap/> Update {selected.size}</>}</button>
                     <button onClick={()=>setBulkUpdate(null)} style={bt(null,{fontSize:12})}>Cancel</button>
                   </div>
                 </div>
@@ -319,6 +324,13 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
             <button onClick={doDelete} disabled={deleting} style={{padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,background:C.rd+"22",border:`1px solid ${C.rd}44`,borderRadius:4,color:C.rd}}>
               {deleting?<Spin s={10}/>:<I.Trash/>} {deleting&&delProg?`Deleting ${delProg.done.toLocaleString()}/${delProg.total.toLocaleString()}…`:`Delete ${selected.size}`}
             </button>
+            {/* One cancel for BOTH bulk operations — updates stop before the next record, deletes
+                stop between chunks (in-flight chunk completes); everything already written stays. */}
+            {(deleting||bulkUpdating)&&(
+              <button onClick={()=>{abortRef.current=true;}} title="Stop after the current record/chunk — everything already written stays written" style={{padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,background:C.rd,border:"none",borderRadius:4,color:"#fff"}}>
+                ✕ Cancel
+              </button>
+            )}
             {search.trim()&&(()=>{const hid=selected.size-sortedData.filter(r=>selected.has(getRecordId(r))).length;return hid>0?<span style={{fontSize:11,color:C.yw,fontWeight:600}} title="Bulk actions apply to your whole selection, including rows hidden by the active filter.">⚠ {hid} of {selected.size} selected are hidden by the filter</span>:null;})()}
           </>}
         </div>
