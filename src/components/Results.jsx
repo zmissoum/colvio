@@ -116,6 +116,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const[copyFeedback,setCopyFeedback]=useState("");
   const[selected,setSelected]=useState(new Set());
   const[deleting,setDeleting]=useState(false);
+  const[delProg,setDelProg]=useState(null); // {done,total} while the batched delete runs
 
   // Canonical id resolver (shared with the parent's post-delete row removal so they can't disagree).
   const getRecordId=(r)=>recordId(r,res.entity?.l);
@@ -128,16 +129,21 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     setSelected(prev=>{const s=new Set(prev);visibleIds.forEach(id=>allVisibleSelected?s.delete(id):s.add(id));return s;});
   };
   const executeDelete=async()=>{
-    setDeleting(true);
+    setDeleting(true);setDelProg({done:0,total:selected.size});
     try{
-      const result=await bridge.batchDelete(res.entity.p,Array.from(selected));
+      // Same $batch machinery as the Loader's DELETE mode (chunks of 100 × 4 parallel workers,
+      // per-record changesets, 429 retry) — the old path issued ONE sequential DELETE per record,
+      // which took tens of minutes on a few thousand rows (user-reported).
+      const ids=Array.from(selected);
+      const result=await bridge.batchDeleteKeyed(res.entity.p,`${res.entity.l}id`,ids.map(id=>({keyValue:id})),true,
+        p=>setDelProg({done:p.done,total:p.total}),()=>false,{chunk:100,concurrency:4});
       showFeedback(`${result.deleted} deleted${result.errors?.length?`, ${result.errors.length} error(s)`:""}`);
       if(onDeleteDone) onDeleteDone(selected);
       setSelected(new Set());
     }catch(e){
       showFeedback(`Error: ${e.message}`);
     }
-    setDeleting(false);
+    setDeleting(false);setDelProg(null);
   };
   const doDelete=async()=>{
     if(!selected.size) return;
@@ -311,7 +317,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
               )}
             </div>
             <button onClick={doDelete} disabled={deleting} style={{padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,background:C.rd+"22",border:`1px solid ${C.rd}44`,borderRadius:4,color:C.rd}}>
-              {deleting?<Spin s={10}/>:<I.Trash/>} Delete {selected.size}
+              {deleting?<Spin s={10}/>:<I.Trash/>} {deleting&&delProg?`Deleting ${delProg.done.toLocaleString()}/${delProg.total.toLocaleString()}…`:`Delete ${selected.size}`}
             </button>
             {search.trim()&&(()=>{const hid=selected.size-sortedData.filter(r=>selected.has(getRecordId(r))).length;return hid>0?<span style={{fontSize:11,color:C.yw,fontWeight:600}} title="Bulk actions apply to your whole selection, including rows hidden by the active filter.">⚠ {hid} of {selected.size} selected are hidden by the filter</span>:null;})()}
           </>}

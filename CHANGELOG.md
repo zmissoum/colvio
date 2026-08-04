@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.145] — 2026-07-24
+### Fixed — Explorer bulk delete was sequential (tens of minutes on a few thousand rows)
+- User report: deleting ~6,700 selected records from the results view crawled. The Explorer's bulk delete issued **one DELETE at a time, awaited each** — at typical Dataverse latency that's 20-45 minutes for that volume, while the Loader's DELETE mode had the fast machinery all along. The Explorer now **reuses the Loader's `$batch` pipeline**: chunks of 100 records × 4 parallel workers, one changeset per record (a failing row never rolls back its chunk), automatic 429 retry — typically **10-30× faster**. The Delete button shows live progress ("Deleting 1,200/6,772…").
+- What still costs time is server-side and applies to any client: cascade deletes to child records, synchronous plug-ins/workflows firing per delete, audit writes. For very large purges with those, the Loader's DELETE mode adds the admin speed boosters (bypass custom logic) on top.
+
 ## [1.11.144] — 2026-07-24
 ### Added — Business Units: bulk move users to another BU (System Administrators)
 - **Checkbox selection on the member list + "➡ Move to BU"** — re-parent many users in one pass (`PATCH systemuser.businessunitid`, low concurrency, per-user results; failures stay selected for a retry). The exact need: assigning a batch of users to the same BU without clicking through the admin UI one by one.
