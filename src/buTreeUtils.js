@@ -1,4 +1,4 @@
-// BU org-chart layout — PURE, no I/O, unit-tested.
+// BU module pure helpers (org-chart layout + paste-a-list user matching) — no I/O, unit-tested.
 //
 // Classic tidy top-down tree: a leaf occupies one slot; a parent's span is the sum of its
 // children's spans and the parent box sits centered above them. Orphans (parentId pointing at
@@ -96,4 +96,45 @@ export function layoutBuTree(bus = [], { nodeW = 180, nodeH = 56, hGap = 16, vGa
   const width = Math.max(nodeW, leftCursor - hGap * 2);
   const height = nodes.length ? (Math.max(...nodes.map(n => n.depth)) + 1) * (nodeH + vGap) - vGap : 0;
   return { nodes, edges, width, height, nodeW, nodeH };
+}
+
+// —— Paste-a-list user selection ——
+
+/**
+ * Pull email-like tokens out of free-form pasted text. Accepts one-per-line, comma/semicolon/
+ * space separated, and Outlook's `Name <email>` format. Trailing dots are stripped (an address
+ * can't end with a dot — "user@x.com." is a sentence artifact, not the address).
+ * Returns lowercase, deduplicated, in first-seen order.
+ */
+export function extractEmails(text = "") {
+  const out = [], seen = new Set();
+  for (const m of String(text).matchAll(/[^\s;,<>"'():[\]]+@[^\s;,<>"'():[\]]+/g)) {
+    const e = m[0].replace(/\.+$/, "").toLowerCase();
+    if (e && !seen.has(e)) { seen.add(e); out.push(e); }
+  }
+  return out;
+}
+
+/**
+ * Match tokens against a loaded member list on email OR UPN, case-insensitive. Honest by
+ * construction: every token either contributes to matchedIds or comes back in `missing`
+ * verbatim — duplicates and email/UPN aliases of one user count once, never as missing.
+ * @param users  [{id, email, upn}]
+ * @returns {matchedIds: [id…] distinct, missing: [token…]}
+ */
+export function matchUsersByEmails(users = [], tokens = []) {
+  const byAddr = new Map();
+  for (const u of users) {
+    for (const k of [u.email, u.upn]) {
+      const key = (k || "").trim().toLowerCase();
+      if (key && !byAddr.has(key)) byAddr.set(key, u.id);
+    }
+  }
+  const matchedIds = [], missing = [], seenIds = new Set();
+  for (const t of tokens) {
+    const id = byAddr.get(String(t).trim().toLowerCase());
+    if (id == null) missing.push(t);
+    else if (!seenIds.has(id)) { seenIds.add(id); matchedIds.push(id); }
+  }
+  return { matchedIds, missing };
 }

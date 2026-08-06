@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
-import { layoutBuTree, visibleBuList } from "../buTreeUtils.js";
+import { layoutBuTree, visibleBuList, extractEmails, matchUsersByEmails } from "../buTreeUtils.js";
 
 // Business Units — the org's BU hierarchy with the users assigned to each. Users are grouped by
 // their _businessunitid_value (every user sits in exactly one BU). Read-only.
@@ -41,7 +41,11 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
   const [moveTarget, setMoveTarget] = useState("");
   const [moving, setMoving] = useState(false);
   const [moveResults, setMoveResults] = useState(null);
-  useEffect(() => { setCheckedUsers(new Set()); setMoveResults(null); }, [sel]);
+  // Paste-a-list selection (admin): paste emails/UPNs, every match gets checked for the move.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");   // kept across BU switches — re-run the same list on another BU
+  const [pasteResult, setPasteResult] = useState(null); // {none:true} | {matched, missing:[…]}
+  useEffect(() => { setCheckedUsers(new Set()); setMoveResults(null); setPasteResult(null); }, [sel]);
   const rootIdsOf = (list) => { const ids = new Set(list.map(b => b.id)); return list.filter(b => !b.parentId || !ids.has(b.parentId)).map(b => b.id); };
 
   // Mount: load only the BU hierarchy + per-BU counts (one cheap aggregate query). Member rows are
@@ -189,6 +193,24 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
     exportTable(headers, rows, `bu_${selBu.name.replace(/\s+/g, "_")}${scope === "subtree" ? "_subtree" : ""}_users`, format, "Users");
   };
 
+  // The member list is cached after first open — drop the selected BU's cache (the lazy loader
+  // refetches) and refresh the count badges, so users provisioned AFTER the module was opened
+  // become visible without leaving the module.
+  const refreshBu = () => {
+    if (!sel) return;
+    setUserErr("");
+    setUsersByBu(prev => { const n = { ...prev }; delete n[sel]; return n; });
+    bridge.getUserCountsByBu().then(c => setCountsByBu(c || {})).catch(() => {});
+  };
+
+  const doPasteMatch = () => {
+    const tokens = extractEmails(pasteText);
+    if (!tokens.length) { setPasteResult({ none: true }); return; }
+    const { matchedIds, missing } = matchUsersByEmails(selUsers, tokens);
+    setCheckedUsers(prev => { const n = new Set(prev); matchedIds.forEach(id => n.add(id)); return n; });
+    setPasteResult({ matched: matchedIds.length, missing });
+  };
+
   const Badge = ({ label, color }) => (
     <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: (color || C.txd) + "22", color: color || C.txd, fontWeight: 600 }}>{label}</span>
   );
@@ -253,6 +275,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
               : selUsers.length === 0
               ? <div style={{ ...crd({ padding: 16 }), color: C.txd, fontSize: 13 }}>
                   No users are directly assigned to this business unit.
+                  <button onClick={refreshBu} title="Reload from the server — users provisioned after this BU was opened don't appear until refreshed" style={bt(null, { fontSize: 12, marginLeft: 10 })}>↻ Refresh</button>
                   {hasSub && <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}><button onClick={() => exportUsers("subtree", "csv")} disabled={exporting} style={bt(C.cy, { fontSize: 12, opacity: exporting ? 0.5 : 1 })}><I.Download /> {exporting ? "Loading sub-BUs…" : `Export ${subCount.toLocaleString()} users from sub-BUs (CSV)`}</button><button onClick={() => exportUsers("subtree", "xlsx")} disabled={exporting} style={bt(C.cy, { fontSize: 12, opacity: exporting ? 0.5 : 1 })}><I.Download /> Excel</button></div>}
                 </div>
               : <>
@@ -264,6 +287,10 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                     ))}
                   </div>
                   <span style={{ fontSize: 12, color: C.txd, ...mono }}>{shownUsers.length}/{selUsers.length}</span>
+                  <button onClick={refreshBu} title="Reload this BU's members from the server — the list is cached after first open, so users provisioned since then don't appear until refreshed" style={bt(null, { fontSize: 12, padding: "4px 9px" })}>↻</button>
+                  {isAdmin && (
+                    <button onClick={() => setPasteOpen(o => !o)} title="Paste a list of email addresses or UPNs and select every matching user — then use ➡ Move to BU" style={bt(pasteOpen ? C.vi : null, { fontSize: 11, padding: "4px 10px" })}>📋 Paste emails</button>
+                  )}
                   {isAdmin && checkedUsers.size > 0 && (
                     <button onClick={() => { setMoveTarget(""); setMoveResults(null); setMoveModal(true); }} style={bt(C.vi, { fontSize: 11, padding: "4px 10px" })}>➡ Move to BU ({checkedUsers.size})</button>
                   )}
@@ -272,6 +299,30 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                   {hasSub && <button onClick={() => exportUsers("subtree", "csv")} disabled={exporting} title="Export this BU plus every sub-BU beneath it (with a Business Unit column)" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: exporting ? 0.5 : 1 })}><I.Download /> {exporting ? "Loading sub-BUs…" : `+ sub-BUs (${subCount.toLocaleString()})`}</button>}
                   {hasSub && <button onClick={() => exportUsers("subtree", "xlsx")} disabled={exporting} title="Export this BU plus every sub-BU beneath it to Excel" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: exporting ? 0.5 : 1 })}><I.Download /> Excel + sub-BUs</button>}
                 </div>
+                {isAdmin && pasteOpen && (
+                  <div style={{ ...crd({ padding: 12 }), marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: C.txm, marginBottom: 6, lineHeight: 1.5 }}>
+                      Paste email addresses or UPNs — one per line, or separated by commas/semicolons/spaces (Outlook's <span style={mono}>Name &lt;email&gt;</span> format works too). Every match in this BU gets selected, ready for ➡ Move to BU.
+                    </div>
+                    <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5}
+                      placeholder={"jane.doe@contoso.com\njohn.smith@contoso.com"}
+                      style={{ ...inp({ fontSize: 12 }), ...mono, width: "100%", resize: "vertical", boxSizing: "border-box" }} />
+                    <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+                      <button onClick={doPasteMatch} disabled={!pasteText.trim()} style={bt(C.vi, { fontSize: 12, opacity: pasteText.trim() ? 1 : 0.5 })}>Match & select</button>
+                      <button onClick={() => { setPasteText(""); setPasteResult(null); }} style={bt(null, { fontSize: 12 })}>Clear</button>
+                    </div>
+                    {pasteResult && (pasteResult.none
+                      ? <div style={{ marginTop: 8, fontSize: 12, color: C.yw }}>No email addresses found in the pasted text.</div>
+                      : <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                          <span style={{ color: pasteResult.matched ? C.gn : C.txm }}>✅ {pasteResult.matched} user{pasteResult.matched === 1 ? "" : "s"} matched &amp; selected</span>
+                          {pasteResult.missing.length > 0 && <>
+                            <span style={{ color: C.yw }}> · ⚠ {pasteResult.missing.length} not found in this BU:</span>
+                            <div style={{ marginTop: 4, maxHeight: 110, overflow: "auto", whiteSpace: "pre-wrap", ...mono, fontSize: 11, color: C.yw, lineHeight: 1.6 }}>{pasteResult.missing.join("\n")}</div>
+                            <div style={{ fontSize: 11, color: C.txd, marginTop: 4 }}>Not found = not a direct member of THIS BU (freshly provisioned users land in the root BU), not synced into the environment yet (↻ refresh if they were just added), or a typo. Matching checks both email and UPN.</div>
+                          </>}
+                        </div>)}
+                  </div>
+                )}
                 <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
                   <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "26px 1.4fr 1.7fr 1fr 90px" : "1.4fr 1.7fr 1fr 90px", padding: "8px 14px", background: C.sfh, fontSize: 11, fontWeight: 700, color: C.txd, borderBottom: `1px solid ${C.bd}` }}>
                     {isAdmin && <input type="checkbox" checked={shownUsers.length > 0 && shownUsers.every(u => checkedUsers.has(u.id))} onChange={e => { const n = new Set(checkedUsers); shownUsers.forEach(u => e.target.checked ? n.add(u.id) : n.delete(u.id)); setCheckedUsers(n); }} title="Select all visible users" style={{ accentColor: C.vi }} />}
@@ -317,6 +368,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
             setCountsByBu(prev => ({ ...prev, [sel]: Math.max(0, (prev[sel] || 0) - okIds.size), [moveTarget]: (prev[moveTarget] || 0) + okIds.size }));
             setMoveResults(res);
             setCheckedUsers(new Set(res.filter(r => !r.ok).map(r => r.id))); // failures stay selected for a retry
+            setPasteResult(null); // its counts describe a selection that just left this BU
           } catch (e) { setMoveResults([{ id: "", ok: false, error: e.message || String(e) }]); }
           setMoving(false);
         };

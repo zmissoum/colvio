@@ -348,7 +348,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     if (!users) return [];
     const s = userSearch.trim().toLowerCase();
     return users.filter(u => passStatus(u) && (!s || [u.name, u.email, u.bu, u.domain].some(v => (v || "").toLowerCase().includes(s))));
-    // eslint-disable-next-line
+     
   }, [users, userSearch, userStatus]);
 
   const exportUsersCSV = (format = "csv") => {
@@ -441,7 +441,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
       if (hits.length) out.push({ role: r, ents: hits });
     }
     return out;
-    // eslint-disable-next-line
+     
   }, [orgView, roles, orgOp, orgDepthMin, orgSearch, orgScan]);
   const orgRowsByEntity = useMemo(() => {
     if (orgGroup !== "entity") return [];

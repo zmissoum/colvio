@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutBuTree, visibleBuList } from "../buTreeUtils.js";
+import { layoutBuTree, visibleBuList, extractEmails, matchUsersByEmails } from "../buTreeUtils.js";
 
 const OPTS = { nodeW: 100, nodeH: 50, hGap: 10, vGap: 40 };
 
@@ -62,5 +62,50 @@ describe("layoutBuTree", () => {
     expect(r.width).toBe(100);
     expect(r.height).toBe(3 * 90 - 40);
     expect(new Set(r.nodes.map(n => n.x)).size).toBe(1); // all centered in the same column
+  });
+});
+
+describe("extractEmails", () => {
+  it("splits on newlines, commas, semicolons and spaces", () => {
+    expect(extractEmails("a@x.com\nb@x.com,c@x.com; d@x.com e@x.com"))
+      .toEqual(["a@x.com", "b@x.com", "c@x.com", "d@x.com", "e@x.com"]);
+  });
+  it("handles Outlook's 'Name <email>' format", () => {
+    expect(extractEmails('Jane Doe <jane@x.com>; "Smith, John" <john@x.com>'))
+      .toEqual(["jane@x.com", "john@x.com"]);
+  });
+  it("lowercases, dedupes, and strips trailing dots", () => {
+    expect(extractEmails("USER@X.COM\nuser@x.com.")).toEqual(["user@x.com"]);
+  });
+  it("ignores text with no address in it", () => {
+    expect(extractEmails("hello world\nno emails here")).toEqual([]);
+    expect(extractEmails("")).toEqual([]);
+  });
+});
+
+describe("matchUsersByEmails", () => {
+  const USERS = [
+    { id: "u1", email: "jane@x.com", upn: "jane.upn@x.com" },
+    { id: "u2", email: "John@X.com", upn: "" },
+    { id: "u3", email: "", upn: null },              // provisioned rows can miss both — must not match ""
+  ];
+  it("matches by email or UPN, case-insensitive", () => {
+    const r = matchUsersByEmails(USERS, ["jane.upn@x.com", "john@x.com"]);
+    expect(r.matchedIds).toEqual(["u1", "u2"]);
+    expect(r.missing).toEqual([]);
+  });
+  it("unmatched tokens come back verbatim", () => {
+    const r = matchUsersByEmails(USERS, ["ghost@x.com", "jane@x.com"]);
+    expect(r.matchedIds).toEqual(["u1"]);
+    expect(r.missing).toEqual(["ghost@x.com"]);
+  });
+  it("duplicate tokens and email/UPN aliases of one user count once, never as missing", () => {
+    const r = matchUsersByEmails(USERS, ["jane@x.com", "jane@x.com", "jane.upn@x.com"]);
+    expect(r.matchedIds).toEqual(["u1"]);
+    expect(r.missing).toEqual([]);
+  });
+  it("empty inputs are safe", () => {
+    expect(matchUsersByEmails([], ["a@x.com"]).missing).toEqual(["a@x.com"]);
+    expect(matchUsersByEmails(USERS, [])).toEqual({ matchedIds: [], missing: [] });
   });
 });

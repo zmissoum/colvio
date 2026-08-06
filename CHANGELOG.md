@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.147] — 2026-08-07
+### Added — Business Units: paste-a-list selection + member refresh
+- **📋 Paste emails** (System Administrators) — paste a list of email addresses or UPNs (one per line, commas/semicolons/spaces, Outlook's `Name <email>` format all work) and every matching member of the displayed BU is **selected automatically**, ready for ➡ Move to BU. Born from a real provisioning run: moving a batch defined by an email list shouldn't mean clicking 200 checkboxes or hoping for a common filter pattern. The recap is honest by construction: "✅ 187 matched & selected · ⚠ 13 not found" **with the unmatched addresses listed** — those are your typos, not-yet-synced users, or members of another BU (fresh provisions land in the root BU). Matching is case-insensitive on **both email and UPN** (the member query now fetches `domainname` too); duplicates and email/UPN aliases of one user count once, never as "missing". Pure, unit-tested logic (`extractEmails` / `matchUsersByEmails`).
+- **↻ Refresh** on the member panel (and on the empty state) — the member list is cached after first open, so users provisioned **after** the module was opened stayed invisible even when searched (the filter box is client-side; user hit exactly this mid-provisioning). The button drops the displayed BU's cache, refetches, and refreshes the count badges — no need to leave the module anymore.
+
 ## [1.11.146] — 2026-07-24
 ### Added — Explorer: one Cancel button for bulk update AND bulk delete
 - While a bulk operation runs, a red **✕ Cancel** appears next to the action buttons (user request — one button serving both). Deletes stop **between chunks** (the in-flight chunk completes — there's no way to recall an HTTP $batch mid-flight); updates stop **before the next record**. Everything already written stays written, and the feedback says so honestly: "Cancelled — 1,240 deleted, 5,532 untouched".

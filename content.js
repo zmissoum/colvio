@@ -1912,9 +1912,9 @@
             if (buIdB) validateGuid(buIdB); // never interpolate an unvalidated id into the OData URL
             const ACCESS_MODES_B = { 0: "Read-Write", 1: "Admin", 2: "Read", 3: "Support", 4: "Non-Interactive", 5: "Delegated Admin" };
             const CAL_TYPES_B = { 0: "Full", 1: "Admin", 2: "Basic", 3: "Device Full", 4: "Device Basic", 5: "Essential", 6: "Device Essential", 7: "Enterprise", 8: "Device Enterprise", 9: "Sales", 10: "Service", 11: "Field Service", 12: "Project Service" };
-            const fieldsB = "systemuserid,fullname,internalemailaddress,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value,address1_telephone1,mobilephone,_parentsystemuserid_value";
+            const fieldsB = "systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,caltype,title,createdon,_businessunitid_value,address1_telephone1,mobilephone,_parentsystemuserid_value";
             const mapUserB = (u) => ({
-              id: u.systemuserid, fullname: u.fullname || "", email: u.internalemailaddress || "",
+              id: u.systemuserid, fullname: u.fullname || "", email: u.internalemailaddress || "", upn: u.domainname || "",
               disabled: u.isdisabled, accessMode: u.accessmode ?? 0, accessModeLabel: ACCESS_MODES_B[u.accessmode] || `Mode ${u.accessmode}`,
               calType: u.caltype ?? 0, calTypeLabel: CAL_TYPES_B[u.caltype] || `Type ${u.caltype}`,
               buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "", buId: u._businessunitid_value || "",
