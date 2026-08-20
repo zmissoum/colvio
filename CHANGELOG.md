@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.149] — 2026-08-20
+### Fixed — "The D365 tab was closed" during long runs while the tab was still open
+- User report: mid-run, some deletes were cancelled with "tab was closed" — the tab was right there. Root cause: **the browser's memory saver (Chrome) / sleeping tabs (Edge) puts the inactive D365 tab to sleep during a long run** — it stays visible in the tab strip, but its process (and Colvio's content script with it) is killed, sometimes with a brand-new internal tab id. The relay then couldn't find the pinned tab and reported it "closed".
+- Four-layer fix in the background relay: **(1) the working D365 tab is now pinned awake** (`autoDiscardable: false`) as soon as it registers — the browser may no longer sleep it mid-run; **(2)** replaced tab ids are tracked (`tabs.onReplaced`) and translated; **(3) self-healing**: a sleeping tab is woken (reload + wait) and a missing content script is re-injected (idempotent) with one retry before giving up; **(4)** if the pinned tab is truly gone, the relay falls back to another live tab **of the same environment**.
+- Safety hardening that came with it: the panel now states its org origin on every request and the relay **refuses to talk to a tab showing a different environment** — a pinned tab that navigated to another org no longer receives calls meant for the panel's org. Error messages now name the real cause (sleep/reload) and the recovery gesture. Not smoke-testable in the dev demo (chrome.tabs is extension-only) — verify on the real extension after reload.
+
 ## [1.11.148] — 2026-08-20
 ### Added — Explorer: duplicate finder on query results
 - **⧉ Duplicates** button on the results toolbar (user's migration-QA need: "same date + same card + same amount = duplicate"). Pick the columns that define a duplicate — rows sharing the same values on ALL of them form a group. Analysis is client-side over **every loaded row** (a warning shows if more rows exist on the server), on **raw values**: lookups compare by GUID (two records sharing a display name never merge), money by number, text case-insensitively; a **"Compare dates by day"** toggle (on by default) makes 09:12 and 15:40 on the same date count as equal — the usual business rule. Rows whose every key column is empty are skipped instead of forming a bogus mega-group.

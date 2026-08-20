@@ -110,7 +110,7 @@ async function callD365(action, params = {}) {
         // A batch chunk that blows past the timeout is likely mid serial-PATCH fallback under heavy
         // throttling. Tell the content script to STOP (batchAborted) so it doesn't keep writing after
         // we've given up — closes the orphaned-write / double-create-on-retry window.
-        if (isBatchOp && isExtension) { try { chrome.runtime.sendMessage({ __d365InspectorRequest: true, id: ++reqId, action: "abortBatch", params: {}, d365TabId: getD365TabId() }, () => { void chrome.runtime.lastError; }); } catch {} }
+        if (isBatchOp && isExtension) { try { chrome.runtime.sendMessage({ __d365InspectorRequest: true, id: ++reqId, action: "abortBatch", params: {}, d365TabId: getD365TabId(), orgUrl: getOrgUrl() }, () => { void chrome.runtime.lastError; }); } catch {} }
         reject(new Error(`Timeout after ${timeoutMs/1000}s — action: ${action}`));
       }
     }, timeoutMs);
@@ -122,6 +122,10 @@ async function callD365(action, params = {}) {
         action,
         params,
         d365TabId: getD365TabId(),
+        // The org this panel serves — background refuses to relay to a tab showing a DIFFERENT
+        // environment (pinned tab navigated elsewhere, wrong-tab fallback), and can fall back to
+        // any other live tab of the SAME org when the pinned one was slept/replaced/closed.
+        orgUrl: getOrgUrl(),
       },
       (response) => {
         if (settled) return;
