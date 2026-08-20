@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
+import { findDuplicateGroups } from "../dupUtils.js";
 
 export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord}){
   const[sortField,setSortField]=useState(null);
@@ -12,6 +13,12 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const[sortDir,setSortDir]=useState("asc");
   const[search,setSearch]=useState("");          // client-side filter over the already-loaded rows
   const deferredSearch=useDeferredValue(search);  // keeps typing smooth on large result sets
+  // Duplicate finder — pick the columns that define a duplicate, groups computed client-side
+  // over ALL loaded rows (raw values: lookups by GUID), excess rows feed the normal selection.
+  const[dupPanel,setDupPanel]=useState(false);
+  const[dupKeys,setDupKeys]=useState(new Set());
+  const[dupDayDates,setDupDayDates]=useState(true);
+  const[dupResult,setDupResult]=useState(null);
   // Reset sort/selection/filter when query changes (different entity or query string)
   const prevQuery=useRef(null);
   useEffect(()=>{
@@ -19,15 +26,16 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     if(qKey!==prevQuery.current){
       prevQuery.current=qKey;
       setSortField(null);setSortDir("asc");setSelected(new Set());setBulkUpdate(null);setSearch("");
+      setDupPanel(false);setDupKeys(new Set());setDupResult(null);
     }
   },[res?.query]);
   // Escape closes the confirm modal / bulk-update popover (destructive actions shouldn't be mouse-only).
   useEffect(()=>{
-    if(!confirmModal&&!bulkUpdate) return;
-    const onKey=(e)=>{ if(e.key==="Escape"){ setConfirmModal(null); setBulkUpdate(null); } };
+    if(!confirmModal&&!bulkUpdate&&!dupPanel) return;
+    const onKey=(e)=>{ if(e.key==="Escape"){ setConfirmModal(null); setBulkUpdate(null); setDupPanel(false); } };
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
-  },[confirmModal,bulkUpdate]);
+  },[confirmModal,bulkUpdate,dupPanel]);
   const doBulkUpdate=()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;
     setConfirmModal({msg:`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`,onOk:()=>{setConfirmModal(null);executeBulkUpdate();}});
@@ -145,6 +153,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       showFeedback(`${result.aborted?"Cancelled — ":""}${result.deleted} deleted${result.errors?.length?`, ${result.errors.length} error(s)`:""}${result.aborted?`, ${ids.length-(result.deleted||0)} untouched`:""}`);
       if(onDeleteDone) onDeleteDone(selected);
       setSelected(new Set());
+      setDupResult(null); // groups described rows that may just have been deleted — re-analyze
     }catch(e){
       showFeedback(`Error: ${e.message}`);
     }
@@ -252,6 +261,29 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   };
   const dlJSON=()=>{dl(toJSON(),"application/json;charset=utf-8",expName(res.entity.l,"json"));showFeedback(`JSON downloaded (${n} rows)`);};
 
+  // ── Duplicate finder ──
+  // Analysis runs over res.data (ALL loaded rows, not the filtered view) on RAW values via rawGet:
+  // lookups compare by GUID (two records sharing a display name never merge), money by number.
+  const runDupAnalysis=()=>setDupResult(findDuplicateGroups(res.data,[...dupKeys],rawGet,{dayDates:dupDayDates}));
+  const selectDupExcess=()=>{
+    if(!dupResult) return;
+    const ids=[];
+    for(const g of dupResult.groups) g.rows.slice(1).forEach(r=>{const id=getRecordId(r);if(id)ids.push(id);});
+    setSelected(prev=>{const s=new Set(prev);ids.forEach(id=>s.add(id));return s;});
+    setDupPanel(false);
+    showFeedback(`${ids.length.toLocaleString()} duplicate rows selected — review, then Update/Delete`);
+  };
+  // Review file: every duplicated row with its group number and KEEP/DELETE verdict, all columns.
+  const dupCSV=()=>{
+    if(!dupResult) return;
+    const lines=[["group","rowsInGroup","action",...res.fields].join(",")];
+    dupResult.groups.forEach((g,gi)=>g.rows.forEach((r,ri)=>{
+      lines.push([gi+1,g.rows.length,ri===0?"KEEP":"DELETE",...res.fields.map(f=>escCSV(expVal(r,f)))].join(","));
+    }));
+    dl("\uFEFF"+lines.join("\n"),"text/csv;charset=utf-8",expName(`${res.entity.l}_duplicates`,"csv"));
+    showFeedback(`Duplicate groups exported (${dupResult.groups.length.toLocaleString()} groups)`);
+  };
+
   const btnCopy=(label,icon,onClick,accent)=>(<button onClick={onClick} style={{
     padding:"4px 8px",fontSize:12,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:4,
     background:accent||"transparent",border:`1px solid ${accent?accent:C.bd}`,borderRadius:4,
@@ -294,6 +326,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
           {btnCopy("XLSX",<I.Download/>,dlXLSX,C.gnd)}
           {btnCopy("CSV",<I.Download/>,dlCSV)}
           {btnCopy("JSON",<I.Download/>,dlJSON)}
+
+          {res.data.length>1&&!res.fetching&&<>
+            <div style={{width:1,height:18,background:C.bd,margin:"0 6px"}}/>
+            {btnCopy("⧉ Duplicates",null,()=>setDupPanel(true))}
+          </>}
 
           {selected.size>0&&<>
             <div style={{width:1,height:18,background:C.rd+"44",margin:"0 6px"}}/>
@@ -358,6 +395,61 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
           {search.trim()&&filteredData.length!==res.data.length?`${filteredData.length.toLocaleString()} of ${res.data.length.toLocaleString()} records shown (filtered)`:`${res.data.length.toLocaleString()} records — loading complete`}
         </div>
       )}
+
+      {dupPanel&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:90,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setDupPanel(false)}>
+        <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:18,width:640,maxWidth:"92vw",maxHeight:"84vh",overflow:"auto",boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>⧉ Find duplicates</div>
+          <div style={{fontSize:12,color:C.txm,marginBottom:8,lineHeight:1.5}}>
+            Pick the columns that define a duplicate — rows sharing the same values on ALL of them form a group. Comparison uses raw values (lookups by GUID, never the display name) over the {res.data.length.toLocaleString()} loaded rows{(res.nextLink||res.fetching)?<span style={{color:C.yw}}> — ⚠ more rows exist on the server; load everything first for a complete analysis</span>:""}. Don't include the primary key — it's unique by definition.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:2,marginBottom:8,maxHeight:160,overflow:"auto",border:`1px solid ${C.bd}`,borderRadius:6,padding:8}}>
+            {res.fields.map(f=>(
+              <label key={f} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,cursor:"pointer",color:dupKeys.has(f)?C.tx:C.txm,overflow:"hidden"}}>
+                <input type="checkbox" checked={dupKeys.has(f)} onChange={e=>{const s=new Set(dupKeys);e.target.checked?s.add(f):s.delete(f);setDupKeys(s);setDupResult(null);}} style={{accentColor:C.vi,flexShrink:0}}/>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={f}>{f}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+            <label style={{fontSize:12,color:C.txm,display:"flex",alignItems:"center",gap:5,cursor:"pointer"}} title="09:12 and 15:40 on the same date count as equal — the usual business rule">
+              <input type="checkbox" checked={dupDayDates} onChange={e=>{setDupDayDates(e.target.checked);setDupResult(null);}} style={{accentColor:C.vi}}/>
+              Compare dates by day (ignore time)
+            </label>
+            <button onClick={runDupAnalysis} disabled={dupKeys.size===0} style={bt(C.vi,{fontSize:12,opacity:dupKeys.size?1:0.5})}>Analyze{dupKeys.size?` (${dupKeys.size} column${dupKeys.size>1?"s":""})`:""}</button>
+          </div>
+          {dupResult&&(dupResult.groups.length===0
+            ?<div style={{fontSize:13,color:C.gn,padding:"8px 0"}}>✅ No duplicates — every loaded row is unique on the selected columns.{dupResult.blankSkipped?` (${dupResult.blankSkipped.toLocaleString()} rows with all key columns empty were skipped.)`:""}</div>
+            :<>
+              <div style={{fontSize:13,marginBottom:8}}>
+                <span style={{color:C.yw,fontWeight:700}}>{dupResult.groups.length.toLocaleString()} duplicate group{dupResult.groups.length>1?"s":""}</span>
+                <span style={{color:C.txm}}> · {dupResult.excess.toLocaleString()} excess row{dupResult.excess>1?"s":""} beyond the first of each group, out of {dupResult.analyzed.toLocaleString()} analyzed{dupResult.blankSkipped?` · ${dupResult.blankSkipped.toLocaleString()} all-empty keys skipped`:""}</span>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+                <button onClick={selectDupExcess} style={bt(C.rd,{fontSize:12})}>Select {dupResult.excess.toLocaleString()} duplicates (keep first per group)</button>
+                <button onClick={dupCSV} style={bt(C.cy,{fontSize:12})}><I.Download/> Export groups (CSV)</button>
+              </div>
+              <div style={{border:`1px solid ${C.bd}`,borderRadius:6,overflow:"hidden"}}>
+                {dupResult.groups.slice(0,100).map((g,gi)=>(
+                  <div key={gi} style={{borderBottom:`1px solid ${C.bd}33`,padding:"6px 10px"}}>
+                    <div style={{fontSize:12,fontWeight:600,color:C.yw,marginBottom:2}}>×{g.rows.length} — {[...dupKeys].map(f=>flatVal(bestGet(g.rows[0],f))||"(empty)").join(" · ")}</div>
+                    {g.rows.slice(0,6).map((r,ri)=>(
+                      <div key={ri} style={{fontSize:11,...mono,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontWeight:700,minWidth:46,color:ri===0?C.gn:C.rd}}>{ri===0?"KEEP":"DELETE"}</span>
+                        <span style={{color:C.txm}}>{String(getRecordId(r)||"?")}</span>
+                      </div>
+                    ))}
+                    {g.rows.length>6&&<div style={{fontSize:11,color:C.txd}}>… {g.rows.length-6} more rows in this group</div>}
+                  </div>
+                ))}
+                {dupResult.groups.length>100&&<div style={{padding:"6px 10px",fontSize:11,color:C.txd}}>Showing the 100 biggest of {dupResult.groups.length.toLocaleString()} groups — selection and the CSV export cover ALL of them.</div>}
+              </div>
+              <div style={{fontSize:11,color:C.txd,marginTop:8,lineHeight:1.5}}>"Keep first" keeps each group's first row in loaded order — review the groups (or the CSV) before deleting, and export the doomed rows first as your undo file. Rows sharing these values can still be legitimate twins: when in doubt, add a source-reference column to the key.</div>
+            </>)}
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:12}}>
+            <button onClick={()=>setDupPanel(false)} style={bt(null,{fontSize:12})}>Close</button>
+          </div>
+        </div>
+      </div>}
 
       {confirmModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setConfirmModal(null)}>
         <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,minWidth:320,maxWidth:420,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
