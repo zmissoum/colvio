@@ -68,6 +68,19 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // broken for a SECOND reason besides the redacted filter. Display still truncates at 80.
     const safeQuery=(query||"").replace(/\$filter=[^&]*/,"$filter=...").substring(0,1000);
     const entry={entity:entity?.l||"?",query:safeQuery,mode,fields:fieldCount,ts:Date.now()};
+    // Builder entries also keep the query's STRUCTURE (columns, condition fields+operators, sort,
+    // limit) so a history click can reopen the Builder instead of dumping the raw OData string.
+    // Condition VALUES are blanked — same privacy rule as the string redaction above. REL/EXPAND
+    // clauses are not kept (their metadata is refetch-heavy) — flagged so the restore says so.
+    if(mode==="builder"){
+      let redacted=0;
+      entry.builder={
+        fields:sf,
+        filterGroups:filterGroups.map(g=>({logic:g.logic,conditions:(g.conditions||[]).map(c=>{if(c.value)redacted++;return{field:c.field,op:c.op,value:""};})})),
+        groupLogic,limit:lim,orderBy,
+        redacted,hadRel:relFilters.length>0,hadExpand:expands.some(ex=>ex.fields.length>0),
+      };
+    }
     setQueryHistory(prev=>{
       const updated=[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20);
       if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_query_history:updated});
@@ -643,6 +656,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
     if(!isLive){
       setRes({entity:ent,fields:sf.length?sf:FLDS.map(f=>f.l),data:ROWS,count:ROWS.length,total:ROWS.length,query:q,elapsed:"mock",nextLink:null,fetching:false});
+      addToHistory(ent,q,qm,(sf.length?sf:FLDS.map(f=>f.l)).length); // demo parity: history (and its builder-restore) works in demo too
       return;
     }
 
@@ -1330,12 +1344,28 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                       {queryHistory.map((h,i)=>(
                         <div key={i} style={{padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",fontSize:12}} onClick={()=>{
                           // Restore = select the entry's entity, then reopen the recorded query in the
-                          // right editor. Builder state is NOT stored in history (only the emitted
-                          // OData string), so builder entries reopen in the raw-OData editor — the
-                          // query is visible and runnable. $filter VALUES are redacted to "$filter=..."
-                          // at save time (PII) — the placeholder stays visible for the user to fill.
+                          // right editor. Builder entries carry a structure snapshot (values blanked —
+                          // PII) and reopen in the BUILDER; pre-snapshot entries and raw modes reopen
+                          // as the recorded string, with $filter VALUES redacted to "$filter=...".
                           setShowHistory(false);
                           const restore=()=>{
+                            if(h.mode==="builder"&&h.builder){
+                              // Entries recorded since the structure snapshot exists reopen in the
+                              // BUILDER (user request: a builder query restored as raw OData read as
+                              // "incomplete"). Values stay blank — privacy — the message says so.
+                              const b=h.builder;
+                              setQm("builder");
+                              setSf(b.fields||[]);
+                              setFilterGroups(b.filterGroups?.length?b.filterGroups:[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
+                              setGroupLogic(b.groupLogic||"and");
+                              setLim(b.limit??0);
+                              setOrderBy(b.orderBy&&b.orderBy.f?{f:b.orderBy.f,dir:b.orderBy.dir==="desc"?"desc":"asc"}:{f:"",dir:"asc"});
+                              const notes=[];
+                              if(b.redacted) notes.push(`refill the ${b.redacted} condition value${b.redacted>1?"s":""} — values are never stored in the history (privacy)`);
+                              if(b.hadRel||b.hadExpand) notes.push(`the query's ${[b.hadRel?"REL":null,b.hadExpand?"EXPAND":null].filter(Boolean).join(" and ")} clause${b.hadRel&&b.hadExpand?"s are":" is"} not kept in history`);
+                              if(notes.length) setError(`ℹ Restored into the Builder: ${notes.join("; ")}. Use Saved Queries (💾) to keep everything.`);
+                              return;
+                            }
                             if(h.mode==="fetchxml"){setQm("fetchxml");setFxml(h.query||"");}
                             else if(h.mode==="sql"){setQm("sql");setSqlQ(h.query||"");}
                             else {setQm("odata");setRq(h.query||"");}
