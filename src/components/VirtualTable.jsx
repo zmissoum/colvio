@@ -11,16 +11,39 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
   const containerRef = useRef(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerH, setContainerH] = useState(600);
+  // Wide results (many columns) put the container's own horizontal scrollbar below the fold —
+  // the user had to scroll the page to the very bottom to reach it. The container's native bar
+  // is hidden and replaced by a PROXY bar that sticks to the viewport bottom while the table is
+  // on screen, scroll-synced both ways (the !== guards break the echo loop).
+  const proxyRef = useRef(null);
+  const [hbar, setHbar] = useState({ sw: 0, cw: 0 });
+  const measureH = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setHbar(p => (p.sw === el.scrollWidth && p.cw === el.clientWidth) ? p : { sw: el.scrollWidth, cw: el.clientWidth });
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const obs = new ResizeObserver(entries => { for (const e of entries) setContainerH(e.contentRect.height); });
+    const obs = new ResizeObserver(entries => { for (const e of entries) setContainerH(e.contentRect.height); measureH(); });
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [measureH]);
+  // Direct call, not requestAnimationFrame: rAF never fires in a hidden/background tab, which
+  // would leave the proxy unmeasured until the next real resize. Reading scrollWidth post-commit
+  // forces layout synchronously — always correct, visible or not.
+  useEffect(() => { measureH(); }, [fields, data.length, measureH]);
 
-  const onScroll = useCallback((e) => setScrollTop(e.target.scrollTop), []);
+  const onScroll = useCallback((e) => {
+    setScrollTop(e.target.scrollTop);
+    const px = proxyRef.current;
+    if (px && px.scrollLeft !== e.target.scrollLeft) px.scrollLeft = e.target.scrollLeft;
+  }, []);
+  const onProxyScroll = useCallback((e) => {
+    const el = containerRef.current;
+    if (el && el.scrollLeft !== e.target.scrollLeft) el.scrollLeft = e.target.scrollLeft;
+  }, []);
 
   // Keyboard focus follows position; clamp it when the visible set shrinks (e.g. a filter applied)
   // so the highlight / Enter-to-select can't point past the end of the now-shorter list.
@@ -61,8 +84,11 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
   const endIdx = Math.min(data.length, startIdx + visibleCount);
   const offsetY = startIdx * ROW_H;
 
+  const hasHOverflow = hbar.sw > hbar.cw + 1;
+
   return (
-    <div ref={containerRef} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 280px)",outline:"none"}}>
+    <div>
+    <div ref={containerRef} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} className="vt-scroll" style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 280px)",outline:"none"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:fields.length*130}}>
         <thead>
           <tr>
@@ -114,6 +140,17 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
           {endIdx < data.length && <tr style={{height:(data.length - endIdx) * ROW_H}}><td colSpan={fields.length+1}/></tr>}
         </tbody>
       </table>
+    </div>
+    {hasHOverflow && (
+      <div ref={proxyRef} onScroll={onProxyScroll}
+        title="Scrolls the table horizontally"
+        style={{position:"sticky",bottom:0,overflowX:"auto",overflowY:"hidden",height:14,zIndex:3,background:C.sf,borderTop:`1px solid ${C.bd}`}}>
+        <div style={{width:hbar.sw,height:1}}/>
+      </div>
+    )}
+    {/* WebKit-only (Chrome/Edge — the extension's targets): hide the container's own horizontal
+        bar so the sticky proxy is the single one; vertical bar and trackpad panning untouched. */}
+    <style>{`.vt-scroll::-webkit-scrollbar:horizontal{display:none}`}</style>
     </div>
   );
 }

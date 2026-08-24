@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.151] — 2026-08-24
+### Fixed — results: the horizontal scrollbar is now always visible
+- User report: with many columns, the bar to scroll left-right only existed at the very bottom of the results table — below the fold on tall pages, so you had to scroll the whole page down before you could pan sideways. The table now has a **sticky horizontal scrollbar** that stays pinned to the bottom of the window whenever the table is on screen and wider than the view — scroll-synced both ways with the table (dragging the bar pans the columns; trackpad/shift-wheel panning moves the bar). It only appears when there is actual horizontal overflow, and the table's own bottom bar is hidden so there's exactly one.
+- Measurement is done directly in the render effect rather than on animation frames, so it stays correct even while the panel tab is in the background.
+
 ## [1.11.150] — 2026-08-20
 ### Fixed — history: a Builder query now restores INTO the Builder
 - User report: clicking a builder-made query in the history reopened it as raw OData with `$filter=...` — read as "incomplete and broken". History entries for builder runs now also record the query's **structure** — columns, condition fields + operators, sort, limit — and a history click **reopens the Builder** with all of it in place. Condition **values stay blanked** (the privacy rule is untouched: filter values are never persisted), and the restore says exactly what to do: "refill the N condition values". REL/EXPAND clauses aren't kept in history (flagged in the message when the query had them) — Saved Queries (💾) remain the way to keep a query complete, values included.
