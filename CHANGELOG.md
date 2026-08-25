@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.152] — 2026-08-25
+### Fixed — Login History: a second search never showed its results
+- User report: after searching and selecting a user, typing a **second search** looked broken — the spinner ran but the results list never appeared, and the module seemed stuck on the first user. The dropdown was gated on "no user selected", so any search made **while** a user was displayed fetched results and silently discarded them; the only way out was the unobvious "Change" button. The results list now shows whenever there are matches — picking one simply replaces the current selection and loads that user's history.
+
 ## [1.11.151] — 2026-08-24
 ### Fixed — results: the horizontal scrollbar is now always visible
 - User report: with many columns, the bar to scroll left-right only existed at the very bottom of the results table — below the fold on tall pages, so you had to scroll the whole page down before you could pan sideways. The table now has a **sticky horizontal scrollbar** that stays pinned to the bottom of the window whenever the table is on screen and wider than the view — scroll-synced both ways with the table (dragging the bar pans the columns; trackpad/shift-wheel panning moves the bar). It only appears when there is actual horizontal overflow, and the table's own bottom bar is hidden so there's exactly one.

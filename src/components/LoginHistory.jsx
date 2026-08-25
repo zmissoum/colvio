@@ -123,7 +123,10 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
           </select>
         </div>
 
-        {users.length>0&&!selectedUser&&(
+        {/* No !selectedUser gate: with a user already selected, a second search used to fetch
+            results but never SHOW them — the module looked frozen on the first user (user-hit).
+            Picking a result simply replaces the selection. */}
+        {users.length>0&&(
           <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:10,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,marginTop:4,maxHeight:250,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
             {users.map(u=>(
               <button key={u.id} onClick={()=>{selectUser(u);setUsers([]);}} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"none",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",background:"transparent",color:C.tx,textAlign:"left"}}
