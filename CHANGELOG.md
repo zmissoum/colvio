@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.153] — 2026-08-26
+### Fixed — Explorer edits are now typed by the field's metadata
+- User report: updating a value from the Explorer failed with "the value is a string but an id is expected" — the bulk-update popover and inline edit sent the typed text **as-is**, leaving the server to reject type mismatches with cryptic 400s (the same class the Loader fixed in v1.11.138). Both edit paths now **convert by the field's real type**: numbers become JSON numbers (dot-decimal validated, "12,5"-style refused with the reason), booleans true/false, option sets require the numeric value, dates are validated, GUID fields check the 36-character shape — every refusal happens **before anything is sent**, with a readable message in the popover.
+- **Lookups finally work from the Explorer**: a lookup column can't be written through its `_value` column at all — Colvio now builds the proper `nav@odata.bind` toward the target table from relationship metadata. Paste the target record's **GUID** (an empty value clears the lookup); polymorphic lookups (Customer/Owner) get a **target-table picker** in the popover. Text in a lookup is refused with the pointer to the right tool: name/business-code matching is the Data Loader's job (resolve mode / alternate keys).
+- The value box shows a **type hint** for the selected column (GUID, number, true/false, numeric option value, ISO date). Raw-OData results on a different table than the selected one keep the old behavior (no metadata to type against).
+
 ## [1.11.152] — 2026-08-25
 ### Fixed — Login History: a second search never showed its results
 - User report: after searching and selecting a user, typing a **second search** looked broken — the spinner ran but the results list never appeared, and the module seemed stuck on the first user. The dropdown was gated on "no user selected", so any search made **while** a user was displayed fetched results and silently discarded them; the only way out was the unobvious "Change" button. The results list now shows whenever there are matches — picking one simply replaces the current selection and loads that user's history.

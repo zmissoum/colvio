@@ -395,6 +395,28 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     return f?.t || "String";
   };
 
+  // Typed-update metadata handed to the results view (bulk update + inline edit): field → type,
+  // and for lookups the nav-property binds. Same defense the Loader got in v1.11.138 — the server
+  // 400s raw strings on numeric/GUID fields with a cryptic message, and a lookup can't be written
+  // through its _value column at all (it needs nav@odata.bind with the target's entity set).
+  // Keyed by BOTH logical and odata names so builder columns and raw-mode columns both resolve.
+  const buildUpdateMeta = () => {
+    const fieldTypes = {}, lookupBinds = {};
+    for (const f of fields) {
+      fieldTypes[f.l] = f.t; if (f.odata) fieldTypes[f.odata] = f.t;
+      if (f.t === "Lookup" || f.t === "Owner" || f.t === "Customer") {
+        let navs = lookups.filter(lk => lk.type !== "collection" && lk.lookupField === f.l)
+          .map(n => ({ nav: n.navProperty, target: n.targetEntity, set: entities.find(e2 => e2.l === n.targetEntity)?.p || null }));
+        if (!navs.length && f.target) { // demo fields carry a plain target instead of relationship rows
+          const base = f.l.replace(/^_/, "").replace(/_value$/, "");
+          navs = [{ nav: base, target: f.target, set: entities.find(e2 => e2.l === f.target)?.p || f.target + "s" }];
+        }
+        if (navs.length) { lookupBinds[f.l] = navs; if (f.odata) lookupBinds[f.odata] = navs; }
+      }
+    }
+    return { fieldTypes, lookupBinds };
+  };
+
   const buildFilter = (fieldName, op, val, fl=fields) => {
     if (!fieldName) return "";
     if (op === "is_null") return `${getOdataName(fieldName, fl)} eq null`;
@@ -655,7 +677,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     addHistory(q,qm);
 
     if(!isLive){
-      setRes({entity:ent,fields:sf.length?sf:FLDS.map(f=>f.l),data:ROWS,count:ROWS.length,total:ROWS.length,query:q,elapsed:"mock",nextLink:null,fetching:false});
+      setRes({entity:ent,fields:sf.length?sf:FLDS.map(f=>f.l),data:ROWS,count:ROWS.length,total:ROWS.length,query:q,elapsed:"mock",nextLink:null,fetching:false,...buildUpdateMeta()});
       addToHistory(ent,q,qm,(sf.length?sf:FLDS.map(f=>f.l)).length); // demo parity: history (and its builder-restore) works in demo too
       return;
     }
@@ -890,7 +912,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         // saved as "fou_salesareateam"). Map the entity-set name back to its logical name when known.
         const baseSet=entitySet.split(/[(/]/)[0];
         const odataEnt=entities.find(e=>e.p===baseSet)||{l:baseSet,p:baseSet};
-        setRes({entity:odataEnt,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink,fetching:!!nextLink});
+        setRes({entity:odataEnt,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink,fetching:!!nextLink,
+          ...(odataEnt?.l===ent?.l?buildUpdateMeta():{})}); // raw query may hit ANOTHER table — the loaded metadata would then describe the wrong fields
         addToHistory(odataEnt,q,qm,headerFields.length);
         setLoading(false);
         // Paginate
@@ -948,7 +971,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
       let allRecords = [...firstClean];
       let nextLink = data.nextLink || null;
-      setRes({entity:ent, fields:headerFields, odataFieldMap, data:allRecords, count:allRecords.length, total:allRecords.length, query:q, elapsed:`${t1}s`, nextLink, fetching:!!nextLink});
+      setRes({entity:ent, fields:headerFields, odataFieldMap, data:allRecords, count:allRecords.length, total:allRecords.length, query:q, elapsed:`${t1}s`, nextLink, fetching:!!nextLink, ...buildUpdateMeta()});
       addToHistory(ent,q,qm,headerFields.length);
       setLoading(false);
 

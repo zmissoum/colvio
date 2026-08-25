@@ -4,6 +4,7 @@ import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId } from 
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
 import { findDuplicateGroups } from "../dupUtils.js";
+import { coerceForFieldType } from "../loaderUtils.js";
 
 export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord}){
   const[sortField,setSortField]=useState(null);
@@ -36,24 +37,68 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
   },[confirmModal,bulkUpdate,dupPanel]);
+  // Metadata-driven PATCH body for one field + typed-in value — same defense the Loader got in
+  // v1.11.138: the server rejects raw strings on numeric/GUID fields with a cryptic 400, and a
+  // lookup can't be written through its _value column at all (nav@odata.bind is the only road).
+  // Falls back to the old heuristic when the result carries no metadata (raw query on another
+  // table, FetchXML aliases). localValue = what the displayed row should show after the write.
+  const GUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const prepareUpdate=(field,rawStr,lookupTarget)=>{
+    const odataField=res.odataFieldMap?.[field]||field;
+    const t=res.fieldTypes?.[field];
+    const isEmpty=rawStr===""||rawStr==="null";
+    if(t==="Lookup"||t==="Owner"||t==="Customer"){
+      const binds=res.lookupBinds?.[field];
+      if(!binds?.length) return {ok:false,reason:`"${field}" is a lookup but its relationship metadata isn't available here — use the Data Loader for this update.`};
+      const b=binds.length===1?binds[0]:binds.find(x=>x.target===lookupTarget);
+      if(!b) return {ok:false,needsTarget:true,reason:`"${field}" can point to ${binds.map(x=>x.target).join(" or ")} — pick the target table first.`};
+      if(isEmpty) return {ok:true,body:{[b.nav]:null},localValue:null}; // clears the lookup
+      const g=rawStr.trim();
+      if(!GUID_RE.test(g)) return {ok:false,reason:`"${field}" is a lookup to ${b.target} — the value must be that record's GUID (36 characters), not text. Matching on a name or business code is the Data Loader's job (lookup resolve mode / alternate keys).`};
+      if(!b.set) return {ok:false,reason:`Can't resolve the entity set for "${b.target}" — use the Data Loader for this update.`};
+      return {ok:true,body:{[`${b.nav}@odata.bind`]:`/${b.set}(${g})`},localValue:g};
+    }
+    if(isEmpty) return {ok:true,body:{[odataField]:null},localValue:null};
+    if(t==="Uniqueidentifier"){
+      const g=rawStr.trim();
+      if(!GUID_RE.test(g)) return {ok:false,reason:`"${field}" expects a GUID (36 characters like 00000000-0000-0000-0000-000000000000).`};
+      return {ok:true,body:{[odataField]:g},localValue:g};
+    }
+    if(t==="DateTime"){
+      if(isNaN(Date.parse(rawStr))) return {ok:false,reason:`"${rawStr}" is not a recognizable date — use ISO format: 2026-08-26 or 2026-08-26T14:30:00Z.`};
+      return {ok:true,body:{[odataField]:rawStr.trim()},localValue:rawStr.trim()};
+    }
+    if(t==="Picklist"||t==="State"||t==="Status"){
+      const c=coerceForFieldType(rawStr,"Integer");
+      if(!c.ok) return {ok:false,reason:`"${field}" is an option set — use the option's NUMERIC value (the label won't work here).`};
+      return {ok:true,body:{[odataField]:c.value},localValue:c.value};
+    }
+    if(t){
+      const c=coerceForFieldType(rawStr,t);
+      if(!c.ok) return {ok:false,reason:c.reason};
+      return {ok:true,body:{[odataField]:c.value},localValue:c.value};
+    }
+    let val=rawStr; // no metadata — legacy heuristic
+    if(val==="true") val=true;
+    else if(val==="false") val=false;
+    else if(!isNaN(val)&&val.trim()!=="") val=Number(val);
+    return {ok:true,body:{[odataField]:val},localValue:val};
+  };
+
   const doBulkUpdate=()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;
-    setConfirmModal({msg:`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`,onOk:()=>{setConfirmModal(null);executeBulkUpdate();}});
+    const prep=prepareUpdate(bulkUpdate.field,bulkUpdate.value,bulkUpdate.target);
+    if(!prep.ok){setBulkUpdate({...bulkUpdate,err:prep.reason});return;} // refused BEFORE anything is sent — the popover shows why
+    setConfirmModal({msg:`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`,onOk:()=>{setConfirmModal(null);executeBulkUpdate(prep);}});
   };
-  const executeBulkUpdate=async()=>{
+  const executeBulkUpdate=async(prep)=>{
     const ids=[...selected];
     setBulkUpdating(true);abortRef.current=false;setUpdProg({done:0,total:ids.length});
     let ok=0,fail=0,cancelled=false;
-    const odataField=res.odataFieldMap?.[bulkUpdate.field]||bulkUpdate.field;
-    let val=bulkUpdate.value;
-    if(val===""||val==="null") val=null;
-    else if(val==="true") val=true;
-    else if(val==="false") val=false;
-    else if(!isNaN(val)&&val.trim()!=="") val=Number(val);
     for(const id of ids){
       if(abortRef.current){cancelled=true;break;} // ✕ Cancel — already-written PATCHes stay written
       try{
-        await bridge.update(res.entity.p, id, {[odataField]:val});
+        await bridge.update(res.entity.p, id, prep.body);
         ok++;
       }catch{fail++;}
       setUpdProg({done:ok+fail,total:ids.length});
@@ -84,15 +129,12 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const inlineEdit=async(record,field,newValue)=>{
     const id=getRecordId(record);
     if(!id||!res.entity?.p) return;
+    const prep=prepareUpdate(field,newValue);
+    if(!prep.ok){showFeedback(prep.needsTarget?`"${field}" can target several tables \u2014 use bulk Update (checkbox \u2192 Update) to pick the target`:prep.reason);return;}
     try{
       const odataField=res.odataFieldMap?.[field]||field;
-      let val=newValue;
-      if(newValue===""||newValue==="null") val=null;
-      else if(newValue==="true") val=true;
-      else if(newValue==="false") val=false;
-      else if(!isNaN(newValue)&&newValue.trim()!=="") val=Number(newValue);
-      await bridge.update(res.entity.p, id, {[odataField]:val});
-      if(onUpdateRecord){const updated={...record,[odataField]:val};delete updated[odataField+"__display"];onUpdateRecord(updated,record);}
+      await bridge.update(res.entity.p, id, prep.body);
+      if(onUpdateRecord){const updated={...record,[odataField]:prep.localValue};delete updated[odataField+"__display"];onUpdateRecord(updated,record);}
       showFeedback("\u2713 Saved");
     }catch(e){
       showFeedback("Edit failed: "+e.message);
@@ -343,13 +385,32 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
                   <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Bulk Update — {selected.size} record(s)</div>
                   <div style={{marginBottom:6}}>
                     <label style={{fontSize:11,color:C.txm,display:"block",marginBottom:2}}>Column</label>
-                    <select value={bulkUpdate.field} onChange={e=>setBulkUpdate({...bulkUpdate,field:e.target.value})} style={{width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:13,outline:"none",boxSizing:"border-box"}}>
+                    <select value={bulkUpdate.field} onChange={e=>setBulkUpdate({...bulkUpdate,field:e.target.value,target:"",err:""})} style={{width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:13,outline:"none",boxSizing:"border-box"}}>
                       {res.fields.filter(f=>!f.includes(".")).map(f=><option key={f} value={f}>{f}</option>)}
                     </select>
                   </div>
+                  {(res.lookupBinds?.[bulkUpdate.field]?.length>1)&&(
+                    <div style={{marginBottom:6}}>
+                      <label style={{fontSize:11,color:C.txm,display:"block",marginBottom:2}}>Target table (this lookup is polymorphic)</label>
+                      <select value={bulkUpdate.target||""} onChange={e=>setBulkUpdate({...bulkUpdate,target:e.target.value,err:""})} style={{width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:13,outline:"none",boxSizing:"border-box"}}>
+                        <option value="">— pick the table the GUID belongs to —</option>
+                        {res.lookupBinds[bulkUpdate.field].map(b=><option key={b.target} value={b.target}>{b.target}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div style={{marginBottom:8}}>
                     <label style={{fontSize:11,color:C.txm,display:"block",marginBottom:2}}>New value</label>
-                    <input value={bulkUpdate.value} onChange={e=>setBulkUpdate({...bulkUpdate,value:e.target.value})} placeholder="null, true, false, or value..." style={{width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:13,...mono,outline:"none",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter")doBulkUpdate();}}/>
+                    <input value={bulkUpdate.value} onChange={e=>setBulkUpdate({...bulkUpdate,value:e.target.value,err:""})} placeholder="null, true, false, or value..." style={{width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:13,...mono,outline:"none",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter")doBulkUpdate();}}/>
+                    {(()=>{const t=res.fieldTypes?.[bulkUpdate.field];
+                      const hint=t==="Lookup"||t==="Owner"||t==="Customer"?"Lookup — paste the target record's GUID · empty = clear"
+                        :t==="Uniqueidentifier"?"GUID (36 characters)"
+                        :["Integer","BigInt","Decimal","Money","Double"].includes(t)?"Number — dot decimal (1234.56)"
+                        :t==="Boolean"?"true / false"
+                        :["Picklist","State","Status"].includes(t)?"Numeric OPTION VALUE, not the label"
+                        :t==="DateTime"?"Date — 2026-08-26 or 2026-08-26T14:30:00Z"
+                        :null;
+                      return hint?<div style={{fontSize:10.5,color:C.txd,marginTop:3}}>{hint}</div>:null;})()}
+                    {bulkUpdate.err&&<div style={{fontSize:11.5,color:C.rd,marginTop:4,lineHeight:1.5}}>⚠ {bulkUpdate.err}</div>}
                   </div>
                   <div style={{display:"flex",gap:6}}>
                     <button onClick={doBulkUpdate} disabled={bulkUpdating} style={bt(`linear-gradient(135deg,${C.cy},${C.vi})`,{fontSize:12,flex:1,justifyContent:"center"})}>{bulkUpdating?<><Spin s={10}/> {updProg?`Updating ${updProg.done.toLocaleString()}/${updProg.total.toLocaleString()}…`:"Updating..."}</>:<><I.Zap/> Update {selected.size}</>}</button>
