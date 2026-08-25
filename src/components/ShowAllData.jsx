@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import AuditHistory from "./AuditHistory.jsx";
 import BpfManager from "./BpfManager.jsx";
 import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom, confirmProd } from "../shared.jsx";
+import { coerceScalarForEdit } from "../updateUtils.js";
 
 export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const isLive = orgInfo?.isExtension;
@@ -119,14 +120,8 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const EDITABLE_TYPES=new Set(["String","Memo","Boolean","DateTime",...NUMERIC_INT,...NUMERIC_FLOAT,...OPTIONSET_TYPES]);
   const isEditable=(f)=> isLive && f.vfu && EDITABLE_TYPES.has(f.t) && f.l!==`${record?.entity}id`;
 
-  const coerce=(v,t)=>{
-    const s=String(v??"").trim();
-    if(s==="")return null;
-    if(t==="Boolean")return s==="true";
-    if(NUMERIC_INT.has(t)||OPTIONSET_TYPES.has(t)){const n=parseInt(s,10);return isNaN(n)?null:n;}
-    if(NUMERIC_FLOAT.has(t)){const n=parseFloat(s);return isNaN(n)?null:n;}
-    return s; // String / Memo / DateTime (ISO string passed through)
-  };
+  // Shared typed coercion (updateUtils, tested). The old local version silently turned a
+  // MISTYPED number into null — one typo would have CLEARED the field instead of refusing.
 
   const startEdit=(f)=>{
     setEditMsg("");
@@ -140,9 +135,16 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const saveField=async(f)=>{
     if(!editing)return;
     if(!confirmProd(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`))return;
+    const s=String(editing.value??"").trim();
+    let val=null; // empty = deliberate clear
+    if(s!==""){
+      const c=coerceScalarForEdit(s,f.t);
+      if(!c.ok){setEditMsg(`✗ ${f.l}: ${c.reason}`);return;} // refused BEFORE sending — never a silent clear
+      val=c.value;
+    }
     setSavingField(true);setEditMsg("");
     try{
-      await bridge.update(record.entitySet,record.id,{[f.l]:coerce(editing.value,f.t)});
+      await bridge.update(record.entitySet,record.id,{[f.l]:val});
       setEditing(null);
       await loadRecordDirect(record.entity,record.id); // reload to show the fresh formatted value
       setEditMsg(`✓ ${f.l} updated`);

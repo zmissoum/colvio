@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.154] — 2026-08-26
+### Changed — write-path audit: the risky logic is now pure and tested (+27 tests, 260 total)
+- Prompted by a fair user question — "why weren't these bugs caught?" Root cause: the recent bugs all lived in logic **trapped inside components**, out of the test suite's reach, and fixes were applied at the point of pain instead of to the whole class. This release does the sweep:
+- **Every user-typed write now goes through one tested module** (`updateUtils`): Explorer bulk update, Explorer inline edit, and Show-All-Data field editing share the same typed coercion, GUID/date validation and lookup `@odata.bind` construction — 16 tests pin the refusals (text-in-lookup, comma decimals, option labels) and the bodies (bind paths, clear-on-empty, polymorphic targets).
+- **Audit finding fixed**: Show-All-Data's own coercion silently turned a MISTYPED number into `null` — one typo in an Integer field would have **cleared the field** instead of refusing. It now refuses with the reason, before anything is sent.
+- **The OData filter builder is extracted and tested** (`filterUtils`, 8 tests): type-driven quoting is the injection defense ("1 or 1 eq 1" in a numeric condition stays inert text), GUID-on-lookup unquoting, negated string functions, null operators.
+- **History entry construction is extracted and tested** (`historyUtils`, 5 tests): the privacy invariant (filter values never persisted — string redaction AND builder-snapshot blanking) is now enforced by tests, not by hope.
+- Swept the remaining write callers (BpfManager: internally-built bodies; SystemOps: fixed values) and the "results hidden by a stale selection" render-gate class (Login History was the only instance). No other latent case found.
+
 ## [1.11.153] — 2026-08-26
 ### Fixed — Explorer edits are now typed by the field's metadata
 - User report: updating a value from the Explorer failed with "the value is a string but an id is expected" — the bulk-update popover and inline edit sent the typed text **as-is**, leaving the server to reject type mismatches with cryptic 400s (the same class the Loader fixed in v1.11.138). Both edit paths now **convert by the field's real type**: numbers become JSON numbers (dot-decimal validated, "12,5"-style refused with the reason), booleans true/false, option sets require the numeric value, dates are validated, GUID fields check the 36-character shape — every refusal happens **before anything is sent**, with a readable message in the popover.

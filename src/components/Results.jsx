@@ -4,7 +4,7 @@ import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId } from 
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
 import { findDuplicateGroups } from "../dupUtils.js";
-import { coerceForFieldType } from "../loaderUtils.js";
+import { prepareUpdate as prepareUpdateForMeta } from "../updateUtils.js";
 
 export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord}){
   const[sortField,setSortField]=useState(null);
@@ -37,53 +37,9 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
   },[confirmModal,bulkUpdate,dupPanel]);
-  // Metadata-driven PATCH body for one field + typed-in value — same defense the Loader got in
-  // v1.11.138: the server rejects raw strings on numeric/GUID fields with a cryptic 400, and a
-  // lookup can't be written through its _value column at all (nav@odata.bind is the only road).
-  // Falls back to the old heuristic when the result carries no metadata (raw query on another
-  // table, FetchXML aliases). localValue = what the displayed row should show after the write.
-  const GUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const prepareUpdate=(field,rawStr,lookupTarget)=>{
-    const odataField=res.odataFieldMap?.[field]||field;
-    const t=res.fieldTypes?.[field];
-    const isEmpty=rawStr===""||rawStr==="null";
-    if(t==="Lookup"||t==="Owner"||t==="Customer"){
-      const binds=res.lookupBinds?.[field];
-      if(!binds?.length) return {ok:false,reason:`"${field}" is a lookup but its relationship metadata isn't available here — use the Data Loader for this update.`};
-      const b=binds.length===1?binds[0]:binds.find(x=>x.target===lookupTarget);
-      if(!b) return {ok:false,needsTarget:true,reason:`"${field}" can point to ${binds.map(x=>x.target).join(" or ")} — pick the target table first.`};
-      if(isEmpty) return {ok:true,body:{[b.nav]:null},localValue:null}; // clears the lookup
-      const g=rawStr.trim();
-      if(!GUID_RE.test(g)) return {ok:false,reason:`"${field}" is a lookup to ${b.target} — the value must be that record's GUID (36 characters), not text. Matching on a name or business code is the Data Loader's job (lookup resolve mode / alternate keys).`};
-      if(!b.set) return {ok:false,reason:`Can't resolve the entity set for "${b.target}" — use the Data Loader for this update.`};
-      return {ok:true,body:{[`${b.nav}@odata.bind`]:`/${b.set}(${g})`},localValue:g};
-    }
-    if(isEmpty) return {ok:true,body:{[odataField]:null},localValue:null};
-    if(t==="Uniqueidentifier"){
-      const g=rawStr.trim();
-      if(!GUID_RE.test(g)) return {ok:false,reason:`"${field}" expects a GUID (36 characters like 00000000-0000-0000-0000-000000000000).`};
-      return {ok:true,body:{[odataField]:g},localValue:g};
-    }
-    if(t==="DateTime"){
-      if(isNaN(Date.parse(rawStr))) return {ok:false,reason:`"${rawStr}" is not a recognizable date — use ISO format: 2026-08-26 or 2026-08-26T14:30:00Z.`};
-      return {ok:true,body:{[odataField]:rawStr.trim()},localValue:rawStr.trim()};
-    }
-    if(t==="Picklist"||t==="State"||t==="Status"){
-      const c=coerceForFieldType(rawStr,"Integer");
-      if(!c.ok) return {ok:false,reason:`"${field}" is an option set — use the option's NUMERIC value (the label won't work here).`};
-      return {ok:true,body:{[odataField]:c.value},localValue:c.value};
-    }
-    if(t){
-      const c=coerceForFieldType(rawStr,t);
-      if(!c.ok) return {ok:false,reason:c.reason};
-      return {ok:true,body:{[odataField]:c.value},localValue:c.value};
-    }
-    let val=rawStr; // no metadata — legacy heuristic
-    if(val==="true") val=true;
-    else if(val==="false") val=false;
-    else if(!isNaN(val)&&val.trim()!=="") val=Number(val);
-    return {ok:true,body:{[odataField]:val},localValue:val};
-  };
+  // Typed PATCH-body preparation lives in updateUtils.js (pure, tested) — shared with the
+  // Show-All-Data editor so every user-typed write goes through the same refusals.
+  const prepareUpdate=(field,rawStr,lookupTarget)=>prepareUpdateForMeta({fieldTypes:res.fieldTypes,lookupBinds:res.lookupBinds,odataFieldMap:res.odataFieldMap},field,rawStr,lookupTarget);
 
   const doBulkUpdate=()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;

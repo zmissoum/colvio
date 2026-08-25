@@ -5,6 +5,8 @@ import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
+import { buildFilterClause } from "../filterUtils.js";
+import { buildHistoryEntry } from "../historyUtils.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
 import RelFilterCard from "./RelFilterCard.jsx";
@@ -66,21 +68,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // Strip $filter values from stored query to avoid persisting PII (emails, names, etc.)
     // 1000 (was 200): the old cap could chop a long $select mid-token, so a restored entry was
     // broken for a SECOND reason besides the redacted filter. Display still truncates at 80.
-    const safeQuery=(query||"").replace(/\$filter=[^&]*/,"$filter=...").substring(0,1000);
-    const entry={entity:entity?.l||"?",query:safeQuery,mode,fields:fieldCount,ts:Date.now()};
-    // Builder entries also keep the query's STRUCTURE (columns, condition fields+operators, sort,
-    // limit) so a history click can reopen the Builder instead of dumping the raw OData string.
-    // Condition VALUES are blanked — same privacy rule as the string redaction above. REL/EXPAND
-    // clauses are not kept (their metadata is refetch-heavy) — flagged so the restore says so.
-    if(mode==="builder"){
-      let redacted=0;
-      entry.builder={
-        fields:sf,
-        filterGroups:filterGroups.map(g=>({logic:g.logic,conditions:(g.conditions||[]).map(c=>{if(c.value)redacted++;return{field:c.field,op:c.op,value:""};})})),
-        groupLogic,limit:lim,orderBy,
-        redacted,hadRel:relFilters.length>0,hadExpand:expands.some(ex=>ex.fields.length>0),
-      };
-    }
+    // Entry construction (redaction + builder structure snapshot) lives in historyUtils.js —
+    // pure and tested, since both its invariants were user-hit while they lived inline here.
+    const entry=buildHistoryEntry({entityLogical:entity?.l,query,mode,fieldCount,ts:Date.now(),
+      builderState:mode==="builder"?{fields:sf,filterGroups,groupLogic,limit:lim,orderBy,hadRel:relFilters.length>0,hadExpand:expands.some(ex=>ex.fields.length>0)}:null});
     setQueryHistory(prev=>{
       const updated=[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20);
       if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_query_history:updated});
@@ -417,44 +408,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     return { fieldTypes, lookupBinds };
   };
 
-  const buildFilter = (fieldName, op, val, fl=fields) => {
-    if (!fieldName) return "";
-    if (op === "is_null") return `${getOdataName(fieldName, fl)} eq null`;
-    if (op === "is_not_null") return `${getOdataName(fieldName, fl)} ne null`;
-    if (!val) return "";
-    const odataField = getOdataName(fieldName, fl);
-    const fType = getFieldType(fieldName, fl);
-    const escaped = val.replace(/'/g, "''");
-    const isStringType = fType === "String" || fType === "Memo";
-
-    if (op === "contains" || op === "startswith" || op === "endswith") {
-      if (!isStringType) { op = "eq"; }
-      else return `${op}(${odataField},'${escaped}')`;
-    }
-    if (op === "not_contains" || op === "not_startswith" || op === "not_endswith") {
-      if (!isStringType) { op = "ne"; }
-      else { const fn = op.replace("not_",""); return `not ${fn}(${odataField},'${escaped}')`; }
-    }
-    const noQuoteTypes = new Set(["Integer","Picklist","State","Status","Boolean","Money","Decimal","Double","BigInt"]);
-    if (noQuoteTypes.has(fType)) {
-      // Security: validate numeric value to prevent OData injection (e.g. "1 or 1 eq 1")
-      const sanitized = val.trim();
-      if (fType === "Boolean" && (sanitized === "true" || sanitized === "false")) return `${odataField} ${op} ${sanitized}`;
-      if (/^-?\d+(\.\d+)?$/.test(sanitized)) return `${odataField} ${op} ${sanitized}`;
-      return `${odataField} ${op} '${escaped}'`; // fallback to quoted string if not a valid number
-    }
-
-    // Lookup / Customer / Owner (polymorphic principal) and the Uniqueidentifier primary key are all
-    // compared by GUID — unquoted in OData. Owner/Uniqueidentifier were missing → "incompatible types"
-    // 400 (e.g. ownerid eq 'guid'). getOdataName already maps these to the _value column.
-    if (fType === "Lookup" || fType === "Customer" || fType === "Owner" || fType === "Uniqueidentifier") {
-      // Security: validate GUID format to prevent OData injection
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())) return `${odataField} ${op} ${val.trim()}`;
-      return `${odataField} ${op} '${escaped}'`; // fallback
-    }
-
-    return `${odataField} ${op} '${escaped}'`;
-  };
+  // Extracted to filterUtils.js (pure, tested) — the type-driven quoting is the injection
+  // defense, so its guarantees are pinned by tests instead of living inline here.
+  const buildFilter = (fieldName, op, val, fl=fields) => buildFilterClause(fieldName, op, val, fl);
 
   // Build $expand clauses including optional per-expand $filter (collection-typed expands only)
   const buildExpandClauses = (useOdataNames=false) => {
