@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.155] — 2026-08-26
+### Changed — full documentation catch-up (technical + functional)
+- **README**: typed edits & lookup editing, duplicate finder, $batch bulk delete + Cancel, sticky scrollbar, Builder history restore, BU paste-a-list + refresh, memory-saver-proof transport; stats refreshed (19 modules, ~19.3k LOC, 79 API actions, 38 components, 260 tests, real bundle sizes).
+- **Store & Edge listings**: Data Explorer paragraph covers typed edits and the duplicate finder; Business Units no longer says "Read-only" (org chart, bulk move, paste-a-list); System Ops mentions Cloud Flow Runs; System Ops added to the admin-gated list.
+- **Technical spec (.docx, FR+EN) regenerated** — was stamped v1.11.7: 19 modules, current architecture (resilient relay with origin guard, pure tested modules for writes/filters/history), 79 actions, module table covering Automation/Apps/Env Variables/BU/Adoption, release flow as it actually is. **Training guide and walkthrough deck regenerated** with current counts. The June 2026 security-audit report is left untouched — it is a dated historical document.
+- **PRIVACY.md / EDGE_LISTING.md**: removed the stale `activeTab` permission claim (dropped from the manifest in v1.11.97) — a privacy policy must not over-declare permissions.
+- **What's new popup** rewritten for the full store arc (.119 → now): typed edits, duplicate finder, BU tooling, reliability fixes, Adoption/Env Variables/Solutions compare.
+
 ## [1.11.154] — 2026-08-26
 ### Changed — write-path audit: the risky logic is now pure and tested (+27 tests, 260 total)
 - Prompted by a fair user question — "why weren't these bugs caught?" Root cause: the recent bugs all lived in logic **trapped inside components**, out of the test suite's reach, and fixes were applied at the point of pain instead of to the whole class. This release does the sweep:

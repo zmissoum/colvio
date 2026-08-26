@@ -1,7 +1,7 @@
 # Microsoft Edge Add-ons — Submission Guide & Listing Copy
 
 Colvio is fully compatible with Microsoft Edge (Chromium): same Manifest V3 package, every API
-we use (`storage`, `scripting`, `activeTab`, `declarativeContent`, content scripts on
+we use (`storage`, `scripting`, `declarativeContent`, content scripts on
 `https://*.dynamics.com/*`) is supported by Edge. **No code changes are required** — our
 manifest has no `update_url` and no browser-brand wording, the two usual blockers.
 
@@ -39,7 +39,7 @@ manifest has no `update_url` and no browser-brand wording, the two usual blocker
 
 | Permission | Justification |
 |---|---|
-| `activeTab` / content script on `*.dynamics.com` | Read the Dynamics 365 page context (org URL, session) to call the user's own Dataverse Web API; the extension is inert everywhere else. |
+| content script on `*.dynamics.com` | Read the Dynamics 365 page context (org URL, session) to call the user's own Dataverse Web API; the extension is inert everywhere else. |
 | `scripting` | Inject the bridge that relays panel requests to the Dataverse Web API in the page's session context. |
 | `storage` | Local cache of entity metadata, saved queries and user preferences. Nothing leaves the browser. |
 | `declarativeContent` | Enable the toolbar action only on Dynamics 365 pages. |

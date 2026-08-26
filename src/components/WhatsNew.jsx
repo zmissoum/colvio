@@ -6,20 +6,20 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
-    "🧩 NEW: Env Variables — defaults, per-environment overrides, and the ⚠ NO VALUE trap surfaced first; typed editing (yes/no, JSON validated), Key Vault references handled honestly",
-    "⇄ Solutions — COMPARE two solutions (Only in A / In both / Only in B) with an unmanaged-overlap warning; export a compare file on DEV, load it on PROD to see environment drift",
-    "📈 Adoption rebuilt — honest \"access events\" (Dataverse logs ≤1 per ~4 h), DAU/WAU/MAU + stickiness, per-BU adoption rates, license & inactivity view, service accounts in their own section",
-    "🌊 System Ops — NEW Cloud Flow Runs tab (solution flows' run history, Failed filter, error messages) · plugin traces get quick time windows (traces purge after ~24 h — calendars lied)",
-    "🔎 Apps — view inspector (filters decoded + columns), form subgrids with their views, \"Open in Explorer\" to replay any view's FetchXML",
-    "⬇ API Tester — download the response as .json/.txt with a sensible filename",
+    "🧩 NEW: Env Variables — defaults, overrides, and the ⚠ NO VALUE trap surfaced first · 📈 Adoption rebuilt (DAU/WAU/MAU, per-BU rates, inactivity, one-click PowerPoint report) · ⇄ Solutions compare, same-org and DEV→PROD",
+    "⚡ Loader & Explorer edits are now TYPED by field metadata — numbers, dates, GUIDs, option values validated BEFORE sending; lookups edited via @odata.bind with a target picker; readable refusals, no more cryptic 400s",
+    "⧉ Explorer — duplicate finder (pick the columns that define a duplicate, keep-first selection, review CSV) · $batch bulk delete with one ✕ Cancel · sticky horizontal scrollbar · Builder queries restore from history INTO the Builder",
+    "🏢 Business Units — full-screen org chart (folded, PNG export) · bulk MOVE users to a BU with the roles truth stated first · paste a list of emails to select the matches — built for provisioning waves",
+    "🛡 Reliability — the D365 tab is kept awake during long runs (browser memory-saver was killing them) and Colvio never sends a request to a tab showing a different environment",
+    "🌊 System Ops Cloud Flow Runs · 🔎 Apps view inspector & subgrids · 260 unit tests after a full write-path audit",
   ],
   fr: [
-    "🧩 NOUVEAU : Variables d'env. — défauts, overrides par environnement, et le piège ⚠ NO VALUE mis en avant ; édition typée (yes/no, JSON validé), références Key Vault traitées honnêtement",
-    "⇄ Solutions — COMPAREZ deux solutions (Uniquement dans A / Dans les deux / Uniquement dans B) avec alerte de chevauchement unmanaged ; exportez un fichier sur DEV, chargez-le sur PROD pour voir la dérive",
-    "📈 Adoption refondue — « événements d'accès » honnêtes (Dataverse journalise ≤1 par ~4 h), DAU/WAU/MAU + stickiness, taux par BU, vue licences & inactivité, comptes de service dans leur propre section",
-    "🌊 System Ops — NOUVEL onglet Runs cloud flows (historique des flows de solution, filtre Failed, messages d'erreur) · traces plug-ins en fenêtres rapides (purge à ~24 h — le calendrier mentait)",
-    "🔎 Applications — inspecteur de vues (filtres décodés + colonnes), subgrids des formulaires avec leurs vues, « Open in Explorer » pour rejouer le FetchXML d'une vue",
-    "⬇ API Tester — téléchargez la réponse en .json/.txt avec un nom de fichier parlant",
+    "🧩 NOUVEAU : Variables d'env. — défauts, overrides et le piège ⚠ NO VALUE mis en avant · 📈 Adoption refondue (DAU/WAU/MAU, taux par BU, inactivité, rapport PowerPoint en un clic) · ⇄ Comparaison de solutions, même org et DEV→PROD",
+    "⚡ Les éditions du Loader ET de l'Explorer sont TYPÉES par les métadonnées — nombres, dates, GUID, valeurs d'option validés AVANT l'envoi ; lookups édités via @odata.bind avec choix de la cible ; refus lisibles, fini les 400 cryptiques",
+    "⧉ Explorer — détecteur de doublons (choisissez les colonnes de la règle, sélection garde-le-premier, CSV de revue) · suppression $batch avec un ✕ Cancel · barre de défilement collante · l'historique restaure les requêtes Builder DANS le Builder",
+    "🏢 Business Units — organigramme plein écran (replié, export PNG) · DÉPLACEMENT en masse d'utilisateurs avec la vérité sur les rôles annoncée d'abord · collez une liste d'emails pour sélectionner les correspondances — pensé pour les vagues de provisioning",
+    "🛡 Fiabilité — l'onglet D365 reste éveillé pendant les longs runs (la mise en veille du navigateur les tuait) et Colvio n'envoie jamais une requête vers un onglet affichant un autre environnement",
+    "🌊 System Ops : runs des cloud flows · 🔎 Apps : inspecteur de vues & subgrids · 260 tests unitaires après un audit complet des chemins d'écriture",
   ],
 };
 

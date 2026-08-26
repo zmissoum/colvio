@@ -43,7 +43,6 @@ Colvio accesses your Dynamics 365 environment using your existing browser sessio
 
 | Permission | Purpose |
 |------------|---------|
-| `activeTab` | Detect the current D365 tab when you click the extension icon |
 | `scripting` | Inject the API proxy script into the D365 tab |
 | `storage` | Store saved queries, history, and metadata cache locally |
 | `declarativeContent` | Show/hide the extension icon based on URL |

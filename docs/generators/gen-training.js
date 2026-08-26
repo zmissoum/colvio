@@ -2,7 +2,7 @@
 // Run: node gen-training.js
 const { h1, h2, h3, p, note, bullets, num, pageBreak, table, img, coverAndToc, buildDoc, writeDoc } = require("./helpers");
 
-const VERSION = "v1.11.7";
+const VERSION = "v1.11.154";
 
 function build(L) {
   const c = [];
@@ -95,7 +95,7 @@ function build(L) {
 
 const FR = {
   title: "Guide de formation", subtitle: "Explorer, charger et auditer Dynamics 365 / Dataverse depuis le navigateur",
-  date: "Juin 2026", toc: "Sommaire",
+  date: "Août 2026", toc: "Sommaire",
   s1: "1. Introduction",
   s1p1: "Colvio est une extension Chrome **gratuite et open-source** pour Microsoft Dynamics 365 / Dataverse. Elle s'appuie sur votre session navigateur existante : **aucune clé API, aucun enregistrement d'application, aucun compte**. Ouvrez une page D365, cliquez sur l'icône Colvio, et travaillez.",
   s1b: [
@@ -104,7 +104,7 @@ const FR = {
     "**14 modules** couvrant l'exploration, la restauration, le chargement de données, le test d'API et l'audit.",
     "Interface **EN / FR**, thème sombre/clair, aide intégrée avec recherche.",
   ],
-  s1n: "💡 Capture d'écran recommandée ici : la barre latérale Colvio avec les 12 onglets, sur votre org de démo.",
+  s1n: "💡 Capture d'écran recommandée ici : la barre latérale Colvio avec les 19 onglets, sur votre org de démo.",
   s2: "2. Installation et premier lancement",
   s2a: "Installation",
   s2steps: [
@@ -246,7 +246,7 @@ const FR = {
 
 const EN = {
   title: "Training Guide", subtitle: "Explore, load and audit Dynamics 365 / Dataverse from the browser",
-  date: "June 2026", toc: "Contents",
+  date: "August 2026", toc: "Contents",
   s1: "1. Introduction",
   s1p1: "Colvio is a **free, open-source** Chrome extension for Microsoft Dynamics 365 / Dataverse. It rides on your existing browser session: **no API key, no app registration, no account**. Open a D365 page, click the Colvio icon, start working.",
   s1b: [
@@ -255,7 +255,7 @@ const EN = {
     "**14 modules** covering exploration, restore, data loading, API testing and auditing.",
     "**EN / FR** interface, dark/light theme, searchable built-in Help.",
   ],
-  s1n: "💡 Recommended screenshot here: the Colvio sidebar with all 12 tabs, on your demo org.",
+  s1n: "💡 Recommended screenshot here: the Colvio sidebar with all 19 tabs, on your demo org.",
   s2: "2. Installation & first launch",
   s2a: "Install",
   s2steps: [

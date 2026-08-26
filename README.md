@@ -29,14 +29,15 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **FetchXML mode** — textarea with 3 templates (simple, inner join, aggregation) + paging cookie pagination
 - **OData mode** — raw OData URL editing
 - **Column sorting** — click any header to sort ASC/DESC
-- **Inline edit** — double-click any cell to PATCH the value directly in D365
-- **Virtual scrolling** — 60fps on 10,000+ records (only ~35 rows rendered)
+- **Inline edit** — double-click any cell to PATCH the value directly in D365 — **typed by the field's metadata**: numbers, booleans, option values, dates and GUIDs validated *before* sending; **lookups edited properly via `@odata.bind`** (paste the target record's GUID, empty clears; polymorphic lookups get a target-table picker) with readable refusals instead of cryptic server 400s
+- **Virtual scrolling** — 60fps on 10,000+ records (only ~35 rows rendered), with a **sticky horizontal scrollbar** pinned to the window bottom on wide results
 - **Auto-pagination** with live timer and Stop button
 - **Saved queries** — persist across sessions (20 max)
-- **Query History** — auto-save last 20 queries, 1-click reload
+- **Query History** — auto-save last 20 queries, 1-click reload; **Builder queries restore into the Builder** (columns, condition fields + operators, sort, limit — condition *values* are never persisted, by privacy design)
 - **Query Templates** — 5 pre-built queries for common consultant tasks
-- **Bulk Update** — select records and PATCH a field on all
-- **Bulk Delete** — select and delete with typed confirmation + CanBeDeleted pre-check
+- **Bulk Update** — select records and PATCH a field on all, with the same metadata-typed conversion and pre-send refusals as inline edit
+- **Bulk Delete** — select and delete with typed confirmation + CanBeDeleted pre-check, on the fast **$batch pipeline** (chunks × parallel workers, automatic 429 retry) with a shared **✕ Cancel** for both bulk operations (honest "X done, Y untouched" feedback)
+- **⧉ Duplicate finder** — pick the columns that define a duplicate; groups computed over all loaded rows on **raw values** (lookups compared by GUID, optional dates-by-day), KEEP/DELETE verdicts per row, one click selects the excess rows for the normal bulk delete, CSV export of the groups as review/undo file
 - **Clickable lookups** — opens target record in D365
 - **Copy OData URL** — one-click copy for Postman/browser
 
@@ -192,6 +193,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Pick a BU to list its **direct members** — name, email, access mode / CAL type, enabled/disabled — with a filter
 - **CSV export with scope choice**: just this BU's members, or **this BU + every sub-BU beneath it** (the export keeps a Business Unit column); even works when the BU itself has no direct members
 - **➡ Bulk move users to another BU** (System Administrators) — tick members, pick the target, per-user results with failures kept selected for a retry; **the roles truth is stated before confirming**: legacy orgs remove every security role on a BU change, modern orgs retain them — Colvio reads the org setting and says which applies (and points to Security Audit's bulk role assign when needed)
+- **📋 Paste-a-list selection** — paste email addresses or UPNs (newlines, commas, Outlook `Name <email>` format all parse) and every match in the displayed BU is auto-checked for the move; the recap lists unmatched addresses verbatim (typo, not synced yet, other BU) — built for real provisioning waves
+- **↻ Member refresh** — reload a BU's member list without leaving the module (freshly provisioned users appear as soon as the Entra sync lands)
 - Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated
 
 ### Adoption
@@ -234,6 +237,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - English/French toggle (i18n) — including a searchable in-app Help
 - Export: XLSX, CSV, JSON — standard filenames `<object>_<YYYYMMDD>.<ext>` (run logs add `_HHMMSS`)
 - Session expiration detection with Reconnect button
+- **Memory-saver-proof transport** — the D365 org tab (Colvio's API channel) is pinned awake during use; if the browser sleeps or replaces it anyway, the relay wakes it, re-injects and retries before failing — and never sends a request to a tab showing a **different environment**
 - Error boundaries per tab (graceful crash recovery)
 - Rate limiting (30 req/sec client-side) + automatic 429 `Retry-After` back-off
 - Intelligent caching (memory + chrome.storage.local, org-scoped keys)
@@ -244,11 +248,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Metric | Value |
 |--------|-------|
 | Modules | 19 |
-| Lines of code | ~17,000 |
-| API actions | 72 |
-| React components | 37 |
-| Unit tests | 217 |
-| Build size | ~785 KB panel (+430 KB xlsx chunk on demand) |
+| Lines of code | ~19,300 |
+| API actions | 79 |
+| React components | 38 |
+| Unit tests | 260 |
+| Build size | ~905 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
 
@@ -269,6 +273,7 @@ Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 
 - **Content Security Policy** — explicit CSP on panel.html
 
 ### Write Operation Safeguards
+- **Every user-typed write goes through one tested typing module** — Explorer bulk update, inline edit and Show-All-Data editing share the same metadata-driven coercion: wrong-type values (text in a GUID/lookup, comma decimals, option labels) are **refused readably before anything is sent**, and a mistyped number can never silently clear a field
 - **Typed confirmation on bulk delete** — you must type the entity name to confirm
 - **UPDATE mode never creates** — native `If-Match: *` on every PATCH + empty-key rows rejected client-side (optional existence pre-check as a second layer)
 - **CanBeDeleted pre-check** — verifies entity metadata before allowing delete
