@@ -20,6 +20,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
   const [countsByBu, setCountsByBu] = useState({});// { buId: count } — cheap, drives the tree badges
   const [usersByBu, setUsersByBu] = useState({});  // { buId: [user,...] } — lazy cache, loaded on select
   const [loading, setLoading] = useState(true);    // initial tree + counts load
+  const [countsFailed, setCountsFailed] = useState(false); // count query failed → badges show "–", not a fake 0
   const [loadingUsers, setLoadingUsers] = useState(false); // members of the selected BU
   const [userErr, setUserErr] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -59,7 +60,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
           isLive
             ? bridge.query("businessunits", { select: "businessunitid,name,_parentbusinessunitid_value,isdisabled", orderby: "name asc" })
             : Promise.resolve({ records: DEMO_BUS }),
-          bridge.getUserCountsByBu().catch(() => ({})),   // best-effort: aggregate limit on huge orgs → blank badges
+          bridge.getUserCountsByBu().catch(() => null),   // null = counts unavailable — shown as "–", never as a fake 0 (audit finding)
         ]);
         if (cancelled) return;
         const buList = (buData?.records || []).map(b => ({
@@ -68,7 +69,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
           parentId: b._parentbusinessunitid_value || null,
           disabled: !!b.isdisabled,
         }));
-        setBus(buList); setCountsByBu(counts || {});
+        setBus(buList); setCountsByBu(counts || {}); setCountsFailed(!counts);
         if (buList.length) setSel(buList.find(b => !b.parentId)?.id || buList[0].id);
       } catch (e) { if (!cancelled) setError(e.message || String(e)); }
       if (!cancelled) setLoading(false);
@@ -134,6 +135,9 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
   // Counts come from the cheap aggregate (true totals even before any member rows are loaded);
   // fall back to the loaded length if the aggregate was unavailable for that BU.
   const cnt = (id) => countsByBu[id] ?? (usersByBu[id]?.length || 0);
+  // Display variant: when the count query FAILED and this BU's members aren't loaded, the truth
+  // is "unknown" — render "–" instead of the misleading 0 the math fallback produces.
+  const cntLabel = (id) => (countsFailed && countsByBu[id] === undefined && usersByBu[id] === undefined) ? "–" : cnt(id);
   const totalUsers = useMemo(() => {
     const vals = Object.values(countsByBu);
     if (vals.length) return vals.reduce((a, n) => a + (n || 0), 0);
@@ -176,10 +180,17 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
       if (missing.length) {
         setExporting(true);
         try {
-          const fetched = await Promise.all(missing.map(id => bridge.getUsersByBu(id).then(l => [id, l || []]).catch(() => [id, []])));
+          const fetched = await Promise.all(missing.map(id => bridge.getUsersByBu(id).then(l => [id, l || []]).catch(() => [id, null])));
+          // null = fetch FAILED: never cached as "empty BU", and the export says it's incomplete —
+          // the old catch silently exported the BU as memberless AND poisoned the cache (audit finding).
+          const failed = fetched.filter(([, l]) => l === null).map(([id]) => id);
           cache = { ...usersByBu };
-          fetched.forEach(([id, l]) => { cache[id] = l; });
+          fetched.forEach(([id, l]) => { if (l) cache[id] = l; });
           setUsersByBu(cache);
+          if (failed.length) {
+            const names = failed.map(id => (bus || []).find(b => b.id === id)?.name || id).slice(0, 3).join(", ");
+            setError(`Export INCOMPLETE — ${failed.length} sub-BU${failed.length > 1 ? "s" : ""} failed to load (${names}${failed.length > 3 ? "…" : ""}): their members are missing from the file. Retry the export.`);
+          }
         } finally { setExporting(false); }
       }
       base = buildSubtreeUsers(cache);
@@ -230,7 +241,8 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
               <button key={k} onClick={() => setBuStatus(k)} style={{ padding: "3px 9px", fontSize: 11, border: `1px solid ${C.bd}`, borderRadius: 3, cursor: "pointer", background: buStatus === k ? C.vi : "transparent", color: buStatus === k ? "white" : C.txd }}>{lbl}</button>
             ))}
           </div>
-          {!loading && bus && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{filteredTree.length} of {bus.length} BUs · {totalUsers} users</div>}
+          {!loading && bus && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{filteredTree.length} of {bus.length} BUs{countsFailed ? "" : ` · ${totalUsers} users`}</div>}
+          {countsFailed && !loading && <div style={{ fontSize: 11, color: C.yw, marginTop: 4 }}>⚠ Per-BU user counts couldn't be loaded — badges show "–" until a BU is opened.</div>}
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
           {loading && <div style={{ textAlign: "center", padding: 20 }}><Spin /> Loading…</div>}
@@ -243,7 +255,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                   {!flatList && b.depth > 0 && <span style={{ color: C.txd }}>└ </span>}{b.name}
                 </span>
                 {b.disabled && <Badge label="off" color={C.rd} />}
-                <span style={{ fontSize: 11, color: cnt(b.id) ? C.cy : C.txd, ...mono, flexShrink: 0 }}>{cnt(b.id)}</span>
+                <span style={{ fontSize: 11, color: cnt(b.id) ? C.cy : C.txd, ...mono, flexShrink: 0 }}>{cntLabel(b.id)}</span>
               </div>
             </button>
           ))}
@@ -486,7 +498,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                           fill={isSel ? C.sfa : C.sf} stroke={isSel ? C.vi : n.disabled ? C.rd + "66" : C.bd} strokeWidth={isSel ? 2 : 1}
                           strokeDasharray={n.disabled ? "4 3" : "none"} />
                         <text x={cx} y={n.y + PAD + 22} textAnchor="middle" fontSize="12.5" fontWeight="600" fill={n.disabled ? C.txd : C.tx} fontFamily="'Segoe UI',sans-serif">{name}{n.name.length > 22 ? <title>{n.name}</title> : null}</text>
-                        <text x={cx} y={n.y + PAD + 41} textAnchor="middle" fontSize="10.5" fill={cnt(n.id) ? C.cy : C.txd} fontFamily="'DM Mono',monospace">{cnt(n.id)} user{cnt(n.id) === 1 ? "" : "s"}{n.disabled ? " · off" : ""}</text>
+                        <text x={cx} y={n.y + PAD + 41} textAnchor="middle" fontSize="10.5" fill={cnt(n.id) ? C.cy : C.txd} fontFamily="'DM Mono',monospace">{cntLabel(n.id)} user{cnt(n.id) === 1 ? "" : "s"}{n.disabled ? " · off" : ""}</text>
                       </g>
                       {kids > 0 && (
                         <g onClick={e => { e.stopPropagation(); toggleNode(n.id); }} style={{ cursor: "pointer" }}>

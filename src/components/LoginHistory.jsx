@@ -13,26 +13,32 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
   const[error,setError]=useState("");
   const[limit,setLimit]=useState(100);
   const searchTimer=useRef(null);
+  const searchGen=useRef(0);   // a slow older search must never overwrite a newer one (audit finding)
+  const selGen=useRef(0);      // ditto for user selection: slow user A landing after fast user B
 
   const doSearch=(term)=>{
     if(searchTimer.current) clearTimeout(searchTimer.current);
     if(!term||term.length<2){ setUsers([]); return; }
     searchTimer.current=setTimeout(async()=>{
+      const gen=++searchGen.current;
       setLoading(true);setError("");
       try{
         const results=await bridge.searchUsers(term);
+        if(searchGen.current!==gen) return;
         setUsers(results||[]);
-      }catch(e){setError(e.message);}
-      finally{setLoading(false);}
+      }catch(e){if(searchGen.current===gen)setError(e.message);}
+      finally{if(searchGen.current===gen)setLoading(false);}
     },400);
   };
   useEffect(()=>()=>{if(searchTimer.current)clearTimeout(searchTimer.current);},[]);
 
-  const selectUser=async(user)=>{
+  const selectUser=async(user, lim=limit)=>{ // explicit lim: the "Last N" dropdown refetches with the NEW value, not the stale closure's
+    const gen=++selGen.current;
     setSelectedUser(user);
     setLoadingHistory(true);setError("");setHistory([]);
     try{
-      const data=await bridge.getLoginHistory(user.id,limit);
+      const data=await bridge.getLoginHistory(user.id,lim);
+      if(selGen.current!==gen) return;
       if(!data?.length){
         setError("No audit records found for this user. Check that auditing is enabled: Settings > Administration > System Settings > Auditing tab > enable 'Start Auditing' AND 'Audit user access'.");
       } else if(data.length===1 && data[0].action==="__AUDIT_EXISTS_BUT_NO_LOGINS"){

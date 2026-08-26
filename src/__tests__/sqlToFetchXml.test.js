@@ -316,3 +316,51 @@ describe("Real-world queries", () => {
     expect(fx).toContain('aggregate="count"');
   });
 });
+
+// ── Audit-pass regressions (silent wrong-results class) ───────
+describe("NOT on parenthesized groups (De Morgan)", () => {
+  it("NOT (a OR b) becomes AND of negated conditions", () => {
+    const fx = sql("SELECT name FROM account WHERE NOT (statecode = 1 OR industrycode = 2)");
+    expect(fx).toContain('operator="ne" value="1"');
+    expect(fx).toContain('operator="ne" value="2"');
+    expect(fx).not.toContain('type="or"'); // negated OR must be AND
+  });
+  it("NOT (a AND b) becomes OR of negated conditions", () => {
+    const fx = sql("SELECT name FROM account WHERE NOT (statecode = 1 AND industrycode = 2)");
+    expect(fx).toContain('type="or"');
+    expect(fx).toContain('operator="ne"');
+  });
+  it("NOT LIKE round-trips through double negation", () => {
+    const fx = sql("SELECT name FROM account WHERE NOT (name LIKE 'A%')");
+    expect(fx).toContain('operator="not-like"');
+  });
+});
+
+describe("COUNT semantics", () => {
+  it("COUNT(*) emits aggregate=count (row count)", () => {
+    const fx = sql("SELECT COUNT(*) FROM account");
+    expect(fx).toContain('aggregate="count"');
+    expect(fx).not.toContain("countcolumn");
+  });
+  it("COUNT(column) emits countcolumn (non-null count)", () => {
+    const fx = sql("SELECT COUNT(emailaddress1) FROM contact");
+    expect(fx).toContain('aggregate="countcolumn"');
+  });
+});
+
+describe("Cross-table WHERE splitting", () => {
+  it("an OR spanning main + JOIN tables is refused readably, never silently AND-ed", () => {
+    const r = sqlToFetchXml("SELECT a.name FROM account a JOIN contact c ON a.primarycontactid = c.contactid WHERE a.name LIKE 'A%' OR c.emailaddress1 IS NOT NULL");
+    expect(r.error).toBeTruthy();
+    expect(r.error).toMatch(/OR/i);
+  });
+  it("an OR between two columns of the SAME joined table keeps its OR structure", () => {
+    const fx = sql("SELECT a.name FROM account a JOIN contact c ON a.primarycontactid = c.contactid WHERE c.emailaddress1 IS NOT NULL OR c.telephone1 IS NOT NULL");
+    expect(fx).toContain('type="or"');
+  });
+  it("an AND mixing tables still splits per table", () => {
+    const fx = sql("SELECT a.name FROM account a JOIN contact c ON a.primarycontactid = c.contactid WHERE a.statecode = 0 AND c.emailaddress1 IS NOT NULL");
+    expect(fx).toContain('operator="eq" value="0"');
+    expect(fx).toContain('operator="not-null"');
+  });
+});

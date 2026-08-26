@@ -17,6 +17,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
   const [selUser, setSelUser] = useState(null);
   const [roles, setRoles] = useState([]);
   const [lastLogin, setLastLogin] = useState(undefined);
+  const [detailErr, setDetailErr] = useState(""); // detail-fetch failure — shown IN the card, never as fake "no data"
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [feedback, setFeedback] = useState("");
   const selectGen = useRef(0);
@@ -37,6 +38,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
     const gen = ++selectGen.current;
     setSelUser(user);
     setLoadingDetail(true);
+    setDetailErr(""); // a previous user's error must not smear this one (audit finding)
     setRoles([]);
     setLastLogin(undefined);
     try {
@@ -48,7 +50,9 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
       setRoles(r || []);
       setLastLogin(ll);
     } catch (e) {
-      if (selectGen.current === gen) setError(e.message);
+      // In the DETAIL card, not the global error slot — a failed fetch used to render as a
+      // confident "No security roles assigned" + "Never" logged in (audit finding).
+      if (selectGen.current === gen) setDetailErr(e.message || String(e));
     } finally {
       if (selectGen.current === gen) setLoadingDetail(false);
     }
@@ -175,6 +179,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
                 <div>
                   <span style={{ color: C.txd }}>{t("licenses.last_login")}:</span>{" "}
                   {loadingDetail ? <Spin s={10} /> :
+                    detailErr ? <span style={{ color: C.txd }}>—</span> :
                     lastLogin?.date ? (
                       <span style={{ fontWeight: 500, ...mono }}>
                         {new Date(lastLogin.date).toLocaleDateString()} <span style={{ color: C.txd }}>({daysAgo(lastLogin.date)} {t("licenses.days_ago")})</span>
@@ -191,7 +196,13 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
                 <span>🛡</span> {t("licenses.roles")} {!loadingDetail && <span style={{ fontSize: 12, color: C.txd, fontWeight: 400 }}>({roles.length})</span>}
               </div>
               {loadingDetail && <Spin s={14} />}
-              {!loadingDetail && roles.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No security roles assigned</div>}
+              {!loadingDetail && detailErr && (
+                <div style={{ fontSize: 12, color: C.rd }}>
+                  ⚠ Couldn't load this user's details: {detailErr}
+                  <button onClick={() => handleSelect(selUser)} style={{ ...bt(null, { fontSize: 11 }), marginLeft: 8 }}>↻ Retry</button>
+                </div>
+              )}
+              {!loadingDetail && !detailErr && roles.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No security roles assigned</div>}
               {!loadingDetail && roles.map(r => (
                 <div key={r.id} style={{ padding: "3px 0", fontSize: 12, color: C.txm, borderBottom: `1px solid ${C.bd}22`, ...mono }}>{r.name}</div>
               ))}

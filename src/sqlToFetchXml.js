@@ -218,16 +218,27 @@ export function parseSqlToAst(sql) {
       expect("RPAREN");
       return expr;
     }
-    // NOT
+    // NOT — De Morgan all the way down: NOT (a OR b) must become (NOT a AND NOT b). The old
+    // code negated bare conditions only and silently DROPPED the NOT on parenthesized groups,
+    // returning the exact opposite row set (audit finding).
     if (kw("NOT")) {
       next();
-      const inner = parsePrimary();
-      // wrap: negate the operator
-      if (inner.type === "condition") {
-        const negMap = { eq: "ne", ne: "eq", gt: "le", ge: "lt", lt: "ge", le: "gt", like: "not-like", "null": "not-null", "not-null": "null", in: "not-in" };
-        inner.operator = negMap[inner.operator] || inner.operator;
-      }
-      return inner;
+      const negMap = { eq: "ne", ne: "eq", gt: "le", ge: "lt", lt: "ge", le: "gt", like: "not-like", "not-like": "like", "null": "not-null", "not-null": "null", in: "not-in", "not-in": "in" };
+      const negate = (node) => {
+        if (node.type === "condition") {
+          const neg = negMap[node.operator];
+          if (!neg) throw new Error(`NOT cannot negate operator "${node.operator}"`);
+          node.operator = neg;
+          return node;
+        }
+        if (node.type === "logic") {
+          node.op = node.op === "and" ? "or" : "and";
+          node.children = node.children.map(negate);
+          return node;
+        }
+        return node;
+      };
+      return negate(parsePrimary());
     }
     // condition: col OP value | col IS [NOT] NULL | col LIKE val | col IN (...)
     const col = dottedName();
@@ -332,7 +343,12 @@ export function astToFetchXml(ast) {
       const resolved = resolveCol(s.col, ast);
       const target = resolved.entity;
       const col = resolved.col === "*" ? ast.from + "id" : resolved.col;
-      const entry = { name: col, aggregate: s.fn.toLowerCase(), alias: s.alias || s.fn.toLowerCase() };
+      // SQL semantics: COUNT(*) counts rows (FetchXML "count"), COUNT(col) counts NON-NULL
+      // values (FetchXML "countcolumn") — emitting "count" for both silently included NULL
+      // rows in COUNT(col) (audit finding).
+      const fnl = s.fn.toLowerCase();
+      const agg = fnl === "count" && resolved.col !== "*" ? "countcolumn" : fnl;
+      const entry = { name: col, aggregate: agg, alias: s.alias || fnl };
       if (target) { (joinAttrs[target] = joinAttrs[target] || []).push(entry); }
       else { mainAttrs.push(entry); }
     } else if (s.expr === "column") {
@@ -449,38 +465,60 @@ function resolveJoinFields(join, ast) {
   return { from: r, to: l };
 }
 
-// Split filter conditions: main entity vs join entities
+// Split filter conditions: main entity vs join entities.
+// Structure-preserving: a whole subtree that belongs to ONE table moves as-is (an OR between two
+// join-entity columns stays an OR — the old per-condition rip silently turned it into AND), an
+// AND mixing tables splits per child (valid: separate filters are AND-ed by FetchXML), and an OR
+// mixing tables is REFUSED readably — FetchXML cannot express it, and pretending returned rows
+// matching BOTH sides instead of either (audit finding).
+const MIXED = Symbol("mixed");
 function splitFilters(node, ast) {
   if (!node) return { main: null, joinFilters: {} };
-  const joinFilters = {};
+  const joinArr = {};
+
+  const entityOf = (n) => {
+    if (n.type === "condition") return resolveCol(n.attribute, ast).entity || "";
+    if (n.type === "logic") {
+      let e = null;
+      for (const c of n.children) {
+        const ce = entityOf(c);
+        if (ce === MIXED) return MIXED;
+        if (e === null) e = ce;
+        else if (e !== ce) return MIXED;
+      }
+      return e ?? "";
+    }
+    return "";
+  };
+  const stripAliases = (n) => {
+    if (n.type === "condition") { n.attribute = resolveCol(n.attribute, ast).col; return n; }
+    if (n.type === "logic") n.children = n.children.map(stripAliases);
+    return n;
+  };
 
   function classify(n) {
-    if (n.type === "condition") {
-      const resolved = resolveCol(n.attribute, ast);
-      if (resolved.entity) {
-        n.attribute = resolved.col; // strip alias prefix
-        const key = resolved.entity;
-        if (!joinFilters[key]) joinFilters[key] = [];
-        joinFilters[key].push(n);
-        return null; // remove from main
-      }
-      return n;
+    if (!n) return null;
+    const e = entityOf(n);
+    if (e !== MIXED) {
+      if (e === "") return n; // pure main-entity subtree
+      (joinArr[e] = joinArr[e] || []).push(stripAliases(n)); // whole subtree, OR/AND intact
+      return null;
     }
-    if (n.type === "logic") {
+    if (n.type === "logic" && n.op === "and") {
       const children = n.children.map(c => classify(c)).filter(Boolean);
       if (children.length === 0) return null;
       if (children.length === 1) return children[0];
       return { ...n, children };
     }
-    return n;
+    throw new Error("WHERE: an OR spanning different tables (main entity + JOINed entity) cannot be expressed in FetchXML — restructure the query (move the OR inside one table's conditions, or run two queries).");
   }
 
   const main = classify(node);
-  // convert joinFilter arrays into filter nodes
+  // convert joinFilter arrays into filter nodes (siblings came from AND context — AND is correct here)
   const jfNodes = {};
-  for (const [key, conditions] of Object.entries(joinFilters)) {
-    if (conditions.length === 1) jfNodes[key] = conditions[0];
-    else jfNodes[key] = { type: "logic", op: "and", children: conditions };
+  for (const [key, nodes] of Object.entries(joinArr)) {
+    if (nodes.length === 1) jfNodes[key] = nodes[0];
+    else jfNodes[key] = { type: "logic", op: "and", children: nodes };
   }
   return { main, joinFilters: jfNodes };
 }

@@ -130,6 +130,9 @@ export default function AuditHistory({ recordId, orgFeatures }) {
               })}</tbody>
             </table>
           )}
+          {!loading && !error && trail && trail.length === 100 && (
+            <div style={{ padding: "8px 14px", fontSize: 11.5, color: C.txd }}>Showing the latest 100 changes — this record has more audit history than displayed.</div>
+          )}
         </div>
       )}
     </div>

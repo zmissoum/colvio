@@ -61,6 +61,10 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   };
 
   const loadRecordDirect=async(entity, id)=>{
+    // A pending edit belongs to the PREVIOUS record — leaving it open would save the old
+    // record's text into the new one (audit finding). Options cache cleared too: it's keyed
+    // by field name, and "statuscode" on account is not "statuscode" on contact.
+    setEditing(null);setEditMsg("");setOptionsCache({});
     setError("");setLoading(true);
     try{
       const [fieldsMeta, entitySet] = await Promise.all([
@@ -208,7 +212,9 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
 
           {editMsg&&<div style={{...crd({padding:"8px 12px"}),marginBottom:12,fontSize:13,color:editMsg.startsWith("✓")?C.gn:C.rd}}>{editMsg}</div>}
 
-          {orgInfo?.isExtension&&<AuditHistory recordId={record.id} orgFeatures={orgFeatures}/>}
+          {/* key: a record switch REMOUNTS the panel — otherwise record B displays record A's
+              cached audit timeline until manually closed/reopened (audit finding). */}
+          {orgInfo?.isExtension&&<AuditHistory key={record.id} recordId={record.id} orgFeatures={orgFeatures}/>}
 
           {/* BPF manager — System-Administrator only (canBypassPlugins == the sysadmin role check).
               Lets an admin reopen/re-stage a record's BPF that the form UI locks once finished. */}

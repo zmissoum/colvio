@@ -134,7 +134,10 @@ async function callD365(action, params = {}) {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else if (response?.error) {
-          if (response.error.includes("SESSION_EXPIRED") || response.error.includes("401") || response.error.includes("403")) {
+          // Marker or explicit HTTP 401 only — a bare substring match flagged any error text
+          // containing "401"/"403" (GUIDs, error codes) as session expiry (audit finding); 403 is
+          // a PRIVILEGE error and no longer session-related at the source.
+          if (response.error.includes("SESSION_EXPIRED") || /\bHTTP 401\b/.test(response.error)) {
             sessionExpired = true;
             sessionListeners.forEach(cb => cb());
           }
@@ -171,11 +174,16 @@ export const bridge = {
 
   async checkPermissions() {
     if (!isExtension) return { canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canBypassPlugins: true, canPublish: true };
+    // false = genuinely DENIED (403). null = UNKNOWN (relay hiccup, throttle, timeout) — if every
+    // probe is unknown the whole check REJECTS so app.jsx's fail-open branch runs; the old
+    // catch→false delivered all-false as CONFIRMED and an admin lost 13 tabs for the session
+    // on a startup hiccup (audit finding).
     const probe = async (url) => {
-      try { await callD365("probe", { url }); return true; } catch { return false; }
+      try { await callD365("probe", { url }); return true; }
+      catch (e) { return /HTTP 403/.test(e?.message || "") ? false : null; }
     };
     const checkAdmin = async () => {
-      try { return !!(await callD365("isSystemAdmin")); } catch { return false; }
+      try { return !!(await callD365("isSystemAdmin")); } catch { return null; }
     };
     // NOTE: canPublish is intentionally NOT probed here — it chains 3 requests (WhoAmI →
     // privilege id → RetrieveUserPrivileges) and this function gates the first paint of the
@@ -186,7 +194,10 @@ export const bridge = {
       probe("systemusers?$top=1&$select=systemuserid"),
       checkAdmin(),
     ]);
-    return { canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins, canPublish: true };
+    if ([canReadAudit, canReadSolutions, canReadAllUsers, canBypassPlugins].every(v => v === null)) {
+      throw new Error("permission probes unreachable"); // caller fails OPEN — better tabs-with-server-enforced-403s than a wrongly locked-down session
+    }
+    return { canReadAudit: canReadAudit ?? false, canReadSolutions: canReadSolutions ?? false, canReadAllUsers: canReadAllUsers ?? false, canBypassPlugins: canBypassPlugins ?? false, canPublish: true };
   },
 
   // ── Business Process Flows (admin-only) ──────────────────────
@@ -264,8 +275,14 @@ export const bridge = {
     const cached = await cacheGet(k);
     if (cached !== null) return cached.value;
     let value = true;
-    try { const r = await callD365("hasPrivilege", { privilegeName: "prvPublishCustomization" }); value = r !== false; } catch {}
-    await cacheSet(k, { value }, 21600000); // 6h
+    try {
+      const r = await callD365("hasPrivilege", { privilegeName: "prvPublishCustomization" });
+      value = r !== false;
+      await cacheSet(k, { value }, 21600000); // 6h — cache only a REAL answer
+    } catch {
+      // Probe failed (relay/throttle): fail open for THIS call but do NOT cache — the old code
+      // pinned the fail-open "true" for 6 h across reloads (audit finding).
+    }
     return value;
   },
 
@@ -425,7 +442,7 @@ export const bridge = {
           // rest of the load — record its rows as per-row errors (logged + retryable). A TIMEOUT
           // already fired abortBatch, so stop dispatching; never-sent rows are accounted for below.
           const msg = e?.message || String(e);
-          if (/timeout after \d+s/i.test(msg)) { stopped = true; agg.aborted = true; }
+          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg)) { stopped = true; agg.aborted = true; } // a dead session stops the whole pool — remaining chunks would all fail identically
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -475,7 +492,7 @@ export const bridge = {
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
-          const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, ...bypass });
+          const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, keyIsNumeric: opts.keyIsNumeric, ...bypass });
           if (r?.aborted) { stopped = true; agg.aborted = true; } // content-side abort flag is set — later chunks would bounce
           agg.created += r?.created || 0; // upsert-created (201) tracked separately from real updates (204)
           agg.updated += r?.updated || 0;
@@ -486,7 +503,7 @@ export const bridge = {
           // rest of the load — record its rows as per-row errors (logged + retryable). A TIMEOUT is
           // special: callD365 already fired abortBatch, so stop dispatching (see above).
           const msg = e?.message || String(e);
-          if (/timeout after \d+s/i.test(msg)) { stopped = true; agg.aborted = true; }
+          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg)) { stopped = true; agg.aborted = true; } // a dead session stops the whole pool — remaining chunks would all fail identically
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -524,7 +541,7 @@ export const bridge = {
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
-          const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey, bypassPlugins: opts.bypassPlugins, bypassAsyncLogic: opts.bypassAsyncLogic });
+          const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey, keyIsNumeric: opts.keyIsNumeric, bypassPlugins: opts.bypassPlugins, bypassAsyncLogic: opts.bypassAsyncLogic });
           if (r?.aborted) { stopped = true; agg.aborted = true; }
           agg.deleted += r?.deleted || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
@@ -534,7 +551,7 @@ export const bridge = {
           // the delete — log its rows as per-row errors. A TIMEOUT already fired abortBatch, so stop
           // dispatching; never-sent rows are accounted for below.
           const msg = e?.message || String(e);
-          if (/timeout after \d+s/i.test(msg)) { stopped = true; agg.aborted = true; }
+          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg)) { stopped = true; agg.aborted = true; } // a dead session stops the whole pool — remaining chunks would all fail identically
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }

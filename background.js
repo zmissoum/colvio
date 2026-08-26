@@ -110,6 +110,15 @@ async function relayToD365(message) {
     const t = await tabsGet(id);
     if (t && okOrg(t)) { target = id; targetTab = t; break; }
   }
+  if (!target && message.orgUrl) {
+    // Service-worker restarts wipe d365TabId/replacedIds from memory — but the org tab may sit
+    // right there in the strip. Find ANY tab on the panel's org before giving up (audit finding).
+    const found = await new Promise((res) => {
+      try { chrome.tabs.query({ url: message.orgUrl + "/*" }, (ts) => { void chrome.runtime.lastError; res(ts || []); }); }
+      catch { res([]); }
+    });
+    if (found.length) { target = found[0].id; targetTab = found[0]; d365TabId = target; }
+  }
   if (!target) return { error: "Lost the D365 tab for this environment (closed, or replaced by the browser's memory saver). Open your Dynamics 365 environment and click the Colvio icon again." };
 
   keepAwake(target);

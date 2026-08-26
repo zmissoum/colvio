@@ -763,9 +763,11 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       {selUsers.size > 0 && <button onClick={runRemove} disabled={assignBusy} style={bt(null, { fontSize: 11, padding: "4px 10px", color: C.rd, borderColor: C.rd + "66", opacity: assignBusy ? 0.5 : 1 })}>{assignBusy ? <Spin s={11} /> : "🗑"} Remove role ({selUsers.size})</button>}
                       {selUsers.size > 0 && (() => { const hid = [...selUsers].filter(id => !shownUsers.some(u => u.id === id)).length; return hid > 0 ? <span style={{ fontSize: 11, color: C.yw, fontWeight: 600 }} title="Removal applies to your whole selection, including members hidden by the active filter.">⚠ {hid} selected hidden by filter</span> : null; })()}
                     </div>
-                    {userCount != null && userCount > users.length && (
+                    {/* Also fires when the COUNT query failed (userCount null) but the list hit the
+                        cap — that case used to present the first 10,000 as the full membership (audit finding). */}
+                    {((userCount != null && userCount > users.length) || users.length >= USERS_CAP) && (
                       <div style={{ ...crd({ padding: "8px 12px", background: C.yw + "0c", borderColor: C.yw + "55" }), marginBottom: 10, fontSize: 12, color: C.txm }}>
-                        ⚠ Showing the first <b>{users.length.toLocaleString()}</b> of <b>{userCount.toLocaleString()}</b> members (capped for performance). Use the filter to find a specific user — export covers the loaded {users.length.toLocaleString()} only.
+                        ⚠ Showing the first <b>{users.length.toLocaleString()}</b> of <b>{userCount != null ? userCount.toLocaleString() : "at least " + users.length.toLocaleString()}</b> members (capped for performance{userCount == null ? "; the exact count couldn't be loaded" : ""}). Use the filter to find a specific user — export covers the loaded {users.length.toLocaleString()} only.
                       </div>
                     )}
                     <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>

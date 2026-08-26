@@ -90,7 +90,9 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
       // "Deleted by / on" isn't on the bin record — pull it from the audit log (best-effort,
       // one query, non-blocking). Most-recent deletes ⇒ aligns with page 1; deep pages may show
       // "—". Blank columns if auditing is off or the table isn't audited.
-      if (records.length) bridge.recordsDeletedBy(ent.l, Math.min(Math.max(sizeVal * 4, 200), 5000)).then(map => { if (map) setDeletedBy(map); }).catch(() => {});
+      // {} (not null) on failure/empty: null means "still loading" and renders a spinner — a
+      // user without audit privileges got a PERPETUAL spinner in the Deleted-by column (audit finding).
+      if (records.length) bridge.recordsDeletedBy(ent.l, Math.min(Math.max(sizeVal * 4, 200), 5000)).then(map => setDeletedBy(map || {})).catch(() => setDeletedBy({}));
     } catch (e) {
       setError(e.message || String(e));
     }
@@ -99,7 +101,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
 
   const doRestore = async () => {
     if (!selected.size || !meta) return;
-    if (!confirmProd(orgInfo?.isProduction, `Restore ${selected.size} deleted record${selected.size > 1 ? "s" : ""} (${entity}) back into the live table.`)) return;
+    if (!confirmProd(orgInfo?.isProduction, `Restore ${selected.size} deleted record${selected.size > 1 ? "s" : ""} (${entity?.l || ""}) back into the live table.`)) return;
     const ids = [...selected];
     setRestoring({ done: 0, total: ids.length });
     const out = [];
@@ -113,10 +115,12 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
       }
       setRestoring({ done: out.length, total: ids.length });
     }
-    setResults(out);
     setRestoring(null);
-    // Refresh: restored records leave the bin.
-    if (out.some(r => r.ok)) loadDeleted(entity, page);
+    // Refresh FIRST, report AFTER: loadDeleted clears `results`, so the old order wiped the
+    // partial-failure report in the same render batch — "3/5 restored, 2 failed" never showed
+    // and the failed records just silently stayed in the bin (audit finding).
+    if (out.some(r => r.ok)) await loadDeleted(entity, page);
+    setResults(out);
   };
 
   const filtered = entities

@@ -69,7 +69,14 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
       await bridge.importTranslations(btoa(s),jobId);
       setSolBusy("");
       setImportJob({id:jobId,progress:0,done:false});
+      let polls=0; // the poll used to retry FOREVER on missing job/failed reads — "0%" spinner for the whole session (audit finding)
       jobPollRef.current=setInterval(async()=>{
+        if(++polls>60){ // ~5 min at 5s ticks
+          clearInterval(jobPollRef.current);jobPollRef.current=null;
+          setImportJob(null);
+          setSolMsg({ok:false,text:"Couldn't read the import job's status after 5 minutes (missing importjobs read privilege, or the job never registered). Check Settings > Data Management > Imports in D365, then publish customizations manually if the import succeeded."});
+          return;
+        }
         try{
           const d=await bridge.query("importjobs",{filter:`importjobid eq ${jobId}`,select:"progress,completedon"});
           const j=d?.records?.[0];
@@ -118,18 +125,24 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
     if(!selEnt||editCount===0)return;
     if(!confirmProd(orgInfo?.isProduction,`Save ${editCount} label change${editCount>1?"s":""} and publish ${selEnt.l}.`))return;
     setSaving(true);setSaveMsg(null);
-    let ok=0,fail=0;
+    let ok=0;
+    const failedAttrs={};let firstErr=""; // FAILED edits are KEPT (typed values were discarded — audit finding)
     for(const[attrName,langEdits] of Object.entries(edits)){
       const attr=attributes.find(a=>a.logical===attrName);
       if(!attr)continue;
       const labelsMap={};
       attr.labels.forEach(l=>{labelsMap[l.languageCode]={Label:l.label,LanguageCode:l.languageCode};});
       Object.entries(langEdits).forEach(([code,val])=>{labelsMap[+code]={Label:val,LanguageCode:+code};});
-      try{await bridge.updateAttributeLabel(selEnt.l,attrName,Object.values(labelsMap));ok++;}catch(err){fail++;setSaveMsg(`Error: ${err.message}`);}
+      try{await bridge.updateAttributeLabel(selEnt.l,attrName,Object.values(labelsMap));ok++;}
+      catch(err){failedAttrs[attrName]=langEdits;if(!firstErr)firstErr=err.message||String(err);}
     }
-    if(ok>0){try{await bridge.publishEntity(selEnt.l);}catch{}}
-    setSaveMsg(`${ok} updated${fail?`, ${fail} failed`:""}`);
-    setEdits({});
+    let pubFail="";
+    if(ok>0){try{await bridge.publishEntity(selEnt.l);}catch(pe){pubFail=pe.message||String(pe);}}
+    const failCount=Object.keys(failedAttrs).length;
+    // One honest message: real error first (it used to be overwritten by a green "N updated"),
+    // publish failure never swallowed (labels aren't visible in D365 until published).
+    setSaveMsg(`${ok} updated${failCount?` — ${failCount} FAILED (edits kept, fix and retry): ${firstErr}`:""}${pubFail?` — ⚠ publish failed: ${pubFail} — publish ${selEnt.l} manually`:""}`);
+    setEdits(failedAttrs);
     try{const d=await bridge.getAttributeLabels(selEnt.l);setAttributes(d||[]);}catch{}
     setSaving(false);
   };
@@ -154,8 +167,22 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
     const logIdx=headers.indexOf("logical_name");
     if(logIdx===-1)return;
     const newEdits={};
+    // Real CSV cell walk — the old regex emitted an EMPTY match after every comma, shifting every
+    // cell one index to the right: imports queued the wrong column as the label value (audit finding).
+    const parseCsvLine=(line)=>{
+      const cells=[];let cur="";let q=false;
+      for(let ci=0;ci<line.length;ci++){
+        const ch=line[ci];
+        if(q){ if(ch==='"'){ if(line[ci+1]==='"'){cur+='"';ci++;} else q=false; } else cur+=ch; }
+        else if(ch==='"') q=true;
+        else if(ch===","){cells.push(cur);cur="";}
+        else cur+=ch;
+      }
+      cells.push(cur);
+      return cells;
+    };
     for(let i=1;i<lines.length;i++){
-      const cells=lines[i].match(/(".*?"|[^,]*)/g)?.map(c=>c.replace(/^"|"$/g,"").replace(/""/g,'"'))||[];
+      const cells=parseCsvLine(lines[i]);
       const logical=cells[logIdx]?.trim();
       if(!logical)continue;
       const attr=attributes.find(a=>a.logical===logical);

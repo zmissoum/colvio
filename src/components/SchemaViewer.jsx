@@ -63,11 +63,16 @@ export default function SchemaViewer({bp,orgInfo,theme}){
       fields.sort((a,b)=>{const aLk=lkSet.has(a.l)||lkSet.has("_"+a.l+"_value")?0:1;const bLk=lkSet.has(b.l)||lkSet.has("_"+b.l+"_value")?0:1;return aLk-bLk||a.l.localeCompare(b.l);});
 
       setSelected(prev=>({...prev,[e.l]:{entity:e,fields,lookups}}));
-      // Grid position
-      const idx=Object.keys(selected).length;
-      const cols=Math.max(2,Math.ceil(Math.sqrt(idx+1)));
-      const col=idx%cols,row=Math.floor(idx/cols);
-      setPositions(prev=>({...prev,[e.l]:{x:col*GAP_X,y:row*GAP_Y}}));
+      // Grid position — computed inside the FUNCTIONAL updater: N parallel "+" adds all read the
+      // same stale closure's count and stacked every new card on the exact same spot (audit finding).
+      setPositions(prev=>{
+        const idx=Object.keys(prev).length;
+        const cols=Math.max(2,Math.ceil(Math.sqrt(idx+1)));
+        const taken=new Set(Object.values(prev).map(p=>`${p.x},${p.y}`));
+        let col=idx%cols,row=Math.floor(idx/cols);
+        while(taken.has(`${col*GAP_X},${row*GAP_Y}`)){col++;if(col>=cols){col=0;row++;}} // add-after-remove can leave the slot occupied
+        return {...prev,[e.l]:{x:col*GAP_X,y:row*GAP_Y}};
+      });
     }catch{}
     setLoadingEntity(null);
   },[selected]);
@@ -210,7 +215,9 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k],collapseAll);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
     const pad=80;
     return{x:minX-pad,y:minY-pad,w:maxX-minX+pad*2,h:maxY-minY+pad*2};
-  },[positions,selected]);
+    // expanded/collapseAll are READ above — missing deps froze the bounds at collapsed height,
+    // cropping expanded cards out of PNG/SVG exports (audit finding).
+  },[positions,selected,expanded,collapseAll]);
 
   const buildExportSvg=useCallback(()=>{
     if(!svgRef.current)return null;

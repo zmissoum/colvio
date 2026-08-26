@@ -29,6 +29,9 @@ function diffSchemas(a, b) {
   for (const [ent, ea] of Object.entries(a.entities)) {
     const eb = b.entities[ent];
     if (!eb) { rows.push({ sev: "high", entity: ent, field: "", what: "entity_missing", a: "present", b: "—" }); continue; }
+    // A snapshot side whose field fetch FAILED (error:true, fields:{}) must not diff — it would
+    // report every field of the other side as missing, a fake red wall (audit finding).
+    if (ea.error || eb.error) { rows.push({ sev: "high", entity: ent, field: "", what: "fetch_failed", a: ea.error ? "fetch failed" : "ok", b: eb.error ? "fetch failed" : "ok" }); continue; }
     for (const [fl, fa] of Object.entries(ea.fields)) {
       const fb = eb.fields[fl];
       if (!fb) { rows.push({ sev: "high", entity: ent, field: fl, what: "field_missing", a: fa.t, b: "—" }); continue; }

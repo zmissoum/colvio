@@ -50,18 +50,32 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const executeBulkUpdate=async(prep)=>{
     const ids=[...selected];
     setBulkUpdating(true);abortRef.current=false;setUpdProg({done:0,total:ids.length});
-    let ok=0,fail=0,cancelled=false;
+    let ok=0,cancelled=false;
+    const failedIds=[];const errCounts=new Map(); // WHAT failed and WHY — the old catch{fail++} discarded both (audit finding)
+    const byId=new Map(res.data.map(r=>[getRecordId(r),r]));
+    const odataField=res.odataFieldMap?.[bulkUpdate.field]||bulkUpdate.field;
     for(const id of ids){
       if(abortRef.current){cancelled=true;break;} // ✕ Cancel — already-written PATCHes stay written
       try{
         await bridge.update(res.entity.p, id, prep.body);
         ok++;
-      }catch{fail++;}
-      setUpdProg({done:ok+fail,total:ids.length});
+        // Local truth: the table (and any later export / duplicate analysis) must show the NEW
+        // value — bulk update used to leave the old ones on screen (audit finding).
+        const rec=byId.get(id);
+        if(rec&&onUpdateRecord){const updated={...rec,[odataField]:prep.localValue};delete updated[odataField+"__display"];onUpdateRecord(updated,rec);}
+      }catch(err){
+        failedIds.push(id);
+        const m=err?.message||String(err);
+        errCounts.set(m,(errCounts.get(m)||0)+1);
+      }
+      setUpdProg({done:ok+failedIds.length,total:ids.length});
     }
     setBulkUpdating(false);setUpdProg(null);
     setBulkUpdate(null);
-    showFeedback(`${cancelled?"Cancelled — ":""}${t("results.bulk_update")} ${ok} ${t("results.updated")}${fail?`, ${fail} ${t("results.failed")}`:""}${cancelled?`, ${ids.length-ok-fail} untouched`:""}`);
+    if(ok>0) setDupResult(null); // values changed — a previous duplicate analysis is stale
+    if(failedIds.length){setSelected(new Set(failedIds));} // failures stay selected for a retry
+    const topErr=failedIds.length?[...errCounts.entries()].sort((a,b)=>b[1]-a[1])[0][0]:"";
+    showFeedback(`${cancelled?"Cancelled — ":""}${t("results.bulk_update")} ${ok} ${t("results.updated")}${failedIds.length?`, ${failedIds.length} ${t("results.failed")} (kept selected) — ${topErr.substring(0,160)}`:""}${cancelled?`, ${ids.length-ok-failedIds.length} untouched`:""}`);
   };
   // Pre-check WRITE access before entering inline-edit, so the user learns they can't edit
   // BEFORE typing a value (instead of a 403 on commit). One RetrievePrincipalAccess call per
@@ -91,6 +105,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       const odataField=res.odataFieldMap?.[field]||field;
       await bridge.update(res.entity.p, id, prep.body);
       if(onUpdateRecord){const updated={...record,[odataField]:prep.localValue};delete updated[odataField+"__display"];onUpdateRecord(updated,record);}
+      setDupResult(null); // a value changed \u2014 a previous duplicate analysis no longer describes the data
       showFeedback("\u2713 Saved");
     }catch(e){
       showFeedback("Edit failed: "+e.message);
@@ -113,8 +128,15 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     if(!sortField) return filteredData;
     const dk2=(f)=>res.odataFieldMap?.[f]||f;
     return [...filteredData].sort((a,b)=>{
-      let va=a[dk2(sortField)+"__display"]??a[dk2(sortField)]??"";
-      let vb=b[dk2(sortField)+"__display"]??b[dk2(sortField)]??"";
+      // RAW values first: with include-annotations, numeric/date columns carry a FORMATTED
+      // __display ("1,980", "$1,380.08", "7/16/2026") which sorted lexicographically (audit
+      // finding). Raw numbers compare numerically; raw ISO dates compare correctly as strings.
+      const ra=a[dk2(sortField)],rb=b[dk2(sortField)];
+      if(typeof ra==="number"&&typeof rb==="number") return sortDir==="asc"?ra-rb:rb-ra;
+      if(typeof ra==="string"&&typeof rb==="string"&&/^\d{4}-\d{2}-\d{2}/.test(ra)&&/^\d{4}-\d{2}-\d{2}/.test(rb))
+        return sortDir==="asc"?ra.localeCompare(rb):rb.localeCompare(ra);
+      let va=a[dk2(sortField)+"__display"]??ra??"";
+      let vb=b[dk2(sortField)+"__display"]??rb??"";
       if(typeof va==="number"&&typeof vb==="number") return sortDir==="asc"?va-vb:vb-va;
       va=String(va).toLowerCase();vb=String(vb).toLowerCase();
       return sortDir==="asc"?va.localeCompare(vb):vb.localeCompare(va);
@@ -148,9 +170,18 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       const ids=Array.from(selected);
       const result=await bridge.batchDeleteKeyed(res.entity.p,`${res.entity.l}id`,ids.map(id=>({keyValue:id})),true,
         p=>setDelProg({done:p.done,total:p.total}),()=>abortRef.current,{chunk:100,concurrency:4});
-      showFeedback(`${result.aborted?"Cancelled — ":""}${result.deleted} deleted${result.errors?.length?`, ${result.errors.length} error(s)`:""}${result.aborted?`, ${ids.length-(result.deleted||0)} untouched`:""}`);
-      if(onDeleteDone) onDeleteDone(selected);
-      setSelected(new Set());
+      const clean=!result.aborted&&!(result.errors?.length);
+      if(clean){
+        showFeedback(`${result.deleted} deleted`);
+        if(onDeleteDone) onDeleteDone(selected);
+        setSelected(new Set());
+      }else{
+        // Partial outcome: NEVER prune the table blindly — the old code removed the whole
+        // selection, making cancelled/failed rows vanish as if deleted (audit finding). Which
+        // exact ids died isn't reliably known here, so the table stays as-is with the honest
+        // instruction; the selection is kept for a retry.
+        showFeedback(`${result.aborted?"Cancelled — ":""}${result.deleted} deleted, ${Math.max(0,ids.length-(result.deleted||0))} NOT deleted — table not updated; re-run the query to see survivors (selection kept)`);
+      }
       setDupResult(null); // groups described rows that may just have been deleted — re-analyze
     }catch(e){
       showFeedback(`Error: ${e.message}`);
@@ -248,7 +279,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       // stays inert text (unlike CSV) — no formula-injection guard needed. Wrapping in
       // safeVal(String(...)) turned every number into a text cell (SUM()=0) and put a visible
       // apostrophe on negatives.
-      const wsData=[res.fields,...sortedData.map(r=>res.fields.map(f=>{const v=bestGet(r,f);return v==null?"":(typeof v==="object"?JSON.stringify(v):v);}))];
+      // Raw value for numeric cells: bestGet prefers the FORMATTED display ("$1,380.08") which
+      // lands as a text cell → SUM()=0 in Excel (audit finding); display text stays for the rest
+      // (lookups/option sets/dates keep their labels).
+      const wsData=[res.fields,...sortedData.map(r=>res.fields.map(f=>{const raw=rawGet(r,f);if(typeof raw==="number")return raw;const v=bestGet(r,f);return v==null?"":(typeof v==="object"?JSON.stringify(v):v);}))];
       const ws=XLSX.utils.aoa_to_sheet(wsData);
       ws["!cols"]=res.fields.map(f=>({wch:Math.max(f.length,12)}));
       const wb=XLSX.utils.book_new();

@@ -174,6 +174,22 @@ export default function App(){
         isExtension: true,
       };
       setOrgInfo(info);
+      // Authoritative env badge: detectExtension only knows the URL, so organizationType was
+      // ALWAYS undefined here and the badge ran on pure hostname heuristics — a prod org with
+      // "test"/"demo" in its name skipped the production confirmations (audit finding). Fetch the
+      // real OrganizationType (RetrieveCurrentOrganization, non-blocking) and upgrade the badge.
+      bridge.getContext().then(ctx => {
+        if (!ctx?.organizationType) return;
+        const env2 = detectEnv(ext.orgUrl, ctx.organizationType);
+        setOrgInfo(prev => prev ? {
+          ...prev,
+          isProduction: env2.isProduction, envLabel: env2.label, envSource: env2.source,
+          organizationType: ctx.organizationType,
+          environmentId: ctx.environmentId ?? prev.environmentId,
+          organizationFriendlyName: ctx.organizationFriendlyName ?? prev.organizationFriendlyName,
+          organizationVersion: ctx.organizationVersion ?? prev.organizationVersion,
+        } : prev);
+      }).catch(() => { /* heuristic badge stays — old orgs without the function */ });
       setConnecting(true); // show "Connecting to <org>…" (not the manual/Demo connect screen) while probing
 
       // First paint normally waits on checkPermissions() so restricted tabs never flash. But a

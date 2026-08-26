@@ -18,13 +18,15 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
   const[showAllC,setShowAllC]=useState(false);
   const[showAllM,setShowAllM]=useState(false);
   const containerRef=useRef(null);
+  const[gErr,setGErr]=useState(""); // fetch failure — shown, never silently rendered as another entity's graph
   const selectGen=useRef(0); // generation counter to cancel stale depth-2 fetches
 
   useEffect(()=>{if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p})))}).catch(()=>{});},[]);
 
-  const handleSelect=async(e)=>{
+  const handleSelect=async(e, depthOverride)=>{ // explicit depth: the toggle button re-runs BEFORE setDepth lands (audit finding)
+    const useDepth=depthOverride??depth;
     const gen=++selectGen.current;
-    setSelEnt(e);setLoading(true);setShowAllP(false);setShowAllC(false);setShowAllM(false);
+    setSelEnt(e);setLoading(true);setGErr("");setShowAllP(false);setShowAllC(false);setShowAllM(false);
     try{
       const[p,c,mm]=await Promise.all([bridge.getLookups(e.l),bridge.getChildRelationships(e.l),bridge.getManyToManyRelationships(e.l)]);
       if(selectGen.current!==gen)return; // stale
@@ -39,7 +41,7 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
       setM2m(Object.values(mMap));
 
       // Depth 2: fetch relationships for each related entity (cap at 30 total)
-      if(depth===2){
+      if(useDepth===2){
         const allRelated=new Set();
         Object.values(pMap).forEach(r=>allRelated.add(r.targetEntity));
         Object.values(cMap).forEach(r=>allRelated.add(r.targetEntity));
@@ -63,7 +65,11 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
           setM2m(Object.values(extraM));
         }
       }
-    }catch{}
+    }catch(err){
+      // A failed fetch used to keep the PREVIOUS entity's nodes around the new center — silently
+      // misattributed relationships (audit finding). Clear and say so.
+      if(selectGen.current===gen){setParents([]);setChildren([]);setM2m([]);setGErr(err?.message||String(err));}
+    }
     if(selectGen.current===gen)setLoading(false);
   };
 
@@ -106,12 +112,13 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
       <div ref={containerRef} style={{flex:1,overflow:"auto",padding:20}}>
         {!selEnt&&<div style={{textAlign:"center",color:C.txd,marginTop:60}}>Select an entity to view its relationships</div>}
         {selEnt&&loading&&<div style={{textAlign:"center",marginTop:60}}><Spin s={20}/></div>}
+        {selEnt&&!loading&&gErr&&<div style={{textAlign:"center",color:C.rd,fontSize:13,marginTop:20,marginBottom:10}}>⚠ Couldn't load "{selEnt.l}" relationships: {gErr} <button onClick={()=>handleSelect(selEnt)} style={bt(null,{fontSize:12,marginLeft:8})}>↻ Retry</button></div>}
         {selEnt&&!loading&&(
           <div>
             <div style={{textAlign:"center",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
               <span style={{fontSize:16,fontWeight:700}}>{selEnt.d||selEnt.l}</span>
               <span style={{color:C.txd,fontSize:13}}>{parents.length} parent{parents.length!==1?"s":""} · {m2m.length} N:N · {children.length} child{children.length!==1?"ren":""}</span>
-              <button onClick={()=>{const next=depth===1?2:1;setDepth(next);handleSelect(selEnt);}} style={bt(depth===2?C.vi:null,{padding:"4px 10px",fontSize:12,borderRadius:4})}>
+              <button onClick={()=>{const next=depth===1?2:1;setDepth(next);handleSelect(selEnt,next);}} style={bt(depth===2?C.vi:null,{padding:"4px 10px",fontSize:12,borderRadius:4})}>
                 Depth {depth}
               </button>
               <Tooltip text={t("help.relationship_depth")}/>

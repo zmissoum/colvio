@@ -9,7 +9,10 @@
 export function buildHistoryEntry({ entityLogical, query, mode, fieldCount, ts, builderState }) {
   // 1000 (was 200): the old cap could chop a long $select mid-token, so a restored entry was
   // broken for a SECOND reason besides the redacted filter. Display still truncates at 80.
-  const safeQuery = (query || "").replace(/\$filter=[^&]*/, "$filter=...").substring(0, 1000);
+  // /g is load-bearing: a query can carry SEVERAL $filter segments ($expand's inner filter comes
+  // BEFORE the top-level one in the emitted URL) — without it the first was redacted and the
+  // real WHERE values persisted verbatim, breaking the privacy promise (audit finding).
+  const safeQuery = (query || "").replace(/\$filter=[^&]*/g, "$filter=...").substring(0, 1000);
   const entry = { entity: entityLogical || "?", query: safeQuery, mode, fields: fieldCount, ts };
   if (mode === "builder" && builderState) {
     let redacted = 0;

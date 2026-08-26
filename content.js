@@ -83,6 +83,11 @@
   // "resetBatchAbort" at the start of each run. Checked by the batch builders and the 429
   // back-off loops so a cancel stops retries and chunk processing inside the content script too.
   let batchAborted = false;
+  // Run token: resetBatchAbort BUMPS it. An ORPHANED serial-fallback loop (its bridge call timed
+  // out, the user already clicked Retry) used to see the freshly-reset batchAborted=false and
+  // RESUME posting its rows concurrently with the retry run → duplicate records (audit finding).
+  // Loops capture the token at run start and stop the moment a new run begins.
+  let batchRunId = 0;
 
   // When an abort (user cancel, or the panel's chunk-timeout abort) short-circuits a batch loop,
   // the untouched rows must NOT vanish from the results — the run would look "done" while most of
@@ -160,8 +165,15 @@
       }
 
       if (!resp.ok) {
-        if (resp.status === 401 || resp.status === 403) {
-          throw new Error("SESSION_EXPIRED: Session expired — refresh D5 (F5)");
+        // 401 = session gone. 403 = INSUFFICIENT PRIVILEGE — lumping it into "session expired"
+        // sent users into a pointless reconnect loop that masked the real cause (audit finding).
+        if (resp.status === 401) {
+          throw new Error("SESSION_EXPIRED: Session expired — refresh D365 (F5)");
+        }
+        if (resp.status === 403) {
+          let privMsg = "";
+          try { const t403 = await resp.text(); const j403 = JSON.parse(t403); privMsg = j403?.error?.message || ""; } catch { /* no details */ }
+          throw new Error(`HTTP 403: ${privMsg || "Insufficient privileges for this operation"} (permission error — your security roles, not your session)`);
         }
         // Parse D365 error — extract user-facing message, avoid leaking server internals
         let errMsg = `HTTP ${resp.status}`;
@@ -571,6 +583,7 @@
             break;
 
           case "batchCreate": {
+            const myRun = batchRunId; // orphan guard — see batchRunId declaration
             const records = params.records || [];
             const entitySet = params.entitySet;
             const results = { created: 0, errors: [], log: [] };
@@ -641,7 +654,7 @@
             };
 
             for (let batch = 0; batch < records.length; batch += BATCH_SIZE) {
-              if (batchAborted) break; // user cancelled — stop sending further chunks
+              if (batchAborted || myRun !== batchRunId) break; // user cancelled or a newer run started — stop sending further chunks
               const chunk = records.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
 
@@ -694,9 +707,14 @@
                     }
                   }
                 } else {
+                  // A 401 on the $batch endpoint means the SESSION died mid-run — serial-falling-back
+                  // would grind through thousands of doomed per-row requests with no reconnect banner
+                  // (audit finding). Throw the session marker so the bridge stops the pool and the UI
+                  // shows Reconnect; rows of this and later chunks become explicit retryable errors.
+                  if (resp.status === 401) throw new Error("SESSION_EXPIRED: Session expired mid-run — refresh D365 (F5), reconnect, then retry the remaining rows");
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
-                    if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
+                    if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
                     try {
                       await dvRequest("POST", entitySet, buildClean(chunk[i]), bypassHeaderObj);
                       results.created++;
@@ -711,7 +729,7 @@
               } catch (batchErr) {
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
-                  if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
+                  if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
                   try {
                     await dvRequest("POST", entitySet, buildClean(chunk[i]), bypassHeaderObj);
                     results.created++;
@@ -730,6 +748,7 @@
           }
 
           case "batchUpsert": {
+            const myRun = batchRunId; // orphan guard — see batchRunId declaration
             const items = params.items || [];
             const entitySet = params.entitySet;
             const keyField = params.keyField;
@@ -777,7 +796,15 @@
                 const guid = stripCtrl(item.keyValue).replace(/[^0-9a-fA-F-]/g, "");
                 return `${entitySet}(${guid})`;
               }
-              // Alt-key upsert: value sits inside '…' (OData string literal). Escaping quotes +
+              // Alt-key upsert: numeric alternate keys must be UNQUOTED ('123' 400s on an integer
+              // alt-key while the dry-run's $filter used the bare number — audit finding); the
+              // panel passes keyIsNumeric from field metadata. Character allow-list keeps the
+              // predicate injection-proof either way.
+              if (params.keyIsNumeric) {
+                const num = stripCtrl(item.keyValue).replace(/[^0-9.eE+\-]/g, "");
+                return `${entitySet}(${keyField}=${num})`;
+              }
+              // String alt-key: value sits inside '…' (OData string literal). Escaping quotes +
               // stripping control chars is sufficient; ) or / inside quotes can't break out.
               return `${entitySet}(${keyField}='${stripCtrl(item.keyValue).replace(/'/g, "''")}')`;
             };
@@ -824,7 +851,7 @@
             };
 
             for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
-              if (batchAborted) break; // user cancelled — stop sending further chunks
+              if (batchAborted || myRun !== batchRunId) break; // user cancelled or a newer run started — stop sending further chunks
               const chunk = items.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
 
@@ -884,10 +911,13 @@
                     }
                   }
                 } else {
-                  // Batch endpoint failed entirely — fall back to serial PATCH for this chunk
+                  // Batch endpoint failed entirely — fall back to serial PATCH for this chunk.
+                  // 401 = session died mid-run: throw the marker instead of grinding doomed
+                  // per-row requests with no reconnect banner (audit finding).
+                  if (resp.status === 401) throw new Error("SESSION_EXPIRED: Session expired mid-run — refresh D365 (F5), reconnect, then retry the remaining rows");
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
-                    if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
+                    if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
                     try {
                       await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), fbHeaders);
                       results.updated++;
@@ -903,7 +933,7 @@
                 // Network/transport failure — same fallback
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
-                  if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
+                  if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
                   try {
                     await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), fbHeaders);
                     results.updated++;
@@ -922,6 +952,7 @@
           }
 
           case "batchDeleteKeyed": {
+            const myRun = batchRunId; // orphan guard — see batchRunId declaration
             // Bulk DELETE by primary key (GUID) or alternate key, via multipart $batch with
             // one changeset per record (per-record log, errors don't cascade). Mirrors batchUpsert.
             const items = params.items || []; // [{ keyValue }]
@@ -953,6 +984,10 @@
                 const guid = stripCtrl(item.keyValue).replace(/[^0-9a-fA-F-]/g, "");
                 return `${entitySet}(${guid})`;
               }
+              if (params.keyIsNumeric) {
+                const num = stripCtrl(item.keyValue).replace(/[^0-9.eE+\-]/g, "");
+                return `${entitySet}(${keyField}=${num})`;
+              }
               return `${entitySet}(${keyField}='${stripCtrl(item.keyValue).replace(/'/g, "''")}')`;
             };
 
@@ -979,7 +1014,7 @@
             };
 
             for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
-              if (batchAborted) break; // user cancelled — stop sending further chunks
+              if (batchAborted || myRun !== batchRunId) break; // user cancelled or a newer run started — stop sending further chunks
               const chunk = items.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
               let body = "";
@@ -1023,9 +1058,14 @@
                     }
                   }
                 } else {
+                  // A 401 on the $batch endpoint means the SESSION died mid-run — serial-falling-back
+                  // would grind through thousands of doomed per-row requests with no reconnect banner
+                  // (audit finding). Throw the session marker so the bridge stops the pool and the UI
+                  // shows Reconnect; rows of this and later chunks become explicit retryable errors.
+                  if (resp.status === 401) throw new Error("SESSION_EXPIRED: Session expired mid-run — refresh D365 (F5), reconnect, then retry the remaining rows");
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
-                    if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
+                    if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
                     try { await dvRequest("DELETE", buildPath(chunk[i]), null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                     catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                   }
@@ -1033,7 +1073,7 @@
               } catch (batchErr) {
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
-                  if (batchAborted) break; // cancelled — stop the serial fallback mid-chunk too
+                  if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
                   try { await dvRequest("DELETE", buildPath(chunk[i]), null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                   catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                 }
@@ -1350,7 +1390,13 @@
                 (dAc.value || []).forEach(a => rowsAc.push({ id: a.appactionid, name: a.name || "", label: a.buttonlabeltext || a.name || "", contextValue: a.contextvalue || "", appId: a._appmoduleid_value || "" }));
                 const nl = dAc["@odata.nextLink"]; urlAc = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
               }
-            } catch { /* appaction table absent on this org version */ }
+            } catch (eAc) {
+              // Only "table doesn't exist" (older org) means an honest empty list — a throttle or
+              // network failure mid-pagination must SURFACE, not render as "this app has no
+              // modern commands" (audit finding).
+              const mAc = eAc?.message || "";
+              if (!/not exist|not found|404|Could not find/i.test(mAc)) throw eAc;
+            }
             result = rowsAc;
             break;
           }
@@ -1560,6 +1606,7 @@
           // the user cancels — so retries/chunks already inside the content script stop too.
           case "resetBatchAbort":
             batchAborted = false;
+            batchRunId++; // invalidates any orphaned loop from a previous (timed-out) run
             result = { ok: true };
             break;
           case "abortBatch":

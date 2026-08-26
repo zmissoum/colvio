@@ -48,6 +48,12 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
   // Keyboard focus follows position; clamp it when the visible set shrinks (e.g. a filter applied)
   // so the highlight / Enter-to-select can't point past the end of the now-shorter list.
   useEffect(() => { setFocusedRow(f => (f >= data.length ? -1 : f)); }, [data.length]);
+  // Same clamp for the scroll position: filtering while scrolled deep in a 100k+ result left
+  // scrollTop pointing past the shrunken list — blank table + scrollbar spasm (audit finding).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el && el.scrollTop > data.length * ROW_H) { el.scrollTop = 0; setScrollTop(0); }
+  }, [data.length]);
 
   const onKeyDown = useCallback((e) => {
     if (editing) return; // Don't interfere with inline editing

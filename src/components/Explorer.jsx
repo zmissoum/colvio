@@ -57,12 +57,17 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     }
   },[]);
 
+  // Multi-tab safety: persisted lists are read FRESH, mutated, then written. Each query tab
+  // mounts its own Explorer with a mount-time snapshot — writing that snapshot back used to
+  // permanently erase entries saved meanwhile in another tab (audit finding).
+  const persistList=(key,mutate)=>{
+    if(typeof chrome==="undefined"||!chrome.storage?.local) return;
+    chrome.storage.local.get([key],r=>{chrome.storage.local.set({[key]:mutate(Array.isArray(r[key])?r[key]:[])});});
+  };
+
   const toggleBookmark=(entityLogical)=>{
-    setBookmarks(prev=>{
-      const next=prev.includes(entityLogical)?prev.filter(b=>b!==entityLogical):[...prev,entityLogical];
-      if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.set({d365_bookmarks:next});
-      return next;
-    });
+    setBookmarks(prev=>prev.includes(entityLogical)?prev.filter(b=>b!==entityLogical):[...prev,entityLogical]);
+    persistList("d365_bookmarks",cur=>cur.includes(entityLogical)?cur.filter(b=>b!==entityLogical):[...cur,entityLogical]);
   };
   const addToHistory=(entity,query,mode,fieldCount)=>{
     // Strip $filter values from stored query to avoid persisting PII (emails, names, etc.)
@@ -72,11 +77,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // pure and tested, since both its invariants were user-hit while they lived inline here.
     const entry=buildHistoryEntry({entityLogical:entity?.l,query,mode,fieldCount,ts:Date.now(),
       builderState:mode==="builder"?{fields:sf,filterGroups,groupLogic,limit:lim,orderBy,hadRel:relFilters.length>0,hadExpand:expands.some(ex=>ex.fields.length>0)}:null});
-    setQueryHistory(prev=>{
-      const updated=[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20);
-      if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_query_history:updated});
-      return updated;
-    });
+    setQueryHistory(prev=>[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20));
+    persistList("d365_query_history",cur=>[entry,...cur.filter(h=>h.query!==entry.query)].slice(0,20));
   };
   useEffect(()=>{
     if(typeof chrome!=="undefined"&&chrome.storage?.local){
@@ -92,10 +94,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
   const doSaveQuery=(name)=>{
     if(!name||!ent) return;
-    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),relFilters:relFilters.map(rf=>({navProperty:rf.navProperty,targetEntity:rf.targetEntity,lookupField:rf.lookupField,type:rf.type,mode:rf.mode||"any",conditions:rf.conditions||[],conditionLogic:rf.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,rq,sqlQ,savedAt:new Date().toISOString()};
-    const updated=[q,...savedQueries.filter(s=>s.name!==name)].slice(0,20);
-    setSavedQueries(updated);
-    if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_saved_queries:updated});
+    const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,type:ex.type||"single",fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),relFilters:relFilters.map(rf=>({navProperty:rf.navProperty,targetEntity:rf.targetEntity,lookupField:rf.lookupField,type:rf.type,mode:rf.mode||"any",conditions:rf.conditions||[],conditionLogic:rf.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,rq,sqlQ,savedAt:new Date().toISOString()};
+    setSavedQueries([q,...savedQueries.filter(s=>s.name!==name)].slice(0,20));
+    persistList("d365_saved_queries",cur=>[q,...cur.filter(s=>s.name!==name)].slice(0,20));
     setSaveModal(false);
   };
 
@@ -131,6 +132,17 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             }catch{return null;}
           })).then(list=>{if(selGen.current===g)setRelFilters(list.filter(Boolean));});
         }
+        // EXPANDS were saved but never restored — a reloaded query silently ran without its
+        // joins (audit finding). Same refetch + selGen-guard pattern as relFilters above.
+        if(q.expands?.length){
+          const g2=selGen.current;
+          Promise.all(q.expands.map(async ex=>{
+            try{
+              const tf=isLive?await bridge.getFields(ex.targetEntity):FLDS;
+              return {navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,type:ex.type||"single",allFields:mapTargetFields(tf),fields:ex.fields||[],conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"};
+            }catch{return null;}
+          })).then(list=>{if(selGen.current===g2)setExpands(list.filter(Boolean));});
+        }
       };
     } else {
       setError(`The saved query's table "${q.entity}" no longer exists on this org.`);
@@ -139,9 +151,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
 
   const deleteSavedQuery=(name)=>{
-    const updated=savedQueries.filter(s=>s.name!==name);
-    setSavedQueries(updated);
-    if(typeof chrome!=="undefined"&&chrome.storage?.local) chrome.storage.local.set({d365_saved_queries:updated});
+    setSavedQueries(savedQueries.filter(s=>s.name!==name));
+    persistList("d365_saved_queries",cur=>cur.filter(s=>s.name!==name));
   };
   const[entities,setEntities]=useState(ENTS);
   const[fields,setFields]=useState(FLDS);
@@ -279,7 +290,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const ensureChildRels = () => {
     if (childRelsLoaded || !ent || !isLive) return;
     setChildRelsLoaded(true);
+    const g = selGen.current; // entity A's child relations must never append into entity B's lookups (audit finding)
     bridge.getChildRelationships(ent.l).then(childRels => {
+      if (selGen.current !== g) return;
       if (childRels && Array.isArray(childRels)) {
         setLookups(prev => {
           const seen = new Set(prev.map(l => l.navProperty));
@@ -293,8 +306,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const addExpand = async (lookup) => {
     if (loadingExpand || expands.find(x => x.navProperty === lookup.navProperty)) return;
     setLoadingExpand(lookup.navProperty);
+    const g = selGen.current; // switching entity while target fields load must DROP this add (audit finding)
     try {
       const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
+      if (selGen.current !== g) { setLoadingExpand(""); return; }
       const mapped = mapTargetFields(targetFields);
       const commonNames = ["name","fullname","title","subject","accountnumber","emailaddress1","internalemailaddress","telephone1","new_sapid","new_externalid"];
       const auto = mapped.filter(f => commonNames.includes(f.l)).map(f => f.l);
@@ -337,8 +352,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const addRelFilter = async (lookup) => {
     if (loadingRel || relFilters.find(x => x.navProperty === lookup.navProperty)) return;
     setLoadingRel(lookup.navProperty);
+    const g = selGen.current; // same stale-add guard as addExpand (audit finding)
     try {
       const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
+      if (selGen.current !== g) { setLoadingRel(""); return; }
       // Functional + re-checked: a double-click racing the disabled repaint must not add twice.
       setRelFilters(prev => prev.find(x => x.navProperty === lookup.navProperty) ? prev : [...prev, {
         navProperty: lookup.navProperty,
@@ -603,6 +620,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setError("");
     fetchAbort.current = false;
     const runGen=selGen.current; // capture to detect entity change mid-run
+    // stale() guards every setRes AFTER an await: switching entity mid-run used to paint the OLD
+    // entity's rows under the NEW entity's header (fetchAbort only stopped pages 2+ — audit finding).
+    const stale=()=>selGen.current!==runGen;
     const validFieldNames = new Set(fields.map(f => f.l));
     const validSf = sf.filter(f => validFieldNames.has(f));
     if(isLive && loadingFields){ setError("Wait for fields to load..."); return; }
@@ -676,7 +696,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         // so the export filename matches the queried table.
         const fxEntName=(activeFxml.match(/<entity\s+name\s*=\s*"([^"]*)"/i)||[])[1]||"";
         const fxEnt=(fxEntName&&entities.find(e=>e.l===fxEntName))||(fxEntName?{l:fxEntName,p:fxEntName+"s"}:ent);
+        if(stale())return;
         setRes({entity:fxEnt,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink:null,fetching:!!data.moreRecords});
+        addToHistory(fxEnt,q,qm,headerFields.length); // FetchXML/SQL runs were never recorded (audit finding)
         setLoading(false);
 
         let page=1;
@@ -686,11 +708,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         // the reliable approach — the cookie's PRESENCE in each response still tells us when to
         // stop (Dataverse returns it only while more records remain).
         let hasMore=!!data.pagingCookie;
-        while(hasMore&&!fetchAbort.current){
+        while(hasMore&&!fetchAbort.current&&!stale()){
           page++;
           const pagedXml=activeFxml.replace(/<fetch/,`<fetch page="${page}"`);
           try{
             const pageData=await bridge.executeFetchXml(pagedXml);
+            if(stale())return;
             if(!pageData?.records?.length)break;
             allRecords=[...allRecords,...applyHaving(pageData.records)];
             hasMore=!!pageData.pagingCookie;
@@ -702,7 +725,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             setError(`Page ${page}: ${e.message}`);break;
           }
         }
-        setRes(prev=>({...prev,data:allRecords,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale()) setRes(prev=>({...prev,data:allRecords,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
         // ── Client-side aggregation fallback (50k limit) ──
         if(e.message&&(e.message.includes("50000")||e.message.includes("having")||e.message.includes("Having"))&&activeFxml.includes("aggregate")){
@@ -751,14 +774,31 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const neededFields=[...groupByFields.map(f=>f.name),...aggFields.map(f=>f.name)];
             const entityMatch=flatXml.match(/<entity\s+name\s*=\s*"([^"]*)"/);
             const entName=entityMatch?entityMatch[1]:"";
-            // Rebuild clean flat XML
-            const filterMatch=flatXml.match(/<filter>[\s\S]*?<\/filter>/i);
-            const filterBlock=filterMatch?filterMatch[0]:"";
+            // Rebuild clean flat XML. Filter extraction is depth-aware: `<filter type="and">` (any
+            // attribute) must match, and nested groups must be carried WHOLE — the old first-match
+            // regex dropped attributed filters entirely, silently aggregating the WHOLE table (audit finding).
+            const extractFilterBlock=(xml)=>{
+              const lower=xml.toLowerCase();
+              const start=lower.indexOf("<filter");
+              if(start<0) return "";
+              let depth=0,pos=start;
+              while(pos<lower.length){
+                const open=lower.indexOf("<filter",pos);
+                const close=lower.indexOf("</filter>",pos);
+                if(close<0) return "";
+                if(open>=0&&open<close){depth++;pos=open+7;}
+                else{depth--;pos=close+9;if(depth===0)return xml.slice(start,close+9);}
+              }
+              return "";
+            };
+            const filterBlock=extractFilterBlock(flatXml);
+            if(!filterBlock&&/<filter/i.test(flatXml)) setError("⚠ Aggregation fallback couldn't carry the query's WHERE filter — the totals below cover ALL rows of the table.");
             const orderField=groupByFields.length?groupByFields[0].name:neededFields[0];
             const cleanFlatXml=`<fetch><entity name="${entName}">${neededFields.map(f=>`<attribute name="${f}"/>`).join("")}${filterBlock}<order attribute="${orderField}"/></entity></fetch>`;
             // Entity from the parsed FetchXML, not the stale Builder selection (so exports are named right).
             const aggEnt=(entName&&entities.find(e=>e.l===entName))||(entName?{l:entName,p:entName+"s"}:ent);
 
+            if(stale())return;
             setRes({entity:aggEnt,fields:[],data:[],count:0,total:0,query:q,elapsed:"loading...",fetching:true});
             setLoading(false);
 
@@ -770,7 +810,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             let pg=1;
             let more=true;
             const t0b=Date.now();
-            while(more&&!fetchAbort.current){
+            while(more&&!fetchAbort.current&&!stale()){
               const pgXml=pg===1?pagedFlatXml:pagedFlatXml.replace(`count="5000"`,`count="5000" page="${pg}"`);
               try{
                 const pgData=await bridge.executeFetchXml(pgXml);
@@ -826,6 +866,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const headerFields=Object.keys(results[0]||{});
             const odataFieldMap={};headerFields.forEach(f=>{odataFieldMap[f]=f;});
             const elapsed=`${((Date.now()-t0b)/1000).toFixed(1)}s`;
+            if(stale())return;
             setRes({entity:aggEnt,fields:headerFields,odataFieldMap,data:results,count:results.length,total:results.length,query:q,elapsed:`${elapsed} (client-side aggregation on ${allRaw.length} records)`,fetching:false});
           }catch(fallbackErr){
             setError(`Client-side aggregation failed: ${fallbackErr.message}`);setLoading(false);
@@ -868,13 +909,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         // saved as "fou_salesareateam"). Map the entity-set name back to its logical name when known.
         const baseSet=entitySet.split(/[(/]/)[0];
         const odataEnt=entities.find(e=>e.p===baseSet)||{l:baseSet,p:baseSet};
+        if(stale())return;
         setRes({entity:odataEnt,fields:headerFields,odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${t1}s`,nextLink,fetching:!!nextLink,
           ...(odataEnt?.l===ent?.l?buildUpdateMeta():{})}); // raw query may hit ANOTHER table — the loaded metadata would then describe the wrong fields
         addToHistory(odataEnt,q,qm,headerFields.length);
         setLoading(false);
         // Paginate
         let pageNum=1;
-        while(nextLink&&!fetchAbort.current){
+        while(nextLink&&!fetchAbort.current&&!stale()){
           pageNum++;
           try{
             const pageData=await bridge.query(nextLink,{});
@@ -892,7 +934,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             setError(`Page ${pageNum}: ${pageErr.message}`);break;
           }
         }
-        setRes(prev=>({...prev,data:allRecords,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale()) setRes(prev=>({...prev,data:allRecords,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
         setError(e.message);setLoading(false);
       }
@@ -911,7 +953,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(orderBy.f)opts.orderby=`${getOdataName(orderBy.f)} ${orderBy.dir}`;
       if(lim>0)opts.top=String(lim);
       const data=await bridge.query(ent.p,opts);
-      if(!data?.records) return;
+      if(stale())return;
+      if(!data?.records){setError("No results returned");setLoading(false);return;} // used to leave the button stuck on "Querying…" forever (audit finding)
       const t1 = ((Date.now()-t0)/1000).toFixed(1);
 
       const firstClean = data.records.map(cleanRecord);
@@ -933,7 +976,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
       let pageNum = 1;
       const hasExpand = expandClauses.length > 0;
-      while (nextLink && !fetchAbort.current) {
+      while (nextLink && !fetchAbort.current && !stale()) {
         pageNum++;
         try {
           const pageData = await bridge.query(nextLink, {});
@@ -967,7 +1010,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if (hasExpand && ent.c && allRecords.length < ent.c * 0.9) {
         setError(`⚠ ${allRecords.length} records retrieved out of ${ent.c} — D365 limits results with $expand. Remove expand to get all records, then enrich in a second query.`);
       }
-      setRes(prev => ({...prev, data: allRecords, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+      if(!stale()) setRes(prev => ({...prev, data: allRecords, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
     } catch(e) {
       if(isSessionExpired(e.message)) {
         setError(SESSION_EXPIRED_MSG);

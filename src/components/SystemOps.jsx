@@ -68,7 +68,9 @@ function PluginTraces({ bp, orgFeatures, theme }) {
     return f.join(" and ");
   };
 
+  const loadGen = useRef(0); // stale filter's page must not append into the new filter's list (audit finding)
   const load = async () => {
+    const g = ++loadGen.current;
     setLoading(true); setError(""); setExpanded(null);
     try {
       // maxpagesize (not $top) → server-driven paging: returns one page + a nextLink when there's more.
@@ -76,21 +78,24 @@ function PluginTraces({ bp, orgFeatures, theme }) {
       const filter = buildFilter();
       if (filter) opts.filter = filter;
       const data = await bridge.query("plugintracelogs", opts);
+      if (loadGen.current !== g) return;
       setRows(data?.records || []);
       setNextLink(data?.nextLink || null);
-    } catch (e) { setError(e.message); setRows([]); setNextLink(null); }
-    setLoading(false);
+    } catch (e) { if (loadGen.current === g) { setError(e.message); setRows([]); setNextLink(null); } }
+    if (loadGen.current === g) setLoading(false);
   };
   // Append the next page (follow @odata.nextLink) — the nextLink carries the same $filter, so
   // appended rows already match. Everything stays loaded for CSV export.
   const loadMore = async () => {
     if (!nextLink || loadingMore) return;
+    const g = loadGen.current;
     setLoadingMore(true);
     try {
       const data = await bridge.query(nextLink, {});
+      if (loadGen.current !== g) { setLoadingMore(false); return; }
       setRows(prev => [...(prev || []), ...(data?.records || [])]);
       setNextLink(data?.nextLink || null);
-    } catch (e) { setError(e.message); }
+    } catch (e) { if (loadGen.current === g) setError(e.message); }
     setLoadingMore(false);
   };
   // First render loads immediately; later filter changes are debounced (350 ms) so typing a search
@@ -220,7 +225,9 @@ function SystemJobs({ bp, isAdmin, theme, orgInfo }) {
     return parts.join(" and ");
   };
 
+  const loadGen = useRef(0); // an in-flight "Load more" must not append the OLD filter's page into a NEW filter's list (audit finding)
   const load = async (fid = filterId) => {
+    const g = ++loadGen.current;
     setLoading(true); setError(""); setSelected(new Set()); setActResults(null); setExpanded(null);
     try {
       // maxpagesize (not $top) → server-driven paging with a nextLink for "Load more".
@@ -228,19 +235,22 @@ function SystemJobs({ bp, isAdmin, theme, orgInfo }) {
       const filter = buildFilter(fid);
       if (filter) opts.filter = filter;
       const data = await bridge.query("asyncoperations", opts);
+      if (loadGen.current !== g) return;
       setRows(data?.records || []);
       setNextLink(data?.nextLink || null);
-    } catch (e) { setError(e.message); setRows([]); setNextLink(null); }
-    setLoading(false);
+    } catch (e) { if (loadGen.current === g) { setError(e.message); setRows([]); setNextLink(null); } }
+    if (loadGen.current === g) setLoading(false);
   };
   const loadMore = async () => {
     if (!nextLink || loadingMore) return;
+    const g = loadGen.current;
     setLoadingMore(true);
     try {
       const data = await bridge.query(nextLink, {});
+      if (loadGen.current !== g) { setLoadingMore(false); return; }
       setRows(prev => [...(prev || []), ...(data?.records || [])]);
       setNextLink(data?.nextLink || null);
-    } catch (e) { setError(e.message); }
+    } catch (e) { if (loadGen.current === g) setError(e.message); }
     setLoadingMore(false);
   };
   // Immediate first load; later filter changes debounced (350 ms) so the name search doesn't fire
@@ -274,8 +284,11 @@ function SystemJobs({ bp, isAdmin, theme, orgInfo }) {
       }
       setActing({ done: out.length, total: targets.length, verb });
     }
-    setActing(null); setActResults(out);
-    load();
+    setActing(null);
+    // Refresh FIRST, report AFTER — load() clears actResults, so the old order wiped the per-job
+    // failure report ("platform job" hints included) in the same render batch (audit finding).
+    await load();
+    setActResults(out);
   };
 
   const stBadge = (j) => {
@@ -399,7 +412,9 @@ function FlowRuns({ bp, theme }) {
   const [nextLink, setNextLink] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const loadGen = useRef(0); // same stale-append guard as the other panels (audit finding)
   const load = async () => {
+    const g = ++loadGen.current;
     setLoading(true); setError(""); setNotSupported(false);
     try {
       const filter = dateConds("starttime", dateFrom, dateTo).join(" and ");
@@ -414,6 +429,7 @@ function FlowRuns({ bp, theme }) {
         data = await bridge.query("flowruns", { maxpagesize: "100" });
         setServerFiltered(false);
       }
+      if (loadGen.current !== g) return;
       setRows(data?.records || []);
       setNextLink(data?.nextLink || null);
     } catch (e) {
@@ -425,12 +441,14 @@ function FlowRuns({ bp, theme }) {
   };
   const loadMore = async () => {
     if (!nextLink || loadingMore) return;
+    const g = loadGen.current;
     setLoadingMore(true);
     try {
       const data = await bridge.query(nextLink, {});
+      if (loadGen.current !== g) { setLoadingMore(false); return; }
       setRows(prev => [...(prev || []), ...(data?.records || [])]);
       setNextLink(data?.nextLink || null);
-    } catch (e) { setError(e.message); }
+    } catch (e) { if (loadGen.current === g) setError(e.message); }
     setLoadingMore(false);
   };
   const firstRef = useRef(true);
@@ -438,7 +456,7 @@ function FlowRuns({ bp, theme }) {
     if (firstRef.current) { firstRef.current = false; load(); return; }
     const id = setTimeout(load, 350);
     return () => clearTimeout(id);
-     
+
   }, [dateFrom, dateTo]);
 
   // Status + name filters stay CLIENT-side: status values are provider strings and the flow

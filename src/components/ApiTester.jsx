@@ -103,7 +103,10 @@ export default function ApiTester({ bp, orgInfo, theme }) {
     sendRequest();
   };
 
+  const reqGen = useRef(0); // a superseded slow response must never overwrite the newer one (audit finding)
   const sendRequest = async () => {
+    if (loading) return; // Ctrl+Enter bypassed the disabled Send button and raced two requests
+    const g = ++reqGen.current;
     setLoading(true); setError(""); setResp(null);
     const startTime = Date.now();
     const headersObj = {};
@@ -118,7 +121,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
         headers: headersObj,
         body: hasBody ? body : undefined,
       });
-      setResp(r);
+      if (reqGen.current === g) setResp(r); // history still records it below — the request DID run
       // Redact secret-bearing headers before persisting history (a pasted token shouldn't be
       // written to local storage). The live request already went out with the real value.
       const SECRET_HDR = /^(authorization|cookie|x-api-key|x-functions-key|api-key)$/i;
@@ -132,15 +135,19 @@ export default function ApiTester({ bp, orgInfo, theme }) {
         elapsed: r.elapsed, at: new Date().toISOString(),
       };
       // Functional updater avoids dropping entries when two sends race before a re-render flush.
-      setHistory(prev => {
-        const updated = [entry, ...prev].slice(0, 50);
-        try { chrome.storage?.local?.set({ colvio_api_tester_history: updated }); } catch {}
-        return updated;
-      });
+      setHistory(prev => [entry, ...prev].slice(0, 50));
+      // Multi-tab safety: read-modify-write against FRESH storage — writing this tab's snapshot
+      // used to erase requests sent from another API Tester tab (audit finding).
+      try {
+        chrome.storage?.local?.get(["colvio_api_tester_history"], rr => {
+          const cur = Array.isArray(rr?.colvio_api_tester_history) ? rr.colvio_api_tester_history : [];
+          chrome.storage?.local?.set({ colvio_api_tester_history: [entry, ...cur].slice(0, 50) });
+        });
+      } catch {}
     } catch (e) {
-      setError(e.message || String(e));
+      if (reqGen.current === g) setError(e.message || String(e));
     }
-    setLoading(false);
+    if (reqGen.current === g) setLoading(false);
   };
 
   const exportAsCurl = () => {
@@ -415,7 +422,8 @@ export default function ApiTester({ bp, orgInfo, theme }) {
                 <button
                   onClick={() => {
                     // Filename from the request path's first segment (entity set / function name).
-                    const seg = (path || "response").split("?")[0].split("/").filter(Boolean).pop() || "response";
+                    // Name from the request that PRODUCED this response, not the (possibly edited) URL bar (audit finding)
+                    const seg = (resp.url || path || "response").split("?")[0].split("/").filter(Boolean).pop() || "response";
                     const base = `api_${seg.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/\.+$/, "").slice(0, 60) || "response"}`;
                     if (resp.bodyParsed) dl(JSON.stringify(resp.bodyParsed, null, 2), "application/json", expName(base, "json", true));
                     else dl(resp.body || "", "text/plain", expName(base, "txt", true));

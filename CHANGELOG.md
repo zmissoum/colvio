@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.11.156] — 2026-08-26
+### Fixed — full-product audit: 9 parallel deep reviews over all 19 modules, 45+ verified findings fixed
+Prompted by the user's challenge ("did you really pass over EVERY tab?"). Nine independent audit agents each read a module group end-to-end against the classes of bugs this project has actually hit; every finding was then verified in code before fixing. Highlights by severity:
+
+**Wrong writes / data corruption prevented**
+- Show All Data: switching records with an edit open would have SAVED record A's stale text into record B; option-set values cached across entities offered the WRONG entity's options. Both fixed (edit state reset + cache cleared on load).
+- Loader: an orphaned serial-fallback loop from a timed-out run could RESUME posting rows concurrently with the user's retry → duplicate records. A run token now kills any orphan the moment a new run starts.
+- Loader DELETE dry-run: a failed existence check reported "NOT FOUND — nothing to delete" while the real run would delete — now classified UNVERIFIED with an explicit warning. Activity tables' phantom "<table>id" key replaced by the real metadata PK everywhere (picker default, isPK detection).
+- Translation Manager: the CSV import's cell regex shifted every column one index right — imports queued the WRONG column as label values. Replaced with a real CSV walk; failed label saves now KEEP the edits and show the real error (it was overwritten by a green "N updated"); publish failures are no longer swallowed.
+- sqlToFetchXml: `NOT (a OR b)` silently DROPPED the NOT (opposite rows); an OR spanning main+JOIN tables silently became AND (rows matching both instead of either) — now De Morgan'd / refused readably; same-table OR keeps its structure; `COUNT(col)` now emits countcolumn (was counting NULL rows). 8 regression tests.
+
+**Sessions, permissions, environment**
+- 403 is no longer reported as "session expired" — it now says PRIVILEGE error with the server's message (the reconnect loop masked the real cause); the reconnect banner no longer false-fires on error text merely containing "401"/"403" (GUIDs, error codes).
+- A session dying mid-bulk-run now STOPS the whole worker pool and shows Reconnect (it used to grind every remaining row through doomed serial requests with no banner).
+- Startup permission probes distinguish DENIED from UNREACHABLE: a relay hiccup no longer silently locks an admin out of 13 tabs for the session; the publish-privilege fail-open is no longer cached for 6h.
+- The environment badge now actually reads Microsoft's OrganizationType (the authoritative branch was dead code — a prod org with "test" in its hostname skipped every production confirmation).
+- Service-worker restarts no longer lose the org tab: the relay falls back to querying for any same-org tab.
+
+**Stale data / second-action bugs** (the "looks frozen" class)
+- Explorer: switching entity mid-run painted the OLD entity's rows under the new header (all four query paths now generation-guarded); relation pickers and expand/REL adds landing after an entity switch are dropped; saved queries now restore their EXPANDS (saved but never restored — queries silently ran without joins); FetchXML/SQL runs now appear in history; a records-less response no longer leaves Execute stuck on "Querying…" forever.
+- Multi-tab clobber: saved queries, query history, bookmarks and API Tester history are now read-merge-written — saving in one tab used to permanently erase entries saved in another.
+- Results: bulk delete no longer prunes cancelled/failed rows from the table as if deleted; bulk update now updates the displayed rows (exports/duplicate analysis used stale values), reports WHAT failed and keeps failures selected; numeric/date columns sort numerically (formatted "1,980" sorted lexicographically); XLSX exports numeric cells as numbers again (SUM()=0 fixed); deep-scroll + filter no longer blanks the table.
+- Audit timeline is remounted per record (record B showed record A's history); RecycleBin partial-restore reports are no longer wiped by the refresh (failures showed nothing); System Ops cancel/resume reports the same; System Jobs/Traces/Flow Runs "Load more" can no longer append a stale filter's page.
+- Login History: slow user A's history can no longer paint under user B; changing "Last N" refetches; search results are generation-guarded.
+- App Inventory: analyze/inspector results landing after switching app/view are dropped; a closed inspector can't reopen by itself; failed subgrid fetches are retryable (were cached forever).
+
+**Honest empty/error states** (fetch failure ≠ "no data")
+- User & License detail failures no longer render as "No security roles / Never logged in"; Adoption's failed user fetch no longer celebrates "everyone signed in 🎉"; the PPTX methodology note now matches the service-account toggle; Relationship Graph failures no longer show entity B surrounded by entity A's nodes; Schema diff no longer reports a fetch-failed entity as a wall of missing fields; BU count-query failure shows "–" badges + a warning instead of fake zeros; subtree exports say INCOMPLETE when a sub-BU failed (and no longer poison the cache); Metadata option-set failures get a Retry instead of an infinite spinner; role member lists hitting the 10k cap warn even when the count query failed.
+- Loader: batch error rows are remapped to real CSV line numbers (clicking an error expanded the WRONG row's payload — prep and batch phases used different conventions, now unified); a transform that can't parse a non-empty cell now FAILS the row readably (the value silently vanished — 10k rows "CREATED" with the date column missing); retry passes keep their own prep outcomes (totals sum to file size again); numeric alternate keys are sent unquoted (every row 400'd); cancelled DELETE runs count deleted rows in the header; corrupt/password-protected Excel files show an error instead of silently doing nothing.
+- History redaction hardened: EVERY `$filter` in the stored query is now redacted (the `$expand` inner filter came first and the real WHERE values persisted) — privacy invariant now pinned by a test.
+
+269 tests (+9). Every fix carries an "(audit finding)" comment at the site.
+
 ## [1.11.155] — 2026-08-26
 ### Changed — full documentation catch-up (technical + functional)
 - **README**: typed edits & lookup editing, duplicate finder, $batch bulk delete + Cancel, sticky scrollbar, Builder history restore, BU paste-a-list + refresh, memory-saver-proof transport; stats refreshed (19 modules, ~19.3k LOC, 79 API actions, 38 components, 260 tests, real bundle sizes).

@@ -9,6 +9,11 @@ describe("buildHistoryEntry", () => {
     expect(e.query).toContain("$filter=...");
     expect(e.query).not.toContain("jane@x.com");
   });
+  it("PRIVACY: EVERY $filter is redacted — the $expand inner filter comes before the WHERE in the URL", () => {
+    const e = buildHistoryEntry({ ...BASE, query: "GET /x?$expand=contacts($select=fullname;$filter=emailaddress1 eq 'leak@x.com')&$filter=name eq 'secret corp'" });
+    expect(e.query).not.toContain("leak@x.com");
+    expect(e.query).not.toContain("secret corp");
+  });
   it("caps the stored query at 1000 chars (the old 200 cap chopped long $selects mid-token)", () => {
     const e = buildHistoryEntry({ ...BASE, query: "GET /x?$select=" + "a".repeat(2000) });
     expect(e.query.length).toBe(1000);

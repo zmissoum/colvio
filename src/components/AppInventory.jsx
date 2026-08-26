@@ -48,6 +48,8 @@ export default function AppInventory({ bp, orgInfo }) {
   const [subgrids, setSubgrids] = useState({});     // formId -> {open,loading,list,error}
   const depsCache = useRef({});                    // uid -> deps (edges are org-wide; re-derive per app)
   const edgesCache = useRef(null);
+  const inspGen = useRef(0);                       // view-inspector request generation (supersede/close guard)
+  const selUidRef = useRef(null);                  // live mirror of selUid for async guards
 
   useEffect(() => {
     let cancelled = false;
@@ -78,8 +80,12 @@ export default function AppInventory({ bp, orgInfo }) {
     const s = search.trim().toLowerCase();
     if (!s || !inv) return [];
     const idx = buildReverseIndex(inv.rows);
-    return [...idx.values()].filter(e => (e.name || "").toLowerCase().includes(s)).slice(0, 50);
+    const all = [...idx.values()].filter(e => (e.name || "").toLowerCase().includes(s));
+    const out = all.slice(0, 50);
+    out.totalMatches = all.length; // the display cap was silent (audit finding) — the render notes "+N more"
+    return out;
   }, [search, inv]);
+  useEffect(() => { selUidRef.current = selUid; });
 
   const shownTables = useMemo(() => {
     if (!selEntry) return [];
@@ -95,6 +101,7 @@ export default function AppInventory({ bp, orgInfo }) {
   const loadDeps = async () => {
     if (!selUid || depsBusy) return;
     if (depsCache.current[selUid]) { setDeps(depsCache.current[selUid]); return; }
+    const uid = selUid; // app A's slow analysis must not paint under app B (audit finding)
     setDepsBusy(true);
     try {
       if (!edgesCache.current) edgesCache.current = await bridge.getFormViewDependencies();
@@ -107,18 +114,20 @@ export default function AppInventory({ bp, orgInfo }) {
         } catch { /* one entity failing must not kill the analysis */ }
       }
       const d = { ...deriveAppDependencies(edgesCache.current.edges || [], selEntry, attrMap), truncated: !!edgesCache.current.truncated };
-      depsCache.current[selUid] = d;
-      setDeps(d);
-    } catch (e) { setError(`Dependency analysis: ${e.message}`); }
+      depsCache.current[uid] = d;
+      if (selUidRef.current === uid) setDeps(d);
+    } catch (e) { if (selUidRef.current === uid) setError(`Dependency analysis: ${e.message}`); }
     setDepsBusy(false);
   };
 
   // View inspector: fetch the savedquery's fetchxml (filters) + layoutxml (columns), resolve
   // field display names from metadata (best-effort — logical names shown regardless).
   const openInspector = async (viewId, name, entity) => {
+    const g = ++inspGen.current; // superseded/closed fetch must not swap or reopen the modal (audit finding)
     setInspector({ viewId, name, entity, loading: true });
     try {
       const det = await bridge.getViewDetail(viewId);
+      if (inspGen.current !== g) return;
       const entLogical = det.entity || entity || "";
       const fieldMap = new Map();
       try {
@@ -127,24 +136,28 @@ export default function AppInventory({ bp, orgInfo }) {
       } catch { /* display names stay logical */ }
       setInspector({ viewId, name: det.name || name, entity: entLogical, loading: false, parsed: parseViewFetchXml(det.fetchxml), cols: parseViewLayoutXml(det.layoutxml), fieldMap });
     } catch (e) {
+      if (inspGen.current !== g) return;
       const msg = /not exist|not found|404/i.test(e.message || "")
         ? "View not found in savedquery — a subgrid can point at a PERSONAL view (userquery) or a deleted one; only system views can be inspected."
         : (e.message || String(e));
       setInspector({ viewId, name, entity, loading: false, error: msg });
     }
   };
+  const closeInspector = () => { inspGen.current++; setInspector(null); };
 
   // Hand the view's FetchXML to the Explorer (FetchXML mode) — one-shot slot + window event;
   // app.jsx switches the tab, the active Explorer query tab consumes and applies.
   const openInExplorer = (entity, fetchxml) => {
     window.__colvioPendingQuery = { entity, fetchxml };
     window.dispatchEvent(new CustomEvent("colvio:open-fetchxml"));
-    setInspector(null);
+    closeInspector();
   };
 
   const toggleSubgrids = async (form) => {
     const cur = subgrids[form.id];
-    if (cur && (cur.list || cur.error)) { setSubgrids(p => ({ ...p, [form.id]: { ...p[form.id], open: !p[form.id].open } })); return; }
+    if (cur && cur.list) { setSubgrids(p => ({ ...p, [form.id]: { ...p[form.id], open: !p[form.id].open } })); return; }
+    if (cur && cur.error && cur.open) { setSubgrids(p => ({ ...p, [form.id]: { ...p[form.id], open: false } })); return; }
+    // no result yet, or a CLOSED error → (re)fetch — a transient failure used to be cached forever (audit finding)
     setSubgrids(p => ({ ...p, [form.id]: { open: true, loading: true } }));
     try {
       const fx = await bridge.getFormXml(form.id);
@@ -208,6 +221,9 @@ export default function AppInventory({ bp, orgInfo }) {
                 </div>
               </div>
             ))}
+            {reverseHits.totalMatches > reverseHits.length && (
+              <div style={{ fontSize: 11.5, color: C.txd, marginTop: 4 }}>Showing the first {reverseHits.length} of {reverseHits.totalMatches} matching components — refine the search to narrow down.</div>
+            )}
           </div>
         )}
 
@@ -335,12 +351,12 @@ export default function AppInventory({ bp, orgInfo }) {
 
       {/* View inspector — filters (why a row is excluded) + columns (what's shown) */}
       {inspector && (
-        <div onClick={() => setInspector(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div onClick={closeInspector} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div onClick={e => e.stopPropagation()} style={{ width: 660, maxWidth: "94vw", maxHeight: "86vh", overflow: "auto", background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 18, boxShadow: "0 16px 48px rgba(0,0,0,.55)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>🔎 {inspector.name || "View"}</span>
               {inspector.entity && <span style={{ ...mono, fontSize: 11, color: C.txd }}>{inspector.entity}</span>}
-              <button onClick={() => setInspector(null)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: C.txd, cursor: "pointer", fontSize: 15 }}>✕</button>
+              <button onClick={closeInspector} style={{ marginLeft: "auto", background: "transparent", border: "none", color: C.txd, cursor: "pointer", fontSize: 15 }}>✕</button>
             </div>
             {inspector.loading && <div style={{ padding: 16, textAlign: "center" }}><Spin /></div>}
             {inspector.error && <div style={{ fontSize: 12.5, color: C.rd, padding: "8px 0" }}>{inspector.error}</div>}

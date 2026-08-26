@@ -85,7 +85,9 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     setLoading(true); setError(""); setScanProg(null);
     Promise.all([
       bridge.getLoginStats(windowRange.from, windowRange.to, p => { if (gen.current === g) setScanProg(p); }),
-      users.length ? Promise.resolve(null) : bridge.getAllUsers().catch(() => []),
+      // null (not []) on failure: an empty user list read as "everyone signed in 🎉" and hid the
+      // service-account section — a celebratory FALSE conclusion on a mere fetch failure (audit finding).
+      users.length ? Promise.resolve(null) : bridge.getAllUsers().catch(() => "FAILED"),
       roles.length ? Promise.resolve(null) : bridge.getAllRoles().catch(() => []),
       // BU hierarchy — needed for parent BUs (selectable even without direct users) + subtree filter.
       buList.length ? Promise.resolve(null) : (isLive
@@ -96,7 +98,8 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     ]).then(([st, us, rs, bl]) => {
       if (gen.current !== g) return;
       setStats(st || { users: [], failedDays: [] });
-      if (us) setUsers(us);
+      if (us === "FAILED") setError("The user list couldn't be loaded — scope, never-signed-in and per-BU numbers are UNAVAILABLE for this window (retry by changing the window).");
+      else if (us) setUsers(us);
       if (rs) setRoles(rs);
       if (bl) setBuList(bl);
       setLoading(false); setScanProg(null);
@@ -290,6 +293,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   // result to window+filters: any change invalidates it back to the button.
   const cmpKey = `${windowRange.from}|${windowRange.to}|${roleFilter}|${buFilter}|${buSubtree}|${includeService}`;
   const loadCompare = async () => {
+    if (loadingMembers) return; // the role's member list is still loading — comparing NOW would snapshot the PREVIOUS role's filter under the new key (audit finding)
     const key = cmpKey;
     setCmp({ loading: true, key });
     try {
@@ -337,6 +341,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
         interval: orgFeatures?.accessInterval ?? 4,
         agg, failedDays: stats?.failedDays?.length || 0,
         nowMs: Date.now(),
+        includeService, // the deck's methodology note must state what the numbers actually contain
       });
       await exportAdoptionPptx(model, expName("colvio_adoption_report", "pptx"));
     } catch (e) { setError(`PPTX export: ${e.message || String(e)}`); }
@@ -480,7 +485,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
           {agg.engagement.mau != null && <KPI label="MAU (last 30 d of window)" value={agg.engagement.mau.toLocaleString()} />}
           {agg.engagement.stickiness != null && <KPI label="Stickiness (DAU÷MAU)" value={`${(agg.engagement.stickiness * 100).toFixed(0)}%`} hint="how many monthly users show up on a given day" />}
           <div style={{ ...crd({ padding: "12px 16px" }), display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-            {!cmpValid && <button onClick={loadCompare} disabled={cmp?.loading} style={bt(null, { fontSize: 11, padding: "5px 10px" })}>{cmp?.loading ? <Spin s={12} /> : "⇄ vs previous period"}</button>}
+            {!cmpValid && <button onClick={loadCompare} disabled={cmp?.loading || loadingMembers} title={loadingMembers ? "Waiting for the role's member list to load" : undefined} style={bt(null, { fontSize: 11, padding: "5px 10px", opacity: loadingMembers ? 0.5 : 1 })}>{cmp?.loading ? <Spin s={12} /> : "⇄ vs previous period"}</button>}
             {cmpValid && <span style={{ fontSize: 10.5, color: C.txd, maxWidth: 170, lineHeight: 1.5 }}>▲▼ vs the {windowRange.days}-day period before{cmp.failedDays ? ` (${cmp.failedDays} day(s) failed)` : ""} — may be truncated by audit retention.</span>}
             {cmp?.error && cmp.key === cmpKey && <span style={{ fontSize: 10.5, color: C.rd }}>{cmp.error}</span>}
           </div>

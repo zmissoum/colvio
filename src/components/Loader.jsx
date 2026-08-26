@@ -172,7 +172,12 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           }));
           if(!ingestAoa(aoa)){setParseInfo({rawLines:0,maxNl:0,maxNlRow:0,badParse:true,parsedRecords:Math.max(0,(aoa?.length||0)-1)});return;}
           setParseInfo(null); // line-count diagnostics are CSV-only (no "lines" in a sheet)
-        }catch(err){ setCsvData({h:[],r:[]}); setCsvFile(null); }
+        }catch(err){
+          // A corrupt/password-protected .xlsx used to fail in TOTAL SILENCE — and wiped any
+          // previously loaded file's rows on top (audit finding). Surface it like a bad CSV parse.
+          setCsvData({h:[],r:[]}); setCsvFile(null);
+          setParseInfo({rawLines:0,maxNl:0,maxNlRow:0,badParse:true,parsedRecords:0,excelError:err?.message||String(err)});
+        }
       } else parseData(ev.target.result);
     };
     isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);
@@ -794,7 +799,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const entitySet=entitySetFor(target);
     // DELETE mode: no body, key-identified path.
     if(deleteMode&&uKey.d&&uKey.c&&row[uKey.c]){
-      const isPK=uKey.d.toLowerCase()===target+"id";
+      const isPK=uKey.d.toLowerCase()===target+"id"||(!!pkLogical&&uKey.d===pkLogical);
       const keyVal=String(row[uKey.c]);
       const path=isPK?`${entitySet}(${keyVal})`:`${entitySet}(${uKey.d}='${keyVal.replace(/'/g,"''")}')`;
       return {method:"DELETE",path,body:null,headers:{}};
@@ -835,7 +840,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       else rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(<resolved at runtime>)`;
     }
     if(uKey.d&&uKey.c&&row[uKey.c]){
-      const isPK=uKey.d.toLowerCase()===target+"id";
+      const isPK=uKey.d.toLowerCase()===target+"id"||(!!pkLogical&&uKey.d===pkLogical);
       const keyVal=String(row[uKey.c]);
       // The key addresses the record in the URL; Dataverse applies it from there — no need in the body.
       const path=isPK?`${entitySet}(${keyVal})`:`${entitySet}(${uKey.d}='${keyVal.replace(/'/g,"''")}')`;
@@ -881,13 +886,13 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // ── DELETE mode ── (no lookups, no body — just key-identified deletions)
     if(deleteMode && uKey.d && uKey.c){
       const entitySetD=entitySetFor(target);
-      const isPKD=uKey.d.toLowerCase()===target+"id";
+      const isPKD=uKey.d.toLowerCase()===target+"id"||(!!pkLogical&&uKey.d===pkLogical);
       const startTimeD=Date.now();
       const deleteItems=[];const deleteRowMap=[];
       for(let i=0;i<rows.length;i++){
         if(retrySet&&!retrySet.has(i)) continue; // retry pass: only re-run the previously-failed rows
         const v=rows[i][uKey.c];
-        if(v===undefined||v===null||v===""){ skipped++; logEntries.push({row:i+1,status:"SKIPPED",detail:`Empty key: ${uKey.c}`,d365Id:""}); continue; }
+        if(v===undefined||v===null||v===""){ skipped++; logEntries.push({row:i+2,status:"SKIPPED",detail:`Empty key: ${uKey.c}`,d365Id:""}); continue; }
         deleteItems.push({keyValue:v});deleteRowMap.push(i);
       }
       // Dry run: classify by existence instead of deleting.
@@ -896,12 +901,22 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         const NUM_D=new Set(["Integer","BigInt","Decimal","Double","Money"]);
         const uniqD=[...new Set(deleteItems.map(it=>it.keyValue))];
         const chk=await resolveExistingKeys(entitySetD,uKey.d,isPKD,uniqD,NUM_D.has(keyMetaD?.type||keyMetaD?.t));
-        let wouldDelete=0,notFound=0;
+        let wouldDelete=0,notFound=0,unverifiedD=0;
         deleteItems.forEach((it,k)=>{
-          const ok=chk.existing.has(chk.norm(it.keyValue));
-          if(ok) wouldDelete++; else notFound++;
-          logEntries.push({row:deleteRowMap[k]+2,status:ok?"WOULD DELETE":"NOT FOUND",detail:ok?`${uKey.d}="${it.keyValue}"`:`No record for ${uKey.d}="${it.keyValue}" — nothing to delete`,d365Id:""});
+          const nk=chk.norm(it.keyValue);
+          const ok=chk.existing.has(nk);
+          // UNVERIFIED ≠ NOT FOUND: when the existence QUERY failed (throttling, unfilterable
+          // key) the old dry run said "nothing to delete" while the REAL run would delete —
+          // the most dangerous possible lie in a DELETE dry run (audit finding).
+          const unv=!ok&&chk.unverified.has(nk);
+          if(ok) wouldDelete++; else if(unv) unverifiedD++; else notFound++;
+          logEntries.push({row:deleteRowMap[k]+2,
+            status:ok?"WOULD DELETE":unv?"UNVERIFIED":"NOT FOUND",
+            detail:ok?`${uKey.d}="${it.keyValue}"`
+              :unv?`Existence check FAILED for ${uKey.d}="${it.keyValue}" — the dry run CANNOT say whether the real run would delete this record`
+              :`No record for ${uKey.d}="${it.keyValue}" — nothing to delete`,d365Id:""});
         });
+        if(unverifiedD>0) errors.push({row:0,msg:`Dry run: ${unverifiedD} key(s) could NOT be verified (existence query failed) — treat them as UNKNOWN, not as "nothing to delete". Fix the key field or retry when the org stops throttling before running the real DELETE.`,payload:""});
         const logD2=logEntries.length>5000?logEntries.slice(0,5000):logEntries;
         setResult({dryRun:true,mode:"delete",deleted:0,wouldDelete,notFound,created:0,updated:0,errors,skipped,elapsed:((Date.now()-startTimeD)/1000).toFixed(1),log:logD2,logTruncated:logEntries.length>5000,logTotal:logEntries.length,entity:target,totalRows:total,cancelled:false,startedAt:launchedAt,finishedAt:new Date()});
         setLoadProgress({done:total,total,current:"Dry run done"});setCancelling(false);
@@ -919,9 +934,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const res=await bridge.batchDeleteKeyed(entitySetD,uKey.d,deleteItems,isPKD,p=>{
             setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Deleting records ${p.done}/${p.total}...`});
             pushBatchLog(p.newLog,deleteRowMap,rows);
-          },()=>loadAbort.current,{chunk:effChunkD,concurrency:effThreadsD,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
+          },()=>loadAbort.current,{chunk:effChunkD,concurrency:effThreadsD,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic,keyIsNumeric:!isPKD&&["Integer","BigInt","Decimal","Double","Money"].includes(targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.type||targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.t)});
           deleted=res.deleted||0;
-          if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
+          if(res.errors){ res.errors.forEach(e=>{const di=deleteRowMap[(e.row||1)-1];errors.push({...e,row:di!=null?di+2:0,payload:""});}); } // remapped to CSV line numbers (audit finding)
           if(res.aborted){if(!loadAbort.current)timedOutStopD=true;const remaining=deleteItems.length-deleted;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not processed (all recorded as retryable)`,d365Id:""});}
         }catch(e){ errors.push({row:0,msg:`Batch DELETE failed: ${e.message}`,payload:""}); }
       }
@@ -1064,7 +1079,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // would-update vs would-create vs would-fail); real runs only when the user opted in.
     const wantDelta=deltaMode && uKey.d && uKey.c && !deleteMode;
     if(((updateOnly && verifyExists) || (dry && uKey.d) || wantDelta) && uKey.d && uKey.c){
-      const isPKupd=uKey.d.toLowerCase()===target+"id";
+      const isPKupd=uKey.d.toLowerCase()===target+"id"||(!!pkLogical&&uKey.d===pkLogical);
       const keyMeta=targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d);
       const NUMERIC_TYPES=new Set(["Integer","BigInt","Decimal","Double","Money"]);
       const keyIsNumeric=NUMERIC_TYPES.has(keyMeta?.type||keyMeta?.t);
@@ -1126,10 +1141,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             // and known labels never return null). Track it instead of dropping silently.
             (unmatchedOpts[m.d365]||(unmatchedOpts[m.d365]=new Set())).add(String(rawVal));
           }
+          else if(m.transform && m.transform!=="strip_html" && String(rawVal).trim()!==""){
+            // int/float/date/boolean transform returned null on a NON-empty cell: refusing the ROW
+            // beats silently omitting the field — 10k rows logged CREATED with the whole date
+            // column missing, and no warning anywhere (audit finding). strip_html excepted: a
+            // markup-only cell legitimately reduces to nothing.
+            badCoerce={col:m.csv,field:m.d365,reason:`the "${m.transform}" transform couldn't parse "${String(rawVal).substring(0,60)}"`};break;
+          }
         }
         if(badCoerce){
           const msg=`${badCoerce.col} → ${badCoerce.field}: ${badCoerce.reason}`;
-          errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});
+          errors.push({row:i+2,msg});logEntries.push({row:i+2,status:"ERROR",detail:msg,d365Id:""});
           continue;
         }
 
@@ -1142,7 +1164,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             // Empty-as-NULL (opt-in) wins over the fallback policy: an empty lookup cell means
             // "clear it" — bare nav property to null, the documented disassociate.
             if(emptyAsNull){ rec[nav]=null; continue; }
-            if(lk.fb==="error"){ errors.push({row:i+1,msg:`Empty lookup: ${lk.csv}`});logEntries.push({row:i+1,status:"ERROR",detail:`Empty lookup: ${lk.csv}`,d365Id:""});skipRow=true;break; }
+            if(lk.fb==="error"){ errors.push({row:i+2,msg:`Empty lookup: ${lk.csv}`});logEntries.push({row:i+2,status:"ERROR",detail:`Empty lookup: ${lk.csv}`,d365Id:""});skipRow=true;break; }
             continue;
           }
           // Explicit NULL token → CLEAR the lookup: bare single-valued nav property set to null
@@ -1154,7 +1176,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             // guess /systemusers and silently mis-own a team-owned record.
             if(gkey&&ownerErrored.has(gkey)){
               const msg=`Owner type unresolved for ${lk.csv}="${val}" (org was throttling) — re-run to retry`;
-              errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break;
+              errors.push({row:i+2,msg});logEntries.push({row:i+2,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break;
             }
             const ownerSet=gkey?ownerSetCache[gkey]:null;
             rec[`${nav}@odata.bind`]=`/${ownerSet||entitySetFor(lk.entity)}(${val})`;
@@ -1169,14 +1191,14 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               // Couldn't verify (query failed) — honor the user's fallback choice, but keep the
               // transparent "check failed" message so it's never mistaken for a real not-found.
               const msg=`Lookup check failed: ${lk.csv}="${val}" (${cached.__resolveError})`;
-              if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+1,status:"SKIPPED",detail:msg,d365Id:""});skipRow=true;break; }
-              if(lk.fb!=="null"){ errors.push({row:i+1,msg});logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break; }
+              if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+2,status:"SKIPPED",detail:msg,d365Id:""});skipRow=true;break; }
+              if(lk.fb!=="null"){ errors.push({row:i+2,msg});logEntries.push({row:i+2,status:"ERROR",detail:msg,d365Id:""});skipRow=true;break; }
               // fb==="null": load the row without this lookup
             }else if(cached){
               rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${cached})`;
             } else {
-              if(lk.fb==="error"){ errors.push({row:i+1,msg:`Lookup not found: ${lk.csv}="${val}"`});logEntries.push({row:i+1,status:"ERROR",detail:`Lookup not found: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
-              if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+1,status:"SKIPPED",detail:`Lookup not resolved: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
+              if(lk.fb==="error"){ errors.push({row:i+2,msg:`Lookup not found: ${lk.csv}="${val}"`});logEntries.push({row:i+2,status:"ERROR",detail:`Lookup not found: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
+              if(lk.fb==="skip"){ skipped++;logEntries.push({row:i+2,status:"SKIPPED",detail:`Lookup not resolved: ${lk.csv}="${val}"`,d365Id:""});skipRow=true;break; }
             }
           }
         }
@@ -1191,11 +1213,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           // and in UPSERT+delta a missing key legitimately means "create".
           if(updateOnly && !dry && existCheck && existCheck.unverified.has(nk)){
             const msg=`Existence check failed for ${uKey.d}="${row[uKey.c]}" — row not sent (UPDATE only)`;
-            errors.push({row:i+1,msg});
-            logEntries.push({row:i+1,status:"ERROR",detail:msg,d365Id:""});
+            errors.push({row:i+2,msg});
+            logEntries.push({row:i+2,status:"ERROR",detail:msg,d365Id:""});
           } else if(updateOnly && !dry && existCheck && !existCheck.existing.has(nk)){
-            errors.push({row:i+1,msg:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`});
-            logEntries.push({row:i+1,status:"ERROR",detail:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`,d365Id:""});
+            errors.push({row:i+2,msg:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`});
+            logEntries.push({row:i+2,status:"ERROR",detail:`No existing record for ${uKey.d}="${row[uKey.c]}" — not created (UPDATE only)`,d365Id:""});
           } else {
             // Delta mode: against the fetched org record, drop fields whose value is already
             // identical; if nothing differs (and no lookup binds), skip the row entirely.
@@ -1222,7 +1244,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   slim[k]=v;kept++;
                 }
                 if(kept===0&&binds===0){
-                  skipped++;logEntries.push({row:i+1,status:"UNCHANGED",detail:"Delta: every mapped field already matches — row skipped",d365Id:""});
+                  skipped++;logEntries.push({row:i+2,status:"UNCHANGED",detail:"Delta: every mapped field already matches — row skipped",d365Id:""});
                   continue;
                 }
                 recToSend=slim;
@@ -1234,15 +1256,15 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           }
         } else if(uKey.d && updateOnly){
           // UPDATE-only: a row with no key value can't target a record — error, never create.
-          errors.push({row:i+1,msg:`Cannot UPDATE: empty key in column "${uKey.c}"`});
-          logEntries.push({row:i+1,status:"ERROR",detail:`Cannot UPDATE: empty key in column "${uKey.c}"`,d365Id:""});
+          errors.push({row:i+2,msg:`Cannot UPDATE: empty key in column "${uKey.c}"`});
+          logEntries.push({row:i+2,status:"ERROR",detail:`Cannot UPDATE: empty key in column "${uKey.c}"`,d365Id:""});
         } else {
           createRecords.push(rec);
           createRowMap.push(i);
         }
       }catch(e){
-        errors.push({row:i+1,msg:e.message?.substring(0,500)||"Error",payload:JSON.stringify(rec).substring(0,200)});
-        logEntries.push({row:i+1,status:"ERROR",detail:e.message?.substring(0,200)||"Error",d365Id:""});
+        errors.push({row:i+2,msg:e.message?.substring(0,500)||"Error",payload:JSON.stringify(rec).substring(0,200)});
+        logEntries.push({row:i+2,status:"ERROR",detail:e.message?.substring(0,200)||"Error",d365Id:""});
       }
     }
 
@@ -1282,7 +1304,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           pushBatchLog(p.newLog,createRowMap,rows);
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
         created=res.created||0;
-        if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
+        if(res.errors){ res.errors.forEach(e=>{const ci=createRowMap[(e.row||1)-1];errors.push({...e,row:ci!=null?ci+2:0,payload:""});}); } // remapped to CSV line numbers (audit finding)
         if(res.aborted){if(!loadAbort.current)timedOutStop=true;const remaining=createRecords.length-created;const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch CREATE failed: ${e.message}`,payload:""});
@@ -1292,14 +1314,14 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(upsertItems.length>0 && !loadAbort.current){
       setLoadProgress({done:createRecords.length,total:sendTotal,current:`Sending ${upsertItems.length.toLocaleString()}${notSent>0?` of ${total.toLocaleString()}`:""} records (${updateOnly?"UPDATE":"UPSERT"})${notSent>0?` — ${notSent.toLocaleString()} not eligible`:""}...`});
       try{
-        const isPK = uKey.d.toLowerCase() === target + "id";
+        const isPK = uKey.d.toLowerCase() === target + "id" || (!!pkLogical && uKey.d === pkLogical);
         const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
           setLoadProgress({done:createRecords.length+p.done,total:sendTotal,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,upsertRowMap,rows);
-        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic,updateOnly});
+        },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic,updateOnly,keyIsNumeric:!isPK&&["Integer","BigInt","Decimal","Double","Money"].includes(targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.type||targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.t)});
         updated=res.updated||0;
         created+=res.created||0; // upsert that created (201) → count toward Created, matching the log + rollback set
-        if(res.errors){ res.errors.forEach(e=>{errors.push({...e,payload:""});}); }
+        if(res.errors){ res.errors.forEach(e=>{const ui=upsertRowMap[(e.row||1)-1];errors.push({...e,row:ui!=null?ui+2:0,payload:""});}); } // remapped to CSV line numbers (audit finding)
         if(res.aborted){if(!loadAbort.current)timedOutStop=true;const remaining=upsertItems.length-(updated+(res.created||0));const why=loadAbort.current?"Cancelled by user":"Stopped early — a chunk hit the timeout (org too slow for this batch size)";logEntries.push({row:0,status:"CANCELLED",detail:`${why} — ${remaining} records not sent (all recorded as retryable)`,d365Id:""});}
       }catch(e){
         errors.push({row:0,msg:`Batch UPSERT failed: ${e.message}`,payload:""});
@@ -1311,7 +1333,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // Prep-loop entries (skipped lookups, prep errors, cancellations) live outside fullLog. Keep the
     // ORIGINAL run's prep entries so a later retry pass (which only re-runs batch rows) still shows them.
     if(!isRetry) prepLogRef.current=logEntries.slice();
-    const prepLog=isRetry?prepLogRef.current:logEntries;
+    // A retry pass has its OWN prep outcomes (re-check failures, delta-UNCHANGED because the
+    // timed-out chunk actually applied server-side…) — merging them keeps the accounting summing
+    // to the file size; the old code showed only the ORIGINAL run's prep entries (audit finding).
+    const prepLog=isRetry?[...prepLogRef.current,...logEntries]:logEntries;
     // Final log = prep entries + real per-row batch results (from fullLog ref). Capped for rendering.
     const batchLog=fullLog.current.map(e=>({row:e.csvRowNumber,status:e.status,detail:e.status==="ERROR"?(e.msg||"Batch error"):"OK",d365Id:""}));
     const combinedLog=[...prepLog,...batchLog];
@@ -1331,7 +1356,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // fullLog + preserved prep entries + this pass's batch-level (row 0) failures.
     const fCreated=isRetry?(prevResult?.created||0)+created:created;
     const fUpdated=isRetry?(prevResult?.updated||0)+updated:updated;
-    const fSkipped=isRetry?(prevResult?.skipped||0):skipped;
+    const fSkipped=isRetry?(prevResult?.skipped||0)+skipped:skipped; // + THIS pass's skips (delta-unchanged on retry is a real outcome)
     const fErrors=isRetry
       ? [...fullLog.current.filter(e=>e.status==="ERROR"&&e.csvRowNumber>=2).map(e=>({row:e.csvRowNumber,msg:e.msg,payload:""})),
          ...prepLog.filter(e=>e.status==="ERROR").map(e=>({row:e.row,msg:e.detail,payload:""})),
@@ -1428,7 +1453,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           {parseInfo?.badParse&&(
             <div style={{...crd({padding:"10px 14px",background:C.rd+"0c",borderColor:C.rd+"55"}),marginBottom:12,fontSize:12.5,lineHeight:1.6,color:C.rd}}>
               ⚠ <b>{csvFile?.name||"The file"}</b> parsed into {parseInfo.parsedRecords} data row{parseInfo.parsedRecords===1?"":"s"} — <b>nothing was loaded from it</b>.
-              {parseInfo.rawLines>2&&<> The file has {parseInfo.rawLines.toLocaleString()} lines, so a stray <b>unclosed quote (")</b> in the header or first line probably swallowed the rest into one giant cell — fix it in the source file and reload.</>}
+              {parseInfo.excelError&&<> Excel read failed: <b>{parseInfo.excelError}</b> — the file may be corrupt, password-protected, or not a real .xlsx.</>}
+              {!parseInfo.excelError&&parseInfo.rawLines>2&&<> The file has {parseInfo.rawLines.toLocaleString()} lines, so a stray <b>unclosed quote (")</b> in the header or first line probably swallowed the rest into one giant cell — fix it in the source file and reload.</>}
               {csvData.r.length>0&&<> The mapping below still shows your <b>previous</b> file's data.</>}
             </div>
           )}
@@ -1490,7 +1516,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   // alt-key over the PK and only auto-pairs a CSV column when one matches the key
                   // name. It never falls back to the first column (the v1.10.13→1.11.32 trap that
                   // silently matched on the wrong column); an unmatched key leaves c:"" so the UI warns.
-                  const ensureKey=()=>{ if(uKey.d) return; setUKey(defaultMatchKey(targetAltKeys,target+"id",csvData.h)); };
+                  const ensureKey=()=>{ if(uKey.d) return; setUKey(defaultMatchKey(targetAltKeys,pkLogical||target+"id",csvData.h)); };
                   return (<>
                     <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
                       <input type="radio" checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
@@ -1520,8 +1546,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               </label>}
               {uKey.d&&deleteMode&&<div style={{fontSize:11,color:C.rd,marginBottom:6,padding:"6px 8px",background:C.rd+"11",borderRadius:4,border:`1px solid ${C.rd}44`}}>⚠ <b>Permanent deletion.</b> Each row's key value identifies a record to <b>delete</b>. This cannot be undone. Rows with no matching record fail (404). A typed confirmation is required on the Preview step.</div>}
               {uKey.d&&(()=>{
-                const pk=target+"id";
-                const isPK=uKey.d.toLowerCase()===pk;
+                const pk=pkLogical||target+"id";
+                const isPK=uKey.d.toLowerCase()===pk.toLowerCase();
                 const isUsingAltKey=targetAltKeys.includes(uKey.d);
                 // Warn if PK is selected but the CSV value doesn't look like a GUID — most likely a misconfig
                 const sampleVal=uKey.c?csvData.r[0]?.[uKey.c]:"";
@@ -2079,7 +2105,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 <div style={{fontSize:38,marginBottom:8}}>{result.dryRun?"🔍":result.cancelled?"⏹":result.errors.length===0?"✅":"⚠️"}</div>
                 <h2 style={{color:C.tx,fontWeight:700,fontSize:18,marginBottom:4}}>{result.dryRun?`Dry run done in ${result.elapsed}s`:result.cancelled?`Cancelled after ${result.elapsed}s`:`Done in ${result.elapsed}s`}</h2>
                 {result.dryRun&&<div style={{fontSize:13,color:C.cy,fontWeight:600,marginTop:4}}>Simulation only — nothing was written to Dataverse. Numbers below show what a real run WOULD do.</div>}
-                {result.cancelled&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{(result.created+result.updated)} records sent · {result.totalRows-(result.created+result.updated)} not processed</div>}
+                {result.cancelled&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{(result.created+result.updated+(result.deleted||0))} records sent · {Math.max(0,result.totalRows-(result.created+result.updated+(result.deleted||0)))} not processed</div>}
                 {result.startedAt&&<div style={{fontSize:12,color:C.txd,marginTop:6,display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
                   <span>🕐 Started {result.startedAt.toLocaleString()}</span>
                   {result.finishedAt&&<span>🏁 Finished {result.finishedAt.toLocaleString()}</span>}

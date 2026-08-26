@@ -179,6 +179,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
             {showPicklist&&(()=>{
               const field=fields.find(f=>f.l===showPicklist);
               if(!field)return null;
+              const optsLoaded=optionSetData[field.l]!==undefined||!!field.opts; // [] = fetched-but-empty/failed, undefined = still loading
               const opts=optionSetData[field.l]||field.opts||[];
               return(
                 <div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowPicklist(null)}>
@@ -199,7 +200,17 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                     </div>
                     <div style={{flex:1,overflow:"auto",padding:0}}>
                       {opts.length===0?(
-                        <div style={{textAlign:"center",padding:30,color:C.txd,fontSize:14}}><Spin/> Loading values...</div>
+                        // A fetch failure used to cache [] and render THIS spinner forever with no
+                        // retry (audit finding) — an empty-but-loaded set now says so, with a Retry
+                        // that drops the cached [] so the effect refetches.
+                        optsLoaded?(
+                          <div style={{textAlign:"center",padding:30,color:C.txd,fontSize:14}}>
+                            No values returned — the option set is empty, or its fetch failed.
+                            <button onClick={()=>setOptionSetData(prev=>{const n={...prev};delete n[field.l];return n;})} style={{...bt(null,{fontSize:12}),marginLeft:10}}>↻ Retry</button>
+                          </div>
+                        ):(
+                          <div style={{textAlign:"center",padding:30,color:C.txd,fontSize:14}}><Spin/> Loading values...</div>
+                        )
                       ):(
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
                           <thead><tr>

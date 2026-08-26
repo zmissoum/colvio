@@ -7,7 +7,7 @@
 const PALETTE = { ink: "1A1D26", mut: "4A5068", dim: "8890A4", vi: "0066FF", cy: "0891B2", gn: "059669", yw: "D97706", rd: "DC2626" };
 
 /** Pure slide-content model — everything the deck shows, no pptx objects. */
-export function buildReportModel({ orgName, windowRange, roleFilter, buLabel, interval, agg, failedDays = 0, nowMs }) {
+export function buildReportModel({ orgName, windowRange, roleFilter, buLabel, interval, agg, failedDays = 0, nowMs, includeService = false }) {
   const fmt = (n) => (n ?? 0).toLocaleString("en-US");
   const filters = [roleFilter ? `Role: ${roleFilter}` : null, buLabel ? `BU: ${buLabel}` : null].filter(Boolean).join(" · ") || "All users";
   const e = agg.engagement || {};
@@ -39,7 +39,9 @@ export function buildReportModel({ orgName, windowRange, roleFilter, buLabel, in
       filters,
     },
     kpis,
-    honesty: `Numbers are ACCESS EVENTS from Dataverse's user-access audit: logged at most once per user per ${interval} h interval — a stable activity proxy, not literal logins or clicks. Service accounts (non-interactive, S2S application users) are excluded. Only rows within the org's audit retention are visible.${failedDays ? ` ${failedDays} day(s) failed to load and are EXCLUDED from totals.` : ""}`,
+    // The methodology note must match the toggle — the deck used to claim "excluded" even when
+    // service accounts were INCLUDED in every number (audit finding).
+    honesty: `Numbers are ACCESS EVENTS from Dataverse's user-access audit: logged at most once per user per ${interval} h interval — a stable activity proxy, not literal logins or clicks. Service accounts (non-interactive, S2S application users) are ${includeService ? "INCLUDED in these numbers (toggle was on)" : "excluded"}. Only rows within the org's audit retention are visible.${failedDays ? ` ${failedDays} day(s) failed to load and are EXCLUDED from totals.` : ""}`,
     trend: {
       labels: agg.series.map(s => s.label.slice(5)), // MM-DD
       events: agg.series.map(s => s.logins),
