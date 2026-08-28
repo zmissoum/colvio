@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, copyText, dl, expName } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, copyText, dl, expName, persistList } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
@@ -134,16 +134,10 @@ export default function ApiTester({ bp, orgInfo, theme }) {
         status: r.status, ok: r.ok,
         elapsed: r.elapsed, at: new Date().toISOString(),
       };
-      // Functional updater avoids dropping entries when two sends race before a re-render flush.
+      // Functional updater avoids dropping entries when two sends race before a re-render flush;
+      // persistList (shared) keeps the STORED list multi-tab-safe.
       setHistory(prev => [entry, ...prev].slice(0, 50));
-      // Multi-tab safety: read-modify-write against FRESH storage — writing this tab's snapshot
-      // used to erase requests sent from another API Tester tab (audit finding).
-      try {
-        chrome.storage?.local?.get(["colvio_api_tester_history"], rr => {
-          const cur = Array.isArray(rr?.colvio_api_tester_history) ? rr.colvio_api_tester_history : [];
-          chrome.storage?.local?.set({ colvio_api_tester_history: [entry, ...cur].slice(0, 50) });
-        });
-      } catch {}
+      persistList("colvio_api_tester_history", cur => [entry, ...cur].slice(0, 50));
     } catch (e) {
       if (reqGen.current === g) setError(e.message || String(e));
     }

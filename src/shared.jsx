@@ -143,6 +143,15 @@ export async function exportTable(headers,rows,baseName,format="csv",sheetName="
 export function Spin({s=14}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid ${C.txd}44`,borderTopColor:C.tx,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>;}
 export function copyText(t){navigator.clipboard?.writeText(String(t));}
 
+// Multi-tab-safe persistence for chrome.storage.local LISTS: read FRESH, mutate, write. Every
+// query tab / API tab mounts its own component with a mount-time snapshot — writing that snapshot
+// back used to permanently erase entries saved meanwhile in another tab (v1.11.156 audit finding).
+// mutate receives the CURRENT stored array (or [] when unset/invalid) and returns the new one.
+export function persistList(key, mutate){
+  if(typeof chrome==="undefined"||!chrome.storage?.local) return;
+  chrome.storage.local.get([key],r=>{chrome.storage.local.set({[key]:mutate(Array.isArray(r[key])?r[key]:[])});});
+}
+
 // Canonical record-id resolver, shared so every caller (result grid, post-delete row removal…) agrees
 // on which value is the record's OWN primary key. Prefers `<entity>id`, then a column ending in "id"
 // holding a GUID, then any non-lookup GUID. NEVER returns a `_..._value` lookup GUID or an annotation —

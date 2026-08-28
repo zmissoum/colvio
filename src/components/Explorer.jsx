@@ -3,7 +3,7 @@ import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge, persistList } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import { buildFilterClause } from "../filterUtils.js";
 import { buildHistoryEntry } from "../historyUtils.js";
@@ -56,14 +56,6 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       });
     }
   },[]);
-
-  // Multi-tab safety: persisted lists are read FRESH, mutated, then written. Each query tab
-  // mounts its own Explorer with a mount-time snapshot — writing that snapshot back used to
-  // permanently erase entries saved meanwhile in another tab (audit finding).
-  const persistList=(key,mutate)=>{
-    if(typeof chrome==="undefined"||!chrome.storage?.local) return;
-    chrome.storage.local.get([key],r=>{chrome.storage.local.set({[key]:mutate(Array.isArray(r[key])?r[key]:[])});});
-  };
 
   const toggleBookmark=(entityLogical)=>{
     setBookmarks(prev=>prev.includes(entityLogical)?prev.filter(b=>b!==entityLogical):[...prev,entityLogical]);
