@@ -102,7 +102,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginEvents" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -367,21 +367,6 @@ export const bridge = {
     return { records: [], count: 0, moreRecords: false };
   },
 
-  async create(entitySet, data) {
-    if (isExtension) {
-      const res = await callD365("create", { entitySet, data });
-      return res;
-    }
-    return { id: crypto.randomUUID(), ...data };
-  },
-
-  async batchDelete(entitySet, ids) {
-    if (isExtension) {
-      return callD365("batchDelete", { entitySet, ids });
-    }
-    return { deleted: ids.length, errors: [] };
-  },
-
   // withCanDelete: also fetch the CanBeDeleted managed property (best-effort; only the bulk-delete
   // pre-check needs it). Left off elsewhere so a non-selectable CanBeDeleted can't 400 the call.
   async getEntityMetadata(logicalName, withCanDelete = false) {
@@ -566,11 +551,6 @@ export const bridge = {
     return agg;
   },
 
-  async upsert(entitySet, keyField, keyValue, data) {
-    if (isExtension) return callD365("upsert", { entitySet, keyField, keyValue, data });
-    return { status: 204 };
-  },
-
   async getCurrentRecord() {
     if (isExtension) return callD365("getCurrentRecord");
     return null;
@@ -660,24 +640,6 @@ export const bridge = {
       userId,
       info: "",
     }));
-  },
-
-  async getLoginEvents(from, to, cap) {
-    if (isExtension) return callD365("getLoginEvents", { from, to, cap });
-    // Demo: synthetic logins over the last 30 days for a few users (matches getAllUsers demo ids),
-    // clipped to the requested window like the live server would — otherwise a 7-day preset shows
-    // 30 days of totals under a 7-day chart.
-    const now = Date.now(), ids = ["u1", "u2", "u3", "u5", "u8"], names = ["Zakaria Missoum", "Marie Martin", "Alex Baker", "Lucas Moreau", "Pierre Bernard"];
-    const fromT = from ? new Date(from).getTime() : -Infinity, toT = to ? new Date(to).getTime() : Infinity;
-    const events = [];
-    for (let d = 0; d < 30; d++) for (let k = 0; k < ids.length; k++) {
-      const per = [5, 3, 1, 2, 4][k]; // different activity levels
-      for (let j = 0; j < per; j++) {
-        const ts = now - d * 86400000 - j * 3600000;
-        if ((d + j + k) % 2 === 0 && ts >= fromT && ts <= toT) events.push({ date: new Date(ts).toISOString(), userId: ids[k], userName: names[k] });
-      }
-    }
-    return { events, capped: false };
   },
 
   // Login stats over a window, aggregated per user per UTC day — the scalable replacement for
@@ -856,11 +818,6 @@ export const bridge = {
       { id: "w3", name: "Case escalation flow", category: 5, state: 1, mode: 0, entity: "incident", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "", owner: "Marie Martin", modifiedon: new Date(Date.now() - 5 * 86400000).toISOString() },
       { id: "w4", name: "Phone to Case Process", category: 4, state: 1, mode: 0, entity: "incident", managed: true, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "SYSTEM", modifiedon: new Date(Date.now() - 300 * 86400000).toISOString() },
     ];
-  },
-
-  async getApiLimits() {
-    if (isExtension) { try { return callD365("getApiLimits"); } catch { return null; } }
-    return { remaining: 55479, limit: 60000 };
   },
 
   // ── Solutions ──
