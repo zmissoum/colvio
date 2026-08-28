@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.157] — 2026-08-28
+### Fixed — Recycle Bin: restores no longer time out at ~30 seconds
+- User report: restoring certain records failed with a timeout after ~30 s. Two stacked timeouts were capping the Restore call: the content script aborts writes at 25 s and the bridge at 30 s — but a restore legitimately takes minutes when Dataverse re-creates cascade-deleted child records synchronously. The Restore action now gets **9.5 minutes** at the request level and **10 minutes** at the bridge level, like the other long operations.
+- If a restore still exceeds that, the error now tells the truth: Dataverse may **still complete it in the background** — refresh the bin first (if the record left it, it was restored) and only retry if it's still there.
+
 ## [1.11.156] — 2026-08-26
 ### Fixed — full-product audit: 9 parallel deep reviews over all 19 modules, 45+ verified findings fixed
 Prompted by the user's challenge ("did you really pass over EVERY tab?"). Nine independent audit agents each read a module group end-to-end against the classes of bugs this project has actually hit; every finding was then verified in code before fixing. Highlights by severity:

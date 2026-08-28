@@ -143,9 +143,13 @@
         : 'odata.include-annotations="*"';
     }
 
-    // Timeout: 25s for writes, 60s for reads (roles/privileges can be large)
+    // Timeout: 25s for writes, 60s for reads (roles/privileges can be large). The recycle-bin
+    // Restore action gets 9.5 min: Dataverse re-creates cascade-deleted children synchronously,
+    // which routinely blows past 25s on parent records (user hit "timeout after ~30s" on real
+    // restores) — the bridge caps this call at 10 min.
+    const isRestore = path === "Restore";
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), isWrite ? 25000 : 60000);
+    const timeout = setTimeout(() => controller.abort(), isRestore ? 570000 : isWrite ? 25000 : 60000);
 
     try {
       let resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
@@ -195,7 +199,7 @@
       return { status: resp.status, ok: true };
     } catch (e) {
       clearTimeout(timeout);
-      if (e.name === "AbortError") throw new Error("Timeout: D365 did not respond within 25s");
+      if (e.name === "AbortError") throw new Error(`Timeout: D365 did not respond within ${isRestore ? "9.5 minutes" : isWrite ? "25s" : "60s"}`);
       throw e;
     }
   }

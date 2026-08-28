@@ -21,6 +21,8 @@ function friendlyRestoreError(msg) {
     return "A live record now uses the same primary key. Delete that record first, then retry the restore.";
   if (m.includes("Picklist value not valid"))
     return "This record used an option-set value that has since been removed. Re-add the option to the choice, then retry.";
+  if (/timeout/i.test(m))
+    return "The restore did not finish before Colvio's timeout — Dataverse may STILL complete it in the background (cascade restores are slow). Refresh the list: if the record left the bin, it was restored; retry only if it is still here.";
   return m;
 }
 
