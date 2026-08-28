@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.158] — 2026-08-29
+### Changed — cleanup pass T1: dead code removed, shared helpers unified (zero behavior change)
+- Cross-referenced every bridge method against its panel callers and every content-script action against its bridge callers. Removed 6 unreachable content actions (the pre-v145 sequential `batchDelete`, single-record `create`/`upsert` primitives, `getApiLimits`, `getLoginEvents` superseded by the server-side aggregation, the orphaned `recycleBinStatus`) and their 4 dead bridge methods — 73 actions remain, all reachable.
+- The multi-tab-safe storage write (`persistList`) now lives once in `shared.jsx`, used by Explorer (saved queries, history, bookmarks) and API Tester (request history).
+- −130 lines net (19,536 total). Each slice shipped behind the full gate (build + 269 tests + lint) as its own commit. The `usePagedList` unification of the three System Ops panels is deliberately deferred: their load paths differ subtly and a behavior-preserving merge needs component tests first.
+
 ## [1.11.157] — 2026-08-28
 ### Fixed — Recycle Bin: restores no longer time out at ~30 seconds
 - User report: restoring certain records failed with a timeout after ~30 s. Two stacked timeouts were capping the Restore call: the content script aborts writes at 25 s and the bridge at 30 s — but a restore legitimately takes minutes when Dataverse re-creates cascade-deleted child records synchronously. The Restore action now gets **9.5 minutes** at the request level and **10 minutes** at the bridge level, like the other long operations.
