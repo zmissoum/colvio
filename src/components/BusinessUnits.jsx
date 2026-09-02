@@ -46,7 +46,15 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");   // kept across BU switches — re-run the same list on another BU
   const [pasteResult, setPasteResult] = useState(null); // {none:true} | {matched, missing:[…]}
-  useEffect(() => { setCheckedUsers(new Set()); setMoveResults(null); setPasteResult(null); }, [sel]);
+  // Move-INTO-this-BU by pasted list (admin): org-wide search by email/UPN, then move the matches
+  // TO the displayed BU wherever they currently sit — the natural "go to the target, paste, go"
+  // flow (the checkbox flow above works the other way: select in the SOURCE BU, pick a target).
+  const [inOpen, setInOpen] = useState(false);
+  const [inText, setInText] = useState("");
+  const [inBusy, setInBusy] = useState(false);
+  const [inFound, setInFound] = useState(null);     // {movable:[user…], already:[user…], missing:[token…], failed:[token…]}
+  const [inResults, setInResults] = useState(null); // per-user move outcome
+  useEffect(() => { setCheckedUsers(new Set()); setMoveResults(null); setPasteResult(null); setInOpen(false); setInFound(null); setInResults(null); }, [sel]);
   const rootIdsOf = (list) => { const ids = new Set(list.map(b => b.id)); return list.filter(b => !b.parentId || !ids.has(b.parentId)).map(b => b.id); };
 
   // Mount: load only the BU hierarchy + per-BU counts (one cheap aggregate query). Member rows are
@@ -214,6 +222,67 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
     bridge.getUserCountsByBu().then(c => setCountsByBu(c || {})).catch(() => {});
   };
 
+  // Org-wide find for the move-INTO flow: chunked $filter on email OR UPN (the Security Audit
+  // bulk-assign pattern). Users already in the displayed BU are shown but excluded from the move;
+  // a failed chunk marks its tokens "couldn't check" — never silently "missing" (audit rule).
+  const doInFind = async () => {
+    const tokens = extractEmails(inText);
+    if (!tokens.length) { setInFound({ movable: [], already: [], missing: [], failed: [], none: true }); return; }
+    setInBusy(true); setInFound(null); setInResults(null);
+    const byToken = new Map(); const failed = [];
+    for (let i = 0; i < tokens.length; i += 15) {
+      const chunk = tokens.slice(i, i + 15);
+      const f = chunk.map(t => { const e = t.replace(/'/g, "''"); return `(internalemailaddress eq '${e}' or domainname eq '${e}')`; }).join(" or ");
+      try {
+        const d = await bridge.query("systemusers", { select: "systemuserid,fullname,internalemailaddress,domainname,isdisabled,_businessunitid_value", filter: f });
+        (d?.records || []).forEach(u => {
+          const rec = { id: u.systemuserid, name: u.fullname || "", email: u.internalemailaddress || "", upn: u.domainname || "", disabled: !!u.isdisabled, buId: u._businessunitid_value || "", buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "" };
+          [rec.email, rec.upn].forEach(k => { const kk = (k || "").toLowerCase(); if (kk && !byToken.has(kk)) byToken.set(kk, rec); });
+        });
+      } catch { failed.push(...chunk); }
+    }
+    const failedSet = new Set(failed);
+    const seen = new Set(); const movable = []; const already = []; const missing = [];
+    for (const t of tokens) {
+      if (failedSet.has(t)) continue;
+      const u = byToken.get(t);
+      if (!u) { missing.push(t); continue; }
+      if (seen.has(u.id)) continue; seen.add(u.id);
+      (u.buId === sel ? already : movable).push(u);
+    }
+    setInFound({ movable, already, missing, failed });
+    setInBusy(false);
+  };
+
+  const doInMove = async () => {
+    if (!inFound?.movable?.length || moving) return;
+    const n = inFound.movable.length;
+    if (!confirmProd(orgInfo?.isProduction, `Move ${n} user${n > 1 ? "s" : ""} INTO "${selBu?.name}" (from their current business units)`)) return;
+    setMoving(true); setInResults(null);
+    try {
+      const res = await bridge.moveUsersToBu(sel, inFound.movable.map(u => u.id)) || [];
+      const okIds = new Set(res.filter(r => r.ok).map(r => String(r.id).toLowerCase()));
+      // Local truth: moved users leave their SOURCE BUs' cached lists; the displayed BU's cache is
+      // dropped so the lazy loader refetches and the newcomers appear; counts follow per source.
+      setUsersByBu(prev => {
+        const nx = { ...prev };
+        for (const u of inFound.movable) { if (okIds.has(String(u.id).toLowerCase()) && nx[u.buId]) nx[u.buId] = nx[u.buId].filter(x => String(x.id).toLowerCase() !== String(u.id).toLowerCase()); }
+        delete nx[sel];
+        return nx;
+      });
+      setCountsByBu(prev => {
+        const nx = { ...prev };
+        let gained = 0;
+        for (const u of inFound.movable) { if (okIds.has(String(u.id).toLowerCase())) { gained++; if (nx[u.buId] != null) nx[u.buId] = Math.max(0, nx[u.buId] - 1); } }
+        if (nx[sel] != null) nx[sel] = nx[sel] + gained;
+        return nx;
+      });
+      setInResults(res.map(r => ({ ...r, name: inFound.movable.find(u => String(u.id).toLowerCase() === String(r.id).toLowerCase())?.name || r.id })));
+      setInFound(f => f ? { ...f, movable: f.movable.filter(u => !okIds.has(String(u.id).toLowerCase())) } : f); // failures stay listed for a retry
+    } catch (e) { setInResults([{ id: "", ok: false, name: "", error: e.message || String(e) }]); }
+    setMoving(false);
+  };
+
   const doPasteMatch = () => {
     const tokens = extractEmails(pasteText);
     if (!tokens.length) { setPasteResult({ none: true }); return; }
@@ -268,7 +337,10 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
         {selBu && (
           <div>
             <div style={{ ...crd({ padding: "16px 20px" }), marginBottom: 14 }}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{selBu.name}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 18, fontWeight: 700, flex: 1, minWidth: 160 }}>{selBu.name}</div>
+                {isAdmin && <button onClick={() => { setInOpen(o => !o); }} title="Paste a list of emails/UPNs — Colvio finds them ANYWHERE in the org and moves them INTO this business unit" style={bt(inOpen ? C.vi : null, { fontSize: 11, padding: "4px 10px" })}>📥 Move users INTO this BU</button>}
+              </div>
               <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
                 <Badge label={`${selDirectCount.toLocaleString()} direct`} color={C.vi} />
                 {hasSub && <Badge label={`${subCount.toLocaleString()} incl. sub-BUs`} color={C.cy} />}
@@ -276,6 +348,58 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                 {selBu.parentId && bus && <span style={{ fontSize: 12, color: C.txd }}>parent: {bus.find(p => p.id === selBu.parentId)?.name || "—"}</span>}
               </div>
             </div>
+
+            {isAdmin && inOpen && (() => {
+              const retain = orgFeatures?.retainRolesOnBuChange;
+              return (
+                <div style={{ ...crd({ padding: 12 }), marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: C.txm, marginBottom: 6, lineHeight: 1.5 }}>
+                    Paste email addresses or UPNs — Colvio searches the <b>whole org</b> and moves every match <b>into “{selBu.name}”</b>, wherever they currently sit. Any separator works (one per line, commas, Outlook's <span style={mono}>Name &lt;email&gt;</span>).
+                  </div>
+                  <textarea value={inText} onChange={e => { setInText(e.target.value); setInFound(null); setInResults(null); }} rows={5}
+                    placeholder={"jane.doe@contoso.com\njohn.smith@contoso.com"}
+                    style={{ ...inp({ fontSize: 12 }), ...mono, width: "100%", resize: "vertical", boxSizing: "border-box" }} />
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <button onClick={doInFind} disabled={!inText.trim() || inBusy} style={bt(C.cy, { fontSize: 12, opacity: inText.trim() && !inBusy ? 1 : 0.5 })}>{inBusy ? <Spin s={12} /> : "🔎 Find users"}</button>
+                    {inFound?.movable?.length > 0 && <button onClick={doInMove} disabled={moving} style={bt(C.vi, { fontSize: 12 })}>{moving ? <Spin s={12} /> : `➡ Move ${inFound.movable.length} into ${selBu.name}`}</button>}
+                    <button onClick={() => { setInText(""); setInFound(null); setInResults(null); }} style={bt(null, { fontSize: 12 })}>Clear</button>
+                  </div>
+                  {inFound && !inFound.none && (
+                    <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.6 }}>
+                      {inFound.movable.length > 0 && <>
+                        <div style={{ color: C.gn, fontWeight: 600 }}>✅ {inFound.movable.length} user{inFound.movable.length > 1 ? "s" : ""} found — will move into “{selBu.name}”:</div>
+                        <div style={{ maxHeight: 150, overflow: "auto", ...mono, fontSize: 11, color: C.txm }}>
+                          {inFound.movable.map(u => <div key={u.id}>{u.name} · {u.email || u.upn} · currently in <b>{u.buName || u.buId}</b>{u.disabled ? " · DISABLED" : ""}</div>)}
+                        </div>
+                      </>}
+                      {inFound.already.length > 0 && <div style={{ color: C.txd }}>ℹ {inFound.already.length} already in this BU (skipped): {inFound.already.map(u => u.name).slice(0, 5).join(", ")}{inFound.already.length > 5 ? "…" : ""}</div>}
+                      {inFound.missing.length > 0 && <>
+                        <div style={{ color: C.yw }}>⚠ {inFound.missing.length} not found anywhere in the org (typo, or not provisioned/synced yet):</div>
+                        <div style={{ maxHeight: 90, overflow: "auto", whiteSpace: "pre-wrap", ...mono, fontSize: 11, color: C.yw }}>{inFound.missing.join("\n")}</div>
+                      </>}
+                      {inFound.failed.length > 0 && <div style={{ color: C.rd }}>✗ {inFound.failed.length} could NOT be checked (query failed) — retry Find: {inFound.failed.slice(0, 4).join(", ")}{inFound.failed.length > 4 ? "…" : ""}</div>}
+                      {inFound.movable.length > 0 && (
+                        <div style={{ marginTop: 6, padding: "6px 10px", borderRadius: 6, fontSize: 12, background: (retain === true ? C.gn : retain === false ? C.rd : C.yw) + "14", border: `1px solid ${(retain === true ? C.gn : retain === false ? C.rd : C.yw)}44`, color: retain === true ? C.gn : retain === false ? C.rd : C.yw }}>
+                          {retain === true && <>✅ This org KEEPS security roles on a BU change.</>}
+                          {retain === false && <>⚠ This org REMOVES ALL security roles on a BU change — re-assign via Security Audit after the move.</>}
+                          {retain == null && <>ℹ Couldn't read the org's "retain roles on BU change" setting — on LEGACY behavior every role is removed. Verify on one user first.</>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {inFound?.none && <div style={{ marginTop: 8, fontSize: 12, color: C.yw }}>No email addresses found in the pasted text.</div>}
+                  {inResults && (() => {
+                    const ok = inResults.filter(r => r.ok).length, ko = inResults.filter(r => !r.ok);
+                    return (
+                      <div style={{ marginTop: 10, fontSize: 12.5 }}>
+                        <span style={{ color: ok ? C.gn : C.txm }}>✅ {ok} moved into {selBu.name}.</span>
+                        {ko.length > 0 && <div style={{ marginTop: 4, color: C.rd, maxHeight: 120, overflow: "auto" }}>⚠ {ko.length} failed (kept in the list above — fix and retry):{ko.map((r, i) => <div key={i} style={{ marginTop: 2 }}>{r.name}: <i>{r.error}</i></div>)}</div>}
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
 
             {(loadingUsers || !selLoaded) && !userErr
               ? <div style={{ ...crd({ padding: 16 }), color: C.txm, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}><Spin s={14} /> Loading members…</div>

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.160] — 2026-08-29
+### Added — Business Units: "Move users INTO this BU" by pasted list (org-wide)
+- The natural direction the checkbox flow couldn't do (user request): go to the **target** BU, paste a list of emails/UPNs, click. A **📥 Move users INTO this BU** button now sits in the BU header (works even when the target BU is empty — the typical fresh-BU case). Colvio searches the **whole org** (chunked server-side queries on email OR UPN, the Security-Audit bulk-assign pattern) and shows the full preview before anything moves: **who was found and from which BU they'll move** (disabled users flagged), who is **already** in this BU (skipped), who was **not found anywhere** (typo / not synced yet — listed verbatim), and tokens that **couldn't be checked** because a query failed (never silently dropped).
+- The move itself reuses the v1.11.144 machinery: roles-truth stated before confirming (kept/removed/unknown per the org setting), production confirmation, per-user results with **failures kept in the list for a retry**, source-BU member lists and count badges updated, the target BU's list refreshed so the newcomers appear.
+- The v1.11.147 paste-to-select flow (select in the SOURCE BU, then pick a target) remains for the other direction.
+
 ## [1.11.159] — 2026-08-29
 ### Added — Show All Data: lookups are now editable (link two records from the record card)
 - The ✎ pencil now appears on **Lookup, Customer and Owner** fields — including ones that already hold a value ("relink"). Paste the **GUID of the target record**, save: Colvio builds the proper `nav@odata.bind` toward the target's entity set (same typed machinery as the Explorer's v1.11.153 edits — GUID validated before sending, readable refusals, empty value **clears** the lookup via the documented null-nav disassociate).
