@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.161] — 2026-08-29
+### Fixed — "kQuotaBytes quota exceeded" errors: the metadata cache now evicts itself
+- User report: the extension's error log filled with `Uncaught (in promise) Error: Resource::kQuotaBytes quota exceeded`. Root cause: on large orgs (or several orgs visited), the org-scoped metadata cache eventually fills `chrome.storage.local`'s 10 MB quota — and the cache write used a callback-less `set()` whose **promise rejection escaped the try/catch**, so every subsequent write logged an uncaught error forever, and nothing was ever evicted.
+- The cache is rebuildable by design, so it now heals itself: on a quota failure it evicts **other orgs' cache entries first**, retries, then the current org's, retries again — and if storage still refuses, it silently falls back to the in-memory cache for the session. A cache write can never throw at the app again.
+- Same hardening on every remaining `chrome.storage` write/remove without a callback (saved-queries import, history clear, API Tester history, persistList): callbacks added with `runtime.lastError` read, so neither unhandled rejections nor "Unchecked runtime.lastError" entries can accumulate.
+
 ## [1.11.160] — 2026-08-29
 ### Added — Business Units: "Move users INTO this BU" by pasted list (org-wide)
 - The natural direction the checkbox flow couldn't do (user request): go to the **target** BU, paste a list of emails/UPNs, click. A **📥 Move users INTO this BU** button now sits in the BU header (works even when the target BU is empty — the typical fresh-BU case). Colvio searches the **whole org** (chunked server-side queries on email OR UPN, the Security-Audit bulk-assign pattern) and shows the full preview before anything moves: **who was found and from which BU they'll move** (disabled users flagged), who is **already** in this BU (skipped), who was **not found anywhere** (typo / not synced yet — listed verbatim), and tokens that **couldn't be checked** because a query failed (never silently dropped).

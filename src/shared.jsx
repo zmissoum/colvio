@@ -149,7 +149,12 @@ export function copyText(t){navigator.clipboard?.writeText(String(t));}
 // mutate receives the CURRENT stored array (or [] when unset/invalid) and returns the new one.
 export function persistList(key, mutate){
   if(typeof chrome==="undefined"||!chrome.storage?.local) return;
-  chrome.storage.local.get([key],r=>{chrome.storage.local.set({[key]:mutate(Array.isArray(r[key])?r[key]:[])});});
+  chrome.storage.local.get([key],r=>{
+    void chrome.runtime.lastError;
+    // Callback + lastError read: a callback-less set() rejects an unhandled PROMISE when the
+    // storage quota is full (kQuotaBytes) — these small lists must never spam the error log.
+    chrome.storage.local.set({[key]:mutate(Array.isArray(r?.[key])?r[key]:[])},()=>{void chrome.runtime.lastError;});
+  });
 }
 
 // Canonical record-id resolver, shared so every caller (result grid, post-delete row removal…) agrees

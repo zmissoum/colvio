@@ -189,7 +189,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
 
   const clearHistory = () => {
     setHistory([]);
-    try { chrome.storage?.local?.remove("colvio_api_tester_history"); } catch {}
+    try { chrome.storage?.local?.remove("colvio_api_tester_history", () => { void chrome.runtime.lastError; }); } catch {}
   };
 
   const updateHeader = (i, k, v) => {

@@ -51,9 +51,29 @@ async function cacheGet(key) {
 async function cacheSet(key, data, ttl) {
   const entry = { data, exp: Date.now() + ttl };
   memCache[key] = entry;
-  if (isExtension && chrome.storage?.local) {
-    try { chrome.storage.local.set({ [key]: entry }); } catch {}
-  }
+  if (!(isExtension && chrome.storage?.local)) return;
+  // Callback + lastError read: the callback-less MV3 set() returns a PROMISE, so the old
+  // try/catch never caught a quota rejection — big orgs filled the 10 MB storage.local quota
+  // and every cache write after that spammed "Uncaught (in promise) kQuotaBytes" in the
+  // extension's error log forever (user report).
+  const trySet = () => new Promise((res) => {
+    try { chrome.storage.local.set({ [key]: entry }, () => res(!chrome.runtime.lastError)); }
+    catch { res(false); }
+  });
+  if (await trySet()) return;
+  // Quota full → EVICT and retry: the metadata cache is rebuildable by design. Other orgs'
+  // entries go first (stale by definition when working here), then the current org's; if even
+  // that fails, give up silently — memCache still serves this session.
+  try {
+    const all = await new Promise(r => chrome.storage.local.get(null, r));
+    const mine = `d365_cache_${getOrgUrl() || "default"}_`;
+    const others = Object.keys(all).filter(k => k.startsWith("d365_cache_") && !k.startsWith(mine));
+    if (others.length) await new Promise(r => chrome.storage.local.remove(others, () => { void chrome.runtime.lastError; r(); }));
+    if (await trySet()) return;
+    const rest = Object.keys(all).filter(k => k.startsWith(mine) && k !== key);
+    if (rest.length) await new Promise(r => chrome.storage.local.remove(rest, () => { void chrome.runtime.lastError; r(); }));
+    await trySet();
+  } catch { /* cache stays best-effort — never let a cache write break a feature */ }
 }
 
 async function cacheClear() {
@@ -62,7 +82,7 @@ async function cacheClear() {
     try {
       const all = await new Promise(r => chrome.storage.local.get(null, r));
       const metaKeys = Object.keys(all).filter(k => k.startsWith("d365_cache_"));
-      if (metaKeys.length) chrome.storage.local.remove(metaKeys);
+      if (metaKeys.length) chrome.storage.local.remove(metaKeys, () => { void chrome.runtime.lastError; });
     } catch {}
   }
 }
