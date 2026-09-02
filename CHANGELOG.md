@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.159] — 2026-08-29
+### Added — Show All Data: lookups are now editable (link two records from the record card)
+- The ✎ pencil now appears on **Lookup, Customer and Owner** fields — including ones that already hold a value ("relink"). Paste the **GUID of the target record**, save: Colvio builds the proper `nav@odata.bind` toward the target's entity set (same typed machinery as the Explorer's v1.11.153 edits — GUID validated before sending, readable refusals, empty value **clears** the lookup via the documented null-nav disassociate).
+- **Polymorphic lookups** (Customer → account/contact, Owner → user/team) get a target-table picker, preselected to the current value's table when known.
+- Relationship metadata (nav property + targets) loads with the record; when it can't be read, the lookup simply stays read-only. Only the primary key remains non-editable. Production confirmation applies, server-side privileges enforced as always.
+
 ## [1.11.158] — 2026-08-29
 ### Changed — cleanup pass T1: dead code removed, shared helpers unified (zero behavior change)
 - Cross-referenced every bridge method against its panel callers and every content-script action against its bridge callers. Removed 6 unreachable content actions (the pre-v145 sequential `batchDelete`, single-record `create`/`upsert` primitives, `getApiLimits`, `getLoginEvents` superseded by the server-side aggregation, the orphaned `recycleBinStatus`) and their 4 dead bridge methods — 73 actions remain, all reachable.

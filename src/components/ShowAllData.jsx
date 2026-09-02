@@ -3,7 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import AuditHistory from "./AuditHistory.jsx";
 import BpfManager from "./BpfManager.jsx";
 import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom, confirmProd } from "../shared.jsx";
-import { coerceScalarForEdit } from "../updateUtils.js";
+import { coerceScalarForEdit, prepareUpdate } from "../updateUtils.js";
 
 export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const isLive = orgInfo?.isExtension;
@@ -18,7 +18,8 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const[autoDetected,setAutoDetected]=useState(null);
   // Inline field editing — write a value straight via the Web API, even for fields the form marks
   // read-only (the server still enforces field-level security + the write privilege).
-  const[editing,setEditing]=useState(null);   // { l, t, value } of the field being edited
+  const[editing,setEditing]=useState(null);   // { l, t, value, target? } of the field being edited
+  const[lookupNavs,setLookupNavs]=useState([]); // ManyToOne relationships of the loaded record's table — fuels lookup editing
   const[savingField,setSavingField]=useState(false);
   const[editMsg,setEditMsg]=useState("");
   const[optionsCache,setOptionsCache]=useState({}); // { fieldLogical: [{value,label}] }
@@ -67,10 +68,12 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
     setEditing(null);setEditMsg("");setOptionsCache({});
     setError("");setLoading(true);
     try{
-      const [fieldsMeta, entitySet] = await Promise.all([
+      const [fieldsMeta, entitySet, navMeta] = await Promise.all([
         bridge.getFields(entity),
         bridge.getEntitySet(entity),
+        bridge.getLookups(entity).catch(() => []), // relationship metadata → lookup editing (nav property + target); [] = lookups stay read-only
       ]);
+      setLookupNavs(navMeta || []);
       const data=await bridge.query(`${entitySet}(${id})`,{});
       const rec = data?.records?.[0] || data;
       if(!rec || rec.error) throw new Error("Record not found");
@@ -116,20 +119,28 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const cp=(text,key)=>{copyText(text);setCopied(key);setTimeout(()=>setCopied(""),1200);};
 
   // ── Inline field editing ─────────────────────────────────────
-  // Types we can edit safely as a single value. Lookups (need @odata.bind + target) and the PK are
-  // deferred — they show as read-only here.
+  // Types we can edit safely as a single value. Lookups (incl. Customer/Owner) edit via
+  // nav@odata.bind: paste the target record's GUID, empty clears — same machinery as the
+  // Explorer's typed edits (prepareUpdate). Only the PK stays read-only.
   const OPTIONSET_TYPES=new Set(["Picklist","State","Status"]);
   const NUMERIC_INT=new Set(["Integer","BigInt"]);
   const NUMERIC_FLOAT=new Set(["Decimal","Double","Money"]);
-  const EDITABLE_TYPES=new Set(["String","Memo","Boolean","DateTime",...NUMERIC_INT,...NUMERIC_FLOAT,...OPTIONSET_TYPES]);
-  const isEditable=(f)=> isLive && f.vfu && EDITABLE_TYPES.has(f.t) && f.l!==`${record?.entity}id`;
+  const LOOKUP_TYPES=new Set(["Lookup","Customer","Owner"]);
+  const EDITABLE_TYPES=new Set(["String","Memo","Boolean","DateTime",...NUMERIC_INT,...NUMERIC_FLOAT,...OPTIONSET_TYPES,...LOOKUP_TYPES]);
+  const navsFor=(logical)=>lookupNavs.filter(n=>n.lookupField===logical); // a Customer/Owner field yields several navs (one per target)
+  const isEditable=(f)=> isLive && f.vfu && EDITABLE_TYPES.has(f.t) && f.l!==`${record?.entity}id`
+    && (!LOOKUP_TYPES.has(f.t) || navsFor(f.l).length>0); // no relationship metadata → lookup stays read-only
 
   // Shared typed coercion (updateUtils, tested). The old local version silently turned a
   // MISTYPED number into null — one typo would have CLEARED the field instead of refusing.
 
   const startEdit=(f)=>{
     setEditMsg("");
-    setEditing({l:f.l,t:f.t,value:f.rawValue!=null?String(f.rawValue):""});
+    const navs=LOOKUP_TYPES.has(f.t)?navsFor(f.l):[];
+    // Lookup target preselect: single target → itself; polymorphic → the CURRENT value's target
+    // when known (lookuplogicalname annotation), else the user picks.
+    const target=navs.length===1?navs[0].targetEntity:(navs.some(n=>n.targetEntity===f.target)?f.target:"");
+    setEditing({l:f.l,t:f.t,value:f.rawValue!=null?String(f.rawValue):"",target});
     // Lazy-load option-set values the first time an option-set field is edited.
     if(OPTIONSET_TYPES.has(f.t)&&!optionsCache[f.l]){
       bridge.getOptionSet(record.entity,f.l,f.t).then(opts=>setOptionsCache(c=>({...c,[f.l]:opts||[]}))).catch(()=>setOptionsCache(c=>({...c,[f.l]:[]})));
@@ -138,6 +149,30 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
 
   const saveField=async(f)=>{
     if(!editing)return;
+    // Lookup path: resolve the target's entity set, then reuse the SAME typed preparation as the
+    // Explorer (GUID validated, empty = clear via {nav:null}, readable refusals — updateUtils).
+    if(LOOKUP_TYPES.has(f.t)){
+      const navs=navsFor(f.l);
+      const b=navs.length===1?navs[0]:navs.find(n=>n.targetEntity===editing.target);
+      if(!b){setEditMsg(`✗ ${f.l}: pick the target table first — this lookup can point to ${navs.map(n=>n.targetEntity).join(" or ")}`);return;}
+      setSavingField(true);setEditMsg("");
+      try{
+        const set=await bridge.getEntitySet(b.targetEntity); // cached resolution (irregular plurals)
+        const prep=prepareUpdate(
+          {fieldTypes:{[f.l]:f.t},lookupBinds:{[f.l]:[{nav:b.navProperty,target:b.targetEntity,set}]},odataFieldMap:{}},
+          f.l,String(editing.value??"").trim(),b.targetEntity);
+        if(!prep.ok){setEditMsg(`✗ ${prep.reason}`);setSavingField(false);return;}
+        if(!confirmProd(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`)){setSavingField(false);return;}
+        await bridge.update(record.entitySet,record.id,prep.body);
+        setEditing(null);
+        await loadRecordDirect(record.entity,record.id); // reload to show the fresh formatted value
+        setEditMsg(`✓ ${f.l} updated`);
+      }catch(e){
+        setEditMsg(`✗ ${f.l}: ${e.message||e}`);
+      }
+      setSavingField(false);
+      return;
+    }
     if(!confirmProd(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`))return;
     const s=String(editing.value??"").trim();
     let val=null; // empty = deliberate clear
@@ -283,6 +318,19 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
                               <option value="">(empty)</option>
                               {(optionsCache[f.l]||[]).map(o=><option key={o.value} value={o.value}>{o.label} ({o.value})</option>)}
                             </select>
+                          ):LOOKUP_TYPES.has(f.t)?(
+                            <span style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              {navsFor(f.l).length>1&&(
+                                <select value={editing.target||""} onChange={e=>setEditing({...editing,target:e.target.value})} title="This lookup is polymorphic — pick the table the GUID belongs to" style={inp({width:"auto",fontSize:12,padding:"4px 8px"})}>
+                                  <option value="">— target table —</option>
+                                  {navsFor(f.l).map(n=><option key={n.navProperty} value={n.targetEntity}>{n.targetEntity}</option>)}
+                                </select>
+                              )}
+                              <input autoFocus value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})}
+                                onKeyDown={e=>{if(e.key==="Enter")saveField(f);if(e.key==="Escape")setEditing(null);}}
+                                placeholder="GUID of the target record — empty clears the lookup"
+                                style={inp({...mono,fontSize:12,padding:"4px 8px",width:300})}/>
+                            </span>
                           ):(
                             <input autoFocus value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value})}
                               onKeyDown={e=>{if(e.key==="Enter")saveField(f);if(e.key==="Escape")setEditing(null);}}
@@ -297,6 +345,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
                           <span style={{color:C.vil}}>{f.display||f.rawValue}</span>
                           {f.rawValue&&<span style={{fontSize:11,color:C.txd}}>{String(f.rawValue).substring(0,13)}…</span>}
                           {d365Link&&<a href={d365Link} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{fontSize:11,padding:"2px 8px",borderRadius:3,background:C.vi+"22",color:C.vi,textDecoration:"none",border:`1px solid ${C.vi}44`}}>Open in D365 ↗</a>}
+                          {editable&&<button onClick={e=>{e.stopPropagation();startEdit(f);}} title="Relink this lookup — paste the target record's GUID (direct API write, empty clears)" style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:13,flexShrink:0,lineHeight:1}}>✎</button>}
                         </span>
                       ):(
                         <span style={{display:"flex",alignItems:"center",gap:6}}>
