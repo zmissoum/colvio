@@ -401,6 +401,7 @@ export default function App(){
       <style>{`
         @keyframes spin{to{transform:rotate(360deg)}}
         ::placeholder{color:${C.txd}}
+        input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid ${C.vi};outline-offset:-1px}
         *{scrollbar-width:auto;scrollbar-color:${C.txm}55 ${C.bg}}
         ::-webkit-scrollbar{width:10px;height:10px}
         ::-webkit-scrollbar-track{background:${C.bg}}

@@ -36,6 +36,13 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const[collapseAll,setCollapseAll]=useState(false);// true = headers only (no fields)
   const[loadingEntity,setLoadingEntity]=useState(null);
   const[confirmModal,setConfirmModal]=useState(null);
+  // Escape closes the confirm modal — destructive confirms shouldn't be mouse-only (a11y audit).
+  useEffect(()=>{
+    if(!confirmModal) return;
+    const onKey=(e)=>{ if(e.key==="Escape") setConfirmModal(null); };
+    window.addEventListener("keydown",onKey);
+    return ()=>window.removeEventListener("keydown",onKey);
+  },[confirmModal]);
 
   useEffect(()=>{
     if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l,e.isManaged)})))}).catch(()=>{});

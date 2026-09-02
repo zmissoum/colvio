@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildHistoryEntry } from "../historyUtils.js";
+import { buildHistoryEntry, redactApiRequest } from "../historyUtils.js";
 
 const BASE = { entityLogical: "account", mode: "odata", fieldCount: 5, ts: 1756200000000 };
 
@@ -42,5 +42,36 @@ describe("buildHistoryEntry", () => {
   it("builder mode without state (defensive) stays a plain entry", () => {
     const e = buildHistoryEntry({ ...BASE, mode: "builder", query: "q", builderState: null });
     expect(e.builder).toBeUndefined();
+  });
+});
+
+describe("redactApiRequest (API Tester history)", () => {
+  it("PRIVACY: every $filter value in the path is redacted", () => {
+    const r = redactApiRequest({ path: "contacts?$expand=account($filter=name eq 'S Corp')&$filter=emailaddress1 eq 'jane@x.com'", body: "" });
+    expect(r.path).not.toContain("jane@x.com");
+    expect(r.path).not.toContain("S Corp");
+    expect(r.redacted).toBe(true);
+  });
+  it("PRIVACY: JSON body keeps keys, blanks strings/numbers, keeps booleans/null", () => {
+    const r = redactApiRequest({ path: "contacts", body: '{"firstname":"Jane","creditlimit":5000,"donotemail":true,"parentcustomerid@odata.bind":"/accounts(abc)","nested":{"note":"secret"},"tags":["a","b"],"cleared":null}' });
+    const b = JSON.parse(r.body);
+    expect(b.firstname).toBe("");
+    expect(b.creditlimit).toBe(null);
+    expect(b.donotemail).toBe(true);
+    expect(b["parentcustomerid@odata.bind"]).toBe("");
+    expect(b.nested.note).toBe("");
+    expect(b.tags).toEqual(["", ""]);
+    expect(b.cleared).toBe(null);
+    expect(r.redacted).toBe(true);
+  });
+  it("a non-JSON body persists EMPTY, never verbatim", () => {
+    const r = redactApiRequest({ path: "x", body: "raw text with jane@x.com inside" });
+    expect(r.body).toBe("");
+    expect(r.redacted).toBe(true);
+  });
+  it("a value-free request is untouched and not flagged", () => {
+    const r = redactApiRequest({ path: "accounts?$select=name&$top=5", body: "" });
+    expect(r.path).toBe("accounts?$select=name&$top=5");
+    expect(r.redacted).toBe(false);
   });
 });

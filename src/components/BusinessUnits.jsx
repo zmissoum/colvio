@@ -41,6 +41,13 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
   const [moveModal, setMoveModal] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
   const [moving, setMoving] = useState(false);
+  // Escape closes the top overlay (chart above move modal, z-order) — not mouse-only (a11y audit).
+  useEffect(() => {
+    if (!moveModal && !showChart) return;
+    const onKey = (e) => { if (e.key !== "Escape") return; if (showChart) setShowChart(false); else if (!moving) setMoveModal(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [moveModal, showChart, moving]);
   const [moveResults, setMoveResults] = useState(null);
   // Paste-a-list selection (admin): paste emails/UPNs, every match gets checked for the move.
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -466,7 +473,9 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                   </div>
                   <div style={{ maxHeight: "calc(100vh - 320px)", minHeight: 200, overflow: "auto" }}>
                     {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match this filter</div>}
-                    {shownUsers.map((u, i) => (
+                    {/* Render cap: a root BU can hold thousands of members — painting them all froze
+                        the tab (perf audit). Select-all, paste-match and Move still cover the full list. */}
+                    {shownUsers.slice(0, 500).map((u, i) => (
                       <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: isAdmin ? "26px 1.4fr 1.7fr 1fr 90px" : "1.4fr 1.7fr 1fr 90px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
                         {isAdmin && <input type="checkbox" checked={checkedUsers.has(u.id)} onChange={e => { const n = new Set(checkedUsers); e.target.checked ? n.add(u.id) : n.delete(u.id); setCheckedUsers(n); }} style={{ accentColor: C.vi }} />}
                         <span style={{ minWidth: 0, overflow: "hidden" }} title={u.title ? `${u.fullname} — ${u.title}` : u.fullname}>
@@ -478,6 +487,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                         <span>{u.disabled ? <Badge label="Disabled" color={C.rd} /> : <Badge label="Enabled" color={C.gn} />}</span>
                       </div>
                     ))}
+                    {shownUsers.length > 500 && <div style={{ padding: "8px 14px", fontSize: 11, color: C.yw }}>⚠ Showing the first 500 of {shownUsers.length.toLocaleString()} matching members — refine the filter. Select-all and paste-match still cover all {shownUsers.length.toLocaleString()}.</div>}
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: C.txd, marginTop: 8 }}>Direct members of this business unit (sub-BUs have their own counts in the tree).</div>

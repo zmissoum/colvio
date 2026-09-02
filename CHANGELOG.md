@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.11.162] — 2026-09-02
+### Product audit wave — 8 parallel review lenses (UX, i18n, functional, performance, security, accessibility, help freshness, API architecture), every fix verified in code
+**Security / privacy**
+- **Loader runs now confirm on PRODUCTION** — the single biggest destructive surface (CREATE/UPDATE/UPSERT/DELETE on whole files) had no production awareness while clearing one env variable prompted. The confirm states mode, row count and target table; dry runs, retries and auto-resume don't re-prompt. Explorer inline edits and bulk update/delete confirm modals carry the same ⚠ PRODUCTION line.
+- **Wrong-environment relay is now fail-closed**: a panel envelope without its org URL is refused with a reopen hint instead of being sent to "any candidate tab" — the exact multi-org-in-one-browser risk.
+- **API Tester history now redacts like Explorer history**: `$filter` values in the path and body VALUES (JSON keys survive, strings/numbers blanked) never reach local storage; the history header says so, and loading an entry restores the request skeleton to refill. Pure `redactApiRequest` + 4 tests.
+- **CSV formula-injection guard everywhere**: Translation Manager exports (with the guard stripped back on import so round-trips don't drift), Loader error exports, Schema Diff (now via the shared exportTable).
+**Performance (large orgs)**
+- Render caps (500 rows + honest "showing first 500 of N" footer) on Security Audit role members (10k loaded froze the tab per keystroke), Users & Licenses sidebar, Adoption all-in-scope table, Business Units member list. Selection/filter/export still cover the full loaded lists.
+- Explorer bulk update applied its local-truth per record — O(rows × updates) re-mapping of the whole result (minutes of jank at scale). Updates now accumulate and apply in ONE state pass at the end.
+- Results virtual table scroll is rAF-throttled (one state update per frame instead of ~28k cells re-rendered per scroll tick with many columns) and clamps the scroll position when a filter shrinks the list.
+**Accessibility**
+- Escape now closes every modal it didn't already close: view inspector (Apps), What's New, Env Variables editor, Schema Viewer and Translation Manager confirms, Business Units move modal + full-screen org chart (busy states respected).
+- Keyboard-visible focus outline on all inputs/selects/textareas; keyboard shortcuts panel now lists Ctrl+K (command palette) and ↑/↓ result-row navigation.
+- Light/dark palette contrast fixes (dim text, cyan/amber/orange on light backgrounds).
+**Functional catch-up**
+- New exports: System Jobs (loaded page, raw codes + labels), record Audit History trail, Recycle Bin current page (evidence list before restoring), Apps reverse-search matches (flat component→app pairs). Excel added alongside CSV for Schema Diff, Adoption by-BU, duplicate groups.
+- ↻ Refresh on the inventories that had none: Automation, Apps, Solutions, Metadata (cache actually cleared first, so a just-imported solution or just-created table really appears).
+- Plugin-trace detail gets a one-click "⧉ Copy detail" (type, message, correlation, exception, trace) for tickets.
+- Empty states for Metadata and Solutions lists; Explorer's bad saved-queries import file shows an inline dismissible error instead of an alert().
+- Error feedback in Results is now styled as an error (red, ⚠, 8s) instead of green like successes; "XLSX" buttons say "Excel".
+**Help & tour freshness**
+- Help texts catch up with shipped features (both languages): Explorer typed edits + duplicate finder + builder-history restore, BU paste-a-list both directions, Show All Data lookup editing; tour mentions SQL mode and the real sidebar sections; dated "NEW:" markers removed.
+**Fixed during the wave's own smoke test**
+- System Jobs crashed on first render (`rows.length` on null before the first load) — caught in the demo-mode smoke pass, guarded, and the same-class sweep confirmed every other addition is null-safe.
+
 ## [1.11.161] — 2026-08-29
 ### Fixed — "kQuotaBytes quota exceeded" errors: the metadata cache now evicts itself
 - User report: the extension's error log filled with `Uncaught (in promise) Error: Resource::kQuotaBytes quota exceeded`. Root cause: on large orgs (or several orgs visited), the org-scoped metadata cache eventually fills `chrome.storage.local`'s 10 MB quota — and the cache write used a callback-less `set()` whose **promise rejection escaped the try/catch**, so every subsequent write logged an uncaught error forever, and nothing was ever evicted.

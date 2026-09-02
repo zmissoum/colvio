@@ -9,6 +9,8 @@ export default function ShortcutsPanel({onClose}){
 
   const shortcuts=[
     {keys:"Ctrl + Enter",desc:t("shortcuts.execute")},
+    {keys:"Ctrl + K",desc:t("shortcuts.palette")},
+    {keys:"↑ / ↓",desc:t("shortcuts.arrows")},
     {keys:"Escape",desc:t("shortcuts.close_modal")},
     {keys:"Ctrl + /",desc:t("shortcuts.open_shortcuts")},
   ];

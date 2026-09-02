@@ -40,6 +40,13 @@ export default function WhatsNew() {
   }, []);
 
   const dismiss = () => { try { localStorage.setItem("colvio_seen_version", version); } catch {} setShow(false); };
+  // Escape dismisses — the popup sits over the whole app, keyboard users must be able to leave it.
+  useEffect(() => {
+    if (!show) return;
+    const onKey = (e) => { if (e.key === "Escape") dismiss(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [show, version]);
   if (!show) return null;
   const items = HIGHLIGHTS[getLocale()] || HIGHLIGHTS.en;
 

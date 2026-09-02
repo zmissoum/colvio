@@ -66,6 +66,9 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const[fields,setFields]=useState([]);
   const[loadingFields,setLoadingFields]=useState(false);
 
+  // tick > 0 = user-requested refresh (↻). getEntities caches for 2h — clear first, or a table
+  // created since the panel opened stays invisible for the rest of the session.
+  const[tick,setTick]=useState(0);
   useEffect(()=>{
     if(!isLive)return;
     bridge.getEntities().then(data=>{
@@ -73,7 +76,8 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
         setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",tt:e.tableType||"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
-  },[isLive]);
+  },[isLive,tick]);
+  const doRefresh=async()=>{try{await bridge.clearCache();}catch{}setTick(t2=>t2+1);};
 
   const selGen=useRef(0); // guards a slow getFields from a previous entity overwriting the current one
   const handleSelectEntity=(e)=>{
@@ -117,7 +121,10 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     <div style={{display:"flex",height:"100%",flexDirection:bp.mobile?"column":"row"}}>
       <div style={{width:bp.mobile?"100%":bp.tablet?200:260,borderRight:bp.mobile?"none":`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0,...(bp.mobile&&selEnt?{display:"none"}:{})}}>
         <div style={{padding:"8px 8px 4px"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search entity..." style={inp({fontSize:13,padding:"6px 10px"})}/>
+          <div style={{display:"flex",gap:6}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search entity..." style={{...inp({fontSize:13,padding:"6px 10px"}),flex:1}}/>
+            <button onClick={doRefresh} title="Reload the table list from the environment (cached 2h — a table created since the panel opened doesn't show up otherwise)" style={bt(null,{fontSize:11,padding:"3px 8px"})}>↻</button>
+          </div>
           <button onClick={()=>setMbPanel("diff")} title={t("schemadiff.title")} style={{width:"100%",marginTop:6,padding:"5px 10px",fontSize:11.5,border:`1px solid ${C.cy}55`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.cy,fontWeight:600}}>⇄ {t("schemadiff.title")}</button>
           <div style={{display:"flex",gap:2,marginTop:6,flexWrap:"wrap"}}>
             <button onClick={()=>setCatFilter("all")} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter==="all"?C.vi:"transparent",color:catFilter==="all"?"white":C.txd}}>All ({entities.length.toLocaleString()})</button>
@@ -126,6 +133,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
           {entities.length>0&&<div style={{fontSize:11,color:C.gn,padding:"6px 2px 0"}}>{filtered.length.toLocaleString()} entit{filtered.length===1?"y":"ies"}{search?" matching":catFilter!=="all"?` (${catFilter})`:""}</div>}
         </div>
         <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
+          {filtered.length===0&&<div style={{padding:14,color:C.txd,fontSize:12,textAlign:"center"}}>{search?`No table matches “${search}”`:"No tables in this category"}{search&&<div style={{marginTop:4,fontSize:11}}>Search checks display and logical names. Just created the table? ↻ reloads the list.</div>}</div>}
           {filtered.map(e=>(
             <button key={e.l} onClick={()=>handleSelectEntity(e)} style={{width:"100%",display:"flex",alignItems:"center",gap:6,padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm}}>
               <span style={{fontSize:15}}>{e.i}</span>

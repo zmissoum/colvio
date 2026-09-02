@@ -761,7 +761,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       <button onClick={() => exportUsersCSV("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> Excel</button>
                       <button onClick={() => setAssignOpen(o => !o)} style={bt(C.gn, { fontSize: 11, padding: "4px 10px" })}>➕ Assign users</button>
                       {selUsers.size > 0 && <button onClick={runRemove} disabled={assignBusy} style={bt(null, { fontSize: 11, padding: "4px 10px", color: C.rd, borderColor: C.rd + "66", opacity: assignBusy ? 0.5 : 1 })}>{assignBusy ? <Spin s={11} /> : "🗑"} Remove role ({selUsers.size})</button>}
-                      {selUsers.size > 0 && (() => { const hid = [...selUsers].filter(id => !shownUsers.some(u => u.id === id)).length; return hid > 0 ? <span style={{ fontSize: 11, color: C.yw, fontWeight: 600 }} title="Removal applies to your whole selection, including members hidden by the active filter.">⚠ {hid} selected hidden by filter</span> : null; })()}
+                      {selUsers.size > 0 && (() => { const shownIds = new Set(shownUsers.map(u => u.id)); const hid = [...selUsers].filter(id => !shownIds.has(id)).length; return hid > 0 ? <span style={{ fontSize: 11, color: C.yw, fontWeight: 600 }} title="Removal applies to your whole selection, including members hidden by the active filter.">⚠ {hid} selected hidden by filter</span> : null; })()}
                     </div>
                     {/* Also fires when the COUNT query failed (userCount null) but the list hit the
                         cap — that case used to present the first 10,000 as the full membership (audit finding). */}
@@ -777,7 +777,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                       </div>
                       <div style={{ maxHeight: 500, overflow: "auto" }}>
                         {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match this filter</div>}
-                        {shownUsers.map((u, i) => (
+                        {/* Render cap: with up to 10k loaded members, painting every row froze the
+                            tab for seconds per keystroke (perf audit). Filter/selection/export still
+                            cover the full loaded list — only the DOM is capped. */}
+                        {shownUsers.slice(0, 500).map((u, i) => (
                           <div key={u.id || i} style={{ display: "grid", gridTemplateColumns: "24px 1.4fr 1.7fr 1fr 92px", padding: "6px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center", opacity: u.disabled ? 0.5 : 1 }}>
                             <input type="checkbox" checked={selUsers.has(u.id)} onChange={() => setSelUsers(prev => { const s = new Set(prev); s.has(u.id) ? s.delete(u.id) : s.add(u.id); return s; })} style={{ accentColor: C.cy, cursor: "pointer" }} />
                             <span style={{ minWidth: 0, overflow: "hidden" }} title={u.title ? `${u.name} — ${u.title}` : u.name}>
@@ -792,6 +795,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
                             <span>{u.disabled ? <Badge label="Disabled" color={C.rd} /> : <Badge label="Enabled" color={C.gn} />}</span>
                           </div>
                         ))}
+                        {shownUsers.length > 500 && <div style={{ padding: "8px 14px", fontSize: 11, color: C.yw }}>⚠ Showing the first 500 of {shownUsers.length.toLocaleString()} matching members — refine the filter to narrow down. Select-all and export still cover all {shownUsers.length.toLocaleString()}.</div>}
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: C.txd, marginTop: 8, lineHeight: 1.6 }}>

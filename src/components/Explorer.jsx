@@ -37,6 +37,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[orderBy,setOrderBy]=useState({f:"",dir:"asc"}); // server-side $orderby for the Builder (field + direction)
   const[showList,setShowList]=useState(true);
   const[savedQueries,setSavedQueries]=useState([]);
+  const[importErr,setImportErr]=useState(""); // bad saved-queries file — shown inline in the dropdown (was a jarring alert())
   const qImportRef=useRef(null);
   const[queryHistory,setQueryHistory]=useState([]);
   const[showHistory,setShowHistory]=useState(false);
@@ -1413,8 +1414,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                       <div style={{display:"flex",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`}}>
                         <button onClick={()=>{dl(JSON.stringify({colvioQueries:1,queries:savedQueries},null,1),"application/json",expName("colvio_queries","json"));}} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬇ {t("explorer.export_queries")}</button>
                         <button onClick={()=>qImportRef.current?.click()} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬆ {t("explorer.import_queries")}</button>
-                        <input ref={qImportRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const qs=d.colvioQueries===1?d.queries:null;if(!Array.isArray(qs))throw 0;const merged=[...qs.filter(q=>q&&q.name),...savedQueries.filter(s2=>!qs.some(q=>q.name===s2.name))].slice(0,20);setSavedQueries(merged);if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.set({d365_saved_queries:merged},()=>{void chrome.runtime.lastError;});}catch{alert(t("explorer.import_queries_bad"));}};r.readAsText(f);e.target.value="";}}/>
+                        <input ref={qImportRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const qs=d.colvioQueries===1?d.queries:null;if(!Array.isArray(qs))throw 0;const merged=[...qs.filter(q=>q&&q.name),...savedQueries.filter(s2=>!qs.some(q=>q.name===s2.name))].slice(0,20);setSavedQueries(merged);setImportErr("");if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.set({d365_saved_queries:merged},()=>{void chrome.runtime.lastError;});}catch{setImportErr(t("explorer.import_queries_bad"));}};r.readAsText(f);e.target.value="";}}/>
                       </div>
+                      {importErr&&<div style={{padding:"6px 10px",fontSize:11,color:C.rd,borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",gap:6}}>⚠ {importErr}<button onClick={()=>setImportErr("")} style={{marginLeft:"auto",background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:11}}>✕</button></div>}
                       {savedQueries.map(q=>(
                         <div key={q.name} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer"}} onClick={()=>loadSavedQuery(q)}
                           onMouseEnter={e=>e.currentTarget.style.background=C.sfh}
@@ -1432,7 +1434,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               </div>
             </div>
           </div>
-          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>!ids.has(recordId(r,prev.entity?.l)))}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
+          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>!ids.has(recordId(r,prev.entity?.l)))}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} onUpdateRecords={(updates)=>setRes(prev=>({...prev,data:prev.data.map(r=>updates.get(r)||r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
         </>:null}
       </div>
       {saveModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setSaveModal(false)}>

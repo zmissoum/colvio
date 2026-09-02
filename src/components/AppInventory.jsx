@@ -51,6 +51,9 @@ export default function AppInventory({ bp, orgInfo }) {
   const inspGen = useRef(0);                       // view-inspector request generation (supersede/close guard)
   const selUidRef = useRef(null);                  // live mirror of selUid for async guards
 
+  // tick > 0 = user-requested refresh (↻). Some of these calls cache (getEntities) — the handler
+  // clears the metadata cache first so the reload actually reflects a just-published app change.
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError("");
@@ -67,7 +70,8 @@ export default function AppInventory({ bp, orgInfo }) {
       setLoading(false);
     }).catch(e => { if (!cancelled) { setError(e.message || String(e)); setLoading(false); } });
     return () => { cancelled = true; };
-  }, []);
+  }, [tick]);
+  const doRefresh = async () => { try { await bridge.clearCache(); } catch {} setTick(t => t + 1); };
 
   const appList = useMemo(() => (inv?.apps || []).map(a => {
     const entry = inv.byApp[a.uid];
@@ -86,6 +90,15 @@ export default function AppInventory({ bp, orgInfo }) {
     return out;
   }, [search, inv]);
   useEffect(() => { selUidRef.current = selUid; });
+
+  // One row per (component, app) pair — the on-screen cards group by component, but a flat pair
+  // list is what pivots/filters cleanly in Excel. Exports what's SHOWN (the capped first 50).
+  const exportReverse = (format = "csv") => {
+    if (!reverseHits.length) return;
+    const rows = [];
+    for (const h of reverseHits) for (const ap of h.apps) rows.push([h.name || "", h.componentType || "", h.entity || "", ap.appName || "", ap.inclusion || ""]);
+    exportTable(["component", "type", "table", "app", "inclusion"], rows, "apps_reverse_search", format, "Reverse search");
+  };
 
   const shownTables = useMemo(() => {
     if (!selEntry) return [];
@@ -144,6 +157,13 @@ export default function AppInventory({ bp, orgInfo }) {
     }
   };
   const closeInspector = () => { inspGen.current++; setInspector(null); };
+  // Escape closes the view inspector — modals shouldn't be mouse-only (a11y audit).
+  useEffect(() => {
+    if (!inspector) return;
+    const onKey = (e) => { if (e.key === "Escape") closeInspector(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [inspector]);
 
   // Hand the view's FetchXML to the Explorer (FetchXML mode) — one-shot slot + window event;
   // app.jsx switches the tab, the active Explorer query tab consumes and applies.
@@ -180,7 +200,10 @@ export default function AppInventory({ bp, orgInfo }) {
       {/* App list */}
       <div style={{ width: bp.mobile ? "100%" : 280, borderRight: bp.mobile ? "none" : `1px solid ${C.bd}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
         <div style={{ padding: "10px 10px 6px" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>📱 {t("nav.apps")}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span>📱 {t("nav.apps")}</span>
+            <button onClick={doRefresh} disabled={loading} title="Reload apps, forms and views from the environment (clears the metadata cache — catches a just-published change)" style={bt(null, { fontSize: 11, padding: "3px 8px", opacity: loading ? 0.5 : 1 })}>↻</button>
+          </div>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔎 Reverse: find a form / view / button…" style={inp({ fontSize: 12, padding: "6px 9px" })} />
           {inv && <div style={{ fontSize: 11, color: C.gn, marginTop: 5 }}>{appList.length} app{appList.length > 1 ? "s" : ""} · {inv.rows.length.toLocaleString()} inventory rows</div>}
         </div>
@@ -203,7 +226,13 @@ export default function AppInventory({ bp, orgInfo }) {
         {/* Reverse lens results take over while searching */}
         {search.trim() && inv && (
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Which apps expose “{search.trim()}”?</div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>Which apps expose “{search.trim()}”?</span>
+              {reverseHits.length > 0 && <>
+                <button onClick={() => exportReverse("csv")} title="Export the matches shown below (component → apps)" style={{ ...bt(null, { fontSize: 11, padding: "3px 9px" }), marginLeft: "auto" }}><I.Download /> CSV</button>
+                <button onClick={() => exportReverse("xlsx")} title="Export the matches shown below (component → apps)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> Excel</button>
+              </>}
+            </div>
             {reverseHits.length === 0 && <div style={{ color: C.txd, fontSize: 12 }}>No component matches.</div>}
             {reverseHits.map(h => (
               <div key={h.objectId} style={{ ...crd({ padding: "8px 12px" }), marginBottom: 6 }}>

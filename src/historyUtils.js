@@ -6,6 +6,27 @@
 // builder entry carries enough STRUCTURE (columns, condition fields+operators, sort, limit)
 // to reopen in the Builder instead of dumping raw OData.
 
+// API Tester history redaction — same privacy promise as Explorer history: VALUES never persist,
+// STRUCTURE does. Path: every $filter's value goes to "...". Body: JSON keys survive, primitive
+// values are blanked (strings→"", numbers→null, booleans kept — they're flags, not identities);
+// a non-JSON body persists empty rather than verbatim. `redacted` tells the UI to say so.
+export function redactApiRequest({ path, body }) {
+  const safePath = (path || "").replace(/\$filter=[^&]*/g, "$filter=...");
+  let safeBody = "", bodyRedacted = false;
+  if (body && body.trim()) {
+    const blank = (v) => {
+      if (Array.isArray(v)) return v.map(blank);
+      if (v && typeof v === "object") { const o = {}; for (const [k, x] of Object.entries(v)) o[k] = blank(x); return o; }
+      if (typeof v === "string") return "";
+      if (typeof v === "number") return null;
+      return v;
+    };
+    try { safeBody = JSON.stringify(blank(JSON.parse(body)), null, 2); } catch { safeBody = ""; }
+    bodyRedacted = true;
+  }
+  return { path: safePath, body: safeBody, redacted: bodyRedacted || safePath !== (path || "") };
+}
+
 export function buildHistoryEntry({ entityLogical, query, mode, fieldCount, ts, builderState }) {
   // 1000 (was 200): the old cap could chop a long $select mid-token, so a restored entry was
   // broken for a SECOND reason besides the redacted filter. Display still truncates at 80.

@@ -25,7 +25,11 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const cmpGen=useRef(0);
   const fileInputRef=useRef(null);
 
-  useEffect(()=>{bridge.getSolutions().then(d=>{setSolutions(d||[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
+  // tick > 0 = user-requested refresh (↻). getSolutions caches — clear first so a solution
+  // imported since the panel opened actually appears.
+  const[tick,setTick]=useState(0);
+  useEffect(()=>{setLoading(true);bridge.getSolutions().then(d=>{setSolutions(d||[]);setLoading(false);}).catch(()=>setLoading(false));},[tick]);
+  const doRefresh=async()=>{try{await bridge.clearCache();}catch{}setTick(t2=>t2+1);};
 
   // Load component counts lazily (first 20 solutions only)
   useEffect(()=>{
@@ -118,7 +122,9 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
     <div style={{display:"flex",height:"100%"}}>
       <div style={{width:bp.mobile?"100%":280,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"12px 10px",borderBottom:`1px solid ${C.bd}`}}>
-          <div style={{fontSize:16,fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>Solutions <Tooltip text={t("help.solution_explorer")}/></div>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>Solutions <Tooltip text={t("help.solution_explorer")}/>
+            <button onClick={doRefresh} disabled={loading} title="Reload the solution list from the environment (a solution imported since the panel opened doesn't show up otherwise)" style={{...bt(null,{fontSize:11,padding:"3px 8px",opacity:loading?0.5:1}),marginLeft:"auto"}}>↻</button>
+          </div>
           <input placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/>
           <div style={{display:"flex",gap:2,marginTop:6,flexWrap:"wrap"}}>
             {[["all",`All (${solutions.length})`],["unmanaged",`Unmanaged (${nUnmanaged})`],["managed",`Managed (${solutions.length-nUnmanaged})`]].map(([k,lbl])=>(
@@ -129,6 +135,7 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
         </div>
         <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
           {loading&&<div style={{textAlign:"center",padding:20}}><Spin/></div>}
+          {!loading&&filtered.length===0&&<div style={{padding:14,color:C.txd,fontSize:12,textAlign:"center"}}>{solutions.length===0?"No solutions loaded — ↻ retries.":search?`No solution matches “${search}”`:`No ${solFilter} solutions`}</div>}
           {filtered.map(s=>(
             <button key={s.id} onClick={()=>handleSelect(s)} style={{width:"100%",textAlign:"left",padding:"8px 10px",border:"none",borderRadius:6,cursor:"pointer",marginBottom:2,background:selSol?.id===s.id?C.sfa:"transparent",color:selSol?.id===s.id?C.tx:C.txm}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>

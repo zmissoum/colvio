@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, dl, expName, confirmProd } from "../shared.jsx";
+import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
@@ -19,6 +19,13 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const[saveMsg,setSaveMsg]=useState(null);
   const[attrSearch,setAttrSearch]=useState("");
   const[confirmModal,setConfirmModal]=useState(null);
+  // Escape closes the confirm modal — destructive confirms shouldn't be mouse-only (a11y audit).
+  useEffect(()=>{
+    if(!confirmModal) return;
+    const onKey=(e)=>{ if(e.key==="Escape") setConfirmModal(null); };
+    window.addEventListener("keydown",onKey);
+    return ()=>window.removeEventListener("keydown",onKey);
+  },[confirmModal]);
   const fRef=useRef(null);
   const selGen=useRef(0); // guards against a slow load from a previous entity overwriting the current one
 
@@ -150,13 +157,11 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const exportCSV=()=>{
     if(!selEnt||!attributes.length)return;
     const codes=selLangs;
-    const header=["logical_name","type",...codes.map(c=>`label_${c}`)].join(",");
-    const rows=attributes.map(a=>{
-      const vals=[a.logical,a.type];
-      codes.forEach(c=>{const lbl=a.labels.find(l=>l.languageCode===c)?.label||"";vals.push(`"${lbl.replace(/"/g,'""')}"`)});
-      return vals.join(",");
-    });
-    dl("\uFEFF"+header+"\n"+rows.join("\n"),"text/csv;charset=utf-8",expName(`${selEnt.l}_translations`,"csv"));
+    // exportTable applies the formula-injection guard (labels are org data \u2014 a label starting
+    // with "=" must not execute when the CSV lands in Excel); handleImport strips that guard back.
+    const headers=["logical_name","type",...codes.map(c=>`label_${c}`)];
+    const rows=attributes.map(a=>[a.logical,a.type,...codes.map(c=>a.labels.find(l=>l.languageCode===c)?.label||"")]);
+    exportTable(headers,rows,`${selEnt.l}_translations`,"csv");
   };
 
   const handleImport=(text)=>{
@@ -188,7 +193,10 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
       const attr=attributes.find(a=>a.logical===logical);
       if(!attr)continue;
       langCols.forEach(({idx,code})=>{
-        const val=cells[idx]?.trim()||"";
+        // Inverse of exportTable's formula guard: a leading ' before =,+,-,@ was added by the
+        // export for Excel safety, not typed by the user — strip it so round-trips don't drift.
+        let val=cells[idx]?.trim()||"";
+        if(/^'[=+\-@]/.test(val))val=val.slice(1);
         const existing=attr.labels.find(l=>l.languageCode===code)?.label||"";
         if(val&&val!==existing){if(!newEdits[logical])newEdits[logical]={};newEdits[logical][code]=val;}
       });

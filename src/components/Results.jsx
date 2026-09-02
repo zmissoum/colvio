@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId } from "../shared.jsx";
+import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId, confirmProd, exportTable } from "../shared.jsx";
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
 import { findDuplicateGroups } from "../dupUtils.js";
 import { prepareUpdate as prepareUpdateForMeta } from "../updateUtils.js";
 
-export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord}){
+export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord,onUpdateRecords}){
   const[sortField,setSortField]=useState(null);
   const[bulkUpdate,setBulkUpdate]=useState(null);
   const[bulkUpdating,setBulkUpdating]=useState(false);
@@ -41,11 +41,14 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   // Show-All-Data editor so every user-typed write goes through the same refusals.
   const prepareUpdate=(field,rawStr,lookupTarget)=>prepareUpdateForMeta({fieldTypes:res.fieldTypes,lookupBinds:res.lookupBinds,odataFieldMap:res.odataFieldMap},field,rawStr,lookupTarget);
 
+  // The product's biggest destructive surface had NO production awareness while clearing one env
+  // variable prompted (functional audit) — the ⚠ line now rides the existing confirm modal.
+  const prodLine=orgInfo?.isProduction?"⚠ PRODUCTION environment — this affects live data.\n\n":"";
   const doBulkUpdate=()=>{
     if(!bulkUpdate?.field||!selected.size||!res.entity?.p) return;
     const prep=prepareUpdate(bulkUpdate.field,bulkUpdate.value,bulkUpdate.target);
     if(!prep.ok){setBulkUpdate({...bulkUpdate,err:prep.reason});return;} // refused BEFORE anything is sent — the popover shows why
-    setConfirmModal({msg:`Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`,onOk:()=>{setConfirmModal(null);executeBulkUpdate(prep);}});
+    setConfirmModal({msg:`${prodLine}Update ${selected.size} record(s)?\n\nField: ${bulkUpdate.field}\nNew value: ${bulkUpdate.value||"null"}`,onOk:()=>{setConfirmModal(null);executeBulkUpdate(prep);}});
   };
   const executeBulkUpdate=async(prep)=>{
     const ids=[...selected];
@@ -54,15 +57,17 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     const failedIds=[];const errCounts=new Map(); // WHAT failed and WHY — the old catch{fail++} discarded both (audit finding)
     const byId=new Map(res.data.map(r=>[getRecordId(r),r]));
     const odataField=res.odataFieldMap?.[bulkUpdate.field]||bulkUpdate.field;
+    // Accumulate local-truth updates and apply them in ONE state pass at the end — the per-record
+    // onUpdateRecord re-mapped the WHOLE result per success: O(rows × updates), seconds of jank
+    // on a large result with thousands selected (perf audit). The progress bar still ticks live.
+    const localUpdates=new Map();
     for(const id of ids){
       if(abortRef.current){cancelled=true;break;} // ✕ Cancel — already-written PATCHes stay written
       try{
         await bridge.update(res.entity.p, id, prep.body);
         ok++;
-        // Local truth: the table (and any later export / duplicate analysis) must show the NEW
-        // value — bulk update used to leave the old ones on screen (audit finding).
         const rec=byId.get(id);
-        if(rec&&onUpdateRecord){const updated={...rec,[odataField]:prep.localValue};delete updated[odataField+"__display"];onUpdateRecord(updated,rec);}
+        if(rec){const updated={...rec,[odataField]:prep.localValue};delete updated[odataField+"__display"];localUpdates.set(rec,updated);}
       }catch(err){
         failedIds.push(id);
         const m=err?.message||String(err);
@@ -70,12 +75,19 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       }
       setUpdProg({done:ok+failedIds.length,total:ids.length});
     }
+    // Local truth: the table (and any later export / duplicate analysis) must show the NEW
+    // values — bulk update used to leave the old ones on screen (audit finding). Applied even
+    // on cancel/partial failure: whatever WAS written must be what the table shows.
+    if(localUpdates.size){
+      if(onUpdateRecords)onUpdateRecords(localUpdates);
+      else if(onUpdateRecord)localUpdates.forEach((updated,old)=>onUpdateRecord(updated,old));
+    }
     setBulkUpdating(false);setUpdProg(null);
     setBulkUpdate(null);
     if(ok>0) setDupResult(null); // values changed — a previous duplicate analysis is stale
     if(failedIds.length){setSelected(new Set(failedIds));} // failures stay selected for a retry
     const topErr=failedIds.length?[...errCounts.entries()].sort((a,b)=>b[1]-a[1])[0][0]:"";
-    showFeedback(`${cancelled?"Cancelled — ":""}${t("results.bulk_update")} ${ok} ${t("results.updated")}${failedIds.length?`, ${failedIds.length} ${t("results.failed")} (kept selected) — ${topErr.substring(0,160)}`:""}${cancelled?`, ${ids.length-ok-failedIds.length} untouched`:""}`);
+    showFeedback(`${cancelled?"Cancelled — ":""}${t("results.bulk_update")} ${ok} ${t("results.updated")}${failedIds.length?`, ${failedIds.length} ${t("results.failed")} (kept selected) — ${topErr.substring(0,160)}`:""}${cancelled?`, ${ids.length-ok-failedIds.length} untouched`:""}`,failedIds.length>0||cancelled);
   };
   // Pre-check WRITE access before entering inline-edit, so the user learns they can't edit
   // BEFORE typing a value (instead of a 403 on commit). One RetrievePrincipalAccess call per
@@ -92,7 +104,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     try{ rights=await bridge.getRecordAccess(set,id); }catch{ return true; } // probe failed → fail-open (D365 still enforces on PATCH)
     const ok=rights==null?true:rights.includes("WriteAccess"); // null = undetermined → fail-open
     writeAccessCache.current.set(set,ok);
-    if(!ok) showFeedback("Read-only: your security roles don't grant write access on this table");
+    if(!ok) showFeedback("Read-only: your security roles don't grant write access on this table",true);
     return ok;
   };
 
@@ -100,7 +112,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     const id=getRecordId(record);
     if(!id||!res.entity?.p) return;
     const prep=prepareUpdate(field,newValue);
-    if(!prep.ok){showFeedback(prep.needsTarget?`"${field}" can target several tables \u2014 use bulk Update (checkbox \u2192 Update) to pick the target`:prep.reason);return;}
+    if(!prep.ok){showFeedback(prep.needsTarget?`"${field}" can target several tables \u2014 use bulk Update (checkbox \u2192 Update) to pick the target`:prep.reason,true);return;}
+    // Same gesture, same rule: Show All Data's identical inline edit confirms on production \u2014
+    // this one silently wrote (functional audit).
+    if(!confirmProd(orgInfo?.isProduction,`Set "${field}" on this ${res.entity?.l} record (direct API write).`))return;
     try{
       const odataField=res.odataFieldMap?.[field]||field;
       await bridge.update(res.entity.p, id, prep.body);
@@ -108,7 +123,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       setDupResult(null); // a value changed \u2014 a previous duplicate analysis no longer describes the data
       showFeedback("\u2713 Saved");
     }catch(e){
-      showFeedback("Edit failed: "+e.message);
+      showFeedback("Edit failed: "+e.message,true);
     }
   };
   const toggleSort=(f)=>{if(sortField===f){setSortDir(d=>d==="asc"?"desc":"asc");}else{setSortField(f);setSortDir("asc");}};
@@ -180,11 +195,11 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
         // selection, making cancelled/failed rows vanish as if deleted (audit finding). Which
         // exact ids died isn't reliably known here, so the table stays as-is with the honest
         // instruction; the selection is kept for a retry.
-        showFeedback(`${result.aborted?"Cancelled — ":""}${result.deleted} deleted, ${Math.max(0,ids.length-(result.deleted||0))} NOT deleted — table not updated; re-run the query to see survivors (selection kept)`);
+        showFeedback(`${result.aborted?"Cancelled — ":""}${result.deleted} deleted, ${Math.max(0,ids.length-(result.deleted||0))} NOT deleted — table not updated; re-run the query to see survivors (selection kept)`,true);
       }
       setDupResult(null); // groups described rows that may just have been deleted — re-analyze
     }catch(e){
-      showFeedback(`Error: ${e.message}`);
+      showFeedback(`Error: ${e.message}`,true);
     }
     setDeleting(false);setDelProg(null);
   };
@@ -195,12 +210,13 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     try{
       const meta=await bridge.getEntityMetadata(entityName,true);
       if(!meta.canBeDeleted){
-        alert(`Entity "${meta.displayName}" does not allow deletion. The CanBeDeleted property is set to false.`);
+        // Styled modal, not a native alert — the last alert() in this module (UX audit)
+        setConfirmModal({msg:`Entity "${meta.displayName}" does not allow deletion.\n\nThe CanBeDeleted property is set to false.`,onOk:()=>setConfirmModal(null)});
         return;
       }
-      setConfirmModal({msg:`You are about to permanently delete ${count} record(s) from "${meta.displayName}" (${entityName}).\n\nThis action is irreversible and cannot be undone.\n\nProceed?`,onOk:()=>{setConfirmModal(null);executeDelete();}});
+      setConfirmModal({msg:`${prodLine}You are about to permanently delete ${count} record(s) from "${meta.displayName}" (${entityName}).\n\nThis action is irreversible and cannot be undone.\n\nProceed?`,onOk:()=>{setConfirmModal(null);executeDelete();}});
     }catch{
-      setConfirmModal({msg:`Delete ${count} record(s) from ${entityName}? This action is irreversible.`,onOk:()=>{setConfirmModal(null);executeDelete();}});
+      setConfirmModal({msg:`${prodLine}Delete ${count} record(s) from ${entityName}? This action is irreversible.`,onOk:()=>{setConfirmModal(null);executeDelete();}});
     }
   };
 
@@ -265,7 +281,9 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const toTSV=()=>[res.fields.join("\t"),...sortedData.map(r=>res.fields.map(f=>escTSV(expVal(r,f))).join("\t"))].join("\n");
   const toJSON=()=>JSON.stringify(sortedData.map(r=>{const o={};res.fields.forEach(f=>{o[f]=bestGet(r,f)??null;});return o;}),null,2);
 
-  const showFeedback=(msg)=>{setCopyFeedback(msg);setTimeout(()=>setCopyFeedback(""),2000);};
+  // Error outcomes were shown as the same green ✓ toast as "CSV copied", gone in 2s (UX audit) —
+  // they now display red, without the ✓, and stay 8s.
+  const showFeedback=(msg,isError=false)=>{setCopyFeedback({msg,isError});setTimeout(()=>setCopyFeedback(""),isError?8000:2000);};
   const n=sortedData.length;
   const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows)`);};
   const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
@@ -306,13 +324,13 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     showFeedback(`${ids.length.toLocaleString()} duplicate rows selected — review, then Update/Delete`);
   };
   // Review file: every duplicated row with its group number and KEEP/DELETE verdict, all columns.
-  const dupCSV=()=>{
+  const dupExport=(format="csv")=>{
     if(!dupResult) return;
-    const lines=[["group","rowsInGroup","action",...res.fields].join(",")];
+    const rows=[];
     dupResult.groups.forEach((g,gi)=>g.rows.forEach((r,ri)=>{
-      lines.push([gi+1,g.rows.length,ri===0?"KEEP":"DELETE",...res.fields.map(f=>escCSV(expVal(r,f)))].join(","));
+      rows.push([gi+1,g.rows.length,ri===0?"KEEP":"DELETE",...res.fields.map(f=>expVal(r,f))]);
     }));
-    dl("\uFEFF"+lines.join("\n"),"text/csv;charset=utf-8",expName(`${res.entity.l}_duplicates`,"csv"));
+    exportTable(["group","rowsInGroup","action",...res.fields],rows,`${res.entity.l}_duplicates`,format,"Duplicates");
     showFeedback(`Duplicate groups exported (${dupResult.groups.length.toLocaleString()} groups)`);
   };
 
@@ -335,8 +353,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             {copyFeedback && (
-              <span style={{fontSize:13,color:C.gn,fontWeight:600,display:"flex",alignItems:"center",gap:4,animation:"fadeIn .2s"}}>
-                ✓ {copyFeedback}
+              <span style={{fontSize:13,color:copyFeedback.isError?C.rd:C.gn,fontWeight:600,display:"flex",alignItems:"center",gap:4,animation:"fadeIn .2s",maxWidth:520}}>
+                {copyFeedback.isError?"⚠":"✓"} {copyFeedback.msg}
               </span>
             )}
             <div style={{position:"relative",width:bp.mobile?150:220}}>
@@ -355,7 +373,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
           <div style={{width:1,height:18,background:C.bd,margin:"0 6px"}}/>
 
           <span style={{fontSize:11,color:C.txd,fontWeight:600,textTransform:"uppercase",letterSpacing:".5px",marginRight:2}}>Download</span>
-          {btnCopy("XLSX",<I.Download/>,dlXLSX,C.gnd)}
+          {btnCopy("Excel",<I.Download/>,dlXLSX,C.gnd)}
           {btnCopy("CSV",<I.Download/>,dlCSV)}
           {btnCopy("JSON",<I.Download/>,dlJSON)}
 
@@ -477,7 +495,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
               </div>
               <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
                 <button onClick={selectDupExcess} style={bt(C.rd,{fontSize:12})}>Select {dupResult.excess.toLocaleString()} duplicates (keep first per group)</button>
-                <button onClick={dupCSV} style={bt(C.cy,{fontSize:12})}><I.Download/> Export groups (CSV)</button>
+                <button onClick={()=>dupExport("csv")} style={bt(C.cy,{fontSize:12})}><I.Download/> Groups CSV</button>
+                <button onClick={()=>dupExport("xlsx")} style={bt(C.cy,{fontSize:12})}><I.Download/> Groups Excel</button>
               </div>
               <div style={{border:`1px solid ${C.bd}`,borderRadius:6,overflow:"hidden"}}>
                 {dupResult.groups.slice(0,100).map((g,gi)=>(

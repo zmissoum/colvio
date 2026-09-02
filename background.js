@@ -100,7 +100,11 @@ const waitForComplete = async (tabId, timeoutMs = 20000) => {
 // cause and the recovery gesture.
 async function relayToD365(message) {
   const orgOf = (t) => { try { return new URL(t.url).origin; } catch { return null; } };
-  const okOrg = (t) => !message.orgUrl || orgOf(t) === message.orgUrl; // enforced when the panel states its org
+  // Fail CLOSED on a missing org: the panel URL always carries orgUrl (set at open), so its absence
+  // means a malformed open — and "any candidate tab will do" is exactly the wrong-environment relay
+  // risk for a user with several orgs in one browser (audit finding). Refuse instead of guessing.
+  if (!message.orgUrl) return { error: "This Colvio panel doesn't know which environment it belongs to. Close it and reopen it from your Dynamics 365 tab (Colvio icon)." };
+  const okOrg = (t) => orgOf(t) === message.orgUrl;
 
   const candidates = [];
   if (message.d365TabId) candidates.push(resolveReplaced(message.d365TabId));

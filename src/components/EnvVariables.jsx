@@ -26,6 +26,14 @@ export default function EnvVariables({ bp, orgInfo }) {
   };
   useEffect(load, []);
 
+  // Escape closes the edit modal (unless a save is in flight) — modals shouldn't be mouse-only (a11y audit).
+  useEffect(() => {
+    if (!edit) return;
+    const onKey = (e) => { if (e.key === "Escape" && !edit.busy) setEdit(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [edit]);
+
   const counts = useMemo(() => {
     const c = { all: vars?.length || 0, novalue: 0, overridden: 0, secrets: 0 };
     for (const v of (vars || [])) {

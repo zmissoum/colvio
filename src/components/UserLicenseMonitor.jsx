@@ -133,7 +133,9 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
         <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
           {loading && <div style={{ textAlign: "center", padding: 20 }}><Spin /> {t("licenses.loading")}</div>}
           {error && <div style={{ padding: 10, color: C.rd, fontSize: 12 }}>{error}</div>}
-          {filtered.map(u => (
+          {/* Render cap: orgs with thousands of users froze the sidebar on every keystroke
+              (perf audit). Search/sort/export still cover everyone — only the DOM is capped. */}
+          {filtered.slice(0, 500).map(u => (
             <button key={u.id} onClick={() => handleSelect(u)} style={{ width: "100%", textAlign: "left", padding: "6px 8px", border: "none", borderRadius: 6, cursor: "pointer", marginBottom: 1, background: selUser?.id === u.id ? C.sfa : "transparent", color: selUser?.id === u.id ? C.tx : C.txm, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
                 <span style={{ fontWeight: selUser?.id === u.id ? 600 : 400, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.fullname}</span>
@@ -145,6 +147,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
               <div style={{ fontSize: 11, color: C.txd, ...mono, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
             </button>
           ))}
+          {filtered.length > 500 && <div style={{ padding: "8px 10px", fontSize: 11, color: C.yw }}>⚠ Showing the first 500 of {filtered.length.toLocaleString()} matches — refine the search. Export covers everyone.</div>}
         </div>
         <div style={{ padding: "8px 10px", borderTop: `1px solid ${C.bd}`, display: "flex", gap: 6, alignItems: "center" }}>
           <button onClick={() => exportCSV("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}><I.Download /> {t("licenses.export_csv")}</button>

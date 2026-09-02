@@ -35,10 +35,19 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
   // forces layout synchronously — always correct, visible or not.
   useEffect(() => { measureH(); }, [fields, data.length, measureH]);
 
+  // rAF-throttled: with hundreds of columns selected, a per-event setScrollTop re-rendered ~28k
+  // cells per scroll tick (perf audit) — one state update per frame is all virtualization needs.
+  // pendingTop keeps the LATEST position so the frame paints where the user actually is.
+  const scrollRaf = useRef(0);
+  const pendingTop = useRef(0);
+  useEffect(() => () => { if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current); }, []);
   const onScroll = useCallback((e) => {
-    setScrollTop(e.target.scrollTop);
+    pendingTop.current = e.target.scrollTop;
     const px = proxyRef.current;
     if (px && px.scrollLeft !== e.target.scrollLeft) px.scrollLeft = e.target.scrollLeft;
+    if (!scrollRaf.current) {
+      scrollRaf.current = requestAnimationFrame(() => { scrollRaf.current = 0; setScrollTop(pendingTop.current); });
+    }
   }, []);
   const onProxyScroll = useCallback((e) => {
     const el = containerRef.current;
@@ -102,7 +111,7 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
               <input type="checkbox" checked={(()=>{const ids=data.map(getRecordId).filter(Boolean);return ids.length>0&&ids.every(id=>selected.has(id));})()} onChange={toggleAll} style={{accentColor:C.vi,cursor:"pointer"}}/>
               <span>#</span>
             </th>
-            {fields.map(f => (<th key={f} onClick={()=>onSort?.(f)} style={{...ths(),position:"sticky",top:0,zIndex:1,background:C.sf,cursor:"pointer",userSelect:"none"}}><span style={{display:"inline-flex",alignItems:"center",gap:3}}>{f}{sortField===f&&<span style={{fontSize:10,color:C.vi}}>{sortDir==="asc"?"\u25B2":"\u25BC"}</span>}</span></th>))}
+            {fields.map(f => (<th key={f} onClick={()=>onSort?.(f)} style={{...ths(),position:"sticky",top:0,zIndex:1,background:C.sf,cursor:"pointer",userSelect:"none"}}><span style={{display:"inline-flex",alignItems:"center",gap:3}}>{f}{sortField===f&&<span style={{fontSize:10,color:C.vil}}>{sortDir==="asc"?"\u25B2":"\u25BC"}</span>}</span></th>))}
           </tr>
         </thead>
         <tbody>
@@ -120,7 +129,7 @@ export default function VirtualTable({ res, fields, data, selected, toggleSel, t
                 <td style={{...tds,color:C.txd,fontSize:12,position:"sticky",left:0,background:(rid&&selected.has(rid))?C.vid:isFocused?C.sfa:C.bg,zIndex:1,display:"flex",alignItems:"center",gap:4}}>
                   <input type="checkbox" disabled={noId} checked={!!rid&&selected.has(rid)} onChange={()=>rid&&toggleSel(rid)} title={noId?"No unique id in this result \u2014 add the table's primary key column to select, edit or delete this row":undefined} style={{accentColor:C.vi,cursor:noId?"not-allowed":"pointer",opacity:noId?0.4:1}}/>
                   <span>{i+1}</span>
-                  {orgInfo?.orgUrl&&entityName&&rid&&<a href={`${orgInfo.orgUrl}/main.aspx?etn=${entityName}&id=${rid}&pagetype=entityrecord`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:C.vi,textDecoration:"none",fontSize:10,lineHeight:1}} title="Open in D365">{"\u2197"}</a>}
+                  {orgInfo?.orgUrl&&entityName&&rid&&<a href={`${orgInfo.orgUrl}/main.aspx?etn=${entityName}&id=${rid}&pagetype=entityrecord`} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{color:C.vil,textDecoration:"none",fontSize:10,lineHeight:1}} title="Open in D365">{"\u2197"}</a>}
                   {noId&&<span title="This row has no unique id \u2014 read-only" style={{color:C.yw,fontSize:10,lineHeight:1}}>{"\u26a0"}</span>}
                 </td>
                 {fields.map(f => {

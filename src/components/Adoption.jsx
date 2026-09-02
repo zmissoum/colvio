@@ -529,6 +529,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
               <span style={{ fontSize: 13, fontWeight: 600 }}>Adoption by business unit</span>
               <span style={{ fontSize: 10.5, color: C.txd }}>active ÷ enabled users in window{roleFilter ? " · role filter applied" : ""}</span>
               <button onClick={() => exportTable(["businessUnit", "enabledUsers", "activeUsers", "adoptionRate"], agg.buRows.map(r => [r.bu, r.enrolled, r.active, `${(r.rate * 100).toFixed(0)}%`]), `adoption_by_bu_${preset}`, "csv", "By BU")} style={{ ...bt(null, { fontSize: 10.5, padding: "2px 8px" }), marginLeft: "auto" }}><I.Download /> CSV</button>
+              <button onClick={() => exportTable(["businessUnit", "enabledUsers", "activeUsers", "adoptionRate"], agg.buRows.map(r => [r.bu, r.enrolled, r.active, `${(r.rate * 100).toFixed(0)}%`]), `adoption_by_bu_${preset}`, "xlsx", "By BU")} style={bt(null, { fontSize: 10.5, padding: "2px 8px" })}><I.Download /> Excel</button>
             </div>
             <div style={{ maxHeight: 170, overflow: "auto" }}>
               {agg.buRows.map(r => (
@@ -573,7 +574,9 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
               </div>
               <div style={{ maxHeight: 460, overflow: "auto" }}>
                 {shownUsers.length === 0 && <div style={{ padding: 14, color: C.txd, fontSize: 12 }}>No users match.</div>}
-                {shownUsers.map(u => (
+                {/* Render cap: "All in scope" on a big org painted thousands of rows per filter
+                    keystroke (perf audit). Sort/filter/export still cover the full list. */}
+                {shownUsers.slice(0, 500).map(u => (
                   <div key={u.id} style={{ display: "grid", gridTemplateColumns: cols, padding: "5px 14px", fontSize: 12, borderBottom: `1px solid ${C.bd}22`, alignItems: "center" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.name}>{u.name}</span>
                     <span style={{ color: C.txm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.bu}>{u.bu || "—"}</span>
@@ -584,6 +587,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
                     {tableMode === "all" && <span style={{ ...mono, fontSize: 11, fontWeight: 600, color: u.inact == null ? C.rd : u.inact >= 30 ? C.yw : C.gn }} title={u.inact == null ? `No access in the loaded ${windowRange.days}-day window` : "Days since last access"}>{u.inact == null ? `>${windowRange.days} d` : `${u.inact} d`}</span>}
                   </div>
                 ))}
+                {shownUsers.length > 500 && <div style={{ padding: "8px 14px", fontSize: 11, color: C.yw }}>⚠ Showing the first 500 of {shownUsers.length.toLocaleString()} — use the search or filters to narrow down. Exports cover the full list.</div>}
               </div>
             </div>
           );

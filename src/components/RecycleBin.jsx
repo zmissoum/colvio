@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, mono, inp, bt, crd, ths, tds, confirmProd } from "../shared.jsx";
+import { C, I, Spin, ENTS, mono, inp, bt, crd, ths, tds, confirmProd, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 const FMT = "@OData.Community.Display.V1.FormattedValue";
@@ -59,6 +59,19 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     // → keep all tables (fail-open) so the user is never locked out.
     bridge.recycleBinTables().then(list => { if (Array.isArray(list) && list.length) setSupported(new Set(list)); }).catch(() => {});
   }, []);
+
+  // Exports the CURRENT page (the bin is paged server-side — that's the loaded truth, stated in
+  // the button title). Deleted-by/on come from the audit lookup when it has resolved.
+  const exportDeleted = (format = "csv") => {
+    if (!rows?.length || !meta) return;
+    exportTable(["name", "deletedBy", "deletedOn", "modifiedBy", "modifiedOn", "createdBy", "createdOn", "id"],
+      rows.map(r => {
+        const id = r[meta.primaryId];
+        const del = deletedBy && id ? deletedBy[String(id).toLowerCase()] : null;
+        return [r[meta.primaryName] || "", del?.by || "", del?.on || "", r["_modifiedby_value" + FMT] || "", r.modifiedon || "", r["_createdby_value" + FMT] || "", r.createdon || "", id || ""];
+      }),
+      `recyclebin_${entity?.l || "records"}_p${page}`, format, "Deleted records");
+  };
 
   const loadDeleted = async (ent, pageVal = page, sizeVal = pageSize, searchVal = recordSearch) => {
     setLoading(true); setError(""); setRows(null); setSelected(new Set()); setResults(null); setDeletedBy(null);
@@ -190,6 +203,10 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
               </span>
             )}
             {entity && <button onClick={() => loadDeleted(entity, page)} style={bt(null, { fontSize: 12 })}>↻ {t("recyclebin.refresh")}</button>}
+            {entity && rows?.length > 0 && !loading && <>
+              <button onClick={() => exportDeleted("csv")} title="Export the CURRENT page of deleted records (an evidence list before restoring)" style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>
+              <button onClick={() => exportDeleted("xlsx")} title="Export the CURRENT page of deleted records (an evidence list before restoring)" style={bt(null, { fontSize: 12 })}><I.Download /> Excel</button>
+            </>}
             {selected.size > 0 && !restoring && (
               <button onClick={doRestore} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`, { fontSize: 13, fontWeight: 700 })}>
                 ♻ {t("recyclebin.restore")} ({selected.size})

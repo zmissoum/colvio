@@ -45,6 +45,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const [sourceFilter, setSourceFilter] = useState("all"); // all | custom | isv | microsoft
   const [showInternal, setShowInternal] = useState(false); // stage-30-and-friends platform steps
 
+  // tick > 0 = user-requested refresh (↻) — plugin steps/processes aren't cached, a re-fetch is real.
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError("");
@@ -53,7 +55,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
       setSteps(st || []); setProcs(pr || []); setLoading(false);
     }).catch(e => { if (!cancelled) { setError(e.message || String(e)); setLoading(false); } });
     return () => { cancelled = true; };
-  }, []);
+  }, [tick]);
 
   const counts = useMemo(() => {
     // Steps count = actual REGISTRATIONS (10/20/40) — the platform's internal stage-30 machinery
@@ -158,6 +160,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
           )}
           <span style={{ fontSize: 11, color: C.txd, ...mono }}>{rows.length.toLocaleString()} shown</span>
           <div style={{ flex: 1 }} />
+          <button onClick={() => setTick(t => t + 1)} disabled={loading} title="Reload plugin steps and processes from the environment" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: loading ? 0.5 : 1 })}>↻ Refresh</button>
           <button onClick={() => exportRows("csv")} disabled={!rows.length} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: rows.length ? 1 : 0.5 })}><I.Download /> CSV</button>
           <button onClick={() => exportRows("xlsx")} disabled={!rows.length} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: rows.length ? 1 : 0.5 })}><I.Download /> Excel</button>
         </div>

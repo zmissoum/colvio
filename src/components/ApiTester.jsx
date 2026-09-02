@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, copyText, dl, expName, persistList } from "../shared.jsx";
+import { redactApiRequest } from "../historyUtils.js";
 import { t } from "../i18n.js";
 
 const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
@@ -127,10 +128,14 @@ export default function ApiTester({ bp, orgInfo, theme }) {
       const SECRET_HDR = /^(authorization|cookie|x-api-key|x-functions-key|api-key)$/i;
       const safeHeaders = {};
       for (const [k, v] of Object.entries(headersObj)) safeHeaders[k] = SECRET_HDR.test(k) ? "***redacted***" : v;
+      // Same privacy promise as Explorer history: $filter values and body values never reach
+      // local storage — structure does (keys survive, values blanked), so a reload gives the
+      // request skeleton back to refill (audit finding).
+      const safe = redactApiRequest({ path, body: hasBody ? body : "" });
       // Save to history
       const entry = {
         id: Date.now(),
-        method, path, headers: safeHeaders, body: hasBody ? body : "",
+        method, path: safe.path, headers: safeHeaders, body: safe.body, redacted: safe.redacted,
         status: r.status, ok: r.ok,
         elapsed: r.elapsed, at: new Date().toISOString(),
       };
@@ -285,7 +290,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
       {showHistory && (
         <div style={{ ...crd({ padding: 10 }), marginBottom: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontSize: 12, color: C.txd }}>Last {history.length} requests (saved locally)</span>
+            <span style={{ fontSize: 12, color: C.txd }} title="Privacy: $filter values and body values are blanked before saving — loading an entry restores the request structure to refill.">Last {history.length} requests (saved locally — filter & body values redacted) ℹ</span>
             {history.length > 0 && <button onClick={clearHistory} style={{ padding: "2px 8px", fontSize: 10, background: "transparent", color: C.rd, border: `1px solid ${C.rd}55`, borderRadius: 3, cursor: "pointer" }}>Clear history</button>}
           </div>
           <div style={{ maxHeight: 240, overflow: "auto", display: "flex", flexDirection: "column", gap: 3 }}>

@@ -1,6 +1,6 @@
 import { useState, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, mono, bt, crd, ths, tds } from "../shared.jsx";
+import { C, I, Spin, mono, bt, crd, ths, tds, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 // Field-level change history for one record, from the Dataverse audit log.
@@ -50,6 +50,15 @@ export default function AuditHistory({ recordId, orgFeatures }) {
     setLoading(false);
   };
 
+  // Exports the loaded trail (when/who/action). Field-level old→new diffs are fetched lazily per
+  // expanded row, so they're not in the file — the honest scope is stated in the button title.
+  const exportTrail = (format = "csv") => {
+    if (!trail?.length) return;
+    exportTable(["when", "who", "action"],
+      trail.map(a => [a.createdon && !isNaN(new Date(a.createdon).getTime()) ? new Date(a.createdon).toISOString() : "", a["_userid_value" + FMT] || a["_userid_value"] || "", a["action" + FMT] || String(a.action ?? "")]),
+      "audit_trail", format, "Audit trail");
+  };
+
   const toggleRow = async (auditId) => {
     if (expanded === auditId) { setExpanded(null); return; }
     setExpanded(auditId);
@@ -77,6 +86,12 @@ export default function AuditHistory({ recordId, orgFeatures }) {
           {error && <div style={{ color: C.rd, fontSize: 12.5 }}>⚠ {error}</div>}
           {!loading && !error && trail && trail.length === 0 && (
             <div style={{ color: C.txd, fontSize: 12.5 }}>{t("audit.empty")}</div>
+          )}
+          {!loading && !error && trail && trail.length > 0 && (
+            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", padding: "6px 10px", borderBottom: `1px solid ${C.bd}33` }}>
+              <button onClick={() => exportTrail("csv")} title="Export the loaded audit trail (when / who / action)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> CSV</button>
+              <button onClick={() => exportTrail("xlsx")} title="Export the loaded audit trail (when / who / action)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> Excel</button>
+            </div>
           )}
           {!loading && !error && trail && trail.length > 0 && (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>

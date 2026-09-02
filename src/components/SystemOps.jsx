@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd, copyText } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 // System Ops — two admin panels:
@@ -40,6 +40,7 @@ const dateConds = (col, from, to) => {
 function PluginTraces({ bp, orgFeatures, theme }) {
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState(""); // trace whose "Copy detail" just fired
   const [error, setError] = useState("");
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [search, setSearch] = useState("");
@@ -172,6 +173,10 @@ function PluginTraces({ bp, orgFeatures, theme }) {
                     </tr>
                     {isEx && (
                       <tr style={{ background: C.bg }}><td colSpan={7} style={{ padding: "8px 14px", borderBottom: `1px solid ${C.bd}` }}>
+                        {/* Copy the WHOLE detail in one click — this text goes into tickets and
+                            plugin-developer chats, selecting it inside a scrollable <pre> was painful. */}
+                        <button onClick={() => { copyText(`${r.typename} · ${r.messagename} · ${r.primaryentity}\ncreated: ${r.createdon}\ncorrelation: ${r.correlationid} · depth: ${r.depth}\n${r.exceptiondetails ? `\n── Exception ──\n${r.exceptiondetails}\n` : ""}\n── Trace ──\n${r.messageblock || "(empty)"}`); setCopiedId(r.plugintracelogid); setTimeout(() => setCopiedId(""), 1500); }}
+                          style={{ ...bt(null, { fontSize: 11, padding: "3px 9px" }), float: "right", color: copiedId === r.plugintracelogid ? C.gn : undefined }}>{copiedId === r.plugintracelogid ? "✓ Copied" : "⧉ Copy detail"}</button>
                         {r.exceptiondetails && <><div style={{ fontSize: 11, fontWeight: 700, color: C.rd, marginBottom: 4 }}>Exception</div>
                           <pre style={{ ...mono, fontSize: 11, color: C.rd, whiteSpace: "pre-wrap", maxHeight: 180, overflow: "auto", margin: "0 0 8px" }}>{r.exceptiondetails}</pre></>}
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.txm, marginBottom: 4 }}>Trace (10 KB max, oldest lines trimmed by the platform)</div>
@@ -297,6 +302,15 @@ function SystemJobs({ bp, isAdmin, theme, orgInfo }) {
     return <span style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 3, background: c + "22", color: c, fontWeight: 700 }}>{label}</span>;
   };
 
+  // Exports the LOADED jobs (current page + filters, stated in the button title) with raw
+  // state/status codes AND their formatted labels — the codes survive pivots, the labels read.
+  const exportJobs = (format = "csv") => {
+    if (!rows?.length) return;
+    exportTable(["name", "type", "statecode", "statuscode", "status", "createdOn", "startedOn", "completedOn", "retryCount", "message", "id"],
+      rows.map(j => [j.name || "", j["operationtype" + FMT] || j.operationtype || "", j.statecode, j.statuscode, j["statuscode" + FMT] || "", j.createdon || "", j.startedon || "", j.completedon || "", j.retrycount ?? 0, j.friendlymessage || "", j.asyncoperationid]),
+      "system_jobs", format, "System jobs", true);
+  };
+
   return (
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -317,6 +331,10 @@ function SystemJobs({ bp, isAdmin, theme, orgInfo }) {
           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title={t("ops.date_to")} style={inp({ width: "auto", fontSize: 12, padding: "4px 8px", colorScheme: theme === "light" ? "light" : "dark" })} />
         </span>
         {anyFilter && <button onClick={resetFilters} style={bt(null, { fontSize: 12 })} title={t("ops.reset")}>✕</button>}
+        {rows?.length > 0 && <>
+          <button onClick={() => exportJobs("csv")} title="Export the loaded jobs (current page and filters)" style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>
+          <button onClick={() => exportJobs("xlsx")} title="Export the loaded jobs (current page and filters)" style={bt(null, { fontSize: 12 })}><I.Download /> Excel</button>
+        </>}
         {selected.size > 0 && !acting && isAdmin && (
           <>
             <button onClick={() => act("cancel")} style={bt(null, { fontSize: 12, color: C.rd, borderColor: C.rd + "66" })}>⏹ {t("ops.cancel_jobs")} ({[...selected].filter(id => CANCELABLE(rows.find(j => j.asyncoperationid === id) || {})).length})</button>

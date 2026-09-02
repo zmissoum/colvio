@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, ths, tds, dl, expName, exportTable, isTrulyCustom } from "../shared.jsx";
 import { t } from "../i18n.js";
 
 // Schema snapshot & diff — export the org's schema as JSON, then compare a snapshot
@@ -90,11 +90,9 @@ export default function SchemaDiff({ bp, orgInfo, entities }) {
     setDiff(diffSchemas(snapA, { entities: ents }));
   };
 
-  const exportDiff = () => {
-    const esc = (v) => { let s = String(v ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
-    const head = ["severity", "entity", "field", "difference", "snapshot", "current_org"].join(",");
-    const lines = diff.map(r => [r.sev, r.entity, r.field, r.what, r.a, r.b].map(esc).join(","));
-    dl("﻿" + [head, ...lines].join("\n"), "text/csv;charset=utf-8", expName("schema_diff", "csv"));
+  const exportDiff = (format = "csv") => {
+    exportTable(["severity", "entity", "field", "difference", "snapshot", "current_org"],
+      diff.map(r => [r.sev, r.entity, r.field, r.what, r.a, r.b]), "schema_diff", format, "Schema diff");
   };
 
   const sevColor = { high: C.rd, med: C.or, low: C.txd };
@@ -141,7 +139,8 @@ export default function SchemaDiff({ bp, orgInfo, entities }) {
             <span style={{ fontSize: 13, fontWeight: 700 }}>
               {diff.length === 0 ? `✅ ${t("schemadiff.identical")}` : `${diff.length} ${t("schemadiff.differences")} — ${diff.filter(r => r.sev === "high").length} high · ${diff.filter(r => r.sev === "med").length} med · ${diff.filter(r => r.sev === "low").length} low`}
             </span>
-            {diff.length > 0 && <button onClick={exportDiff} style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>}
+            {diff.length > 0 && <button onClick={() => exportDiff("csv")} style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>}
+            {diff.length > 0 && <button onClick={() => exportDiff("xlsx")} style={bt(null, { fontSize: 12 })}><I.Download /> Excel</button>}
           </div>
           {diff.length > 0 && (
             <div style={{ maxHeight: 420, overflow: "auto" }}>

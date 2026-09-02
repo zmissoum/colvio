@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES } from "../loaderUtils.js";
-import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge } from "../shared.jsx";
+import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProd } from "../shared.jsx";
 
 // System / audit fields the loader never writes by default (platform-managed or write-protected).
 // Migration mode re-enables a small allowlist so a data migration can preserve original audit values.
@@ -199,7 +199,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   //  - fullLog (ref): lightweight record of EVERY processed row { csvRowNumber, status, msg } — no full csvRow copy,
   //    so 600k rows ≈ a few MB. Used by "Export current log" and to build the final result.log.
   //    The original column values are reconstructed from `rows` at export time via csvRowNumber.
-  const LIVE_LOG_BUFFER=2000; // rows kept in React state for live display
+  const LIVE_LOG_BUFFER=300; // display ring only — 2,000 rows x 50 cols re-diffed per batch tick stole throughput from the run itself (perf audit); the FULL log stays in fullLog + exports
   const[liveLog,setLiveLog]=useState({entries:[],counts:{CREATED:0,UPSERTED:0,ERROR:0}});
   const fullLog=useRef([]);
   // Prep-loop log entries (skipped lookups, prep errors, cancellations) of the last full run — kept so
@@ -858,6 +858,14 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const retrySet=opts.retrySet||null;        // Set of original row indices (csvRowNumber-2) to re-run
     const isRetry=!!retrySet;
     const prevResult=opts.prevResult||null;
+    // The single largest write surface had NO production awareness (functional audit). Gate the
+    // INITIAL real run only — dry runs write nothing, and retry/auto-resume passes continue a run
+    // the user already confirmed. DELETE mode keeps its typed entity-name gate on top.
+    if(!dry&&!isRetry&&!opts.autoResume){
+      const nRows=csvData.r.length;
+      const modeLbl=deleteMode?"DELETE":updateOnly?"UPDATE":uKey.d?"UPSERT":"CREATE";
+      if(!confirmProd(orgInfo?.isProduction,`Run ${modeLbl} on ${nRows.toLocaleString()} row${nRows>1?"s":""} against "${target}".`))return;
+    }
     // Auto-resume banner: the progress bar restarts at 0/REMAINDER on a chained pass, which reads
     // as "it started over from scratch" without this context (user-reported confusion).
     setResumeInfo(opts.autoResume?{pass:opts.autoResume,already:(prevResult?.created||0)+(prevResult?.updated||0)+(prevResult?.deleted||0)}:null);
@@ -2072,7 +2080,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                         const totalCols=2+csvData.h.length+1; // line + columns + status + detail
                         const req=isExpanded?buildRequestForRow(e.csvRow):null;
                         return (
-                          <Fragment key={`${e.row}-${i}`}>
+                          <Fragment key={e.csvRowNumber??`${e.row}-${i}`}>
                           <tr onClick={()=>setExpandedLog(isExpanded?null:e.csvRowNumber)} title="Click to see the request sent for this row" style={{borderBottom:`1px solid ${C.bd}`,background:isExpanded?C.vi+"11":isError?C.rd+"08":"transparent",cursor:"pointer"}}>
                             <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{isExpanded?"▾ ":"▸ "}{(e.csvRowNumber||0).toLocaleString()}</td>
                             {csvData.h.map(h=>{
@@ -2299,7 +2307,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   ];
                   dl("\uFEFF"+[header,...lines,...summary].join("\n"),"text/csv;charset=utf-8",expName(`colvio_load_${result.entity||target}`,"csv",true));
                 }} style={bt(null,{color:C.gn})}><I.Download/> Download Log</button>
-                {result.errors.length>0&&<button onClick={()=>{const csv=["Row,Error,Payload",...result.errors.map(e=>`${e.row},"${(e.msg||"").replace(/"/g,'""')}","${(e.payload||"").replace(/"/g,'""')}"`)].join("\n");dl("\uFEFF"+csv,"text/csv;charset=utf-8",expName(`load_errors_${result.entity||target}`,"csv",true));}} style={bt(null,{color:C.rd})}>Export errors CSV</button>}
+                {result.errors.length>0&&<button onClick={()=>{const csv=["Row,Error,Payload",...result.errors.map(e=>{const escE=(v)=>{let sv=String(v??"");if(/^[=+\-@\t\r]/.test(sv))sv="'"+sv;return `"${sv.replace(/"/g,'""')}"`;};return `${e.row},${escE(e.msg)},${escE(e.payload)}`;})].join("\n");dl("\uFEFF"+csv,"text/csv;charset=utf-8",expName(`load_errors_${result.entity||target}`,"csv",true));}} style={bt(null,{color:C.rd})}>Export errors CSV</button>}
               </div>
             </div>
           )}
