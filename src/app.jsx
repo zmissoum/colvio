@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { bridge, onSessionExpired, clearSessionExpired } from "./d365-bridge.js";
 import { C, setThemeColors, I, DARK, LIGHT, useBP, useKeyboard, Spin, detectExtension, mono } from "./shared.jsx";
 import { t, setLocale, getLocale } from "./i18n.js";
+import { detectEnv } from "./envDetect.js";
 
 // ── Components ──
 import ConnScreen from "./components/ConnScreen.jsx";
@@ -31,67 +32,9 @@ import BusinessUnits from "./components/BusinessUnits.jsx";
 import SecurityAudit from "./components/SecurityAudit.jsx";
 import SchemaViewer from "./components/SchemaViewer.jsx";
 
-// Microsoft's authoritative OrganizationType enum (returned by RetrieveCurrentOrganization).
-// We map it to user-facing labels + an isProduction flag. This is the SOURCE OF TRUTH
-// when available — far more reliable than URL guessing.
-const ORG_TYPE_MAP = {
-  "Production":   { label: "PROD",     isProduction: true  },
-  "Sandbox":      { label: "SANDBOX",  isProduction: false },
-  "CustomerTest": { label: "UAT",      isProduction: false },
-  "Trial":        { label: "TRIAL",    isProduction: false },
-  "Preview":      { label: "PREVIEW",  isProduction: false },
-  "Support":      { label: "SUPPORT",  isProduction: false },
-  "Developer":    { label: "DEV",      isProduction: false },
-  "Default":      { label: "DEFAULT",  isProduction: false },
-  "BCS":          { label: "BCS",      isProduction: false },
-};
-
-// Fallback: detect the environment type from the D365 URL hostname.
-// Used only when RetrieveCurrentOrganization isn't available (older versions, restricted perms).
-// Matches common non-prod indicators surrounded by - or . word-boundaries.
-function detectEnvFromUrl(url) {
-  if (!url) return { isProduction: true, label: "PROD" };
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    const patterns = [
-      { re: /(?:^|[-.])(sandbox)(?:[-.]|$)/, label: "SANDBOX" },
-      { re: /(?:^|[-.])(dev|develop|development)(?:[-.]|$)/, label: "DEV" },
-      { re: /(?:^|[-.])(test|tst)(?:[-.]|$)/, label: "TEST" },
-      { re: /(?:^|[-.])(uat)(?:[-.]|$)/, label: "UAT" },
-      { re: /(?:^|[-.])(qa|qual|quality)(?:[-.]|$)/, label: "QA" },
-      { re: /(?:^|[-.])(staging|stg|stage)(?:[-.]|$)/, label: "STAGING" },
-      { re: /(?:^|[-.])(preprod|pre-prod|preproduction)(?:[-.]|$)/, label: "PREPROD" },
-      { re: /(?:^|[-.])(recette|rec)(?:[-.]|$)/, label: "RECETTE" },
-      { re: /(?:^|[-.])(demo)(?:[-.]|$)/, label: "DEMO" },
-      { re: /(?:^|[-.])(training|train|formation)(?:[-.]|$)/, label: "TRAINING" },
-      { re: /(?:^|[-.])(sit)(?:[-.]|$)/, label: "SIT" },
-      { re: /(?:^|[-.])(trial)(?:[-.]|$)/, label: "TRIAL" },
-      { re: /(?:^|[-.])(preview)(?:[-.]|$)/, label: "PREVIEW" },
-      { re: /(?:^|[-.])(hotfix|patch)(?:[-.]|$)/, label: "HOTFIX" },
-    ];
-    for (const p of patterns) {
-      if (p.re.test(hostname)) return { isProduction: false, label: p.label };
-    }
-    return { isProduction: true, label: "PROD" };
-  } catch {
-    return { isProduction: true, label: "PROD" };
-  }
-}
-
-// Resolve env using the most reliable signal available:
-// 1. Microsoft's OrganizationType (authoritative, from RetrieveCurrentOrganization)
-// 2. URL heuristic (fallback for older D365 / restricted perms)
-function detectEnv(orgUrl, organizationType) {
-  if (organizationType && ORG_TYPE_MAP[organizationType]) {
-    const m = ORG_TYPE_MAP[organizationType];
-    return { ...m, source: "api", rawType: organizationType };
-  }
-  if (organizationType) {
-    // Unknown enum value — surface it so we know about new MS env types
-    return { label: organizationType.toUpperCase(), isProduction: organizationType === "Production", source: "api", rawType: organizationType };
-  }
-  return { ...detectEnvFromUrl(orgUrl), source: "url-heuristic" };
-}
+// Environment-type detection lives in envDetect.js (pure, tested) — built on Microsoft's REAL
+// OrganizationType enum: a customer PROD reports "Customer" or "Secondary" (the enum has no
+// "Production" member), and unknown values fail CLOSED so prod confirmations can't be silenced.
 
 export default function App(){
   const[tab,setTab]=useState("explorer");

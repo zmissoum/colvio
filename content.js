@@ -244,8 +244,11 @@
           case "getContext": {
             d365Context = extractContext();
             // Enrich with authoritative OrganizationType from the Web API.
-            // The bound function returns enum values like "Production", "Sandbox",
-            // "CustomerTest" (= UAT), "Trial", "Preview", "Support", "Developer".
+            // Documented enum members (Web API OrganizationType EnumType): "Customer" = primary
+            // org, "Secondary" = production instances (a customer PROD reports one of THOSE —
+            // there is NO "Production" member), "CustomerTest"/"CustomerFreeTest" = sandbox,
+            // "TestDrive"/"EmailTrial"/"Trial", "Developer", "Default", "Teams", "Support"…
+            // The panel maps them in envDetect.js (pure, tested, unknown ⇒ presumed prod).
             // Falls back gracefully if the function isn't available or the call fails.
             try {
               const detail = await dvRequest(

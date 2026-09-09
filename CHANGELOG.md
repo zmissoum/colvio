@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.163] — 2026-09-09
+### Fixed — environment badge said "SECONDARY" in green on a PRODUCTION org, silencing every production confirmation
+- User report: a real PROD environment showed **Extension · SECONDARY** in green. Root cause: the env-type map was keyed on enum names that **don't exist** in Microsoft's OrganizationType enum ("Production", "Sandbox"…). Per the official Web API reference, a customer production org reports `Customer` ("Primary organization") or `Secondary` ("Production instances") — both unknown to the map, so the badge fell back to the raw name with `isProduction: false`. Consequence: on such orgs **all production confirmations were silently OFF** (Loader runs, Explorer bulk update/delete and inline edits, BU moves, env-var clears).
+- The map is rebuilt on the real, documented 17-member enum in a new pure module `envDetect.js`: `Customer`/`Secondary` → **PROD** (red ⚠, confirmations armed), `CustomerTest`/`CustomerFreeTest` → SANDBOX (was mislabeled "UAT"), `TestDrive`/`EmailTrial`/`Trial` → TRIAL, `Developer` → DEV, `Support`/`MsftInvestigation` → SUPPORT, `Default` → DEFAULT **treated as production** (the tenant's shared default env holds real data), `Teams` → TEAMS (production — Dataverse for Teams runs live apps), internal types stay closed.
+- **Unknown enum values now fail CLOSED**: a future/unrecognized type shows its raw name but is presumed production — an unknown value must cost an extra confirmation click, never silence one (the old fallback compared against the non-existent "Production" name, i.e. always false).
+- 12 unit tests pin the user-hit case (`Secondary` ⇒ PROD/armed), the whole documented mapping, the fail-closed rule, and the URL-heuristic fallback (word-boundary matching included).
+
 ## [1.11.162] — 2026-09-02
 ### Product audit wave — 8 parallel review lenses (UX, i18n, functional, performance, security, accessibility, help freshness, API architecture), every fix verified in code
 **Security / privacy**
