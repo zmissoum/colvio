@@ -197,6 +197,12 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **↻ Member refresh** — reload a BU's member list without leaving the module (freshly provisioned users appear as soon as the Entra sync lands)
 - Reuses the all-users fetch grouped by `_businessunitid_value`; admin-gated
 
+### Teams
+- **Every team of the org** with its type badge — **Owner** (owns records, carries security roles), **Entra security/office group** (mirrors an Entra ID group), **Access** (per-record sharing teams, loaded on demand and capped at 500 — they can number in the thousands)
+- Pick a team to see its **identity card** (business unit, administrator, created date — and for Entra teams the **group Object ID**, copiable for the Entra admin center), its **security roles** (the second channel of privilege: members inherit them, and an inherited role never appears on the user), and its **members** (name, email, access mode / CAL, status) with filter and CSV/Excel export
+- **Honest Entra semantics stated in the UI**: group membership materializes lazily (a user appears after their next access) and is managed in Entra ID, not Dataverse
+- Each BU's auto-created default team is badged and sorted last; admin-gated, read-only
+
 ### Adoption
 - **Who's actually using the CRM?** Access events, distinct active users, **DAU/WAU/MAU + stickiness** — over 7/30/90 days or any custom window
 - **Honest by construction**: Dataverse logs access at most once per `UserAccessAuditingInterval` (default 4 h) — the KPI says "access events", an activity proxy, not literal logins; **service accounts** (non-interactive, S2S application users) are excluded from every number by default (toggle to include)
@@ -247,7 +253,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Modules | 19 |
+| Modules | 20 |
 | Lines of code | ~19,300 |
 | API actions | 79 |
 | React components | 38 |

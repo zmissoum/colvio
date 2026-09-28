@@ -955,6 +955,63 @@ export const bridge = {
     return callD365("getUsersByBu", { buId });
   },
 
+  // ── Teams module ────────────────────────────────────────────
+  // All reads ride the generic query/queryRaw actions — no new content.js surface. Formatted-value
+  // annotations (BU / administrator / accessmode / caltype labels) come free on every read.
+  // accessOnly=true lazily fetches ONLY access teams: they're created PER RECORD by access-team
+  // templates and can number in the tens of thousands, so they load on demand, capped at 500.
+  async getTeams(accessOnly = false) {
+    if (!isExtension) {
+      const FA = "@OData.Community.Display.V1.FormattedValue";
+      const mk = (o) => ({ ["_businessunitid_value" + FA]: o.bu, ["_administratorid_value" + FA]: "Alice Martin", isdefault: false, azureactivedirectoryobjectid: null, ...o });
+      if (accessOnly) return [mk({ teamid: "tm4", name: "Opportunity Fabrikam — access", teamtype: 1, description: "", bu: "Contoso", createdon: "2026-03-02T09:00:00Z" })];
+      return [
+        mk({ teamid: "tm1", name: "Sales Managers", teamtype: 0, description: "Owns the sales pipeline records", bu: "Sales EU", createdon: "2026-01-15T10:00:00Z" }),
+        mk({ teamid: "tm2", name: "SG-D365-PROD-Users", teamtype: 2, description: "Provisioning security group", bu: "Contoso", azureactivedirectoryobjectid: "f3a1c2d4-0000-4111-8222-333344445555", createdon: "2026-02-01T08:00:00Z" }),
+        mk({ teamid: "tm3", name: "Contoso", teamtype: 0, isdefault: true, description: "", bu: "Contoso", createdon: "2025-11-20T12:00:00Z" }),
+      ];
+    }
+    const options = {
+      select: "teamid,name,description,teamtype,isdefault,azureactivedirectoryobjectid,createdon,_businessunitid_value,_administratorid_value",
+      orderby: "name asc",
+      filter: accessOnly ? "teamtype eq 1" : "teamtype ne 1",
+    };
+    if (accessOnly) options.top = 500;
+    const r = await callD365("query", { entitySet: "teams", options });
+    return r?.records || [];
+  },
+
+  async getTeamMembers(teamId) {
+    if (!isExtension) {
+      const FA = "@OData.Community.Display.V1.FormattedValue";
+      const u = (id, fullname, email, extra = {}) => ({ systemuserid: id, fullname, internalemailaddress: email, isdisabled: false, ["accessmode" + FA]: "Read-Write", ["caltype" + FA]: "Full", ...extra });
+      const demo = {
+        tm1: [u("u2", "Bruno Lefebvre", "bruno@contoso.com", { title: "Sales Manager" })],
+        tm2: [u("u1", "Alice Martin", "alice@contoso.com", { title: "CFO" }), u("u2", "Bruno Lefebvre", "bruno@contoso.com")],
+        tm3: [u("u1", "Alice Martin", "alice@contoso.com"), u("u3", "Svc Integration", "", { ["accessmode" + FA]: "Non-Interactive", ["caltype" + FA]: "Essential" })],
+      };
+      return { rows: demo[teamId] || [], more: false };
+    }
+    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(teamId)) throw new Error("Invalid team id");
+    // N:N navigation returns a collection, but the query actions wrap any parenthesized path as a
+    // single record — the collection lives in records[0].value. First page only (5000): `more`
+    // tells the UI to say so instead of presenting a truncated list as complete.
+    const r = await callD365("queryRaw", { path: `teams(${teamId})/teammembership_association?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,caltype,title` });
+    const d = r?.records?.[0];
+    return { rows: Array.isArray(d?.value) ? d.value : [], more: !!(d && d["@odata.nextLink"]) };
+  },
+
+  async getTeamRoles(teamId) {
+    if (!isExtension) {
+      const demo = { tm1: [{ roleid: "r2", name: "Sales Manager" }], tm2: [{ roleid: "r3", name: "Basic User" }, { roleid: "r2", name: "Sales Manager" }], tm3: [] };
+      return demo[teamId] || [];
+    }
+    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(teamId)) throw new Error("Invalid team id");
+    const r = await callD365("queryRaw", { path: `teams(${teamId})/teamroles_association?$select=roleid,name` });
+    const d = r?.records?.[0];
+    return Array.isArray(d?.value) ? d.value : [];
+  },
+
   async getUserRoles(userId) {
     if (!isExtension) return [
       { id: "r1", name: "System Administrator" },

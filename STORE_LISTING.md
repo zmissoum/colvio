@@ -81,6 +81,9 @@ Review all security roles and their privileges. Readable labels (prvDeleteAccoun
 Business Units
 Browse the org's business-unit hierarchy as an indented tree — or as a full-screen ORG CHART (real organigram boxes, folded to two levels with +N chips so a 1,000-BU org stays readable, PNG export for your docs). Pick a BU to list its direct members (name, email, access mode / CAL type, status) with a filter and refresh, and export to CSV — either just this BU's members, or this BU plus every sub-BU beneath it. For admins: BULK MOVE users to another business unit — tick members or simply PASTE a list of email addresses/UPNs to auto-select the matches (unmatched ones listed, never silently dropped), with per-user results and the roles truth stated before confirming (legacy orgs strip every security role on a BU change; Colvio reads the org setting and says which behavior applies). Built for real provisioning waves.
 
+Teams
+Browse every team with its type — Owner (carries security roles), Entra security/office group (mirrors an Entra ID group; Colvio shows the group Object ID), or per-record Access teams (loaded on demand, capped). Pick a team to see its security roles (members inherit them — an inherited role never appears on the user, this is where "why does this user have that right?" gets answered), its members with access mode / CAL / status, filter and CSV/Excel export. The UI states the Entra truths: group membership materializes lazily and is managed in Entra ID, not Dataverse. Read-only.
+
 Login History
 User login/logout audit timeline from D365 audit logs. Session duration, access type stats, CSV export.
 
@@ -137,7 +140,7 @@ ROLE-BASED ACCESS
 
 Some modules require elevated D365 permissions and are automatically hidden for non-admin users:
 Available to all users: Data Explorer, API Tester, Show All Data, Metadata Browser, Data Loader, App Inventory, Relationship Graph, Schema, Help
-Requires System Administrator or System Customizer: Solution Explorer, Environment Variables, Automation, Translation Manager, Login History, Adoption, Users & Licenses, Business Units, Security Audit, System Ops
+Requires System Administrator or System Customizer: Solution Explorer, Environment Variables, Automation, Translation Manager, Login History, Adoption, Users & Licenses, Business Units, Teams, Security Audit, System Ops
 Colvio detects your permissions at startup and only shows the tabs you can access. No error screens, no confusion.
 
 SUPPORTED REGIONS
