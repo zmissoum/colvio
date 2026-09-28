@@ -130,6 +130,7 @@ export default function Teams({ bp, orgInfo }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
               <span style={{ fontSize: 18, fontWeight: 700 }}>{sel.name}</span>
               {badge(sel)}
+              {orgInfo?.orgUrl && <a href={`${orgInfo.orgUrl}/main.aspx?etn=team&id=${sel.id}&pagetype=entityrecord`} target="_blank" rel="noopener" title="Open this team in D365 (manage members and roles there)" style={{ color: C.vil, textDecoration: "none", fontSize: 14, lineHeight: 1 }}>{"↗"}</a>}
               {sel.isDefault && <span style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 3, background: C.sfh, color: C.txd, fontWeight: 600 }}>BU DEFAULT</span>}
             </div>
             <div style={{ fontSize: 12, color: C.txm, marginBottom: 12, lineHeight: 1.5, maxWidth: 720 }}>{typeHint(sel)}</div>

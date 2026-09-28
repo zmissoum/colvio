@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.165] — 2026-09-28
+### Added — Teams: ↗ open the team in D365
+- The team detail header now carries the same ↗ deep link as Explorer results (`main.aspx?etn=team&id=…&pagetype=entityrecord`): one click opens the team's record in Dynamics — the place to actually manage owner-team members and roles, since Colvio's module is deliberately read-only.
+
 ## [1.11.164] — 2026-09-28
 ### Added — Teams module (20th module): members, security roles and the Entra truths
 - **New admin module: Teams** (user request, natural sequel to the leading-business/BU discussion). Teams are the SECOND channel of privilege in Dataverse — a security role carried by a team is inherited by every member and **never appears in the user's own role list**; until now Colvio could say "this role is held by a team" (Security Audit) but had no screen to look at the team itself.
