@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.11.167] — 2026-09-29
+### Pre-publication code review (store-readiness pass over v1.11.158→166) — 8 findings, all verified in code, 7 fixed
+**Privacy (the two that would have shipped a partial promise)**
+- **FetchXML-mode history entries still persisted WHERE literals verbatim** — the $filter redaction never touched raw XML and the SQL fix (v166) didn't cover this third mode. `redactFetchXml` now blanks `value="…"` attributes and `<value>…</value>` children while keeping the structure; wired into `buildHistoryEntry`, and API Tester paths also redact `fetchXml=` parameters.
+- **Entries saved by pre-redaction versions sat in chrome.storage forever** — the fixes only protected NEW writes. Both histories now run an idempotent **upgrade scrub on load** (Explorer query history and API Tester entries are re-redacted once and written back; `changed` gates the write so mounts don't churn storage).
+**Honesty / correctness**
+- Teams: a failed role load rendered as the authoritative "No security roles assigned" — the exact false negative a privilege audit must never produce. Errors now show as errors (roles and the lazy access-teams load both).
+- Teams: an org with >5,000 non-access teams was silently truncated at the server page — `getTeams` now reports `more` and the list says so (same honesty rule as the member panel).
+- Explorer native SQL: the entity-set fallback `base+"s"` broke irregular plurals (opportunity → "opportunitys" → 404) when the table wasn't in the loaded list; the metadata (`getEntitySet`, cached) is asked before guessing.
+- Results: a success toast's 2s timer could clear a subsequent error message early — the previous timer is now cancelled.
+- `$filter` redaction no longer eats the closing paren of an `$expand(...)` group — restored history entries keep valid structure.
+**Cleanup**: the team-method GUID regex is one shared constant. (8th finding — cross-file GUID unification with content.js/updateUtils — deliberately left: each copy lives in a different execution context.)
+- +5 tests pinning the new redactions, the paren preservation and the scrub idempotence → **310 tests**. Manifest diff vs the store version: version number only (no permission changes).
+
 ## [1.11.166] — 2026-09-29
 ### Added — Explorer SQL mode: NATIVE Dataverse engine (the Web API `?sql=` query option)
 - Dataverse now executes SQL SELECTs server-side (GA, documented): Colvio's SQL mode gains an **engine toggle** — **⚡ Native** sends your SELECT straight to the Web API (`/<entityset>?sql=…`, base table extracted from FROM), **⇄ Transpiled** keeps the client-side SQL→FetchXML converter. Native is the default.

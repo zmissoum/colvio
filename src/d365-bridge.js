@@ -176,6 +176,9 @@ async function callD365(action, params = {}) {
 import { flushNeverSent } from "./loaderUtils.js";
 
 // ── Public API ───────────────────────────────────────────────
+// One GUID shape check for the team methods below (review finding: was pasted twice).
+const TEAM_GUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 export const bridge = {
   isExtension,
 
@@ -964,12 +967,12 @@ export const bridge = {
     if (!isExtension) {
       const FA = "@OData.Community.Display.V1.FormattedValue";
       const mk = (o) => ({ ["_businessunitid_value" + FA]: o.bu, ["_administratorid_value" + FA]: "Alice Martin", isdefault: false, azureactivedirectoryobjectid: null, ...o });
-      if (accessOnly) return [mk({ teamid: "tm4", name: "Opportunity Fabrikam — access", teamtype: 1, description: "", bu: "Contoso", createdon: "2026-03-02T09:00:00Z" })];
-      return [
+      if (accessOnly) return { more: false, rows: [mk({ teamid: "tm4", name: "Opportunity Fabrikam — access", teamtype: 1, description: "", bu: "Contoso", createdon: "2026-03-02T09:00:00Z" })] };
+      return { more: false, rows: [
         mk({ teamid: "tm1", name: "Sales Managers", teamtype: 0, description: "Owns the sales pipeline records", bu: "Sales EU", createdon: "2026-01-15T10:00:00Z" }),
         mk({ teamid: "tm2", name: "SG-D365-PROD-Users", teamtype: 2, description: "Provisioning security group", bu: "Contoso", azureactivedirectoryobjectid: "f3a1c2d4-0000-4111-8222-333344445555", createdon: "2026-02-01T08:00:00Z" }),
         mk({ teamid: "tm3", name: "Contoso", teamtype: 0, isdefault: true, description: "", bu: "Contoso", createdon: "2025-11-20T12:00:00Z" }),
-      ];
+      ] };
     }
     const options = {
       select: "teamid,name,description,teamtype,isdefault,azureactivedirectoryobjectid,createdon,_businessunitid_value,_administratorid_value",
@@ -978,7 +981,9 @@ export const bridge = {
     };
     if (accessOnly) options.top = 500;
     const r = await callD365("query", { entitySet: "teams", options });
-    return r?.records || [];
+    // `more` = the server had another page (5000 default). Silently truncating the team list
+    // would present the first page as the whole org (review finding) — the UI says so instead.
+    return { rows: r?.records || [], more: !!r?.nextLink };
   },
 
   async getTeamMembers(teamId) {
@@ -992,7 +997,7 @@ export const bridge = {
       };
       return { rows: demo[teamId] || [], more: false };
     }
-    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(teamId)) throw new Error("Invalid team id");
+    if (!TEAM_GUID_RE.test(teamId)) throw new Error("Invalid team id");
     // N:N navigation returns a collection, but the query actions wrap any parenthesized path as a
     // single record — the collection lives in records[0].value. First page only (5000): `more`
     // tells the UI to say so instead of presenting a truncated list as complete.
@@ -1006,7 +1011,7 @@ export const bridge = {
       const demo = { tm1: [{ roleid: "r2", name: "Sales Manager" }], tm2: [{ roleid: "r3", name: "Basic User" }, { roleid: "r2", name: "Sales Manager" }], tm3: [] };
       return demo[teamId] || [];
     }
-    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(teamId)) throw new Error("Invalid team id");
+    if (!TEAM_GUID_RE.test(teamId)) throw new Error("Invalid team id");
     const r = await callD365("queryRaw", { path: `teams(${teamId})/teamroles_association?$select=roleid,name` });
     const d = r?.records?.[0];
     return Array.isArray(d?.value) ? d.value : [];

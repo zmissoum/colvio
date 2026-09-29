@@ -7,7 +7,7 @@ import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, 
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import { extractBaseTable, isSqlOptionUnsupported } from "../sqlNative.js";
 import { buildFilterClause } from "../filterUtils.js";
-import { buildHistoryEntry } from "../historyUtils.js";
+import { buildHistoryEntry, scrubStoredHistory } from "../historyUtils.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
 import RelFilterCard from "./RelFilterCard.jsx";
@@ -59,7 +59,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   useEffect(()=>{
     if(typeof chrome!=="undefined"&&chrome.storage?.local){
       chrome.storage.local.get(["d365_query_history","d365_bookmarks"],r=>{
-        if(r.d365_query_history) setQueryHistory(r.d365_query_history);
+        if(r.d365_query_history){
+          // Upgrade scrub: SQL/FetchXML entries saved before their redactions existed still carry
+          // WHERE literals — re-redact once and write back (review finding, privacy class).
+          const{list,changed}=scrubStoredHistory(r.d365_query_history);
+          setQueryHistory(list);
+          if(changed)chrome.storage.local.set({d365_query_history:list},()=>{void chrome.runtime.lastError;});
+        }
         if(r.d365_bookmarks) setBookmarks(r.d365_bookmarks);
       });
     }
@@ -670,9 +676,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       const base=extractBaseTable(sqlQ);
       if(!base){setError("Couldn't find the base table after FROM — check the query.");return;}
       const baseEnt=entities.find(x=>x.l===base);
-      const entitySet=baseEnt?.p||base+"s";
-      const sqlEnt=baseEnt||{l:base,p:entitySet};
       setLoading(true);
+      // Irregular plurals (opportunity -> opportunities) make base+"s" a wrong guess: when the
+      // entities list misses the table, ask the metadata (cached) before falling back (review finding).
+      let entitySet=baseEnt?.p;
+      if(!entitySet){ try{ entitySet=await bridge.getEntitySet(base); }catch{ /* resolved below */ } }
+      if(!entitySet)entitySet=base+"s";
+      const sqlEnt=baseEnt||{l:base,p:entitySet};
       const t0=Date.now();
       let fellBack=false;
       try{

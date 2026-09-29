@@ -21,6 +21,8 @@ export default function Teams({ bp, orgInfo }) {
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersErr, setMembersErr] = useState("");
   const [roles, setRoles] = useState(null);
+  const [rolesErr, setRolesErr] = useState("");
+  const [teamsMore, setTeamsMore] = useState(false); // server had another page (5000) -- say so
   const [memberFilter, setMemberFilter] = useState("");
   const [copied, setCopied] = useState("");
   const selGen = useRef(0); // a slow member/role response for a PREVIOUS team must never land on the current one
@@ -28,7 +30,7 @@ export default function Teams({ bp, orgInfo }) {
   const load = () => {
     setLoading(true); setError(""); setSel(null); setMembers(null); setRoles(null);
     bridge.getTeams(false)
-      .then(rows => { setTeams(sortTeams((rows || []).map(normalizeTeam))); setLoading(false); })
+      .then(r => { setTeams(sortTeams((r?.rows || []).map(normalizeTeam))); setTeamsMore(!!r?.more); setLoading(false); })
       .catch(e => { setError(e.message || String(e)); setTeams([]); setLoading(false); });
   };
   useEffect(load, []);
@@ -38,20 +40,23 @@ export default function Teams({ bp, orgInfo }) {
     if (k === "access" && accessTeams === null && !accessLoading) {
       setAccessLoading(true);
       bridge.getTeams(true)
-        .then(rows => { setAccessTeams(sortTeams((rows || []).map(normalizeTeam))); setAccessLoading(false); })
-        .catch(() => { setAccessTeams([]); setAccessLoading(false); });
+        .then(r => { setAccessTeams(sortTeams((r?.rows || []).map(normalizeTeam))); setAccessLoading(false); })
+        // an empty list must not impersonate a failed load (review finding)
+        .catch(e => { setAccessTeams([]); setError("Access teams: " + (e.message || String(e))); setAccessLoading(false); });
     }
   };
 
   const selectTeam = (tm) => {
     const gen = ++selGen.current;
-    setSel(tm); setMembers(null); setRoles(null); setMemberFilter(""); setMembersErr(""); setMembersLoading(true);
+    setSel(tm); setMembers(null); setRoles(null); setRolesErr(""); setMemberFilter(""); setMembersErr(""); setMembersLoading(true);
     bridge.getTeamMembers(tm.id)
       .then(r => { if (selGen.current !== gen) return; setMembers({ rows: (r?.rows || []).map(normalizeMember).sort((a, b) => a.fullname.localeCompare(b.fullname)), more: !!r?.more }); setMembersLoading(false); })
       .catch(e => { if (selGen.current !== gen) return; setMembersErr(e.message || String(e)); setMembers({ rows: [], more: false }); setMembersLoading(false); });
     bridge.getTeamRoles(tm.id)
       .then(r => { if (selGen.current === gen) setRoles((r || []).sort((a, b) => (a.name || "").localeCompare(b.name || ""))); })
-      .catch(() => { if (selGen.current === gen) setRoles([]); });
+      // A failed load must NOT render as the authoritative "no roles" -- in a privilege-audit
+      // context that false negative points the wrong way (review finding).
+      .catch(e => { if (selGen.current === gen) { setRoles([]); setRolesErr(e.message || String(e)); } });
   };
 
   const allLoaded = [...(teams || []), ...(accessTeams || [])];
@@ -98,6 +103,7 @@ export default function Teams({ bp, orgInfo }) {
               <button key={k} onClick={() => pickChip(k)} style={{ padding: "3px 9px", fontSize: 11, border: `1px solid ${chip === k ? C.vi : C.bd}`, borderRadius: 3, cursor: "pointer", background: chip === k ? C.vi + "22" : "transparent", color: chip === k ? C.tx : C.txd }}>{lbl}</button>
             ))}
           </div>
+          {teamsMore && <div style={{ fontSize: 10.5, color: C.yw, marginTop: 5, lineHeight: 1.4 }}>{"⚠"} This org has more teams than one page (5,000) {"—"} the list shows the first page by name; the search only covers loaded teams.</div>}
           {chip === "access" && accessTeams !== null && accessTeams.length >= 500 && (
             <div style={{ fontSize: 10.5, color: C.yw, marginTop: 5, lineHeight: 1.4 }}>⚠ Access teams are created per record — showing the first 500 by name. Use the search to narrow down.</div>
           )}
@@ -155,7 +161,8 @@ export default function Teams({ bp, orgInfo }) {
             <div style={{ ...crd({ padding: "10px 14px" }), marginBottom: 12 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><I.Shield /> Security roles on this team {roles !== null && <span style={{ color: C.txd, fontWeight: 400 }}>({roles.length})</span>}</div>
               {roles === null && <Spin s={13} />}
-              {roles !== null && roles.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No security roles assigned to this team.</div>}
+              {rolesErr && <div style={{ fontSize: 12, color: C.rd }}>Could not load the roles of this team: {rolesErr}</div>}
+              {roles !== null && !rolesErr && roles.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No security roles assigned to this team.</div>}
               {roles !== null && roles.length > 0 && (
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                   {roles.map(r => <span key={r.roleid} style={{ fontSize: 11.5, padding: "3px 10px", borderRadius: 12, background: C.vi + "18", color: C.vil, fontWeight: 600 }}>{r.name}</span>)}

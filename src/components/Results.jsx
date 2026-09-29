@@ -283,7 +283,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
 
   // Error outcomes were shown as the same green ✓ toast as "CSV copied", gone in 2s (UX audit) —
   // they now display red, without the ✓, and stay 8s.
-  const showFeedback=(msg,isError=false)=>{setCopyFeedback({msg,isError});setTimeout(()=>setCopyFeedback(""),isError?8000:2000);};
+  // The previous toast timer must be cancelled: a 2s success timer firing over a fresh 8s
+  // error made the error vanish early (review finding).
+  const feedbackTimer=useRef(null);
+  const showFeedback=(msg,isError=false)=>{clearTimeout(feedbackTimer.current);setCopyFeedback({msg,isError});feedbackTimer.current=setTimeout(()=>setCopyFeedback(""),isError?8000:2000);};
   const n=sortedData.length;
   const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows)`);};
   const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};

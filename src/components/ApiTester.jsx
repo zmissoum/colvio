@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, copyText, dl, expName, persistList } from "../shared.jsx";
-import { redactApiRequest } from "../historyUtils.js";
+import { redactApiRequest, scrubApiEntries } from "../historyUtils.js";
 import { t } from "../i18n.js";
 
 const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
@@ -51,7 +51,12 @@ export default function ApiTester({ bp, orgInfo, theme }) {
     chrome.storage.local.get(["colvio_api_tester_history"], (r) => {
       // Guard against corrupted / older-shape storage — a non-array would crash history.map on render.
       const h = r?.colvio_api_tester_history;
-      if (Array.isArray(h)) setHistory(h.filter(e => e && typeof e === "object"));
+      if (!Array.isArray(h)) return;
+      // Upgrade scrub: entries saved by pre-redaction versions carry raw bodies and $filter/sql
+      // values. Re-redact once and write back, so old PII doesn't sit in storage forever (review finding).
+      const { list, changed } = scrubApiEntries(h.filter(e => e && typeof e === "object"));
+      setHistory(list);
+      if (changed) chrome.storage.local.set({ colvio_api_tester_history: list }, () => { void chrome.runtime.lastError; });
     });
   }, []);
 
