@@ -75,3 +75,17 @@ describe("redactApiRequest (API Tester history)", () => {
     expect(r.redacted).toBe(false);
   });
 });
+
+describe("SQL-mode history redaction (native SQL arc)", () => {
+  it("PRIVACY: a SQL entry's WHERE literals never persist — structure does", () => {
+    const e = buildHistoryEntry({ ...BASE, mode: "sql", query: "SELECT name FROM account WHERE emailaddress1 = 'jane@x.com' AND statecode = 0" });
+    expect(e.query).not.toContain("jane@x.com");
+    expect(e.query).toContain("FROM account");
+    expect(e.query).toContain("'...'");
+  });
+  it("PRIVACY: an ApiTester path carrying ?sql= is redacted like $filter", () => {
+    const r = redactApiRequest({ path: "accounts?sql=SELECT name FROM account WHERE name = 'Secret Corp'", body: "" });
+    expect(r.path).toBe("accounts?sql=...");
+    expect(r.redacted).toBe(true);
+  });
+});

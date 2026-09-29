@@ -1,3 +1,5 @@
+import { redactSql } from "./sqlNative.js";
+
 // Explorer query-history entry construction — PURE, unit-tested.
 //
 // Two invariants the tests pin down (both were user-hit when they lived untested in the
@@ -11,7 +13,8 @@
 // values are blanked (strings→"", numbers→null, booleans kept — they're flags, not identities);
 // a non-JSON body persists empty rather than verbatim. `redacted` tells the UI to say so.
 export function redactApiRequest({ path, body }) {
-  const safePath = (path || "").replace(/\$filter=[^&]*/g, "$filter=...");
+  const safePath = (path || "").replace(/\$filter=[^&]*/g, "$filter=...")
+    .replace(/sql=[^&]*/gi, "sql=...");
   let safeBody = "", bodyRedacted = false;
   if (body && body.trim()) {
     const blank = (v) => {
@@ -33,7 +36,10 @@ export function buildHistoryEntry({ entityLogical, query, mode, fieldCount, ts, 
   // /g is load-bearing: a query can carry SEVERAL $filter segments ($expand's inner filter comes
   // BEFORE the top-level one in the emitted URL) — without it the first was redacted and the
   // real WHERE values persisted verbatim, breaking the privacy promise (audit finding).
-  const safeQuery = (query || "").replace(/\$filter=[^&]*/g, "$filter=...").substring(0, 1000);
+  // SQL-mode entries carry raw SQL, not a URL — their WHERE values are redacted by redactSql
+  // (the $filter regex never touched them: SQL history leaked literals — audit-class privacy fix).
+  const redactedQuery = mode === "sql" ? redactSql(query || "") : (query || "").replace(/\$filter=[^&]*/g, "$filter=...");
+  const safeQuery = redactedQuery.substring(0, 1000);
   const entry = { entity: entityLogical || "?", query: safeQuery, mode, fields: fieldCount, ts };
   if (mode === "builder" && builderState) {
     let redacted = 0;

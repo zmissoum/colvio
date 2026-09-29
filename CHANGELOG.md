@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.166] — 2026-09-29
+### Added — Explorer SQL mode: NATIVE Dataverse engine (the Web API `?sql=` query option)
+- Dataverse now executes SQL SELECTs server-side (GA, documented): Colvio's SQL mode gains an **engine toggle** — **⚡ Native** sends your SELECT straight to the Web API (`/<entityset>?sql=…`, base table extracted from FROM), **⇄ Transpiled** keeps the client-side SQL→FetchXML converter. Native is the default.
+- What native unlocks over the transpiler: **multi-table INNER/LEFT JOINs with table AND column aliases, self-joins, DISTINCT, server-side GROUP BY + COUNT/SUM/AVG/MIN/MAX, DATEADD/GETUTCDATE relative dates** — parsed by Dataverse itself, so no transpiler edge cases. Known server limits (stated in the toggle tooltip and Help): no SELECT *, subqueries, HAVING, TOP, UNION, RIGHT/FULL JOIN; column-vs-constant WHERE only; aggregates capped at 50k. The transpiled engine still covers HAVING and TOP — neither engine is a strict superset, hence the toggle.
+- Results ride the normal OData pipeline: auto-pagination follows `@odata.nextLink` with live count and ✕ Cancel; **column discovery UNIONs keys across rows** (with a LEFT JOIN, row 1 can lack the joined columns entirely — first-record-only headers would drop them).
+- **Environments without the option are handled honestly**: the one server error that means "this org doesn't have `?sql=`" (recognized narrowly — a genuine SQL error must never be swallowed) flips the session to the transpiler, and the ⚡ Native button shows "(n/a)" with the reason on hover. Everything else surfaces the server's own message verbatim — it's the diagnosis.
+- **Privacy fix riding along (audit class)**: SQL history entries stored WHERE literals VERBATIM since SQL runs entered history (v1.11.156) — the `$filter` redaction never touched SQL text. `redactSql` now blanks string literals and standalone numbers (identifiers like `telephone1`/`address1_city` untouched) before persisting, and the API Tester path redaction also strips `?sql=` values. Pure `sqlNative.js` (base-table extraction, redaction, fallback gate) + 10 new tests → **305 tests**.
+
 ## [1.11.165] — 2026-09-28
 ### Added — Teams: ↗ open the team in D365
 - The team detail header now carries the same ↗ deep link as Explorer results (`main.aspx?etn=team&id=…&pagetype=entityrecord`): one click opens the team's record in Dynamics — the place to actually manage owner-team members and roles, since Colvio's module is deliberately read-only.

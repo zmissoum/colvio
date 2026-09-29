@@ -5,6 +5,7 @@ import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge, persistList } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
+import { extractBaseTable, isSqlOptionUnsupported } from "../sqlNative.js";
 import { buildFilterClause } from "../filterUtils.js";
 import { buildHistoryEntry } from "../historyUtils.js";
 import FieldPicker from "./FieldPicker.jsx";
@@ -33,6 +34,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[sqlQ,setSqlQ]=useState("");
   const[sqlFx,setSqlFx]=useState("");
   const[showSqlFx,setShowSqlFx]=useState(false);
+  // SQL engine: "native" sends the SQL to Dataverse via the ?sql= query option (server-parsed:
+  // real joins w/ aliases, DISTINCT, GROUP BY, DATEADD/GETUTCDATE — no HAVING/TOP); "fetchxml"
+  // keeps the client-side transpiler (supports HAVING and TOP). Native is the default; when the
+  // org does not have the ?sql= option yet, the first run flips nativeSqlDown and falls back.
+  const[sqlEngine,setSqlEngine]=useState("native");
+  const[nativeSqlDown,setNativeSqlDown]=useState(false);
   const[lim,setLim]=useState(0);   // 0 = All (no $top) — an export tool should return everything by default; lower it for a quick preview
   const[orderBy,setOrderBy]=useState({f:"",dir:"asc"}); // server-side $orderby for the Builder (field + direction)
   const[showList,setShowList]=useState(true);
@@ -635,12 +642,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       return ps.length?q+"?"+ps.join("&"):q;
     };
     let sqlGenFxml="";
+    const useNativeSql=qm==="sql"&&sqlEngine==="native"&&!nativeSqlDown;
     if(qm==="sql"){
       if(!sqlQ.trim()){setError("SQL query is empty");return;}
-      const r=sqlToFetchXml(sqlQ);
-      if(r.error){setError(r.error);return;}
-      sqlGenFxml=r.fetchXml;
-      setSqlFx(sqlGenFxml);
+      if(!useNativeSql){
+        const r=sqlToFetchXml(sqlQ);
+        if(r.error){setError(r.error);return;}
+        sqlGenFxml=r.fetchXml;
+        setSqlFx(sqlGenFxml);
+      }
     }
     const q=qm==="odata"?rq:qm==="fetchxml"?fxml:qm==="sql"?sqlQ:buildQ();
     addHistory(q,qm);
@@ -649,6 +659,66 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       setRes({entity:ent,fields:sf.length?sf:FLDS.map(f=>f.l),data:ROWS,count:ROWS.length,total:ROWS.length,query:q,elapsed:"mock",nextLink:null,fetching:false,...buildUpdateMeta()});
       addToHistory(ent,q,qm,(sf.length?sf:FLDS.map(f=>f.l)).length); // demo parity: history (and its builder-restore) works in demo too
       return;
+    }
+
+    // ── Native Dataverse SQL (?sql= query option) ─────────────────────────────
+    // The server parses and executes the SELECT itself; the response is plain OData
+    // (value[], @odata.nextLink), so pagination just follows nextLink. On the ONE error
+    // that means "this org doesn't have the option yet", we flip to the transpiler for
+    // the session; every other server error is shown verbatim — it is the diagnosis.
+    if(qm==="sql"&&useNativeSql){
+      const base=extractBaseTable(sqlQ);
+      if(!base){setError("Couldn't find the base table after FROM — check the query.");return;}
+      const baseEnt=entities.find(x=>x.l===base);
+      const entitySet=baseEnt?.p||base+"s";
+      const sqlEnt=baseEnt||{l:base,p:entitySet};
+      setLoading(true);
+      const t0=Date.now();
+      let fellBack=false;
+      try{
+        const first=await bridge.queryRaw(`${entitySet}?sql=${encodeURIComponent(sqlQ)}`);
+        if(stale())return;
+        let allRecords=first?.records||[];
+        // Column discovery must UNION across rows — with a LEFT JOIN, row 1 can miss the
+        // joined columns entirely (they're absent, not null, in the OData payload).
+        const fieldSet=new Set();
+        const collect=(recs,cap)=>recs.slice(0,cap).forEach(r2=>Object.keys(r2).forEach(k=>{if(!k.startsWith("@")&&!k.includes("@")&&k!=="__error")fieldSet.add(k);}));
+        collect(allRecords,200);
+        const odataFieldMap={};[...fieldSet].forEach(f=>{odataFieldMap[f]=f;});
+        setRes({entity:sqlEnt,fields:[...fieldSet],odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`,nextLink:null,fetching:!!first?.nextLink});
+        addToHistory(sqlEnt,q,qm,fieldSet.size);
+        setLoading(false);
+        let nl=first?.nextLink,page=1;
+        while(nl&&!fetchAbort.current&&!stale()){
+          page++;
+          try{
+            const pd=await bridge.query(nl,{}); // absolute nextLink rides the generic query action (http passthrough + org-host guard)
+            if(stale())return;
+            if(!pd?.records?.length)break;
+            allRecords=[...allRecords,...pd.records];
+            collect(pd.records,50);
+            nl=pd.nextLink;
+            const paint=!nl||page%5===0;
+            setRes(prev=>({...prev,...(paint?{data:allRecords,fields:[...fieldSet]}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+          }catch(e2){setError(`Page ${page}: ${e2.message}`);break;}
+        }
+        if(!stale())setRes(prev=>({...prev,data:allRecords,fields:[...fieldSet],fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        return;
+      }catch(e){
+        if(stale())return;
+        if(isSqlOptionUnsupported(e.message||"")){
+          setNativeSqlDown(true);fellBack=true; // engine toggle shows why; this session stays on the transpiler
+        }else{
+          setError(`Native SQL: ${e.message}`);
+          setLoading(false);
+          return;
+        }
+      }
+      if(fellBack){
+        const r=sqlToFetchXml(sqlQ);
+        if(r.error){setLoading(false);setError(`Native SQL isn't available on this environment, and the FetchXML fallback couldn't parse the query: ${r.error}`);return;}
+        sqlGenFxml=r.fetchXml;setSqlFx(sqlGenFxml);
+      }
     }
 
     if(qm==="fetchxml"||qm==="sql"){
@@ -1084,7 +1154,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             :qm==="sql"?<div>
               <textarea value={sqlQ} onChange={e=>{setSqlQ(e.target.value);setShowSqlFx(false);setSqlFx("");}} placeholder={t("sql_placeholder")||`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name TOP 100`} style={inp({height:120,...mono,color:C.cy,resize:"vertical",fontSize:13,whiteSpace:"pre"})}/>
               <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
-                <button onClick={()=>{setSqlQ(`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name ASC TOP 100`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>📋 Simple</button>
+                <div style={{display:"flex",border:`1px solid ${C.bd}`,borderRadius:4,overflow:"hidden"}} title={nativeSqlDown?"Native ?sql= isn't available on this environment — queries run through the FetchXML transpiler.":"Engine — Native: Dataverse executes the SQL server-side (multi-table joins with aliases, DISTINCT, GROUP BY, DATEADD/GETUTCDATE; no HAVING/TOP/SELECT *). Transpiled: Colvio converts to FetchXML client-side (supports HAVING and TOP)."}>
+                  {[["native",nativeSqlDown?"⚡ Native (n/a)":"⚡ Native"],["fetchxml","⇄ Transpiled"]].map(([k,lbl])=>(<button key={k} onClick={()=>setSqlEngine(k)} disabled={k==="native"&&nativeSqlDown} style={{padding:"3px 9px",fontSize:11,border:"none",cursor:k==="native"&&nativeSqlDown?"not-allowed":"pointer",background:sqlEngine===k?C.cy+"22":"transparent",color:k==="native"&&nativeSqlDown?C.txd:sqlEngine===k?C.cy:C.txd,fontWeight:sqlEngine===k?600:400,opacity:k==="native"&&nativeSqlDown?0.6:1}}>{lbl}</button>))}
+                </div>
+                <button onClick={()=>{setSqlQ(sqlEngine==="native"&&!nativeSqlDown?`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name ASC`:`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name ASC TOP 100`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>📋 Simple</button>
                 <button onClick={()=>{setSqlQ(`SELECT c.fullname, c.emailaddress1, a.name\nFROM contact AS c\nJOIN account AS a ON c.parentcustomerid = a.accountid\nWHERE c.statecode = 0`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>🔗 Join</button>
                 <button onClick={()=>{setSqlQ(`SELECT statecode, COUNT(*) FROM ${ent.l} GROUP BY statecode`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>📊 Aggregate</button>
                 <button onClick={()=>{if(!sqlQ.trim())return;const r=sqlToFetchXml(sqlQ);if(r.error){setError(r.error);setSqlFx("");}else{setSqlFx(r.fetchXml);setShowSqlFx(true);setError("");}}} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.cy}66`,borderRadius:3,color:C.cy,cursor:"pointer",background:"transparent"}}>{showSqlFx?"Hide FetchXML":t("view_fetchxml")||"View FetchXML"}</button>
