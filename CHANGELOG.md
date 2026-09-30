@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.168] — 2026-09-30
+### Fixed — "relations that don't show up": four verified causes across Relationships and Schema (ERD)
+- **Relationships — system plumbing buried the business relations**: metadata order puts createdby/modifiedby/owner/BU/currency/process parents (and async-job/sync-error children) FIRST, and the graph renders 12 nodes per row — the user's own relations landed past the cap and looked missing. Business relationships now come first (alphabetized, pure `relGraphUtils.js` + 4 tests) and the system plumbing starts hidden behind an honest "Show N system" toggle (same precedent as Automation's stage-30 steps).
+- **Relationships — 1h metadata cache with no refresh**: a relationship created minutes ago didn't appear until the cache expired. The module now has ↻ (clears the metadata cache, reloads the selected table) with the cache truth in its tooltip.
+- **Schema (ERD) — N:N relationships were NEVER drawn**: the canvas only fetched N:1 lookups, so two selected tables linked many-to-many showed no edge at all. N:N now loads with each card and draws as a dashed line between headers, labeled N:N (hover = relationship schema name), drawn once per pair.
+- **Schema (ERD) — silently dropped edges**: a lookup whose field wasn't among the card's visible rows (>15 fields, not expanded) dropped the edge entirely instead of anchoring to the header. It anchors to the header now.
+- Help texts updated in both languages (Schema presented as what it is — the data-model builder: pick tables, PNG/SVG/Mermaid export). 314 tests.
+
 ## [1.11.167] — 2026-09-29
 ### Pre-publication code review (store-readiness pass over v1.11.158→166) — 8 findings, all verified in code, 7 fixed
 **Privacy (the two that would have shipped a partial promise)**

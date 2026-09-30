@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, inp, bt } from "../shared.jsx";
+import { isSystemParent, isSystemChild, splitRels } from "../relGraphUtils.js";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -12,6 +13,10 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
   const[parents,setParents]=useState([]);
   const[children,setChildren]=useState([]);
   const[m2m,setM2m]=useState([]);
+  // System plumbing (createdby/owner*/currency/async jobs...) comes FIRST in metadata order and
+  // ate the 12 visible slots — the business relations looked missing (user-hit). Hidden by default
+  // behind an honest count chip, same precedent as the Automation stage-30 toggle.
+  const[showSys,setShowSys]=useState(false);
   const[depth,setDepth]=useState(1);
   const[loading,setLoading]=useState(false);
   const[showAllP,setShowAllP]=useState(false);
@@ -75,11 +80,17 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
 
   const filtered=entities.filter(e=>!search||e.l.includes(search.toLowerCase())||e.d?.toLowerCase().includes(search.toLowerCase()));
   const NODE_W=150,NODE_H=56,GAP=18;
-  const maxP=showAllP?parents.length:Math.min(parents.length,12);
-  const maxC=showAllC?children.length:Math.min(children.length,12);
+  // Business relationships first (alphabetized), system plumbing behind the toggle.
+  const pSplit=splitRels(parents,isSystemParent);
+  const cSplit=splitRels(children,isSystemChild);
+  const shownParents=showSys?[...pSplit.business,...pSplit.system]:pSplit.business;
+  const shownChildren=showSys?[...cSplit.business,...cSplit.system]:cSplit.business;
+  const nSys=pSplit.system.length+cSplit.system.length;
+  const maxP=showAllP?shownParents.length:Math.min(shownParents.length,12);
+  const maxC=showAllC?shownChildren.length:Math.min(shownChildren.length,12);
   const maxM=showAllM?m2m.length:Math.min(m2m.length,12);
-  const visP=parents.slice(0,maxP);
-  const visC=children.slice(0,maxC);
+  const visP=shownParents.slice(0,maxP);
+  const visC=shownChildren.slice(0,maxC);
   const visM=m2m.slice(0,maxM);
   const svgW=Math.max(600,Math.max(visP.length,visC.length,visM.length)*(NODE_W+GAP)+GAP*2);
   const svgH=selEnt?(m2m.length>0?600:460):0;
@@ -117,10 +128,12 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
           <div>
             <div style={{textAlign:"center",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
               <span style={{fontSize:16,fontWeight:700}}>{selEnt.d||selEnt.l}</span>
-              <span style={{color:C.txd,fontSize:13}}>{parents.length} parent{parents.length!==1?"s":""} · {m2m.length} N:N · {children.length} child{children.length!==1?"ren":""}</span>
+              <span style={{color:C.txd,fontSize:13}}>{shownParents.length} parent{shownParents.length!==1?"s":""} · {m2m.length} N:N · {shownChildren.length} child{shownChildren.length!==1?"ren":""}</span>
               <button onClick={()=>{const next=depth===1?2:1;setDepth(next);handleSelect(selEnt,next);}} style={bt(depth===2?C.vi:null,{padding:"4px 10px",fontSize:12,borderRadius:4})}>
                 Depth {depth}
               </button>
+              {nSys>0&&<button onClick={()=>setShowSys(v=>!v)} title="System plumbing relationships: createdby/modifiedby/owner/business unit/currency/process on the parent side, async jobs/sync errors on the child side. They exist on every table and drown the business relations, so they start hidden." style={bt(showSys?C.vi:null,{padding:"4px 10px",fontSize:12,borderRadius:4})}>{showSys?"Hide":"Show"} {nSys} system</button>}
+              <button onClick={async()=>{try{await bridge.clearCache();}catch{}handleSelect(selEnt);}} title="Reload this table's relationships from the environment (metadata is cached 1h — a relationship created since then doesn't show up otherwise)" style={bt(null,{padding:"4px 10px",fontSize:12,borderRadius:4})}>↻</button>
               <Tooltip text={t("help.relationship_depth")}/>
             </div>
             <div style={{overflowX:"auto"}}>
@@ -168,9 +181,9 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
                 <text x={centerX} y={childY-8} textAnchor="middle" fill={C.cy} fontSize={11} fontWeight={700}>1:N Children ({visC.length})</text>
               </svg>
             </div>
-            {parents.length>12&&!showAllP&&<button onClick={()=>setShowAllP(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {parents.length} parents</button>}
+            {shownParents.length>12&&!showAllP&&<button onClick={()=>setShowAllP(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {shownParents.length} parents</button>}
             {m2m.length>12&&!showAllM&&<button onClick={()=>setShowAllM(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {m2m.length} N:N</button>}
-            {children.length>12&&!showAllC&&<button onClick={()=>setShowAllC(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {children.length} children</button>}
+            {shownChildren.length>12&&!showAllC&&<button onClick={()=>setShowAllC(true)} style={bt(null,{margin:"8px auto",display:"block",fontSize:12})}>Show all {shownChildren.length} children</button>}
           </div>
         )}
       </div>

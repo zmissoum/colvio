@@ -59,9 +59,10 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const doAddEntity=useCallback(async(e)=>{
     setLoadingEntity(e.l);
     try{
-      const[fieldsData,lookupsData]=await Promise.all([
+      const[fieldsData,lookupsData,m2mData]=await Promise.all([
         bridge.getFields(e.l).catch(()=>[]),
         bridge.getLookups(e.l).catch(()=>[]),
+        bridge.getManyToManyRelationships(e.l).catch(()=>[]), // N:N edges were never drawn (user-hit: "relations missing" in the ERD)
       ]);
       const fields=(fieldsData||[]).map(f=>({l:f.logical,d:f.display||f.logical,t:f.type||"String",cust:f.isCustom})).sort((a,b)=>a.l.localeCompare(b.l));
       const lookups=(lookupsData||[]).map(lk=>({field:lk.lookupField,target:lk.targetEntity,nav:lk.navProperty}));
@@ -69,7 +70,8 @@ export default function SchemaViewer({bp,orgInfo,theme}){
       const lkSet=new Set(lookups.map(lk=>lk.field));
       fields.sort((a,b)=>{const aLk=lkSet.has(a.l)||lkSet.has("_"+a.l+"_value")?0:1;const bLk=lkSet.has(b.l)||lkSet.has("_"+b.l+"_value")?0:1;return aLk-bLk||a.l.localeCompare(b.l);});
 
-      setSelected(prev=>({...prev,[e.l]:{entity:e,fields,lookups}}));
+      const m2m=(m2mData||[]).map(r=>({schemaName:r.schemaName,entity1:r.entity1,entity2:r.entity2}));
+      setSelected(prev=>({...prev,[e.l]:{entity:e,fields,lookups,m2m}}));
       // Grid position — computed inside the FUNCTIONAL updater: N parallel "+" adds all read the
       // same stale closure's count and stacked every new card on the exact same spot (audit finding).
       setPositions(prev=>{
@@ -131,8 +133,9 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           const isExp=!!expanded[srcName];
           const visFields=isExp?srcData.fields:srcData.fields.slice(0,MAX_FIELDS);
           const fIdx=visFields.findIndex(f=>f.l===lk.field||f.l==="_"+lk.field+"_value"||lk.field==="_"+f.l+"_value");
-          if(fIdx===-1)return;
-          sy=srcPos.y+HEADER_H+fIdx*ROW_H+ROW_H/2;
+          // A lookup whose field is NOT among the visible rows used to DROP the edge silently —
+          // the relation looked missing (user-hit). Anchor to the header instead.
+          sy=fIdx===-1?srcPos.y+HEADER_H/2:srcPos.y+HEADER_H+fIdx*ROW_H+ROW_H/2;
           const tgtH=cardH(selected[lk.target].fields.length,!!expanded[lk.target],false);
           ty=tgtPos.y+tgtH/2;
         }
@@ -142,6 +145,22 @@ export default function SchemaViewer({bp,orgInfo,theme}){
         if(srcCx<tgtCx){sx=srcPos.x+CARD_W;tx=tgtPos.x;dir=1;}
         else{sx=srcPos.x;tx=tgtPos.x+CARD_W;dir=-1;}
         result.push({key:`${srcName}-${lk.field}-${lk.target}`,sx,sy,tx,ty,dir,src:srcName,tgt:lk.target,field:lk.field});
+      });
+    });
+    // N:N edges — header-to-header, drawn once per pair (both cards carry the relationship).
+    Object.entries(selected).forEach(([srcName,srcData])=>{
+      (srcData.m2m||[]).forEach(r=>{
+        const other=r.entity1===srcName?r.entity2:r.entity1;
+        if(other===srcName)return; // self-N:N — skip the loop edge
+        if(!selected[other]||!positions[srcName]||!positions[other])return;
+        if(srcName>other)return; // dedupe: the lexicographically smaller side draws
+        const srcPos=positions[srcName],tgtPos=positions[other];
+        const sy=srcPos.y+HEADER_H/2,ty=tgtPos.y+HEADER_H/2;
+        const srcCx=srcPos.x+CARD_W/2,tgtCx=tgtPos.x+CARD_W/2;
+        let sx,tx,dir;
+        if(srcCx<tgtCx){sx=srcPos.x+CARD_W;tx=tgtPos.x;dir=1;}
+        else{sx=srcPos.x;tx=tgtPos.x+CARD_W;dir=-1;}
+        result.push({key:`m2m-${r.schemaName}-${srcName}`,type:"m2m",sx,sy,tx,ty,dir,src:srcName,tgt:other,field:r.schemaName});
       });
     });
     return result;
@@ -457,20 +476,23 @@ export default function SchemaViewer({bp,orgInfo,theme}){
             const cp=Math.min(100,Math.abs(l.tx-l.sx)*0.35);
             const midX=(l.sx+l.tx)/2;
             const midY=(l.sy+l.ty)/2;
-            // Clean field name for label
-            const label=l.field.replace(/^_/,"").replace(/_value$/,"");
+            const isM2m=l.type==="m2m";
+            // Clean field name for label; N:N edges label as such (schemaName on hover)
+            const label=isM2m?(isHov?l.field:"N:N"):l.field.replace(/^_/,"").replace(/_value$/,"");
+            const edgeColor=isM2m?C.lv:C.cy;
             return(
               <g key={l.key}>
                 <path
                   d={`M ${l.sx} ${l.sy} C ${l.sx+cp*l.dir} ${l.sy}, ${l.tx-cp*l.dir} ${l.ty}, ${l.tx} ${l.ty}`}
-                  stroke={isHov?C.cy:C.cy+"44"} strokeWidth={isHov?2.5:1.2} fill="none"
-                  markerEnd="url(#erd-arrow)" style={{transition:"stroke .15s, stroke-width .15s"}}/>
+                  stroke={isHov?edgeColor:edgeColor+"44"} strokeWidth={isHov?2.5:1.2} fill="none"
+                  strokeDasharray={isM2m?"5,4":undefined}
+                  markerEnd={isM2m?undefined:"url(#erd-arrow)"} style={{transition:"stroke .15s, stroke-width .15s"}}/>
                 {/* Relationship label on line */}
-                {isHov&&<text x={midX} y={midY-6} textAnchor="middle" fill={C.cy} fontSize={9} {...mono} style={{pointerEvents:"none"}}>
+                {isHov&&<text x={midX} y={midY-6} textAnchor="middle" fill={edgeColor} fontSize={9} {...mono} style={{pointerEvents:"none"}}>
                   {label.length>20?label.substring(0,20)+"…":label}
                 </text>}
                 {/* Subtle label when not hovered for lines that are not too short */}
-                {!isHov&&Math.abs(l.tx-l.sx)>200&&<text x={midX} y={midY-5} textAnchor="middle" fill={C.txd+"66"} fontSize={8} {...mono} style={{pointerEvents:"none"}}>
+                {!isHov&&(isM2m||Math.abs(l.tx-l.sx)>200)&&<text x={midX} y={midY-5} textAnchor="middle" fill={isM2m?C.lv+"aa":C.txd+"66"} fontSize={8} {...mono} style={{pointerEvents:"none"}}>
                   {label.length>18?label.substring(0,18)+"…":label}
                 </text>}
               </g>
