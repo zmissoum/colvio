@@ -59,7 +59,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Business Process Flow manager** (System Administrators) — lists every BPF instance on the record, including finished ones the form has locked: reopen, move to any stage, finish or abort (Colvio resolves the flow's real underlying table for the write)
 
 ### Metadata Browser
-- Browse entities, fields, OptionSets by category
+- Browse entities, fields, OptionSets by category — plus **Virtual / Elastic table-type filter chips** (find every virtual table at a glance)
 - OptionSet modal viewer with Value, Label, Description, Color
 - **Export All OptionSets** — bulk CSV export of all Picklist/State/Status values for an entity
 - Entity record counts, field type badges, custom field indicators
@@ -136,6 +136,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Relationship Graph
 - Visual SVG graph: N:1 parents, 1:N children, N:N many-to-many
+- **Business relationships first** (alphabetized) — the system plumbing every table carries (createdby/owner/currency/process, async-job children) starts hidden behind an honest "Show N system" toggle
+- **↻ refresh** that actually clears the metadata cache (relationships are cached 1h — a relation created minutes ago needs it)
 - Depth control (1-2 levels), click nodes to drill down
 - Deduplication, edge labels, count badges
 
@@ -146,6 +148,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Drag** cards to rearrange, **scroll** to zoom, **drag canvas** to pan
 - **Expand/collapse** individual cards or all at once (Tables/Fields toggle)
 - **"Add Related"** button (+) to auto-add connected entities
+- **N:N relationships** draw as dashed labeled edges between cards (hover = relationship name); a lookup outside the visible field rows anchors to the card header instead of disappearing
 - **Export**: PNG (2x retina), SVG (vector), Mermaid (.mmd)
 - Toolbar: zoom +/-, Fit All, Auto Layout, Clear
 
@@ -225,13 +228,12 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Keyboard shortcuts panel (Ctrl+/)
 - Contextual tooltips on key features
 
-### SQL Query Mode
-- Write familiar SQL: `SELECT`, `FROM`, `JOIN`, `WHERE`, `ORDER BY`, `TOP`, `DISTINCT`
-- Automatically translated to FetchXML (reliable pagination, no limits)
-- `JOIN` → `link-entity` (no `$expand` limitations)
-- Aggregates: `COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP BY`
-- "View FetchXML" toggle to see the generated XML
-- 3 template queries to get started
+### SQL Query Mode — two engines
+- **⚡ Native (default)**: your SELECT is sent straight to Dataverse via the Web API `?sql=` option — the **server** parses and executes it. Multi-table `INNER`/`LEFT JOIN` with table & column aliases, self-joins, `DISTINCT`, server-side `GROUP BY` + `COUNT/SUM/AVG/MIN/MAX`, `DATEADD`/`GETUTCDATE` relative dates. Auto-paginated via `@odata.nextLink`
+- **⇄ Transpiled**: Colvio's own SQL→FetchXML converter — still the only engine with `HAVING` and `TOP`, and the automatic fallback on environments without `?sql=` (detected on first run)
+- Server limits stated honestly (native): no `SELECT *`, subqueries, `HAVING`, `TOP`, `UNION`; aggregates capped at 50k; not available on virtual tables
+- "View FetchXML" toggle shows the transpiler's generated XML
+- Engine-aware template queries to get started
 
 ### Global
 - **Sidebar organized in three sections** — Data / Develop / Admin, in decreasing frequency of use; a section whose tabs are all permission-hidden disappears entirely
@@ -254,11 +256,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Metric | Value |
 |--------|-------|
 | Modules | 20 |
-| Lines of code | ~19,300 |
-| API actions | 79 |
-| React components | 38 |
-| Unit tests | 260 |
-| Build size | ~905 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
+| Lines of code | ~20,600 |
+| API actions | 73 |
+| React components | 39 |
+| Unit tests | 314 |
+| Build size | ~968 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
 

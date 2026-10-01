@@ -72,9 +72,9 @@ page, click the icon, start working.
 
 KEY FEATURES
 
-• Data Explorer — query any table four ways: visual Builder, OData, FetchXML or SQL
-  (auto-translated to FetchXML). No 5,000-row cap, virtual scrolling, inline edit,
-  bulk update/delete, CSV/XLSX/JSON exports.
+• Data Explorer — query any table four ways: visual Builder, OData, FetchXML or SQL (native Dataverse ?sql= engine with real JOINs, or the built-in SQL→FetchXML transpiler)
+  No 5,000-row cap, virtual scrolling, inline edit (typed by field metadata, lookups
+  included), bulk update/delete, duplicate finder, CSV/XLSX/JSON exports.
 
 • Data Loader — import CSV/Excel files with four modes: CREATE, UPSERT (GUID or alternate
   key), UPDATE-only (native If-Match — never creates) and DELETE. Dry run simulates the whole
@@ -96,7 +96,10 @@ KEY FEATURES
   relationship graph, schema snapshot & diff between environments.
 
 • Governance — users & licenses (CAL types, last login, unused licenses), security role
-  audit (privilege depths, sensitive flags), per-user login history.
+  audit (privilege depths, sensitive flags), business units (full org chart, bulk moves by
+  pasted email list), teams (members + the security roles they carry — the roles a user
+  inherits without them ever showing on their profile), adoption analytics (DAU/WAU/MAU,
+  per-BU rates, PowerPoint report) and per-user login history.
 
 PRIVACY FIRST
 Zero data collection. No telemetry, no external servers — every request goes to your own
