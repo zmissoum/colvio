@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.170] — 2026-10-02
+### Changed — What's New popup rewritten for the current store arc
+- The post-update popup still described the v1.11.119→157 arc; existing users updating from the store would have read about features they'd had for months. The six highlights (EN/FR) now cover what the NEXT store upload actually brings them since .157: the Teams module, the native Dataverse SQL engine, the corrected production detection (OrganizationType — prod reports "Secondary") with armed PROD confirmations, the product-audit wave (render caps, Escape everywhere, exports, history privacy incl. upgrade scrub), the provisioning helpers (BU move-into by pasted list, Show All Data lookup editing, storage-quota self-healing), and the data-model fixes (Relationships business-first + N:N in the ERD + Virtual/Elastic chips).
+
 ## [1.11.169] — 2026-10-02
 ### Added — Metadata: Virtual / Elastic table-type filter chips
 - The table list now carries a chip per non-Standard table TYPE present in the org (Virtual, Elastic) — cyan, next to the Custom/Standard category chips, with counts (user request, straight out of the SAP virtual-tables workflow: finding every virtual table at a glance). Orthogonal to the category filter (a virtual table is usually also Custom); the search keeps working while a type chip is active. Tooltips state what each type means.

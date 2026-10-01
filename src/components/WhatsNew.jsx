@@ -6,20 +6,20 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
-    "🧩 NEW: Env Variables — defaults, overrides, and the ⚠ NO VALUE trap surfaced first · 📈 Adoption rebuilt (DAU/WAU/MAU, per-BU rates, inactivity, one-click PowerPoint report) · ⇄ Solutions compare, same-org and DEV→PROD",
-    "⚡ Loader & Explorer edits are now TYPED by field metadata — numbers, dates, GUIDs, option values validated BEFORE sending; lookups edited via @odata.bind with a target picker; readable refusals, no more cryptic 400s",
-    "⧉ Explorer — duplicate finder (pick the columns that define a duplicate, keep-first selection, review CSV) · $batch bulk delete with one ✕ Cancel · sticky horizontal scrollbar · Builder queries restore from history INTO the Builder",
-    "🏢 Business Units — full-screen org chart (folded, PNG export) · bulk MOVE users to a BU with the roles truth stated first · paste a list of emails to select the matches — built for provisioning waves",
-    "🛡 Reliability — the D365 tab is kept awake during long runs (browser memory-saver was killing them) and Colvio never sends a request to a tab showing a different environment",
-    "🌊 System Ops Cloud Flow Runs · 🔎 Apps view inspector & subgrids · 260 unit tests after a full write-path audit",
+    "👥 NEW: Teams module — owner & Entra group teams, their members and the security roles they carry (a role inherited via a team never shows on the user — now you can see where it comes from), with the Entra group Object ID one click away",
+    "⚡ SQL goes NATIVE — the Explorer's SQL mode can now send your SELECT straight to Dataverse (new Web API ?sql= option): real multi-table JOINs with aliases, self-joins, DISTINCT, server-side GROUP BY. Toggle back to the FetchXML transpiler for HAVING/TOP",
+    "🛡 Production is detected RIGHT — the environment badge now reads Microsoft's real OrganizationType enum (a prod org reports 'Secondary'!), so the ⚠ PROD confirmations are armed where they must be: Loader runs, bulk update/delete, inline edits, BU moves",
+    "🔎 Full product audit shipped — render caps keep huge orgs smooth, Escape closes every modal, exports everywhere (System Jobs, Audit History, Recycle Bin page, Excel variants), real cache-clearing ↻ on the inventories, and query history now redacts SQL & FetchXML values too (old entries scrubbed on upgrade)",
+    "📥 Provisioning helpers — move users INTO a BU by pasting a list of emails (org-wide match, honest preview), edit LOOKUPS from Show All Data (link/relink/clear with GUID validation), and the storage quota self-heals (no more kQuotaBytes errors)",
+    "⇄ Data model, finally honest — Relationships sorts business relations first (system plumbing behind a toggle) with a cache-clearing ↻, the Schema ERD draws N:N relationships at last, and Metadata gains Virtual/Elastic table filter chips",
   ],
   fr: [
-    "🧩 NOUVEAU : Variables d'env. — défauts, overrides et le piège ⚠ NO VALUE mis en avant · 📈 Adoption refondue (DAU/WAU/MAU, taux par BU, inactivité, rapport PowerPoint en un clic) · ⇄ Comparaison de solutions, même org et DEV→PROD",
-    "⚡ Les éditions du Loader ET de l'Explorer sont TYPÉES par les métadonnées — nombres, dates, GUID, valeurs d'option validés AVANT l'envoi ; lookups édités via @odata.bind avec choix de la cible ; refus lisibles, fini les 400 cryptiques",
-    "⧉ Explorer — détecteur de doublons (choisissez les colonnes de la règle, sélection garde-le-premier, CSV de revue) · suppression $batch avec un ✕ Cancel · barre de défilement collante · l'historique restaure les requêtes Builder DANS le Builder",
-    "🏢 Business Units — organigramme plein écran (replié, export PNG) · DÉPLACEMENT en masse d'utilisateurs avec la vérité sur les rôles annoncée d'abord · collez une liste d'emails pour sélectionner les correspondances — pensé pour les vagues de provisioning",
-    "🛡 Fiabilité — l'onglet D365 reste éveillé pendant les longs runs (la mise en veille du navigateur les tuait) et Colvio n'envoie jamais une requête vers un onglet affichant un autre environnement",
-    "🌊 System Ops : runs des cloud flows · 🔎 Apps : inspecteur de vues & subgrids · 260 tests unitaires après un audit complet des chemins d'écriture",
+    "👥 NOUVEAU : module Teams — teams propriétaires & groupes Entra, leurs membres et les rôles de sécurité qu'elles portent (un rôle hérité via une team n'apparaît jamais sur l'utilisateur — vous voyez enfin d'où il vient), avec l'Object ID du groupe Entra copiable en un clic",
+    "⚡ Le SQL passe en NATIF — le mode SQL de l'Explorer envoie désormais votre SELECT directement à Dataverse (nouvelle option ?sql= de la Web API) : vrais JOIN multi-tables avec alias, self-joins, DISTINCT, GROUP BY côté serveur. Rebasculez sur le transpileur FetchXML pour HAVING/TOP",
+    "🛡 La production est détectée CORRECTEMENT — le badge d'environnement lit le vrai enum OrganizationType de Microsoft (une org de prod répond « Secondary » !) : les confirmations ⚠ PROD sont armées là où il faut : runs du Loader, update/delete en masse, éditions inline, déplacements de BU",
+    "🔎 Audit produit complet livré — caps de rendu pour les grosses orgs, Escape ferme toutes les modales, exports partout (System Jobs, historique d'audit, page Corbeille, variantes Excel), ↻ avec vrai vidage de cache sur les inventaires, et l'historique de requêtes expurge aussi les valeurs SQL & FetchXML (anciennes entrées nettoyées à la mise à jour)",
+    "📥 Aides au provisioning — déplacez des utilisateurs VERS une BU en collant une liste d'emails (recherche org entière, aperçu honnête), éditez les LOOKUPS depuis Show All Data (lier/relier/effacer avec validation GUID), et le quota de stockage s'auto-répare (fini les erreurs kQuotaBytes)",
+    "⇄ Un data model enfin honnête — Relationships trie les relations métier d'abord (plomberie système derrière un toggle) avec ↻ vide-cache, l'ERD Schema dessine enfin les relations N:N, et Metadata gagne des filtres Virtual/Elastic",
   ],
 };
 
