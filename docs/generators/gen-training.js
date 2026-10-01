@@ -2,7 +2,7 @@
 // Run: node gen-training.js
 const { h1, h2, h3, p, note, bullets, num, pageBreak, table, img, coverAndToc, buildDoc, writeDoc } = require("./helpers");
 
-const VERSION = "v1.11.154";
+const VERSION = "v1.11.170";
 
 function build(L) {
   const c = [];
@@ -74,6 +74,8 @@ function build(L) {
   c.push(h1(L.s8));
   c.push(h2(L.s8aT)); c.push(p(L.s8lic));
   c.push(h2("Security Audit")); c.push(p(L.s8sec));
+  c.push(h2("Teams")); c.push(p(L.s8teams));
+  c.push(h2("Business Units & Adoption")); c.push(p(L.s8bu));
   c.push(h2("Login History")); c.push(p(L.s8log));
 
   // 9 — Exports
@@ -95,16 +97,16 @@ function build(L) {
 
 const FR = {
   title: "Guide de formation", subtitle: "Explorer, charger et auditer Dynamics 365 / Dataverse depuis le navigateur",
-  date: "Août 2026", toc: "Sommaire",
+  date: "Octobre 2026", toc: "Sommaire",
   s1: "1. Introduction",
   s1p1: "Colvio est une extension Chrome **gratuite et open-source** pour Microsoft Dynamics 365 / Dataverse. Elle s'appuie sur votre session navigateur existante : **aucune clé API, aucun enregistrement d'application, aucun compte**. Ouvrez une page D365, cliquez sur l'icône Colvio, et travaillez.",
   s1b: [
     "**Zéro configuration** — l'authentification réutilise vos cookies de session D365.",
     "**Confidentialité totale** — aucune donnée ne quitte le navigateur : pas de télémétrie, pas de serveur tiers.",
-    "**14 modules** couvrant l'exploration, la restauration, le chargement de données, le test d'API et l'audit.",
+    "**20 modules** couvrant l'exploration, la restauration, le chargement de données, le test d'API, la modélisation et l'audit.",
     "Interface **EN / FR**, thème sombre/clair, aide intégrée avec recherche.",
   ],
-  s1n: "💡 Capture d'écran recommandée ici : la barre latérale Colvio avec les 19 onglets, sur votre org de démo.",
+  s1n: "💡 Capture d'écran recommandée ici : la barre latérale Colvio avec les 20 onglets, sur votre org de démo.",
   s2: "2. Installation et premier lancement",
   s2a: "Installation",
   s2steps: [
@@ -114,7 +116,7 @@ const FR = {
     "Cliquez sur l'icône Colvio : le panneau s'ouvre dans un nouvel onglet, déjà connecté à votre org.",
   ],
   s2b: "Badge d'environnement",
-  s2env: "En haut du panneau, un badge indique l'environnement : **PROD**, **SANDBOX**, **UAT**, **DEV**, **TRIAL**… Il provient de l'API `RetrieveCurrentOrganization` de Microsoft (champ OrganizationType) — la source la plus fiable — avec une heuristique d'URL en simple secours. Vérifiez-le toujours avant un chargement de données.",
+  s2env: "En haut du panneau, un badge indique l'environnement : **⚠ PROD** (rouge) ou **SANDBOX / UAT / DEV / TRIAL** (vert). Il est mappé sur l'enum OrganizationType DOCUMENTÉ de Microsoft : une org de production répond `Customer` ou `Secondary` — l'enum n'a pas de membre « Production » — et toute valeur inconnue est présumée production (fail-closed). Les confirmations PROD de Colvio (Loader, update/delete en masse, éditions) s'arment sur cette détection. Vérifiez toujours le badge avant un chargement.",
   s2c: "Onglets selon vos droits",
   s2perm: "Au démarrage, Colvio sonde vos permissions et masque les onglets que vous ne pouvez pas utiliser (Security Audit, Login History, Users & Licenses exigent des droits de lecture d'audit/utilisateurs ; les Speed boosters du Loader exigent System Administrator). Les droits sont **toujours réappliqués côté serveur** par Dataverse : Colvio ne peut jamais dépasser vos rôles de sécurité.",
   s3: "3. Data Explorer",
@@ -136,7 +138,7 @@ const FR = {
     "Export **CSV / XLSX / JSON**.",
   ],
   s3c: "Mode SQL",
-  s3sql: "Écrivez `SELECT`, `FROM`, `JOIN`, `WHERE`, `ORDER BY`, `TOP`, `DISTINCT`, `GROUP BY` et les agrégats (`COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`). La traduction en FetchXML garantit une pagination fiable et des jointures via `link-entity` :",
+  s3sql: "Deux moteurs, un toggle. **⚡ Natif** (défaut) : votre SELECT part tel quel à Dataverse via l'option Web API `?sql=` — le serveur le parse : JOIN multi-tables avec alias, self-joins, DISTINCT, GROUP BY et agrégats côté serveur, dates relatives DATEADD/GETUTCDATE (pas de SELECT *, sous-requêtes, HAVING ni TOP ; agrégats plafonnés à 50 000). **⇄ Transpilé** : Colvio traduit le SQL en FetchXML — seul moteur avec HAVING et TOP, et bascule automatique si l'org n'a pas encore l'option :",
   s3sqlb: [
     "`SELECT name, revenue FROM account WHERE statecode = 0 ORDER BY revenue DESC TOP 100`",
     "`SELECT a.name, c.fullname FROM account a JOIN contact c ON a.primarycontactid = c.contactid`",
@@ -156,9 +158,9 @@ const FR = {
   s4n: "💡 Cas d'usage typiques : tester un appel avant de l'intégrer dans un plugin ou Power Automate, reproduire un ticket, vérifier le comportement d'un header MSCRM.",
   s5: "5. Inspecter un enregistrement et les métadonnées",
   s5a: "Show All Data",
-  s5show: "Détecte automatiquement l'enregistrement ouvert dans votre onglet D365 (ou collez une URL / un GUID) et affiche **tous ses champs** : nom logique, libellé, type, valeur. Lookups cliquables, copie champ par champ ou JSON complet.",
+  s5show: "Détecte automatiquement l'enregistrement ouvert dans votre onglet D365 (ou collez une URL / un GUID) et affiche **tous ses champs** : nom logique, libellé, type, valeur. Lookups cliquables, copie champ par champ ou JSON complet. Les champs modifiables s'éditent inline — **lookups inclus** : collez le GUID cible pour lier/relier, videz pour effacer, le tout validé avant envoi (confirmation en production).",
   s5b: "Metadata Browser",
-  s5meta: "Parcourez entités, champs et OptionSets (valeur, libellé, description, couleur). **Export CSV de tous les champs** d'une entité (nom logique, nom OData, type, requis, custom) — un dictionnaire de données instantané — et **export de tous les OptionSets**. C'est ici que vous vérifiez les libellés exacts d'une picklist avant un import par labels.",
+  s5meta: "Parcourez entités, champs et OptionSets (valeur, libellé, description, couleur). **Export CSV de tous les champs** d'une entité (nom logique, nom OData, type, requis, custom) — un dictionnaire de données instantané — et **export de tous les OptionSets**. Des **chips Virtual / Elastic** filtrent par type de table (retrouvez toutes vos tables virtuelles d'un coup d'œil). C'est ici que vous vérifiez les libellés exacts d'une picklist avant un import par labels.",
   s6: "6. Data Loader — charger des données en masse",
   s6p1: "Le Data Loader importe des fichiers **CSV, TSV ou Excel** dans n'importe quelle table, via un assistant en 5 étapes. Il est conçu pour des volumes importants (plusieurs centaines de milliers de lignes) avec un retour ligne par ligne en temps réel.",
   s6a: "Étape 1 — Source",
@@ -204,15 +206,17 @@ const FR = {
   s6xeT: "Snapshot & diff de schéma",
   s6xe: "Dans le Metadata Browser (bouton ⇄) : exportez le schéma en JSON sur une org, chargez-le sur une autre, et obtenez le **diff classé** (tables/colonnes manquantes, types différents) avec export CSV — idéal avant un déploiement DEV → UAT → PROD.",
   s7: "7. Modéliser : schéma, relations, solutions, traductions",
-  s7erd: "Diagramme Entité-Relation interactif : ajoutez des entités au canevas, les cartes montrent les champs avec badges FK, des courbes relient chaque lookup à sa cible. Glissez, zoomez, « + » ajoute les entités liées. Export **PNG, SVG, Mermaid**.",
+  s7erd: "Diagramme Entité-Relation interactif : ajoutez des entités au canevas, les cartes montrent les champs avec badges FK, des courbes relient chaque lookup à sa cible. Les relations **N:N** se dessinent en pointillés entre les cartes. Glissez, zoomez, « + » ajoute les entités liées. Export **PNG, SVG, Mermaid** — votre data model, prêt pour un wiki ou un deck.",
   s7relT: "Relations",
-  s7rel: "Graphe des relations d'une entité : parents N:1, enfants 1:N, N:N. Profondeur 1-2, clic pour naviguer.",
+  s7rel: "Graphe des relations d'une entité : parents N:1, enfants 1:N, N:N. Les relations **métier** s'affichent d'abord ; la plomberie système (createdby, owner, devise…) est masquée derrière un toggle. ↻ recharge depuis l'org (les métadonnées sont cachées 1 h). Profondeur 1-2, clic pour naviguer.",
   s7sol: "Parcourez les solutions installées et leurs composants, résolus en noms lisibles (13 types : entités, attributs, vues, plugins, web resources, rôles…). Badges Managed/Unmanaged.",
   s7trans: "Affichez et éditez les libellés de champs dans toutes les langues installées, inline. Les champs non renommables sont verrouillés. Export/import CSV pour les traductions en masse, publication automatique.",
   s8: "8. Modules d'administration",
   s8aT: "Users & Licenses",
   s8lic: "Tous les utilisateurs avec Access Mode, CAL Type, BU, rôles de sécurité et **dernière connexion** (via l'audit). Statistiques par type de licence, détection des licences inutilisées (désactivés, jamais connectés). Export CSV.",
   s8sec: "Tous les rôles de sécurité avec leurs privilèges en libellés lisibles (`prvDeleteAccount` → « Delete · Account »), badges de profondeur (User / BU / Parent:Child / **Org** en rouge), et plus de 30 privilèges sensibles signalés. Export CSV par rôle.",
+  s8teams: "Toutes les teams de l'org par type (propriétaires, groupes Entra, access teams chargées à la demande) : les membres, et surtout les **rôles de sécurité portés par la team** — hérités par chaque membre sans jamais apparaître sur sa fiche. C'est la réponse à « pourquoi cet utilisateur a-t-il ce droit ? ». Pour les teams Entra : Object ID du groupe copiable, et rappel que la composition se matérialise au prochain accès de l'utilisateur.",
+  s8bu: "Hiérarchie des business units en arbre ou en **organigramme plein écran** (export PNG). Déplacement d'utilisateurs en masse — cochez, ou **collez une liste d'emails** (sélection dans la BU affichée, ou recherche org entière pour déplacer VERS la BU) — avec la vérité sur les rôles annoncée avant confirmation. **Adoption** : événements d'accès, DAU/WAU/MAU, taux par BU, inactivité, rapport PowerPoint en un clic.",
   s8log: "Timeline de connexions/déconnexions par utilisateur (via l'audit D365), durées de session, répartition par type d'accès, export CSV. Nécessite l'audit activé avec « Audit user access ».",
   s9: "9. Exports et nommage des fichiers",
   s9p1: "Tous les exports suivent la même convention de nommage :",
@@ -230,7 +234,7 @@ const FR = {
     ["« Lookup not found / check failed »", "La valeur n'a pas pu être résolue. La ligne suit votre fallback (Skip/Null/Error). Vérifiez le champ clé D365 du lookup."],
     ["Labels d'option-set non convertis", "Le label CSV n'existe pas dans l'OptionSet. Vérifiez les libellés exacts dans le Metadata Browser, ou utilisez les valeurs numériques."],
     ["HTTP 429", "Throttling Dataverse (Service Protection). Colvio retry automatiquement ; si cela persiste, baissez threads et taille de lot."],
-    ["Badge PROD inattendu", "Le badge vient de l'API OrganizationType. Si l'org est récente, re-cliquez l'icône Colvio depuis l'onglet D365."],
+    ["Badge PROD inattendu", "Le badge mappe l'enum OrganizationType : une prod répond Customer ou Secondary, et toute valeur inconnue est présumée PROD (fail-closed) — un badge PROD « en trop » coûte un clic de confirmation, jamais l'inverse."],
     ["Import lent sur de très gros fichiers", "Montez à 8-10 threads et 500 de lot ; en tant qu'admin, envisagez les Speed boosters (données déjà validées uniquement)."],
     ["Excel demande « Activer la modification »", "Mode protégé Windows/Office sur les téléchargements — voir section 9."],
   ],
@@ -246,16 +250,16 @@ const FR = {
 
 const EN = {
   title: "Training Guide", subtitle: "Explore, load and audit Dynamics 365 / Dataverse from the browser",
-  date: "August 2026", toc: "Contents",
+  date: "October 2026", toc: "Contents",
   s1: "1. Introduction",
   s1p1: "Colvio is a **free, open-source** Chrome extension for Microsoft Dynamics 365 / Dataverse. It rides on your existing browser session: **no API key, no app registration, no account**. Open a D365 page, click the Colvio icon, start working.",
   s1b: [
     "**Zero configuration** — authentication reuses your D365 session cookies.",
     "**Privacy first** — nothing leaves the browser: no telemetry, no third-party servers.",
-    "**14 modules** covering exploration, restore, data loading, API testing and auditing.",
+    "**20 modules** covering exploration, restore, data loading, API testing, modeling and auditing.",
     "**EN / FR** interface, dark/light theme, searchable built-in Help.",
   ],
-  s1n: "💡 Recommended screenshot here: the Colvio sidebar with all 19 tabs, on your demo org.",
+  s1n: "💡 Recommended screenshot here: the Colvio sidebar with all 20 tabs, on your demo org.",
   s2: "2. Installation & first launch",
   s2a: "Install",
   s2steps: [
@@ -265,7 +269,7 @@ const EN = {
     "Click the Colvio icon: the panel opens in a new tab, already connected to your org.",
   ],
   s2b: "Environment badge",
-  s2env: "At the top of the panel, a badge shows the environment: **PROD**, **SANDBOX**, **UAT**, **DEV**, **TRIAL**… It comes from Microsoft's `RetrieveCurrentOrganization` API (OrganizationType field) — the authoritative source — with a URL heuristic as fallback only. Always check it before a data load.",
+  s2env: "At the top of the panel, a badge shows the environment: **⚠ PROD** (red) or **SANDBOX / UAT / DEV / TRIAL** (green). It maps Microsoft's DOCUMENTED OrganizationType enum: a production org reports `Customer` or `Secondary` — the enum has no `Production` member — and any unknown value is presumed production (fail-closed). Colvio's PROD confirmations (Loader, bulk update/delete, edits) arm on this detection. Always check the badge before loading data.",
   s2c: "Permission-based tabs",
   s2perm: "On startup Colvio probes your permissions and hides tabs you can't use (Security Audit, Login History, Users & Licenses need audit/user read rights; the Loader's Speed boosters require System Administrator). Rights are **always re-enforced server-side** by Dataverse: Colvio can never exceed your security roles.",
   s3: "3. Data Explorer",
@@ -287,7 +291,7 @@ const EN = {
     "Export **CSV / XLSX / JSON**.",
   ],
   s3c: "SQL mode",
-  s3sql: "Write `SELECT`, `FROM`, `JOIN`, `WHERE`, `ORDER BY`, `TOP`, `DISTINCT`, `GROUP BY` and aggregates (`COUNT(*)`, `SUM`, `AVG`, `MIN`, `MAX`). Translation to FetchXML guarantees reliable pagination and joins via `link-entity`:",
+  s3sql: "Two engines, one toggle. **⚡ Native** (default): your SELECT goes straight to Dataverse via the Web API `?sql=` option — the server parses it: multi-table JOINs with aliases, self-joins, DISTINCT, server-side GROUP BY and aggregates, DATEADD/GETUTCDATE relative dates (no SELECT *, subqueries, HAVING or TOP; aggregates capped at 50,000). **⇄ Transpiled**: Colvio converts the SQL to FetchXML — the only engine with HAVING and TOP, and the automatic fallback when the org lacks the option:",
   s3sqlb: [
     "`SELECT name, revenue FROM account WHERE statecode = 0 ORDER BY revenue DESC TOP 100`",
     "`SELECT a.name, c.fullname FROM account a JOIN contact c ON a.primarycontactid = c.contactid`",
@@ -307,9 +311,9 @@ const EN = {
   s4n: "💡 Typical uses: test a call before wiring it into a plugin or Power Automate, reproduce a support ticket, check how an MSCRM header behaves.",
   s5: "5. Inspecting a record and the metadata",
   s5a: "Show All Data",
-  s5show: "Auto-detects the record open in your D365 tab (or paste a URL / GUID) and shows **every field**: logical name, label, type, value. Clickable lookups, copy per-field or full JSON.",
+  s5show: "Auto-detects the record open in your D365 tab (or paste a URL / GUID) and shows **every field**: logical name, label, type, value. Clickable lookups, copy per-field or full JSON. Writable fields edit inline — **lookups included**: paste the target GUID to link/relink, clear to unlink, all validated before sending (production confirms first).",
   s5b: "Metadata Browser",
-  s5meta: "Browse entities, fields and OptionSets (value, label, description, color). **CSV export of all fields** of an entity (logical name, OData name, type, required, custom) — an instant data dictionary — and **export of all OptionSets**. This is where you check a picklist's exact labels before a label-based import.",
+  s5meta: "Browse entities, fields and OptionSets (value, label, description, color). **CSV export of all fields** of an entity (logical name, OData name, type, required, custom) — an instant data dictionary — and **export of all OptionSets**. **Virtual / Elastic chips** filter by table type (find every virtual table at a glance). This is where you check a picklist's exact labels before a label-based import.",
   s6: "6. Data Loader — bulk data loading",
   s6p1: "The Data Loader imports **CSV, TSV or Excel** files into any table through a 5-step wizard. It is built for large volumes (hundreds of thousands of rows) with real-time per-row feedback.",
   s6a: "Step 1 — Source",
@@ -355,15 +359,17 @@ const EN = {
   s6xeT: "Schema snapshot & diff",
   s6xe: "In the Metadata Browser (⇄ button): export the schema as JSON on one org, load it on another, and get a **ranked diff** (missing tables/columns, type mismatches) with CSV export — ideal before a DEV → UAT → PROD deployment.",
   s7: "7. Modeling: schema, relationships, solutions, translations",
-  s7erd: "Interactive Entity-Relationship Diagram: add entities to the canvas, cards show fields with FK badges, curves connect each lookup to its target. Drag, zoom, “+” adds related entities. Export **PNG, SVG, Mermaid**.",
+  s7erd: "Interactive Entity-Relationship Diagram: add entities to the canvas, cards show fields with FK badges, curves connect each lookup to its target. **N:N relationships** draw as dashed lines between cards. Drag, zoom, “+” adds related entities. Export **PNG, SVG, Mermaid** — your data model, ready for a wiki or a deck.",
   s7relT: "Relationships",
-  s7rel: "Relationship graph for one entity: N:1 parents, 1:N children, N:N. Depth 1-2, click to drill down.",
+  s7rel: "Relationship graph for one entity: N:1 parents, 1:N children, N:N. **Business** relationships show first; the system plumbing (createdby, owner, currency…) hides behind a toggle. ↻ reloads from the org (metadata is cached 1 h). Depth 1-2, click to drill down.",
   s7sol: "Browse installed solutions and their components, resolved to readable names (13 types: entities, attributes, views, plugins, web resources, roles…). Managed/Unmanaged badges.",
   s7trans: "View and edit field labels across all installed languages, inline. Non-renameable fields are locked. CSV export/import for bulk translation, auto-publish.",
   s8: "8. Admin modules",
   s8aT: "Users & Licenses",
   s8lic: "All users with Access Mode, CAL Type, BU, security roles and **last login** (from audit). License-type breakdown, unused-license detection (disabled users, never logged in). CSV export.",
   s8sec: "All security roles with privileges as readable labels (`prvDeleteAccount` → “Delete · Account”), depth badges (User / BU / Parent:Child / **Org** in red), and 30+ sensitive privileges flagged. CSV export per role.",
+  s8teams: "Every team in the org by type (owner, Entra group, on-demand access teams): the members, and above all the **security roles the team carries** — inherited by every member without ever showing on their profile. It answers the question: why does this user have that right? For Entra teams: copiable group Object ID, plus the reminder that membership materializes on the user's next access.",
+  s8bu: "Business-unit hierarchy as a tree or a **full-screen org chart** (PNG export). Bulk user moves — tick, or **paste a list of emails** (selection within the displayed BU, or an org-wide search to move INTO the BU) — with the roles truth stated before confirming. **Adoption**: access events, DAU/WAU/MAU, per-BU rates, inactivity, one-click PowerPoint report.",
   s8log: "Login/logout timeline per user (from D365 audit), session durations, access-type breakdown, CSV export. Requires auditing enabled with “Audit user access”.",
   s9: "9. Exports & file naming",
   s9p1: "Every export follows the same naming convention:",
@@ -381,7 +387,7 @@ const EN = {
     ["“Lookup not found / check failed”", "The value couldn't be resolved. The row follows your fallback (Skip/Null/Error). Check the lookup's D365 key field."],
     ["Unconverted option-set labels", "The CSV label doesn't exist in the OptionSet. Check exact labels in the Metadata Browser, or use numeric values."],
     ["HTTP 429", "Dataverse Service Protection throttling. Colvio retries automatically; if it persists, lower threads and batch size."],
-    ["Unexpected PROD badge", "The badge comes from the OrganizationType API. For a brand-new org, re-click the Colvio icon from the D365 tab."],
+    ["Unexpected PROD badge", "The badge maps the OrganizationType enum: production orgs report Customer or Secondary, and any unknown value is presumed PROD (fail-closed) — a spurious PROD badge costs one confirmation click, never the reverse."],
     ["Slow import on huge files", "Raise to 8-10 threads and batch 500; as an admin, consider Speed boosters (validated data only)."],
     ["Excel asks to “Enable Editing”", "Windows/Office Protected View on downloads — see section 9."],
   ],

@@ -60,7 +60,7 @@ def save(fig, name):
 def d_architecture():
     fig, ax = new_fig(10, 4.4)
     ax.text(0.5, 0.96, "Colvio — Architecture (Manifest V3)", ha="center", fontsize=13.5, fontweight="bold")
-    box(ax, 0.01, 0.38, 0.215, 0.32, "Panel (React 18)", "panel.html — own tab\n12 modules", ec=VI, fs=10.5, subfs=8)
+    box(ax, 0.01, 0.38, 0.215, 0.32, "Panel (React 18)", "panel.html — own tab\n20 modules", ec=VI, fs=10.5, subfs=8)
     box(ax, 0.295, 0.38, 0.175, 0.32, "Service worker", "background.js\nmessage relay", ec=CY, fs=10.5, subfs=8)
     box(ax, 0.54, 0.38, 0.20, 0.32, "Content script", "content.js · *.dynamics.com\n42 actions · validation", ec=CY, fs=10.5, subfs=8)
     box(ax, 0.81, 0.38, 0.18, 0.32, "Dataverse", "Web API v9.2\nOData · $batch", ec=GN, fs=10.5, subfs=8)
@@ -171,28 +171,34 @@ def d_security():
 # ── 6. Module map ──────────────────────────────────────────────────────────
 def d_modules():
     fig, ax = new_fig(10, 5.6)
-    ax.text(0.5, 0.965, "Colvio — 14 modules", ha="center", fontsize=13.5, fontweight="bold")
+    ax.text(0.5, 0.965, "Colvio — 20 modules", ha="center", fontsize=13.5, fontweight="bold")
     mods = [
         ("Data Explorer", "Builder · OData · FetchXML · SQL", VI),
         ("API Tester", "Postman-style Web API client", VI),
         ("Data Loader", "CREATE · UPSERT · UPDATE · DELETE", VI),
-        ("Show All Data", "fields + change history (audit)", CY),
-        ("Metadata Browser", "entities · fields · OptionSets", CY),
-        ("Schema (ERD)", "interactive diagram + exports", CY),
-        ("Relationships", "N:1 · 1:N · N:N graph", CY),
-        ("Solution Explorer", "components by type", CY),
-        ("Translation Manager", "multi-language labels", CY),
-        ("Users & Licenses", "CAL types · last login", GN),
-        ("Security Audit", "roles · privileges · flags", GN),
-        ("Login History", "audit timeline per user", GN),
+        ("Show All Data", "fields + lookups + change history", VI),
         ("Recycle Bin", "restore deleted records", VI),
-        ("System Ops", "system jobs / plugin traces", GN),
+        ("Metadata Browser", "entities · fields · Virtual chips", CY),
+        ("Automation", "plug-in steps & processes", CY),
+        ("Apps", "model-driven app inventory", CY),
+        ("Relationships", "N:1 · 1:N · N:N graph", CY),
+        ("Schema (ERD)", "data-model canvas + N:N edges", CY),
+        ("Solutions", "components + cross-org compare", CY),
+        ("Env Variables", "defaults · overrides · NO VALUE", CY),
+        ("Translations", "labels + solution-wide zip", CY),
+        ("Users & Licenses", "CAL types · last login", GN),
+        ("Business Units", "org chart · bulk moves", GN),
+        ("Teams", "members + inherited roles", GN),
+        ("Security Audit", "roles · privileges · org-wide", GN),
+        ("Adoption", "DAU/WAU/MAU · PPTX report", GN),
+        ("Login History", "audit timeline per user", GN),
+        ("System Ops", "jobs · traces · flow runs", GN),
     ]
-    cols, w, h, gx, gy = 3, 0.295, 0.135, 0.0425, 0.046
-    x0, y0 = 0.015, 0.775
-    for i, (t, s, c) in enumerate(mods):
+    cols, w, h, gx, gy = 4, 0.225, 0.135, 0.0225, 0.038
+    x0, y0 = 0.012, 0.78
+    for i, (t, sub, c) in enumerate(mods):
         r, col = divmod(i, cols)
-        box(ax, x0 + col * (w + gx), y0 - r * (h + gy), w, h, t, s, ec=c, fs=10, subfs=8)
+        box(ax, x0 + col * (w + gx), y0 - r * (h + gy), w, h, t, sub, ec=c, fs=9.2, subfs=7.2)
     save(fig, "modules.png")
 
 

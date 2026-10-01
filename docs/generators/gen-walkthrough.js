@@ -35,7 +35,7 @@ function lightSlide(title, kicker) {
   s.addShape(pres.shapes.RECTANGLE, { x: 0.5, y: 0.42, w: 0.09, h: 0.62, fill: { color: VI } });
   if (kicker) s.addText(kicker.toUpperCase(), { x: 0.72, y: 0.36, w: 8.7, h: 0.26, fontFace: BODY, fontSize: 10.5, color: CY, charSpacing: 2, bold: true, margin: 0 });
   s.addText(title, { x: 0.72, y: kicker ? 0.58 : 0.42, w: 8.7, h: 0.55, fontFace: HEAD, fontSize: 27, bold: true, color: INK, margin: 0 });
-  s.addText("Colvio  ·  v1.11.154", { x: 7.9, y: 5.30, w: 1.9, h: 0.25, fontFace: BODY, fontSize: 8.5, color: MUT, align: "right", margin: 0 });
+  s.addText("Colvio  ·  v1.11.170", { x: 7.9, y: 5.30, w: 1.9, h: 0.25, fontFace: BODY, fontSize: 8.5, color: MUT, align: "right", margin: 0 });
   return s;
 }
 function bullets(s, items, opts) {
@@ -61,7 +61,7 @@ function stat(s, x, y, w, value, label, color) {
   s.addText("Colvio", { x: 1.0, y: 1.55, w: 8, h: 1.1, fontFace: HEAD, fontSize: 64, bold: true, color: "FFFFFF", margin: 0 });
   s.addText("The free in-browser toolkit for Microsoft Dynamics 365 / Dataverse", { x: 1.0, y: 2.75, w: 7.6, h: 0.5, fontFace: BODY, fontSize: 19, color: "CDC4F5", margin: 0 });
   s.addText("Explore · Load · Test · Audit — zero configuration, zero data collection", { x: 1.0, y: 3.35, w: 7.6, h: 0.4, fontFace: BODY, fontSize: 13, italic: true, color: "9D8FE0", margin: 0 });
-  s.addText("Product walkthrough  ·  v1.11.154  ·  August 2026", { x: 1.0, y: 4.75, w: 7, h: 0.3, fontFace: BODY, fontSize: 11, color: "9D8FE0", margin: 0 });
+  s.addText("Product walkthrough  ·  v1.11.170  ·  October 2026", { x: 1.0, y: 4.75, w: 7, h: 0.3, fontFace: BODY, fontSize: 11, color: "9D8FE0", margin: 0 });
 }
 
 // ── 2. Why Colvio (stats) ───────────────────────────────────────
@@ -70,14 +70,14 @@ function stat(s, x, y, w, value, label, color) {
   s.addText("D365 has always lacked a free, fast, in-browser tool for data exploration and debugging. Colvio rides your existing browser session — open a D365 page, click the icon, work.",
     { x: 0.72, y: 1.25, w: 8.6, h: 0.65, fontFace: BODY, fontSize: 13.5, color: INK, margin: 0 });
   stat(s, 0.6, 2.55, 2.9, "0", "API keys, app registrations,\naccounts or subscriptions", VI);
-  stat(s, 3.55, 2.55, 2.9, "19", "modules — from query builder\nto adoption analytics to security audit", CY);
+  stat(s, 3.55, 2.55, 2.9, "20", "modules — from query builder\nto adoption analytics to security audit", CY);
   stat(s, 6.5, 2.55, 2.9, "100%", "local — no telemetry, no external\nservers, open source (MIT)", GN);
   s.addText("Free forever — no freemium, no “Pro” tier.", { x: 0.72, y: 4.55, w: 8.6, h: 0.4, fontFace: BODY, fontSize: 13, italic: true, color: CY, align: "center", margin: 0 });
 }
 
 // ── 3. Module map ───────────────────────────────────────────────
 {
-  const s = lightSlide("One panel, nineteen modules", "Overview");
+  const s = lightSlide("One panel, twenty modules", "Overview");
   s.addImage({ path: IMG("modules.png"), x: 1.2, y: 1.30, w: 7.6, h: imgH("modules.png", 7.6) });
 }
 
@@ -88,7 +88,7 @@ function stat(s, x, y, w, value, label, color) {
   bullets(s, [
     "Manifest V3 — React 18 panel, relay-only service worker, one privileged content script",
     "Auth = your session cookies. No token is ever extracted or stored",
-    "42 validated actions; every fetch is same-origin to your org",
+    "73 validated actions; every fetch is same-origin to your org",
     "Org-scoped metadata cache (chrome.storage.local)",
   ], { x: 7.15, y: 1.55, w: 2.5, h: 3.4 });
 }
@@ -97,7 +97,7 @@ function stat(s, x, y, w, value, label, color) {
 {
   const s = lightSlide("Query anything, four ways", "Data Explorer");
   card(s, 0.6, 1.35, 4.25, 1.45, VI, "Builder", "Visual columns, AND/OR filter groups (14 operators), parent & child $expand with per-expand filters, sort, limit.");
-  card(s, 5.15, 1.35, 4.25, 1.45, CY, "SQL", "SELECT / JOIN / WHERE / GROUP BY / TOP — auto-translated to FetchXML: reliable pagination, link-entity joins.");
+  card(s, 5.15, 1.35, 4.25, 1.45, CY, "SQL — two engines", "Native: your SELECT runs ON Dataverse (Web API ?sql= — real JOINs with aliases, DISTINCT, GROUP BY). Transpiled: SQL→FetchXML for HAVING/TOP and older orgs.");
   card(s, 0.6, 3.15, 4.25, 1.45, CY, "FetchXML & OData", "Raw editors with templates and paging-cookie pagination. Copy the OData URL for Postman or a browser.");
   card(s, 5.15, 3.15, 4.25, 1.45, GN, "Results that work", "No 5,000-row cap, 60fps virtual scrolling, inline cell edit (PATCH), bulk update/delete, CSV/XLSX/JSON exports.");
 }
@@ -150,10 +150,10 @@ function stat(s, x, y, w, value, label, color) {
   const s = lightSlide("Audited, defense in depth", "Security & privacy");
   s.addImage({ path: IMG("security.png"), x: 0.45, y: 1.40, w: 6.3, h: imgH("security.png", 6.3) });
   bullets(s, [
-    "Full 4-dimension audit + 7-angle code review: 0 open critical/high findings",
+    "Successive audits (4-dimension, write-path, 8-lens product, pre-publication): 0 open critical/high findings",
     "Zero egress verified at code level",
     "Secrets redacted in saved history; CSV formula-injection guards",
-    "260 automated tests",
+    "314 automated tests",
   ], { x: 7.0, y: 1.55, w: 2.55, h: 3.2 });
 }
 
@@ -162,7 +162,7 @@ function stat(s, x, y, w, value, label, color) {
   const s = lightSlide("Insight for admins", "Governance");
   card(s, 0.6, 1.5, 2.73, 2.8, VI, "Users & Licenses", "Every user with Access Mode, CAL type, BU, roles and last login (from audit).\n\nSpot unused licenses: disabled users, never-logged-in accounts.\n\nFull CSV export.", 11.5);
   card(s, 3.63, 1.5, 2.73, 2.8, CY, "Security Audit", "All roles with readable privilege labels and depth badges (User / BU / Org).\n\n30+ sensitive privileges flagged automatically.\n\nOrg-level grants highlighted in red.", 11.5);
-  card(s, 6.66, 1.5, 2.73, 2.8, GN, "Login History", "Login/logout timeline per user from the audit log.\n\nSession durations and access-type breakdown.\n\nCSV export for compliance reviews.", 11.5);
+  card(s, 6.66, 1.5, 2.73, 2.8, GN, "Teams & BUs & Adoption", "Teams: members + the security roles they inherit invisibly.\n\nBUs: full org chart, bulk moves by pasted email list.\n\nAdoption: DAU/WAU/MAU, PPTX report. Login history per user.", 11.5);
 }
 
 // ── 12. Closing (dark) ──────────────────────────────────────────
