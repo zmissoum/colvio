@@ -711,6 +711,35 @@ What's the related-records query you always end up writing by hand? 👇
 
 ---
 
+## Post 25 — Dataverse just learned SQL. And the roles you never see.
+
+> Release post (Colvio page voice), covers the 1.11.158 → 1.11.170 arc. Hero = NATIVE SQL (Microsoft's new Web API ?sql= option — timely, the community is actively posting about it; we credit Microsoft and position Colvio as the fastest way to use it, with the honest Native/Transpiled split). Second = Teams module (the "invisible roles" story — strong admin hook). Third = the "Secondary" badge confession (continues the trust thread from Posts 22/23/24 — we found OUR OWN badge mislabeling production and say so plainly). HONESTY kept: native SQL is Microsoft's feature, not ours; the transpiler remains for HAVING/TOP; native doesn't cover virtual tables. NOTE FOR ZAKARIA: publish after Post 24, Tue/Thu cadence, link in first comment.
+
+⚡ Microsoft quietly shipped one of the most-requested Dataverse features: SQL in the Web API. Pass a SELECT through the new ?sql= query option and the SERVER executes it — real joins included.
+
+Colvio's SQL mode now has two engines:
+
+→ Native: your SELECT goes straight to Dataverse. Multi-table INNER/LEFT JOINs with aliases, self-joins, DISTINCT, server-side GROUP BY:
+
+SELECT a.name, c.fullname FROM account AS a
+INNER JOIN contact AS c ON a.primarycontactid = c.contactid
+
+→ Transpiled: our SQL→FetchXML converter — still the only engine with HAVING and TOP, and the fallback on environments that don't have ?sql= yet (Colvio detects it on first run and switches for you).
+
+Either way: results land in a sortable table, auto-paginated past every row cap, exportable to CSV/Excel.
+
+👥 Also new: a Teams module. Here's the thing about Dataverse security — a role carried by a team is inherited by every member and NEVER appears in the user's own role list. "Why does this user have that right?" finally has a screen: pick a team, see its security roles, its members, and for Entra group teams the group Object ID — plus the truth the docs bury: group membership materializes only after a user's next access.
+
+🛡 And a confession, because we keep choosing charts (and badges) that can't lie: our environment badge was labeling a PRODUCTION org "SECONDARY" — in green. Root cause: Microsoft's OrganizationType enum has no "Production" member. Real production orgs report "Customer" or "Secondary" (yes, really). We rebuilt detection on the documented enum, fail-closed: anything unknown is treated as production, so bulk operations confirm exactly where they must.
+
+20 modules, 314 automated tests, free and open source, runs in your browser on your own session.
+
+What's the first SQL query you'll throw at Dataverse? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #SQL #D365
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
