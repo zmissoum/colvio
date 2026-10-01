@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.169] — 2026-10-02
+### Added — Metadata: Virtual / Elastic table-type filter chips
+- The table list now carries a chip per non-Standard table TYPE present in the org (Virtual, Elastic) — cyan, next to the Custom/Standard category chips, with counts (user request, straight out of the SAP virtual-tables workflow: finding every virtual table at a glance). Orthogonal to the category filter (a virtual table is usually also Custom); the search keeps working while a type chip is active. Tooltips state what each type means.
+- Demo mode gains one virtual table ("SAP Credit (demo)") so the chip and the VIRTUAL badge are visible without a live org.
+
 ## [1.11.168] — 2026-09-30
 ### Fixed — "relations that don't show up": four verified causes across Relationships and Schema (ERD)
 - **Relationships — system plumbing buried the business relations**: metadata order puts createdby/modifiedby/owner/BU/currency/process parents (and async-job/sync-error children) FIRST, and the graph renders 12 nodes per row — the user's own relations landed past the cap and looked missing. Business relationships now come first (alphabetized, pure `relGraphUtils.js` + 4 tests) and the system plumbing starts hidden behind an honest "Show N system" toggle (same precedent as Automation's stage-30 steps).

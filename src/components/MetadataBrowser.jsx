@@ -97,8 +97,12 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   };
 
   const cats=[...new Set(entities.map(e=>e.cat))];
+  // Table-TYPE chips (Virtual / Elastic) — orthogonal to the Custom/Standard category: a virtual
+  // table is usually also "Custom". Only non-Standard types present in the org get a chip.
+  const tableTypes=[...new Set(entities.map(e=>e.tt).filter(t2=>t2&&t2!=="Standard"))].sort();
   const filtered=entities.filter(e=>{
-    if(catFilter!=="all"&&e.cat!==catFilter)return false;
+    if(tableTypes.includes(catFilter)){if(e.tt!==catFilter)return false;} // type chip active — search still applies below
+    else if(catFilter!=="all"&&e.cat!==catFilter)return false;
     if(search&&!e.d.toLowerCase().includes(search.toLowerCase())&&!e.l.includes(search.toLowerCase()))return false;
     return true;
   });
@@ -129,6 +133,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
           <div style={{display:"flex",gap:2,marginTop:6,flexWrap:"wrap"}}>
             <button onClick={()=>setCatFilter("all")} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter==="all"?C.vi:"transparent",color:catFilter==="all"?"white":C.txd}}>All ({entities.length.toLocaleString()})</button>
             {cats.map(c=><button key={c} onClick={()=>setCatFilter(c)} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter===c?C.vi:"transparent",color:catFilter===c?"white":C.txd}}>{c} ({entities.filter(e=>e.cat===c).length.toLocaleString()})</button>)}
+            {tableTypes.map(t2=><button key={t2} onClick={()=>setCatFilter(t2)} title={t2==="Virtual"?"Virtual tables — data lives in an external system, proxied live by a data provider":"Elastic tables — Cosmos-backed, built for very high volumes"} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${catFilter===t2?C.cy:C.cy+"55"}`,borderRadius:3,cursor:"pointer",background:catFilter===t2?C.cy:"transparent",color:catFilter===t2?"white":C.cy}}>{t2} ({entities.filter(e=>e.tt===t2).length.toLocaleString()})</button>)}
           </div>
           {entities.length>0&&<div style={{fontSize:11,color:C.gn,padding:"6px 2px 0"}}>{filtered.length.toLocaleString()} entit{filtered.length===1?"y":"ies"}{search?" matching":catFilter!=="all"?` (${catFilter})`:""}</div>}
         </div>

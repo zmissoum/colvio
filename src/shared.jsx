@@ -76,6 +76,7 @@ export const ENTS=[
   {l:"pricelevel",d:"Price List",p:"pricelevels",i:"💲",c:45,cat:"Catalog"},
   {l:"transactioncurrency",d:"Currency",p:"transactioncurrencies",i:"💱",c:3,cat:"System"},
   {l:"knowledgearticle",d:"Knowledge Article",p:"knowledgearticles",i:"📚",c:560,cat:"Service"},
+  {l:"new_sapcredit",d:"SAP Credit (demo)",p:"new_sapcredits",i:"🔌",c:0,cat:"System",tt:"Virtual"},
 ];
 
 export const FLDS=[
