@@ -99,7 +99,8 @@ KEY FEATURES
   audit (privilege depths, sensitive flags), business units (full org chart, bulk moves by
   pasted email list), teams (members + the security roles they carry — the roles a user
   inherits without them ever showing on their profile), adoption analytics (DAU/WAU/MAU,
-  per-BU rates, PowerPoint report) and per-user login history.
+  per-BU rates, PowerPoint report), storage (rows and real file bytes per table, the system
+  tables that grow silently) and per-user login history.
 
 PRIVACY FIRST
 Zero data collection. No telemetry, no external servers — every request goes to your own

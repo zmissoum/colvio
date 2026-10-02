@@ -2,7 +2,7 @@
 // Run: node gen-spec.js
 const { h1, h2, h3, p, note, bullets, num, pageBreak, table, img, coverAndToc, buildDoc, writeDoc } = require("./helpers");
 
-const VERSION = "v1.11.170";
+const VERSION = "v1.11.171";
 
 function build(L) {
   const c = [];
@@ -54,11 +54,11 @@ function build(L) {
 }
 
 const COMMON_STATS = (L) => [
-  [L.stats1, "~20 600"],
-  [L.stats2, "39"],
+  [L.stats1, "~21 200"],
+  [L.stats2, "40"],
   [L.stats3, "73"],
-  [L.stats4, "314 (Vitest)"],
-  [L.stats5, "~968 KB (+ ~430 KB xlsx, ~373 KB pptxgen " + L.onDemand + ")"],
+  [L.stats4, "336 (Vitest)"],
+  [L.stats5, "~996 KB (+ ~430 KB xlsx, ~373 KB pptxgen " + L.onDemand + ")"],
   [L.stats6, "React 18, react-dom, xlsx (lazy), pptxgenjs (lazy)"],
   [L.stats7, "scripting · storage · declarativeContent"],
 ];
@@ -67,7 +67,7 @@ const FR = {
   title: "Spécification technique", subtitle: "Architecture, intégration Dataverse, moteur de chargement, sécurité",
   date: "Octobre 2026", toc: "Sommaire",
   s1: "1. Vue d'ensemble",
-  s1p1: "Colvio est une extension Chrome **Manifest V3** (React 18 + Vite) pour Microsoft Dynamics 365 / Dataverse. Elle fournit 20 modules d'exploration, de chargement et d'audit, sans aucun backend : toutes les requêtes partent du navigateur de l'utilisateur vers sa propre org, authentifiées par la session existante.",
+  s1p1: "Colvio est une extension Chrome **Manifest V3** (React 18 + Vite) pour Microsoft Dynamics 365 / Dataverse. Elle fournit 21 modules d'exploration, de chargement et d'audit, sans aucun backend : toutes les requêtes partent du navigateur de l'utilisateur vers sa propre org, authentifiées par la session existante.",
   statsHead: ["Métrique", "Valeur"],
   stats1: "Lignes de code (src)", stats2: "Composants React", stats3: "Actions API (content script)",
   stats4: "Tests unitaires", stats5: "Bundle panel", stats6: "Dépendances runtime", stats7: "Permissions Chrome",
@@ -105,6 +105,7 @@ const FR = {
     ["Users & Licenses / Security Audit / Login History", "Pagination complète systemusers, privilèges par rôle + matrice + vue org-wide, affectation de rôles en masse, audit logs. Onglets masqués sans droits."],
     ["Business Units / Adoption", "Hiérarchie + organigramme plein écran (PNG), déplacement d'utilisateurs en masse (vérité sur les rôles annoncée), sélection par liste collée et déplacement VERS une BU par liste d'emails (recherche org entière) ; analytics d'adoption (agrégation serveur par jour, DAU/WAU/MAU, comptes de service séparés, rapport PowerPoint natif)."],
     ["Teams", "Teams propriétaires / groupes Entra / access teams (chargées à la demande, cap 500) : membres, rôles de sécurité portés (hérités par les membres sans apparaître sur l'utilisateur), Object ID Entra copiable, vérité de matérialisation paresseuse affichée. Lecture seule."],
+    ["Storage", "Lignes par table pour toute l'org via RetrieveTotalRecordCount (instantané Dataverse ≤ 24 h, quelques appels découpés par lots, dichotomie qui isole une table refusée) ; classe de stockage selon la répartition Microsoft (File / Log incl. tables élastiques / Database) ; octets de fichiers par table (agrégats sur notes, colonnes File/Image, pièces jointes) en arrière-plan avec découpage par période au-delà de 50 000 lignes. Les Go facturés restent dans le centre d'admin (API à enregistrement d'application)."],
   ],
   s4: "4. Intégration Dataverse",
   s4aT: "Contexte & authentification",
@@ -156,7 +157,7 @@ const FR = {
     "Caps de rendu (500 lignes + bandeau honnête) sur les listes potentiellement énormes (membres de rôle/BU/team, utilisateurs, adoption) — sélection, filtres et exports couvrent toujours la liste complète.",
   ],
   s8: "8. Build, tests et release",
-  s8p1: "Vite (build < 2 s) + script post-build (copie manifest/content/background, icônes). **314 tests Vitest** : parseur SQL (43), envDetect/sqlNative/teamUtils/relGraphUtils (badge d'environnement fail-closed, moteur SQL natif, Teams, classification des relations), loaderUtils (transforms, parser RFC-4180, coercition typée), updateUtils/filterUtils/historyUtils (écritures, filtres, historique), adoption/BU/solutions/doublons, couverture i18n (chaque clé t() présente dans les deux locales). ESLint (règles vrais-bugs : no-undef, no-dupe-keys…) dans chaque passe pré-release.",
+  s8p1: "Vite (build < 2 s) + script post-build (copie manifest/content/background, icônes). **336 tests Vitest** : parseur SQL (43), envDetect/sqlNative/teamUtils/relGraphUtils (badge d'environnement fail-closed, moteur SQL natif, Teams, classification des relations), loaderUtils (transforms, parser RFC-4180, coercition typée), updateUtils/filterUtils/historyUtils (écritures, filtres, historique), adoption/BU/solutions/doublons, couverture i18n (chaque clé t() présente dans les deux locales). ESLint (règles vrais-bugs : no-undef, no-dupe-keys…) dans chaque passe pré-release.",
   s8b: [
     "`npm run build` → `dist/` chargeable en mode développeur ; zip de release `colvio-<version>.zip` (`npm run pack`).",
     "Flux : commit sur main → build + tests + lint → zip → push GitHub → upload Chrome Web Store.",
@@ -169,7 +170,7 @@ const EN = {
   title: "Technical Specification", subtitle: "Architecture, Dataverse integration, load engine, security",
   date: "October 2026", toc: "Contents",
   s1: "1. Overview",
-  s1p1: "Colvio is a **Manifest V3** Chrome extension (React 18 + Vite) for Microsoft Dynamics 365 / Dataverse. It ships 20 exploration, loading and audit modules with no backend at all: every request goes from the user's browser to their own org, authenticated by the existing session.",
+  s1p1: "Colvio is a **Manifest V3** Chrome extension (React 18 + Vite) for Microsoft Dynamics 365 / Dataverse. It ships 21 exploration, loading and audit modules with no backend at all: every request goes from the user's browser to their own org, authenticated by the existing session.",
   statsHead: ["Metric", "Value"],
   stats1: "Lines of code (src)", stats2: "React components", stats3: "API actions (content script)",
   stats4: "Unit tests", stats5: "Panel bundle", stats6: "Runtime dependencies", stats7: "Chrome permissions",
@@ -207,6 +208,7 @@ const EN = {
     ["Users & Licenses / Security Audit / Login History", "Full systemusers pagination, per-role privileges + matrix + org-wide view, bulk role assignment, audit logs. Tabs hidden without rights."],
     ["Business Units / Adoption", "Hierarchy + full-screen org chart (PNG), bulk user move (roles truth stated first), paste-a-list selection and move-INTO-a-BU by pasted email list (org-wide match); adoption analytics (server-side per-day aggregation, DAU/WAU/MAU, service accounts separated, native PowerPoint report)."],
     ["Teams", "Owner / Entra group / access teams (lazy-loaded, 500 cap): members, carried security roles (inherited by members without ever showing on the user), copiable Entra Object ID, lazy-materialization truth stated. Read-only."],
+    ["Storage", "Rows per table for the whole org via RetrieveTotalRecordCount (Dataverse snapshot ≤ 24 h, a few chunked calls, bisection isolating any refused table); storage class per Microsoft's split (File / Log incl. elastic tables / Database); file bytes per table (aggregates over notes, file/image columns, attachments) in the background with period bisection past 50,000 rows. Billed GB stay in the admin center (app-registration API)."],
   ],
   s4: "4. Dataverse integration",
   s4aT: "Context & authentication",
@@ -258,7 +260,7 @@ const EN = {
     "Render caps (500 rows + honest banner) on potentially huge lists (role/BU/team members, users, adoption) — selection, filters and exports still cover the full list.",
   ],
   s8: "8. Build, tests & release",
-  s8p1: "Vite (build < 2 s) + post-build script (manifest/content/background copy, icons). **314 Vitest tests**: SQL parser (43), envDetect/sqlNative/teamUtils/relGraphUtils (fail-closed environment badge, native SQL engine, Teams, relationship classification), loaderUtils (transforms, RFC-4180 parser, typed coercion), updateUtils/filterUtils/historyUtils (writes, filters, history), adoption/BU/solutions/duplicates, i18n coverage (every t() key present in both locales). ESLint (real-bug rules: no-undef, no-dupe-keys…) in every pre-release pass.",
+  s8p1: "Vite (build < 2 s) + post-build script (manifest/content/background copy, icons). **336 Vitest tests**: SQL parser (43), envDetect/sqlNative/teamUtils/relGraphUtils (fail-closed environment badge, native SQL engine, Teams, relationship classification), loaderUtils (transforms, RFC-4180 parser, typed coercion), updateUtils/filterUtils/historyUtils (writes, filters, history), adoption/BU/solutions/duplicates, i18n coverage (every t() key present in both locales). ESLint (real-bug rules: no-undef, no-dupe-keys…) in every pre-release pass.",
   s8b: [
     "`npm run build` → `dist/` loadable in Developer Mode; release zip `colvio-<version>.zip` (`npm run pack`).",
     "Flow: commit on main → build + tests + lint → zip → GitHub push → Chrome Web Store upload.",

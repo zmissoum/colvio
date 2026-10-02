@@ -31,6 +31,7 @@ import UserLicenseMonitor from "./components/UserLicenseMonitor.jsx";
 import BusinessUnits from "./components/BusinessUnits.jsx";
 import SecurityAudit from "./components/SecurityAudit.jsx";
 import Teams from "./components/Teams.jsx";
+import Storage from "./components/Storage.jsx";
 import SchemaViewer from "./components/SchemaViewer.jsx";
 
 // Environment-type detection lives in envDetect.js (pure, tested) — built on Microsoft's REAL
@@ -209,6 +210,7 @@ export default function App(){
     {id:"teams",section:"admin",label:t("nav.teams"),desc:t("nav.teams.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
     {id:"adoption",section:"admin",label:t("nav.adoption"),desc:t("nav.adoption.desc"),icon:<I.Users/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
     {id:"logins",section:"admin",label:t("nav.logins"),desc:t("nav.logins.desc"),icon:<I.Clock/>,requires:"canReadAudit",featureOff:orgFeatures?orgFeatures.auditEnabled===false:false},
+    {id:"storage",section:"admin",label:t("nav.storage"),desc:t("nav.storage.desc"),icon:<I.Database/>,requires:"canReadAllUsers"},
     {id:"ops",section:"admin",label:t("nav.ops"),desc:t("nav.ops.desc"),icon:<I.Zap/>,requires:"canReadAllUsers"},
     {id:"help",label:t("nav.help"),desc:t("nav.help.desc"),icon:<I.Help/>},
   ];
@@ -341,6 +343,7 @@ export default function App(){
           {tab==="bu"&&<ErrorBoundary><BusinessUnits bp={bp} orgInfo={orgInfo} theme={theme} permissions={permissions} orgFeatures={orgFeatures}/></ErrorBoundary>}
           {tab==="security"&&<ErrorBoundary><SecurityAudit bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="teams"&&<ErrorBoundary><Teams bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
+          {tab==="storage"&&<ErrorBoundary><Storage bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{if(loaderBusy&&!window.confirm("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?"))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>

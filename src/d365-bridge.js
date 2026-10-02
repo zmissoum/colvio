@@ -174,6 +174,7 @@ async function callD365(action, params = {}) {
 // result as retryable per-row errors. Lives in loaderUtils (pure) so the 300k-scale regression
 // test can lock its no-argument-spread contract.
 import { flushNeverSent } from "./loaderUtils.js";
+import { countAll, parseRecordCounts, buildFileSumFetch, parseAggRows, FILE_SOURCES } from "./storageUtils.js";
 
 // ── Public API ───────────────────────────────────────────────
 // One GUID shape check for the team methods below (review finding: was pasted twice).
@@ -1004,6 +1005,55 @@ export const bridge = {
     const r = await callD365("queryRaw", { path: `teams(${teamId})/teammembership_association?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,caltype,title` });
     const d = r?.records?.[0];
     return { rows: Array.isArray(d?.value) ? d.value : [], more: !!(d && d["@odata.nextLink"]) };
+  },
+
+  // ── Storage module ──────────────────────────────────────────
+  // Row counts come from RetrieveTotalRecordCount: Dataverse's OWN snapshot (<= 24 h old), so the
+  // whole org is a handful of calls, not a scan. Rides queryRaw (zero new content.js surface).
+  async getRecordCounts(names, onProgress) {
+    if (!isExtension) {
+      const demo = { account: 12450, contact: 34200, opportunity: 8730, lead: 15600, incident: 22100, task: 45800, phonecall: 12300, email: 89000, appointment: 7600, annotation: 67000, systemuser: 320, team: 45, businessunit: 8, asyncoperation: 412300, workflowlog: 96400, plugintracelog: 18200, audit: 2350000, activitymimeattachment: 54100, importlog: 3100, duplicaterecord: 900 };
+      const counts = {}; const failed = [];
+      for (const n of names || []) { if (n in demo) counts[n] = demo[n]; else counts[n] = 0; }
+      onProgress?.(1);
+      return { counts, failed, calls: 1 };
+    }
+    const run = async (chunk) => {
+      const list = encodeURIComponent("[" + chunk.map(n => "'" + n + "'").join(",") + "]");
+      const r = await callD365("queryRaw", { path: `RetrieveTotalRecordCount(EntityNames=@p1)?@p1=${list}` });
+      return parseRecordCounts(r?.records?.[0]);
+    };
+    return countAll({ names, run, onProgress });
+  },
+
+  // One aggregate over a file-storage source (whole table when range is null, else createdon
+  // range in epoch ms). Throws the server error verbatim — the caller distinguishes the 50k
+  // aggregate limit (bisect) from everything else (show).
+  async fileStorageAggregate(srcKey, range, grouped) {
+    const src = FILE_SOURCES.find(x => x.key === srcKey);
+    if (!src) throw new Error("Unknown file source");
+    if (!isExtension) {
+      const FA = "@OData.Community.Display.V1.FormattedValue";
+      const MB = 1024 * 1024;
+      const demo = {
+        notes: [{ grp: "account", [`grp${FA}`]: "Account", bytes: 420 * MB, files: 1840 }, { grp: "incident", [`grp${FA}`]: "Case", bytes: 185 * MB, files: 2210 }, { grp: "contact", [`grp${FA}`]: "Contact", bytes: 64 * MB, files: 530 }],
+        filecols: [{ grp: "account", [`grp${FA}`]: "Account", bytes: 31 * MB, files: 120 }],
+        emailatt: [{ grp: "email", [`grp${FA}`]: "Email", bytes: 2150 * MB, files: 54100 }],
+      };
+      return parseAggRows(grouped ? demo[srcKey] : [{ bytes: demo[srcKey].reduce((a, r) => a + r.bytes, 0), files: demo[srcKey].reduce((a, r) => a + r.files, 0) }], grouped);
+    }
+    const data = await callD365("fetchXml", { fetchXml: buildFileSumFetch(src, range, grouped) });
+    return parseAggRows(data?.records, grouped);
+  },
+
+  async getOldestCreatedOn(srcKey) {
+    const src = FILE_SOURCES.find(x => x.key === srcKey);
+    if (!src || !isExtension) return null;
+    const options = { select: "createdon", orderby: "createdon asc", top: 1 };
+    if (src.odataFilter) options.filter = src.odataFilter;
+    const r = await callD365("query", { entitySet: src.entitySet, options });
+    const t = Date.parse(r?.records?.[0]?.createdon);
+    return Number.isFinite(t) ? t : null;
   },
 
   async getTeamRoles(teamId) {

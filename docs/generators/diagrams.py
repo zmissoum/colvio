@@ -60,7 +60,7 @@ def save(fig, name):
 def d_architecture():
     fig, ax = new_fig(10, 4.4)
     ax.text(0.5, 0.96, "Colvio — Architecture (Manifest V3)", ha="center", fontsize=13.5, fontweight="bold")
-    box(ax, 0.01, 0.38, 0.215, 0.32, "Panel (React 18)", "panel.html — own tab\n20 modules", ec=VI, fs=10.5, subfs=8)
+    box(ax, 0.01, 0.38, 0.215, 0.32, "Panel (React 18)", "panel.html — own tab\n21 modules", ec=VI, fs=10.5, subfs=8)
     box(ax, 0.295, 0.38, 0.175, 0.32, "Service worker", "background.js\nmessage relay", ec=CY, fs=10.5, subfs=8)
     box(ax, 0.54, 0.38, 0.20, 0.32, "Content script", "content.js · *.dynamics.com\n42 actions · validation", ec=CY, fs=10.5, subfs=8)
     box(ax, 0.81, 0.38, 0.18, 0.32, "Dataverse", "Web API v9.2\nOData · $batch", ec=GN, fs=10.5, subfs=8)
@@ -171,7 +171,7 @@ def d_security():
 # ── 6. Module map ──────────────────────────────────────────────────────────
 def d_modules():
     fig, ax = new_fig(10, 5.6)
-    ax.text(0.5, 0.965, "Colvio — 20 modules", ha="center", fontsize=13.5, fontweight="bold")
+    ax.text(0.5, 0.965, "Colvio — 21 modules", ha="center", fontsize=13.5, fontweight="bold")
     mods = [
         ("Data Explorer", "Builder · OData · FetchXML · SQL", VI),
         ("API Tester", "Postman-style Web API client", VI),
@@ -191,11 +191,12 @@ def d_modules():
         ("Teams", "members + inherited roles", GN),
         ("Security Audit", "roles · privileges · org-wide", GN),
         ("Adoption", "DAU/WAU/MAU · PPTX report", GN),
+        ("Storage", "rows & file bytes per table", GN),
         ("Login History", "audit timeline per user", GN),
         ("System Ops", "jobs · traces · flow runs", GN),
     ]
-    cols, w, h, gx, gy = 4, 0.225, 0.135, 0.0225, 0.038
-    x0, y0 = 0.012, 0.78
+    cols, w, h, gx, gy = 3, 0.29, 0.088, 0.045, 0.034
+    x0, y0 = 0.025, 0.835
     for i, (t, sub, c) in enumerate(mods):
         r, col = divmod(i, cols)
         box(ax, x0 + col * (w + gx), y0 - r * (h + gy), w, h, t, sub, ec=c, fs=9.2, subfs=7.2)

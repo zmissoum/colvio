@@ -2,7 +2,7 @@
 // Run: node gen-training.js
 const { h1, h2, h3, p, note, bullets, num, pageBreak, table, img, coverAndToc, buildDoc, writeDoc } = require("./helpers");
 
-const VERSION = "v1.11.170";
+const VERSION = "v1.11.171";
 
 function build(L) {
   const c = [];
@@ -75,6 +75,7 @@ function build(L) {
   c.push(h2(L.s8aT)); c.push(p(L.s8lic));
   c.push(h2("Security Audit")); c.push(p(L.s8sec));
   c.push(h2("Teams")); c.push(p(L.s8teams));
+  c.push(h2("Storage")); c.push(p(L.s8storage));
   c.push(h2("Business Units & Adoption")); c.push(p(L.s8bu));
   c.push(h2("Login History")); c.push(p(L.s8log));
 
@@ -103,10 +104,10 @@ const FR = {
   s1b: [
     "**Zéro configuration** — l'authentification réutilise vos cookies de session D365.",
     "**Confidentialité totale** — aucune donnée ne quitte le navigateur : pas de télémétrie, pas de serveur tiers.",
-    "**20 modules** couvrant l'exploration, la restauration, le chargement de données, le test d'API, la modélisation et l'audit.",
+    "**21 modules** couvrant l'exploration, la restauration, le chargement de données, le test d'API, la modélisation et l'audit.",
     "Interface **EN / FR**, thème sombre/clair, aide intégrée avec recherche.",
   ],
-  s1n: "💡 Capture d'écran recommandée ici : la barre latérale Colvio avec les 20 onglets, sur votre org de démo.",
+  s1n: "💡 Capture d'écran recommandée ici : la barre latérale Colvio avec les 21 onglets, sur votre org de démo.",
   s2: "2. Installation et premier lancement",
   s2a: "Installation",
   s2steps: [
@@ -216,6 +217,7 @@ const FR = {
   s8lic: "Tous les utilisateurs avec Access Mode, CAL Type, BU, rôles de sécurité et **dernière connexion** (via l'audit). Statistiques par type de licence, détection des licences inutilisées (désactivés, jamais connectés). Export CSV.",
   s8sec: "Tous les rôles de sécurité avec leurs privilèges en libellés lisibles (`prvDeleteAccount` → « Delete · Account »), badges de profondeur (User / BU / Parent:Child / **Org** en rouge), et plus de 30 privilèges sensibles signalés. Export CSV par rôle.",
   s8teams: "Toutes les teams de l'org par type (propriétaires, groupes Entra, access teams chargées à la demande) : les membres, et surtout les **rôles de sécurité portés par la team** — hérités par chaque membre sans jamais apparaître sur sa fiche. C'est la réponse à « pourquoi cet utilisateur a-t-il ce droit ? ». Pour les teams Entra : Object ID du groupe copiable, et rappel que la composition se matérialise au prochain accès de l'utilisateur.",
+  s8storage: "Où part votre capacité Dataverse : le nombre de lignes de **chaque table** (instantané Dataverse de moins de 24 h — toute l'org en quelques secondes), classé et étiqueté Database / File / Log, les **tables système qui grossissent en silence** avec l'action de nettoyage qui s'applique, et le **stockage File par table en octets réels** (notes, colonnes File/Image, pièces jointes), calculé en arrière-plan. Les Go facturés restent consultables dans le centre d'admin Power Platform (Licensing → Dataverse) — le module y renvoie.",
   s8bu: "Hiérarchie des business units en arbre ou en **organigramme plein écran** (export PNG). Déplacement d'utilisateurs en masse — cochez, ou **collez une liste d'emails** (sélection dans la BU affichée, ou recherche org entière pour déplacer VERS la BU) — avec la vérité sur les rôles annoncée avant confirmation. **Adoption** : événements d'accès, DAU/WAU/MAU, taux par BU, inactivité, rapport PowerPoint en un clic.",
   s8log: "Timeline de connexions/déconnexions par utilisateur (via l'audit D365), durées de session, répartition par type d'accès, export CSV. Nécessite l'audit activé avec « Audit user access ».",
   s9: "9. Exports et nommage des fichiers",
@@ -256,10 +258,10 @@ const EN = {
   s1b: [
     "**Zero configuration** — authentication reuses your D365 session cookies.",
     "**Privacy first** — nothing leaves the browser: no telemetry, no third-party servers.",
-    "**20 modules** covering exploration, restore, data loading, API testing, modeling and auditing.",
+    "**21 modules** covering exploration, restore, data loading, API testing, modeling and auditing.",
     "**EN / FR** interface, dark/light theme, searchable built-in Help.",
   ],
-  s1n: "💡 Recommended screenshot here: the Colvio sidebar with all 20 tabs, on your demo org.",
+  s1n: "💡 Recommended screenshot here: the Colvio sidebar with all 21 tabs, on your demo org.",
   s2: "2. Installation & first launch",
   s2a: "Install",
   s2steps: [
@@ -369,6 +371,7 @@ const EN = {
   s8lic: "All users with Access Mode, CAL Type, BU, security roles and **last login** (from audit). License-type breakdown, unused-license detection (disabled users, never logged in). CSV export.",
   s8sec: "All security roles with privileges as readable labels (`prvDeleteAccount` → “Delete · Account”), depth badges (User / BU / Parent:Child / **Org** in red), and 30+ sensitive privileges flagged. CSV export per role.",
   s8teams: "Every team in the org by type (owner, Entra group, on-demand access teams): the members, and above all the **security roles the team carries** — inherited by every member without ever showing on their profile. It answers the question: why does this user have that right? For Entra teams: copiable group Object ID, plus the reminder that membership materializes on the user's next access.",
+  s8storage: "Where your Dataverse capacity goes: the row count of **every table** (Dataverse snapshot under 24 h old — the whole org in seconds), ranked and tagged Database / File / Log, the **system tables that grow silently** with the cleanup action that applies, and **file storage per table in real bytes** (notes, file/image columns, attachments), computed in the background. The billed GB stay in the Power Platform admin center (Licensing → Dataverse) — the module links there.",
   s8bu: "Business-unit hierarchy as a tree or a **full-screen org chart** (PNG export). Bulk user moves — tick, or **paste a list of emails** (selection within the displayed BU, or an org-wide search to move INTO the BU) — with the roles truth stated before confirming. **Adoption**: access events, DAU/WAU/MAU, per-BU rates, inactivity, one-click PowerPoint report.",
   s8log: "Login/logout timeline per user (from D365 audit), session durations, access-type breakdown, CSV export. Requires auditing enabled with “Audit user access”.",
   s9: "9. Exports & file naming",

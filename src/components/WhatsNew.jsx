@@ -6,7 +6,7 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 const HIGHLIGHTS = {
   en: [
-    "👥 NEW: Teams module — owner & Entra group teams, their members and the security roles they carry (a role inherited via a team never shows on the user — now you can see where it comes from), with the Entra group Object ID one click away",
+    "👥 NEW modules — Teams: owner & Entra group teams, their members and the security roles they carry (a role inherited via a team never shows on the user). 💾 Storage: rows per table for the whole org in seconds, real file bytes per table, and the system tables that grow silently",
     "⚡ SQL goes NATIVE — the Explorer's SQL mode can now send your SELECT straight to Dataverse (new Web API ?sql= option): real multi-table JOINs with aliases, self-joins, DISTINCT, server-side GROUP BY. Toggle back to the FetchXML transpiler for HAVING/TOP",
     "🛡 Production is detected RIGHT — the environment badge now reads Microsoft's real OrganizationType enum (a prod org reports 'Secondary'!), so the ⚠ PROD confirmations are armed where they must be: Loader runs, bulk update/delete, inline edits, BU moves",
     "🔎 Full product audit shipped — render caps keep huge orgs smooth, Escape closes every modal, exports everywhere (System Jobs, Audit History, Recycle Bin page, Excel variants), real cache-clearing ↻ on the inventories, and query history now redacts SQL & FetchXML values too (old entries scrubbed on upgrade)",
@@ -14,7 +14,7 @@ const HIGHLIGHTS = {
     "⇄ Data model, finally honest — Relationships sorts business relations first (system plumbing behind a toggle) with a cache-clearing ↻, the Schema ERD draws N:N relationships at last, and Metadata gains Virtual/Elastic table filter chips",
   ],
   fr: [
-    "👥 NOUVEAU : module Teams — teams propriétaires & groupes Entra, leurs membres et les rôles de sécurité qu'elles portent (un rôle hérité via une team n'apparaît jamais sur l'utilisateur — vous voyez enfin d'où il vient), avec l'Object ID du groupe Entra copiable en un clic",
+    "👥 NOUVEAUX modules — Teams : teams propriétaires & groupes Entra, leurs membres et les rôles de sécurité qu'elles portent (un rôle hérité via une team n'apparaît jamais sur l'utilisateur). 💾 Storage : les lignes de chaque table de l'org en quelques secondes, les vrais octets de fichiers par table, et les tables système qui grossissent en silence",
     "⚡ Le SQL passe en NATIF — le mode SQL de l'Explorer envoie désormais votre SELECT directement à Dataverse (nouvelle option ?sql= de la Web API) : vrais JOIN multi-tables avec alias, self-joins, DISTINCT, GROUP BY côté serveur. Rebasculez sur le transpileur FetchXML pour HAVING/TOP",
     "🛡 La production est détectée CORRECTEMENT — le badge d'environnement lit le vrai enum OrganizationType de Microsoft (une org de prod répond « Secondary » !) : les confirmations ⚠ PROD sont armées là où il faut : runs du Loader, update/delete en masse, éditions inline, déplacements de BU",
     "🔎 Audit produit complet livré — caps de rendu pour les grosses orgs, Escape ferme toutes les modales, exports partout (System Jobs, historique d'audit, page Corbeille, variantes Excel), ↻ avec vrai vidage de cache sur les inventaires, et l'historique de requêtes expurge aussi les valeurs SQL & FetchXML (anciennes entrées nettoyées à la mise à jour)",

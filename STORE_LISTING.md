@@ -84,6 +84,9 @@ Browse the org's business-unit hierarchy as an indented tree — or as a full-sc
 Teams
 Browse every team with its type — Owner (carries security roles), Entra security/office group (mirrors an Entra ID group; Colvio shows the group Object ID), or per-record Access teams (loaded on demand, capped). Pick a team to see its security roles (members inherit them — an inherited role never appears on the user, this is where "why does this user have that right?" gets answered), its members with access mode / CAL / status, filter and CSV/Excel export. The UI states the Entra truths: group membership materializes lazily and is managed in Entra ID, not Dataverse. Read-only.
 
+Storage
+See which tables fill your Dataverse capacity. Row counts for every table come from Dataverse's own snapshot, so the whole org loads in seconds instead of a scan — ranked, tagged Database / File / Log per Microsoft's capacity split, exportable. The tables that grow silently (system jobs, workflow logs, plug-in traces, audit, emails, import leftovers) are surfaced with the cleanup action that applies, and file storage is measured in real bytes per table (notes, file & image columns, email attachments) in the background. It's honest about its limit: the GB you're billed on live only in the Power Platform admin center, and Colvio links you there.
+
 Login History
 User login/logout audit timeline from D365 audit logs. Session duration, access type stats, CSV export.
 
@@ -140,7 +143,7 @@ ROLE-BASED ACCESS
 
 Some modules require elevated D365 permissions and are automatically hidden for non-admin users:
 Available to all users: Data Explorer, API Tester, Show All Data, Metadata Browser, Data Loader, App Inventory, Relationship Graph, Schema, Help
-Requires System Administrator or System Customizer: Solution Explorer, Environment Variables, Automation, Translation Manager, Login History, Adoption, Users & Licenses, Business Units, Teams, Security Audit, System Ops
+Requires System Administrator or System Customizer: Solution Explorer, Environment Variables, Automation, Translation Manager, Login History, Adoption, Users & Licenses, Business Units, Teams, Security Audit, Storage, System Ops
 Colvio detects your permissions at startup and only shows the tabs you can access. No error screens, no confusion.
 
 SUPPORTED REGIONS
