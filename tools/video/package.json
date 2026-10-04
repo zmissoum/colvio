@@ -1,0 +1,14 @@
+{
+  "name": "colvio-video",
+  "private": true,
+  "description": "Automated product-video generator: drives Colvio's demo mode with Playwright, records via CDP screencast, encodes with ffmpeg. Not part of the extension bundle.",
+  "type": "module",
+  "scripts": {
+    "recon": "node recon.mjs",
+    "video": "node make-video.mjs"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "5.2.0",
+    "playwright": "1.48.2"
+  }
+}
