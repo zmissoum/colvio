@@ -9,6 +9,34 @@
  *      -> Mock data built into the app, no network calls
  */
 
+import { FLDS } from "./shared.jsx";
+
+// ── Demo constants shared by several mocks ──
+// Views: the account ones the Apps demo exposes, plus the contact view the Account form's
+// Contacts subgrid renders (it used to point at an ACCOUNT view).
+const DEMO_VIEWS = [
+  { id: "v-active", name: "Active Accounts", entity: "account" },
+  { id: "v-my", name: "My Accounts", entity: "account",
+    fetchxml: `<fetch version="1.0" output-format="xml-platform" mapping="logical"><entity name="account"><attribute name="name" /><attribute name="telephone1" /><attribute name="address1_city" /><order attribute="name" descending="false" /><filter type="and"><condition attribute="ownerid" operator="eq-userid" /><condition attribute="statecode" operator="eq" value="0" /></filter></entity></fetch>`,
+    layoutxml: `<grid name="resultset" object="1" jump="name" select="1"><row name="result" id="accountid"><cell name="name" width="300" /><cell name="telephone1" width="120" /><cell name="address1_city" width="150" /></row></grid>` },
+  { id: "v-contacts", name: "Active Contacts", entity: "contact",
+    fetchxml: `<fetch version="1.0" output-format="xml-platform" mapping="logical"><entity name="contact"><attribute name="fullname" /><attribute name="emailaddress1" /><attribute name="telephone1" /><order attribute="fullname" descending="false" /><filter type="and"><condition attribute="statecode" operator="eq" value="0" /></filter></entity></fetch>`,
+    layoutxml: `<grid name="resultset" object="2" jump="fullname" select="1"><row name="result" id="contactid"><cell name="fullname" width="300" /><cell name="emailaddress1" width="200" /><cell name="telephone1" width="120" /></row></grid>` },
+];
+// Roles per demo user (getAllUsers ids), matching their title and access mode — every user used to
+// hold the same three roles, System Administrator included for the read-only analyst.
+const DEMO_ROLE_NAMES = { r1: "System Administrator", r2: "Sales Manager", r3: "Basic User", r4: "Custom CRM Admin", r5: "Custom Sales Rep", r6: "Marketing User" };
+const DEMO_USER_ROLES = {
+  u1: ["r1", "r4"],       // CRM Admin
+  u2: ["r2", "r3"],       // Sales Manager
+  u3: ["r5", "r3"],       // Sales Rep
+  u4: ["r6", "r3"],       // Consultant (disabled)
+  u5: ["r3"],             // Analyst, read-only access
+  u6: ["r5", "r3"],       // Account Exec (disabled)
+  u7: ["r4"],             // integration service account
+  u8: ["r1"],             // System Admin
+};
+
 // ── Detection ────────────────────────────────────────────────
 const isExtension = typeof chrome !== "undefined" && !!chrome?.runtime?.id && !!chrome?.runtime?.sendMessage;
 
@@ -624,10 +652,13 @@ export const bridge = {
   },
 
   async getOptionSet(entityName, fieldName, attrType) {
-    if (!isExtension) return [
-      { value: 0, label: "Active", color: null },
-      { value: 1, label: "Inactive", color: null },
-    ];
+    if (!isExtension) {
+      // the demo columns' own choices (FLDS) — every column used to answer "Active / Inactive"
+      const f = FLDS.find(x => x.l === fieldName);
+      if (f?.opts) return f.opts.map(o => ({ value: o.v, label: o.l, color: null }));
+      if (fieldName === "statuscode") return [{ value: 1, label: "Active", color: null }, { value: 2, label: "Inactive", color: null }];
+      return [];
+    }
     const k = cacheKey("optset2", `${entityName}.${fieldName}`); // v2: entries now carry all-language labels
     const cached = await cacheGet(k);
     if (cached) return cached;
@@ -758,10 +789,7 @@ export const bridge = {
     return callD365("getAllForms");
   },
   async getAllViews() {
-    if (!isExtension) return [
-      { id: "v-active", name: "Active Accounts", entity: "account" },
-      { id: "v-my", name: "My Accounts", entity: "account" },
-    ];
+    if (!isExtension) return DEMO_VIEWS.map(({ id, name, entity }) => ({ id, name, entity }));
     return callD365("getAllViews");
   },
   async getAppActions() {
@@ -776,6 +804,10 @@ export const bridge = {
     return callD365("getFormViewDependencies");
   },
   async getViewDetail(viewId) {
+    if (!isExtension) {
+      const v = DEMO_VIEWS.find(x => x.id === viewId);
+      if (v && v.id !== "v-active") return { ...v };
+    }
     if (!isExtension) return {
       id: viewId, name: "Active Accounts", entity: "account",
       fetchxml: `<fetch version="1.0" output-format="xml-platform" mapping="logical"><entity name="account"><attribute name="name" /><attribute name="primarycontactid" /><attribute name="telephone1" /><order attribute="name" descending="false" /><filter type="and"><condition attribute="statecode" operator="eq" value="0" /></filter></entity></fetch>`,
@@ -786,7 +818,7 @@ export const bridge = {
   async getFormXml(formId) {
     if (!isExtension) return {
       id: formId, name: "Account Main",
-      formxml: `<form><tabs><tab><columns><column><sections><section><rows><row><cell id="{c1}"><labels><label description="Contacts" languagecode="1033" /></labels><control id="Contacts" classid="{E7A81278-8635-4d9e-8D4D-59480B391C5B}"><parameters><TargetEntityType>contact</TargetEntityType><ViewId>{v-active}</ViewId><EnableViewPicker>false</EnableViewPicker><RelationshipName>contact_customer_accounts</RelationshipName></parameters></control></cell></row></rows></section></sections></column></columns></tab></tabs></form>`,
+      formxml: `<form><tabs><tab><columns><column><sections><section><rows><row><cell id="{c1}"><labels><label description="Contacts" languagecode="1033" /></labels><control id="Contacts" classid="{E7A81278-8635-4d9e-8D4D-59480B391C5B}"><parameters><TargetEntityType>contact</TargetEntityType><ViewId>{v-contacts}</ViewId><EnableViewPicker>false</EnableViewPicker><RelationshipName>contact_customer_accounts</RelationshipName></parameters></control></cell></row></rows></section></sections></column></columns></tab></tabs></form>`,
     };
     return callD365("getFormXml", { formId });
   },
@@ -1068,11 +1100,7 @@ export const bridge = {
   },
 
   async getUserRoles(userId) {
-    if (!isExtension) return [
-      { id: "r1", name: "System Administrator" },
-      { id: "r2", name: "Sales Manager" },
-      { id: "r3", name: "Basic User" },
-    ];
+    if (!isExtension) return (DEMO_USER_ROLES[userId] || ["r3"]).map(id => ({ id, name: DEMO_ROLE_NAMES[id] }));
     return callD365("getUserRoles", { userId });
   },
 

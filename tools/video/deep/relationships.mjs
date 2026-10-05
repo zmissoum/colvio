@@ -3,15 +3,8 @@
 // Depth 2 is filmed on "list", where the mock really yields an extra N:N table.
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 // A graph node is an SVG <g>: its text is the table name followed by the lookup / relationship
-// name, both truncated with "…" (18 / 20 chars) — match on a short prefix.
+// name, both truncated with "…" (20 chars) — match on a short prefix.
 const node = (h, prefix) => h.page.locator("svg g >> visible=true").filter({ hasText: new RegExp(`^${prefix}`) }).first();
-// At 1280 px the map is wider than its pane (6 children = 1044 px): pan it sideways like a user would.
-const pan = async (h, dx) => {
-  await h.page.evaluate(([x, y]) => window.__cv.cursor(x, y), [900, 420]); await h.wait(400);
-  await h.page.mouse.move(900, 420);
-  for (let i = 0; i < 6; i++) { await h.page.mouse.wheel(dx / 6, 0); await h.wait(70); }
-  await h.wait(400);
-};
 
 export default {
   key: "relationships",
@@ -36,7 +29,6 @@ export default {
         await h.hover(node(h, "accountparentcustomerid")); await h.wait(1300);
         await h.hover(node(h, "leadaccountleads")); await h.wait(1300);
         await h.hover(node(h, "opportunitycustomerid")); await h.wait(1200);
-        await pan(h, 280);
         await h.hover(node(h, "taskregardingobjectid")); await h.wait(1400);
       } },
     { key: "system",
@@ -51,7 +43,6 @@ export default {
       en: ["4 · Click to walk the model", "Click any related table and it becomes the center — follow the data model from table to table."],
       fr: ["4 · Cliquer pour parcourir le modèle", "Cliquez une table liée : elle passe au centre — suivez le modèle de données de table en table."],
       run: async (h) => {
-        await pan(h, -280);
         await h.click(node(h, "contactparentcustomerid")); await h.wait(2000);
         await h.click(node(h, "listlistcontact")); await h.wait(2200);
       } },

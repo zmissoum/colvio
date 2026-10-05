@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.173] — 2026-10-06
+### Fixed — Relationships map wider than its pane
+- Each band (parents, N:N, children) was ONE row: at 1280 px, 6 children made a 1044 px map in a ~780 px pane — the last boxes sat behind a sideways scroll that reset on every table switch. Rows now wrap to the pane's width (measured live, follows resizes), each row centred; nothing is off-screen any more. Pure `nodesPerRow` / `wrapRow` + 3 tests. Table names fit up to 20 characters, and every box carries its full name and relationship as a tooltip.
+
+### Fixed — demo-mode inconsistencies
+- **Option sets**: every column answered "Active / Inactive" — demo option sets now return each column's own choices (Industry, Relationship Type, Status…).
+- **Security roles per user**: every demo user held the same three roles, System Administrator included for the read-only analyst. Roles now follow each user's title and access mode.
+- **Form subgrid**: the Account form's Contacts subgrid rendered an ACCOUNT view. It renders "Active Contacts" (a contact view with its own filters, columns and sort) — the view inspector shows it.
+
 ## [1.11.172] — 2026-10-05
 ### Fixed — Login History invented logouts and session durations
 - Audit action **65 is "User Access via Web Services"** (API / any client other than a model-driven app), not a logout — and Dataverse has NO sign-out event (it logs at most one access per user per interval, 4 h by default). Colvio labelled every 65 a red "Logout" and computed "⏱ session" durations between two unrelated access events. Events are now **access events by channel** — App (web, 64) vs Web services (API, 65) — with per-channel counts, active days, last access and the platform truth stated on screen; session durations are gone. Pure `loginHistoryUtils.js` + 6 tests. Help texts, README and generated docs reworded.

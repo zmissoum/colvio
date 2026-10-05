@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, inp, bt } from "../shared.jsx";
-import { isSystemParent, isSystemChild, splitRels, groupParents } from "../relGraphUtils.js";
+import { isSystemParent, isSystemChild, splitRels, groupParents, nodesPerRow, wrapRow } from "../relGraphUtils.js";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -25,6 +25,14 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
   const containerRef=useRef(null);
   const[gErr,setGErr]=useState(""); // fetch failure — shown, never silently rendered as another entity's graph
   const selectGen=useRef(0); // generation counter to cancel stale depth-2 fetches
+  const[paneW,setPaneW]=useState(0); // the map's rows wrap to this width
+  useEffect(()=>{
+    const el=containerRef.current;
+    if(!el||typeof ResizeObserver==="undefined")return;
+    const ro=new ResizeObserver(([e])=>setPaneW(e.contentRect.width));
+    ro.observe(el);
+    return()=>ro.disconnect();
+  },[]);
 
   useEffect(()=>{if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p})))}).catch(()=>{});},[]);
 
@@ -93,20 +101,28 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
   const visP=shownParents.slice(0,maxP);
   const visC=shownChildren.slice(0,maxC);
   const visM=m2m.slice(0,maxM);
-  const svgW=Math.max(600,Math.max(visP.length,visC.length,visM.length)*(NODE_W+GAP)+GAP*2);
-  const svgH=selEnt?(m2m.length>0?600:460):0;
+  const ROW_GAP=24,BAND=80;
+  const perRow=nodesPerRow(paneW||1000,NODE_W,GAP);
+  const widest=Math.min(perRow,Math.max(visP.length,visC.length,visM.length,1));
+  const svgW=Math.max(widest*(NODE_W+GAP)+GAP,Math.min(600,paneW||600));
   const centerX=svgW/2;
+  const band=(n,top)=>wrapRow(n,{perRow,cx:centerX,top,nodeW:NODE_W,nodeH:NODE_H,gap:GAP,rowGap:ROW_GAP});
   const parentY=54;
-  const m2mY=m2m.length>0?parentY+NODE_H+80:0;
-  const centerY=m2m.length>0?m2mY+NODE_H+80:190;
-  const childY=centerY+NODE_H+80;
+  const pBand=band(visP.length,parentY);
+  const m2mY=visM.length>0?parentY+pBand.height+BAND:0;
+  const mBand=band(visM.length,m2mY);
+  const centerY=(visM.length>0?m2mY+mBand.height:parentY+pBand.height)+BAND;
+  const childY=centerY+NODE_H+BAND;
+  const cBand=band(visC.length,childY);
+  const svgH=selEnt?childY+cBand.height+30:0;
 
   // suffix (×n, d2) is appended AFTER truncating the field name — it used to be cut off.
   const renderNode=(x,y,label,sub,isCenter,onClick,colorOverride,suffix="")=>(
     <g key={label+sub+y} onClick={onClick} style={{cursor:onClick?"pointer":"default"}}>
       <rect x={x-NODE_W/2} y={y} width={NODE_W} height={NODE_H} rx={8} fill={isCenter?C.vi:colorOverride||C.sf} stroke={isCenter?C.vi:colorOverride||C.bd} strokeWidth={1.5}/>
-      <text x={x} y={y+22} textAnchor="middle" fill={isCenter?"white":C.tx} fontSize={12} fontWeight={600}>{label.length>18?label.substring(0,18)+"\u2026":label}</text>
+      <text x={x} y={y+22} textAnchor="middle" fill={isCenter?"white":C.tx} fontSize={12} fontWeight={600}>{label.length>20?label.substring(0,20)+"\u2026":label}</text>
       <text x={x} y={y+38} textAnchor="middle" fill={isCenter?"rgba(255,255,255,0.6)":C.txd} fontSize={10}>{(sub.length>20-suffix.length?sub.substring(0,Math.max(4,20-suffix.length))+"\u2026":sub)+suffix}</text>
+      <title>{`${label} · ${sub}${suffix}`}</title>
     </g>
   );
 
@@ -147,35 +163,35 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
                 </defs>
                 {/* Lines: parents to center */}
                 {visP.map((p,i)=>{
-                  const px=centerX-((visP.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return <line key={"lp"+i} x1={centerX} y1={centerY} x2={px} y2={parentY+NODE_H} stroke={C.or} strokeWidth={1.5} strokeDasharray="6,3" markerEnd="url(#arrowUp)"/>;
+                  const {x:px,y:py}=pBand.pos[i];
+                  return <line key={"lp"+i} x1={centerX} y1={centerY} x2={px} y2={py+NODE_H} stroke={C.or} strokeWidth={1.5} strokeDasharray="6,3" markerEnd="url(#arrowUp)"/>;
                 })}
                 {/* Lines: M2M to center */}
                 {visM.map((m,i)=>{
-                  const mx=centerX-((visM.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return <line key={"lm"+i} x1={centerX} y1={centerY} x2={mx} y2={m2mY+NODE_H} stroke={C.lv} strokeWidth={1.5} strokeDasharray="4,4" markerEnd="url(#arrowM2m)"/>;
+                  const {x:mx,y:my}=mBand.pos[i];
+                  return <line key={"lm"+i} x1={centerX} y1={centerY} x2={mx} y2={my+NODE_H} stroke={C.lv} strokeWidth={1.5} strokeDasharray="4,4" markerEnd="url(#arrowM2m)"/>;
                 })}
                 {/* Lines: center to children */}
                 {visC.map((c,i)=>{
-                  const cx=centerX-((visC.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return <line key={"lc"+i} x1={centerX} y1={centerY+NODE_H} x2={cx} y2={childY} stroke={C.cy} strokeWidth={1.5} strokeDasharray="6,3" markerEnd="url(#arrowDown)"/>;
+                  const {x:cx,y:cy}=cBand.pos[i];
+                  return <line key={"lc"+i} x1={centerX} y1={centerY+NODE_H} x2={cx} y2={cy} stroke={C.cy} strokeWidth={1.5} strokeDasharray="6,3" markerEnd="url(#arrowDown)"/>;
                 })}
                 {/* Parent nodes */}
                 {visP.map((p,i)=>{
-                  const px=centerX-((visP.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return renderNode(px,parentY,p.targetEntity,p.lookupField,false,()=>handleSelect({l:p.targetEntity,d:p.targetEntity}),undefined,(p.count>1?` (\u00d7${p.count})`:"")+(p.depth2?" (d2)":""));
+                  const {x:px,y:py}=pBand.pos[i];
+                  return renderNode(px,py,p.targetEntity,p.lookupField,false,()=>handleSelect({l:p.targetEntity,d:p.targetEntity}),undefined,(p.count>1?` (\u00d7${p.count})`:"")+(p.depth2?" (d2)":""));
                 })}
                 {/* M2M nodes */}
                 {m2m.length>0&&visM.map((m,i)=>{
-                  const mx=centerX-((visM.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return renderNode(mx,m2mY,m.otherEntity,m.schemaName,false,()=>handleSelect({l:m.otherEntity,d:m.otherEntity}),C.lv+"22",(m.count>1?` (\u00d7${m.count})`:"")+(m.depth2?" (d2)":""));
+                  const {x:mx,y:my}=mBand.pos[i];
+                  return renderNode(mx,my,m.otherEntity,m.schemaName,false,()=>handleSelect({l:m.otherEntity,d:m.otherEntity}),C.lv+"22",(m.count>1?` (\u00d7${m.count})`:"")+(m.depth2?" (d2)":""));
                 })}
                 {/* Center node */}
                 {renderNode(centerX,centerY,selEnt.d||selEnt.l,selEnt.l,true,null)}
                 {/* Child nodes */}
                 {visC.map((c,i)=>{
-                  const cx=centerX-((visC.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return renderNode(cx,childY,c.targetEntity,c.lookupField,false,()=>handleSelect({l:c.targetEntity,d:c.targetEntity}),undefined,(c.count>1?` (\u00d7${c.count})`:"")+(c.depth2?" (d2)":""));
+                  const {x:cx,y:cy}=cBand.pos[i];
+                  return renderNode(cx,cy,c.targetEntity,c.lookupField,false,()=>handleSelect({l:c.targetEntity,d:c.targetEntity}),undefined,(c.count>1?` (\u00d7${c.count})`:"")+(c.depth2?" (d2)":""));
                 })}
                 {/* Section labels — positioned above each row */}
                 <text x={centerX} y={parentY-8} textAnchor="middle" fill={C.or} fontSize={11} fontWeight={700}>N:1 Parents ({visP.length})</text>

@@ -742,7 +742,7 @@ What's the first SQL query you'll throw at Dataverse? 👇
 
 ## Campaign — "Colvio in video" (Posts 26 → 31, 3 weeks)
 
-> Built on the generated videos and store graphics (`tools/video`). START GATE: J = the first Tuesday after the Chrome Web Store shows **v1.11.172** (or later) — the tour shows Teams and Storage, which the store build doesn't have before that. If Post 25 (native SQL + Teams) isn't out yet, publish it the week before J: it's the release news, this campaign is the show-and-tell that follows.
+> Built on the generated videos and store graphics (`tools/video`). START GATE: J = the first Tuesday after the Chrome Web Store shows **v1.11.173** (or later) — the tour shows Teams and Storage, which the store build doesn't have before that. If Post 25 (native SQL + Teams) isn't out yet, publish it the week before J: it's the release news, this campaign is the show-and-tell that follows.
 >
 > Rules (unchanged): Colvio page voice ("we", "Colvio") except Post 31 (Zakaria's personal profile, first person) · upload the video NATIVELY to LinkedIn (no YouTube link: native video reaches far more people) · link in the FIRST COMMENT · reply to every comment within the first hour · FR version for the French audience — either a separate post the same day at 12:15 or LinkedIn's "add a translation" if available.
 >
@@ -757,7 +757,7 @@ What's the first SQL query you'll throw at Dataverse? 👇
 | J+14 · Tue 8:30 | 30 — Who uses the CRM you pay for? | `tools/video/out/deep/colvio_adoption_en.mp4` / `_fr.mp4` (still image: `store/en/04_adoption.png`) |
 | J+16 · Thu 17:30 | 31 — A script recorded our videos (personal profile; Colvio page reshares J+17) | `colvio_tour_en.mp4` |
 
-Example: v1.11.172 live by Monday 12 October → 13, 15, 20, 22, 27 and 29 October.
+Example: v1.11.173 live by Monday 12 October → 13, 15, 20, 22, 27 and 29 October.
 
 ### Post 26 — 2 minutes, 16 modules, zero setup
 
@@ -775,7 +775,7 @@ Here's the answer, in motion: 16 modules on demo data, back to back.
 
 What you won't see in the video: a sign-up screen, an API key, an app registration. Colvio runs in your browser on the Dynamics 365 session you already have, and talks to nothing but your own org.
 
-Free, open source, 21 modules in total, 347 automated tests.
+Free, open source, 21 modules in total, 350 automated tests.
 
 Which module would you open first? 👇
 
@@ -795,7 +795,7 @@ La réponse, en vidéo : 16 modules sur des données de démo, l'un après l'aut
 
 Ce que vous ne verrez pas dans la vidéo : un écran d'inscription, une clé d'API, une app registration. Colvio tourne dans votre navigateur, sur la session Dynamics 365 que vous avez déjà, et ne parle qu'à votre propre org.
 
-Gratuit, open source, 21 modules au total, 347 tests automatisés.
+Gratuit, open source, 21 modules au total, 350 tests automatisés.
 
 Quel module ouvririez-vous en premier ? 👇
 

@@ -35,6 +35,26 @@ export function groupParents(rels) {
   return [...groups.values()];
 }
 
+// Map layout: rows wrap to the pane's width. A single row per band used to be wider than the pane
+// (6 children = 1044 px at 1280), hiding nodes behind a sideways scroll that reset on every table switch.
+export function nodesPerRow(paneWidth, nodeW, gap) {
+  return Math.max(1, Math.floor((paneWidth - gap) / (nodeW + gap)));
+}
+
+// Positions (x = node centre, y = node top) of `count` nodes wrapped `perRow` per row, each row
+// centred on cx; height = the band's total height.
+export function wrapRow(count, { perRow, cx, top, nodeW, nodeH, gap, rowGap }) {
+  const per = Math.max(1, perRow);
+  const pos = [];
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / per), col = i % per;
+    const inRow = Math.min(per, count - row * per);
+    pos.push({ x: cx - ((inRow - 1) * (nodeW + gap)) / 2 + col * (nodeW + gap), y: top + row * (nodeH + rowGap) });
+  }
+  const rows = Math.max(1, Math.ceil(count / per));
+  return { pos, height: rows * nodeH + (rows - 1) * rowGap };
+}
+
 // Splits into {business, system}, each sorted by target so the layout is deterministic
 // (metadata order isn't) — business first is the whole point.
 export function splitRels(rels, isSystem) {

@@ -1,6 +1,5 @@
-// Deep dive — Metadata browser. Demo tables/columns come from the built-in mock (ENTS / FLDS);
-// demo option-set fetches return Active / Inactive, so the values chapter uses statecode, where
-// that is the real answer.
+// Deep dive — Metadata browser. Demo tables/columns come from the built-in mock (ENTS / FLDS), and
+// demo option sets return each column's own choices — the values chapter opens Industry.
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 
 // A schema snapshot as Colvio exports it (colvioSchema: 1), "taken on DEV": one table and three
@@ -56,8 +55,8 @@ export default {
       fr: ["4 · Lire les valeurs d'un option set", "Values ouvre les options d'une colonne de choix — chaque valeur avec son libellé — exportables en CSV ou Excel depuis la même fenêtre."],
       run: async (h) => {
         const f = h.page.getByPlaceholder("Filter columns...").first();
-        await h.click(f); await f.fill(""); await f.pressSequentially("status", { delay: 90 }); await h.wait(1300);
-        const row = h.page.locator("tr >> visible=true").filter({ hasText: /statecode/ }).first();
+        await h.click(f); await f.fill(""); await f.pressSequentially("industry", { delay: 90 }); await h.wait(1300);
+        const row = h.page.locator("tr >> visible=true").filter({ hasText: /industrycode/ }).first();
         await h.click(row.getByRole("button", { name: /^Values/ })); await h.wait(2200);
         await h.hover(btn(h, /Export CSV$/)); await h.wait(1500);
       } },
