@@ -740,6 +740,289 @@ What's the first SQL query you'll throw at Dataverse? 👇
 
 ---
 
+## Campaign — "Colvio in video" (Posts 26 → 31, 3 weeks)
+
+> Built on the generated videos and store graphics (`tools/video`). START GATE: J = the first Tuesday after the Chrome Web Store shows **v1.11.171** — the tour shows Teams and Storage, which the store build doesn't have before that. If Post 25 (native SQL + Teams) isn't out yet, publish it the week before J: it's the release news, this campaign is the show-and-tell that follows.
+>
+> Rules (unchanged): Colvio page voice ("we", "Colvio") except Post 31 (Zakaria's personal profile, first person) · upload the video NATIVELY to LinkedIn (no YouTube link: native video reaches far more people) · link in the FIRST COMMENT · reply to every comment within the first hour · FR version for the French audience — either a separate post the same day at 12:15 or LinkedIn's "add a translation" if available.
+>
+> First comment, every post: `🔗 Chrome Web Store: https://chromewebstore.google.com/detail/edieednbdaclheikneelkjfbckibhdgl · Source: https://github.com/zmissoum/colvio`
+
+| Slot | Post | Asset (EN / FR) |
+|---|---|---|
+| J · Tue 8:30 | 26 — 2 minutes, 16 modules | `tools/video/out/video/colvio_tour_en.mp4` / `_fr.mp4` |
+| J+2 · Thu 17:30 | 27 — 94 seconds inside the Data Explorer | `tools/video/out/deep/colvio_explorer_en.mp4` / `_fr.mp4` |
+| J+7 · Tue 8:30 | 28 — 5 questions, 5 screens (carousel) | `tools/video/out/linkedin/colvio_5_screens_en.pdf` / `_fr.pdf` (document post) |
+| J+9 · Thu 17:30 | 29 — What's filling your capacity? | `store/en/05_storage.png` / `store/fr/…` (or clip `tools/video/out/video/clips_en/16_storage.mp4`) |
+| J+14 · Tue 8:30 | 30 — Who uses the CRM you pay for? | `store/en/04_adoption.png` / `store/fr/…` (or clip `tools/video/out/video/clips_en/14_adoption.mp4`) |
+| J+16 · Thu 17:30 | 31 — A script recorded our videos (personal profile; Colvio page reshares J+17) | `colvio_tour_en.mp4` |
+
+Example: v1.11.171 live by Monday 12 October → 13, 15, 20, 22, 27 and 29 October.
+
+### Post 26 — 2 minutes, 16 modules, zero setup
+
+**EN**
+
+🎬 2 minutes, 16 modules, zero setup.
+
+We keep getting the same question: "OK, but what does Colvio actually DO?"
+
+Here's the answer, in motion: 16 modules on demo data, back to back.
+
+🔎 Data: query any table (Builder, OData, FetchXML or SQL), inspect every field of a record
+🛠 Develop: metadata, relationships, solutions, apps, automation, environment variables, translations
+🛡 Admin: users & licenses, business units, security roles, teams, adoption, login history, storage
+
+What you won't see in the video: a sign-up screen, an API key, an app registration. Colvio runs in your browser on the Dynamics 365 session you already have, and talks to nothing but your own org.
+
+Free, open source, 21 modules in total, 336 automated tests.
+
+Which module would you open first? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #OpenSource
+
+**FR**
+
+🎬 2 minutes, 16 modules, zéro configuration.
+
+On nous pose souvent la même question : « OK, mais concrètement, Colvio fait quoi ? »
+
+La réponse, en vidéo : 16 modules sur des données de démo, l'un après l'autre.
+
+🔎 Données : interroger n'importe quelle table (Builder, OData, FetchXML ou SQL), inspecter chaque champ d'un enregistrement
+🛠 Développement : métadonnées, relations, solutions, apps, automatisations, variables d'environnement, traductions
+🛡 Administration : utilisateurs et licences, business units, rôles de sécurité, teams, adoption, historique de connexion, stockage
+
+Ce que vous ne verrez pas dans la vidéo : un écran d'inscription, une clé d'API, une app registration. Colvio tourne dans votre navigateur, sur la session Dynamics 365 que vous avez déjà, et ne parle qu'à votre propre org.
+
+Gratuit, open source, 21 modules au total, 336 tests automatisés.
+
+Quel module ouvririez-vous en premier ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #OpenSource
+
+---
+
+### Post 27 — 94 seconds inside the Data Explorer
+
+**EN**
+
+⏱ 94 seconds inside Colvio's Data Explorer.
+
+One table, one query, and everything you can do with it in eight steps:
+
+1. Pick a table and its columns (every table shows its row count)
+2. Filter visually, with operators that fit each column type
+3. Run it (no 5,000-row cap), then sort and narrow down the results
+4. See the same query in OData or FetchXML, or write SQL: run natively by Dataverse, or converted to FetchXML
+5. Double-click a cell to edit it: the value is checked against the column's type before anything is sent
+6. Tick records, pick a column and a value: one bulk update, confirmation first
+7. Find duplicates on the columns YOU choose, with the extras pre-selected for cleanup
+8. Query tabs, a history with filter values redacted, and Excel / CSV / JSON exports
+
+All on demo data. No real org on screen.
+
+Which of the eight do you still do by hand today? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataManagement
+
+**FR**
+
+⏱ 94 secondes dans le Data Explorer de Colvio.
+
+Une table, une requête, et tout ce qu'on peut en faire, en huit étapes :
+
+1. Choisir une table et ses colonnes (chaque table affiche son volume)
+2. Filtrer visuellement, avec les opérateurs adaptés au type de chaque colonne
+3. Exécuter (sans plafond à 5 000 lignes), puis trier et affiner les résultats
+4. Voir la même requête en OData ou en FetchXML, ou écrire du SQL : exécuté nativement par Dataverse, ou converti en FetchXML
+5. Double-cliquer une cellule pour la modifier : la valeur est vérifiée selon le type de la colonne avant tout envoi
+6. Cocher des enregistrements, choisir une colonne et une valeur : une mise à jour en masse, après confirmation
+7. Trouver les doublons sur les colonnes que VOUS choisissez, l'excédent présélectionné pour le nettoyage
+8. Des onglets de requêtes, un historique sans les valeurs de filtre, et les exports Excel / CSV / JSON
+
+Tout sur des données de démo. Aucune vraie org à l'écran.
+
+Laquelle de ces huit étapes faites-vous encore à la main aujourd'hui ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataManagement
+
+---
+
+### Post 28 — 5 questions, 5 screens (carousel)
+
+**EN**
+
+5 questions you get asked about a Dynamics 365 org, and the Colvio screen that answers each. Swipe 👉
+
+1️⃣ "Can you pull these records for me?" → Data Explorer: any table, any filter, no 5,000-row cap, export in one click
+2️⃣ "What's actually stored on this record?" → Show All Data: every field with its logical name and type, editable in place
+3️⃣ "What can this role really do?" → Security Audit: the privilege matrix, table by table, sensitive rights flagged
+4️⃣ "Is anyone actually using the CRM?" → Adoption: DAU / WAU / MAU, adoption per business unit, paid seats that never sign in
+5️⃣ "Why is our storage so full?" → Storage: row counts for every table in seconds, and the cleanup that applies
+
+Five answers, one browser side panel, the session you already have. Free and open source.
+
+Which question lands on your desk most often? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #CRM
+
+**FR**
+
+5 questions qu'on vous pose sur une org Dynamics 365, et l'écran Colvio qui répond à chacune. Faites défiler 👉
+
+1️⃣ « Tu peux m'extraire ces enregistrements ? » → Data Explorer : n'importe quelle table, n'importe quel filtre, sans plafond à 5 000 lignes, export en un clic
+2️⃣ « Qu'est-ce qu'il y a vraiment sur cette fiche ? » → Show All Data : chaque champ avec son nom logique et son type, modifiable sur place
+3️⃣ « Ce rôle, il permet quoi exactement ? » → Audit de sécurité : la matrice des privilèges, table par table, droits sensibles signalés
+4️⃣ « Est-ce que quelqu'un utilise vraiment le CRM ? » → Adoption : DAU / WAU / MAU, adoption par business unit, licences payées jamais utilisées
+5️⃣ « Pourquoi notre stockage est-il plein ? » → Stockage : le volume de chaque table en quelques secondes, et le nettoyage adapté
+
+Cinq réponses, un panneau latéral dans le navigateur, la session que vous avez déjà. Gratuit et open source.
+
+Quelle question atterrit le plus souvent sur votre bureau ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #CRM
+
+---
+
+### Post 29 — What's filling your Dataverse capacity?
+
+**EN**
+
+💾 "We're over our Dataverse capacity. Which tables are filling it?"
+
+The admin center tells you HOW MUCH you use. It doesn't tell you WHERE.
+
+Colvio's Storage module does:
+
+📊 Row counts for every table in the org, in seconds, read from Dataverse's own snapshot (refreshed by the platform, at most 24 h old) instead of a slow scan
+🏷 Each table tagged Database, File or Log, following Microsoft's capacity split
+🐘 The tables that grow silently (audit, system jobs, workflow logs, plug-in traces, emails, import leftovers), each with the cleanup that applies
+📎 File storage measured in real bytes per table (notes, file and image columns, email attachments), in the background
+📤 Everything exportable
+
+What it won't pretend: the GB you're billed on only live in the Power Platform admin center. Colvio says so on screen and links you there. Use it to find WHICH tables to clean, then check the bill.
+
+What's the biggest table in your org, and would you have guessed it? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #Storage
+
+**FR**
+
+💾 « On a dépassé notre capacité Dataverse. Quelles tables la remplissent ? »
+
+Le centre d'administration vous dit COMBIEN vous consommez. Pas OÙ.
+
+Le module Stockage de Colvio, si :
+
+📊 Le volume de chaque table de l'org en quelques secondes, lu dans le snapshot de Dataverse lui-même (rafraîchi par la plateforme, 24 h maximum) plutôt qu'un scan interminable
+🏷 Chaque table classée Base de données, Fichier ou Journal, selon le découpage de capacité de Microsoft
+🐘 Les tables qui grossissent en silence (audit, travaux système, journaux de workflow, traces de plug-ins, emails, restes d'imports), chacune avec le nettoyage adapté
+📎 Le stockage fichier mesuré en octets réels par table (notes, colonnes fichier et image, pièces jointes d'emails), en arrière-plan
+📤 Tout est exportable
+
+Ce qu'il ne prétend pas : les Go qui vous sont facturés ne se lisent que dans le centre d'administration Power Platform. Colvio le dit à l'écran et vous y emmène. Servez-vous-en pour trouver QUELLES tables nettoyer, puis vérifiez la facture.
+
+Quelle est la plus grosse table de votre org, et l'auriez-vous devinée ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #Stockage
+
+---
+
+### Post 30 — Who actually uses the CRM you pay for?
+
+**EN**
+
+📈 "How many people actually use the CRM we pay for?"
+
+Management asks. Nobody has the number ready.
+
+Colvio's Adoption module turns Dataverse's own access audit into the answer:
+
+👥 Distinct active users, DAU / WAU / MAU and stickiness, over 7, 30 or 90 days or any custom window
+🏢 Adoption rate per business unit (active ÷ enabled), filterable by security role
+💸 Paid seats that never sign in, with license type and days since last access, ready to export
+🔁 Comparison with the previous period in one click
+📊 And the deck for the meeting: a 5-slide PowerPoint with native, editable charts
+
+Honest by design: Dataverse records access at most once per interval (4 h by default), so Colvio counts "access events", not logins. Service and application users are left out, since they never sign in by design. It needs "Audit user access" turned on and sees what your audit retention keeps, and the screen says both.
+
+If you could know one adoption number for your org today, which would it be? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #Adoption
+
+**FR**
+
+📈 « Combien de personnes utilisent vraiment le CRM qu'on paie ? »
+
+La direction pose la question. Personne n'a le chiffre sous la main.
+
+Le module Adoption de Colvio transforme l'audit d'accès de Dataverse en réponse :
+
+👥 Utilisateurs actifs distincts, DAU / WAU / MAU et fidélité, sur 7, 30 ou 90 jours ou n'importe quelle période
+🏢 Taux d'adoption par business unit (actifs ÷ activés), filtrable par rôle de sécurité
+💸 Les licences payées jamais utilisées, avec le type de licence et les jours depuis le dernier accès, prêtes à exporter
+🔁 La comparaison avec la période précédente en un clic
+📊 Et le support pour la réunion : un PowerPoint de 5 diapositives avec de vrais graphiques modifiables
+
+Honnête par conception : Dataverse enregistre au plus un accès par intervalle (4 h par défaut), donc Colvio compte des « événements d'accès », pas des connexions. Les comptes de service et d'application sont exclus : ils ne se connectent jamais, par nature. Il faut que l'audit de l'accès utilisateur (« Audit user access ») soit activé, et Colvio ne voit que ce que votre rétention d'audit conserve ; l'écran le dit.
+
+Si vous pouviez connaître un seul chiffre d'adoption de votre org aujourd'hui, ce serait lequel ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #Adoption
+
+---
+
+### Post 31 — A script recorded our videos (Zakaria's personal profile, first person)
+
+**EN**
+
+I didn't record a single one of Colvio's demo videos. A script did.
+
+Product videos made by hand never survived the release pace: every UI change put the last recording out of date. So I automated the recording instead:
+
+▶️ Playwright opens the built extension in demo mode, exactly what users install
+🎥 The Chrome DevTools screencast captures every frame
+💬 An overlay injected into the page draws captions, an animated cursor, click ripples and title cards
+🎞 ffmpeg puts the frames back together at their real timing, as a 1080p MP4
+
+One command gives the full tour in English and French, plus one clip per module.
+
+The part I like most: each render replays every scene, and a failed click or a single console error fails the run. The video pipeline doubles as an end-to-end test of the whole UI.
+
+Next: one deep-dive video per module, chapter by chapter. The Data Explorer one is done.
+
+Demo data only. No client org ever goes on camera.
+
+Would you trust a demo video more, or less, knowing a script recorded it? 👇
+
+#Dynamics365 #Playwright #OpenSource #TestAutomation #DevTools
+
+**FR**
+
+Je n'ai enregistré aucune des vidéos de démo de Colvio. Un script s'en est chargé.
+
+Les vidéos produit faites à la main ne tenaient jamais le rythme des versions : chaque changement d'interface rendait le dernier enregistrement obsolète. Alors j'ai automatisé l'enregistrement :
+
+▶️ Playwright ouvre l'extension compilée en mode démo, exactement ce que les utilisateurs installent
+🎥 Le screencast des Chrome DevTools capture chaque image
+💬 Une surcouche injectée dans la page dessine les légendes, un curseur animé, les clics et les cartons de titre
+🎞 ffmpeg remonte les images à leur vrai rythme, en MP4 1080p
+
+Une commande donne la visite complète en anglais et en français, plus un clip par module.
+
+Ce que je préfère : chaque rendu rejoue toutes les scènes, et un clic raté ou une seule erreur de console fait échouer le rendu. La chaîne vidéo sert aussi de test de bout en bout de toute l'interface.
+
+Prochaine étape : une vidéo détaillée par module, chapitre par chapitre. Celle du Data Explorer est prête.
+
+Uniquement des données de démo. Aucune org client ne passe jamais à l'écran.
+
+Une vidéo de démo enregistrée par un script, ça vous inspire plus ou moins confiance ? 👇
+
+#Dynamics365 #Playwright #OpenSource #TestAutomation #DevTools
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:

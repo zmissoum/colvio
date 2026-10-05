@@ -34,6 +34,36 @@ Outputs land in `tools/video/out/` (git-ignored):
 - `video/clips_en/NN_<module>.mp4`, `video/clips_fr/…` — one clip per module, for LinkedIn posts
 - `video/summary.json` — duration, scene count and console errors per language
 
+## Per-module deep dives
+
+One module, every feature, chapter by chapter (~1 min 30 s each):
+
+```bash
+node make-deep.mjs --module=explorer            # EN + FR → out/deep/colvio_explorer_<lang>.mp4
+node make-deep.mjs --module=explorer --probe    # no recording: one screenshot per chapter end state
+```
+
+A module is a file `deep/<key>.mjs` exporting `{ key, label, tagline: {en, fr}, chapters }`, where
+each chapter is `{ key, pos?, en: [title, text], fr: [title, text], run: async (h) => … }`
+(`pos: "top"` moves the caption up when the action happens in the lower half of the screen).
+Write the chapters, run `--probe` until every chapter passes and every screenshot shows what the
+caption claims, then render. Available: `explorer` (table & columns, visual filters, run / sort /
+narrow, OData · FetchXML · SQL, inline edit, bulk update, duplicates, tabs & history & exports).
+
+Selectors: the Explorer's query tabs stay mounted (hidden) while another module is open — always
+target visible elements (`h.vis(text)`, `>> visible=true`).
+
+## Chrome Web Store graphics
+
+```bash
+node store-shots.mjs
+```
+
+Writes, from the demo build: `store/en/01…05_<module>.png` and `store/fr/…` (1280×800 screenshots —
+headline band over a 2× capture, 24-bit PNG, full bleed), `store/promo_small_440x280.png`,
+`store/marquee_1400x560.png`, and `out/linkedin/colvio_5_screens_<lang>.pdf` (the five screenshots
+as a LinkedIn document post). Headlines live in `SHOTS` in the script; re-run after a UI change.
+
 ## What's filmed
 
 Only modules that show **real content in demo mode** (checked screenshot by screenshot):

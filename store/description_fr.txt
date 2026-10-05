@@ -1,0 +1,51 @@
+Colvio — la boîte à outils gratuite et open source pour Microsoft Dynamics 365 / Dataverse, directement dans votre navigateur.
+
+Interrogez, chargez, inspectez, testez la Web API et auditez votre org depuis un seul panneau latéral. Colvio utilise la session avec laquelle vous êtes déjà connecté : pas d'inscription d'application, pas de clé d'API, pas de compte, pas d'abonnement. Il ne parle qu'à votre propre serveur Dynamics 365 — aucune statistique, aucune télémétrie, aucun serveur externe.
+
+21 modules pour consultants, administrateurs et développeurs. Colvio s'adapte à vos droits : les modules réservés aux administrateurs restent masqués pour les utilisateurs standard, et chaque écriture passe toujours par la sécurité de Dataverse.
+
+NOUVEAUTÉS
+• SQL natif — exécutez vos SELECT directement sur Dataverse (l'option ?sql= de la Web API) : vraies jointures, DISTINCT, GROUP BY côté serveur. Ou passez au moteur transpilé (SQL → FetchXML) pour HAVING / TOP et pour les environnements sans ?sql=.
+• Teams — chaque team avec son type (Owner, groupe Entra, Access), ses membres et les rôles de sécurité qu'ils héritent : la réponse à « pourquoi cet utilisateur a-t-il ce droit ? ».
+• Stockage — quelles tables remplissent votre capacité : le volume de chaque table en quelques secondes, la répartition Base de données / Fichier / Journal, le stockage fichier par table, et le nettoyage adapté.
+• Modèle de données — graphe des relations trié métier d'abord, et un ERD qui dessine les relations N:N.
+• Badge d'environnement fondé sur le type d'organisation de Microsoft : la production est toujours reconnue, et ses confirmations restent actives.
+• Confidentialité — les valeurs de filtre et les littéraux SQL et FetchXML sont masqués dans les historiques de requêtes.
+
+DONNÉES
+• Data Explorer — interrogez n'importe quelle table avec un Builder visuel, en OData, FetchXML ou SQL. Pas de plafond à 5 000 lignes, défilement virtuel sur plus de 10 000 lignes, groupes de filtres ET / OU, filtres relationnels (« les comptes sans opportunité ouverte »), expansions parent et enfant. Éditez une cellule sur place, ou mettez à jour / supprimez en masse via un pipeline $batch rapide — valeurs typées et vérifiées selon les métadonnées de la colonne, lookups compris. Détection des doublons, onglets de requêtes, historique, requêtes enregistrées, exports Excel / CSV / JSON.
+• Data Loader — import CSV, TSV ou Excel ; modes CREATE, UPSERT (GUID ou clé alternative), UPDATE seul et DELETE. $batch en parallèle (environ 3 000 à 4 000 enregistrements par seconde), un journal en direct ligne par ligne avec l'erreur exacte de Dataverse, conversion des libellés en valeurs d'option, dates EU / US, modèles de mappage. Filet de sécurité : simulation, annulation de ce qu'un import a créé, mode delta, contrôles préalables, relance des seules erreurs passagères, contournement optionnel des plug-ins et workflows personnalisés.
+• Corbeille — restaurez des enregistrements supprimés côté serveur, avec l'auteur de la suppression et chaque limite de la plateforme expliquée.
+• Show All Data — tous les champs de l'enregistrement ouvert dans votre onglet, avec noms logiques et types, modifiables sur place (la sécurité des champs reste appliquée). Historique des modifications par champ, et un gestionnaire de processus d'entreprise (BPF) pour les administrateurs.
+
+DÉVELOPPEMENT
+• API Tester — un Postman pour Dataverse avec authentification automatique : GET / POST / PATCH / PUT / DELETE, autocomplétion des en-têtes, éditeur JSON avec validation, modèles, historique sans les secrets, copie en cURL.
+• Métadonnées — tables, colonnes et option sets, filtres des tables Virtual et Elastic, exports du dictionnaire de données.
+• Automatisation — chaque étape de plug-in, workflow classique, flux cloud, règle métier, action et processus d'entreprise enregistrés dans l'org.
+• Apps — ce que chaque application pilotée par modèle expose vraiment, y compris l'état « tous les formulaires / toutes les vues » que le portail maker n'affiche jamais ; les filtres des vues traduits en clair.
+• Relations & Schéma — un graphe des relations interactif, et un ERD exportable en PNG, SVG ou Mermaid.
+• Solutions — composants affichés avec des noms lisibles, et comparaison de solutions dans une org ou entre deux orgs.
+• Variables d'environnement — valeurs par défaut, surcharges, et le piège classique mis en avant : les variables sans aucune valeur.
+• Traductions — les libellés des champs dans chaque langue installée, export / import CSV, publication automatique.
+
+ADMINISTRATION
+• Utilisateurs & licences — mode d'accès, type de licence, rôles, dernière connexion ; les licences inutilisées en un coup d'œil.
+• Business units — arborescence et organigramme, membres, déplacements en masse en collant une liste d'emails.
+• Audit de sécurité — les privilèges d'un rôle en clair, une matrice table × opération, les droits sensibles signalés, qui détient chaque rôle (utilisateurs et teams), et une analyse « qui peut faire quoi » sur toute l'org. Attribution de rôles en masse.
+• Teams — teams owner, groupes Entra et teams d'accès, leurs membres et leurs rôles hérités.
+• Adoption — événements d'accès, DAU / WAU / MAU et fidélité, adoption par business unit, licences payées jamais utilisées, et un rapport PowerPoint de 5 diapositives avec de vrais graphiques.
+• Historique de connexion — la chronologie des connexions par utilisateur, depuis le journal d'audit.
+• Stockage — volume et stockage fichier par table, les tables qui grossissent en silence et comment les nettoyer.
+• Opérations système — travaux système bloqués (annulation / reprise en masse), traces de plug-ins, historique d'exécution des flux cloud.
+
+SÛR PAR CONCEPTION
+• Votre session Microsoft Entra ID existante — aucun identifiant stocké.
+• Les requêtes ne partent que vers le serveur Dynamics 365 sur lequel vous êtes ; l'API Tester refuse tout autre domaine.
+• Confirmation saisie avant une suppression en masse, confirmation avant une mise à jour en masse, une confirmation de plus en production.
+• Validation des saisies contre l'injection OData ; protection contre les formules de tableur dans chaque export.
+• Les valeurs de filtre et les secrets sont masqués dans les historiques.
+• Colvio ne peut pas contourner les permissions de Dataverse : ce que vous ne pouvez pas faire dans Dynamics 365, vous ne pouvez pas le faire dans Colvio.
+
+Fonctionne dans toutes les régions Dynamics 365 / Dataverse (*.dynamics.com). Thèmes sombre et clair, interface en anglais ou en français, palette de commandes (Ctrl+K).
+
+100 % gratuit et open source — pas de freemium, pas de version Pro. Code source et documentation : github.com/zmissoum/colvio
