@@ -36,22 +36,45 @@ Outputs land in `tools/video/out/` (git-ignored):
 
 ## Per-module deep dives
 
-One module, every feature, chapter by chapter (~1 min 30 s each):
+One module, every feature, chapter by chapter (1 to 1 min 40 s each):
 
 ```bash
-node make-deep.mjs --module=explorer            # EN + FR → out/deep/colvio_explorer_<lang>.mp4
-node make-deep.mjs --module=explorer --probe    # no recording: one screenshot per chapter end state
+node make-deep.mjs --module=explorer                    # EN + FR → out/deep/colvio_explorer_<lang>.mp4
+node make-deep.mjs --module=explorer,teams,storage      # several, one after the other
+node make-deep.mjs --module=explorer --probe            # no recording: one screenshot per chapter end state
+node make-deep.mjs --module=explorer --probe --port=5201  # own port, to probe modules in parallel
 ```
 
 A module is a file `deep/<key>.mjs` exporting `{ key, label, tagline: {en, fr}, chapters }`, where
 each chapter is `{ key, pos?, en: [title, text], fr: [title, text], run: async (h) => … }`
 (`pos: "top"` moves the caption up when the action happens in the lower half of the screen).
 Write the chapters, run `--probe` until every chapter passes and every screenshot shows what the
-caption claims, then render. Available: `explorer` (table & columns, visual filters, run / sort /
-narrow, OData · FetchXML · SQL, inline edit, bulk update, duplicates, tabs & history & exports).
+caption claims, then render. Render one module at a time (or a comma list in one run): parallel
+renders compete for the CPU and the screencast drops frames.
+
+Available (16): `explorer`, `showalldata`, `metadata`, `relationships`, `solutions`, `automation`,
+`apps`, `envvars`, `translations`, `licenses`, `bu`, `security`, `teams`, `adoption`, `logins`,
+`storage`. Some chapters feed the page in-memory files through Playwright's file chooser (a
+solution-compare file, a schema snapshot, a translations CSV) — nothing is downloaded or read from
+disk, and download buttons are only hovered.
 
 Selectors: the Explorer's query tabs stay mounted (hidden) while another module is open — always
 target visible elements (`h.vis(text)`, `>> visible=true`).
+
+## Music (optional)
+
+Both scripts take `--music=<file>`: the track loops under the whole video at low volume, fades in
+over 1.5 s and out over the last 2.5 s (clips cut from the tour inherit it). Use a track whose
+licence allows commercial use without attribution in the video (e.g. Pixabay Music, or a YouTube
+Audio Library track marked "no attribution required") — the licence is yours to check. Drop it in
+`tools/video/music/` (git-ignored):
+
+```bash
+node make-video.mjs --music=music/track.mp3
+node make-deep.mjs --module=explorer --music=music/track.mp3
+```
+
+Most LinkedIn videos autoplay muted: the captions carry the message, the music is a bonus.
 
 ## Chrome Web Store graphics
 

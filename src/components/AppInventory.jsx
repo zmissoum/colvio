@@ -106,6 +106,7 @@ export default function AppInventory({ bp, orgInfo }) {
     if (!s) return selEntry.tables;
     return selEntry.tables.map(tb => ({
       ...tb,
+      formsPicked: tb.forms.length, viewsPicked: tb.views.length,   // the badges state what the APP picked, filter or not
       forms: tb.forms.filter(f => f.name.toLowerCase().includes(s)),
       views: tb.views.filter(v => v.name.toLowerCase().includes(s)),
     })).filter(tb => tb.entity.includes(s) || tb.forms.length || tb.views.length);
@@ -279,9 +280,9 @@ export default function AppInventory({ bp, orgInfo }) {
                 <div key={tb.entity} style={{ ...crd({ overflow: "hidden" }), marginBottom: 6 }}>
                   <button onClick={() => setCollapsed(p => ({ ...p, [tb.entity]: !p[tb.entity] }))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: "none", background: C.sfh, cursor: "pointer", color: C.tx, fontSize: 13, fontWeight: 600 }}>
                     <span style={{ ...mono }}>{tb.entity}</span>
-                    <Badge label={tb.includeAllForms ? "ALL FORMS" : `${tb.forms.length} FORM${tb.forms.length > 1 ? "S" : ""} PICKED`} color={tb.includeAllForms ? C.cy : C.gn}
+                    <Badge label={tb.includeAllForms ? "ALL FORMS" : `${tb.formsPicked ?? tb.forms.length} FORM${(tb.formsPicked ?? tb.forms.length) > 1 ? "S" : ""} PICKED`} color={tb.includeAllForms ? C.cy : C.gn}
                       title={tb.includeAllForms ? "Include-all: no explicit form component — every form of this table (current AND future) surfaces in the app. Dataverse exposes no flag for this; it is inferred from the absence of explicit registrations." : "This app hand-picked specific forms — new forms will NOT appear automatically."} />
-                    <Badge label={tb.includeAllViews ? "ALL VIEWS" : `${tb.views.length} VIEW${tb.views.length > 1 ? "S" : ""} PICKED`} color={tb.includeAllViews ? C.cy : C.gn}
+                    <Badge label={tb.includeAllViews ? "ALL VIEWS" : `${tb.viewsPicked ?? tb.views.length} VIEW${(tb.viewsPicked ?? tb.views.length) > 1 ? "S" : ""} PICKED`} color={tb.includeAllViews ? C.cy : C.gn}
                       title={tb.includeAllViews ? "Include-all: no explicit view component — every view (current and future) surfaces in the app." : "This app hand-picked specific views — new views will NOT appear automatically."} />
                     <span style={{ marginLeft: "auto", color: C.txd, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▸</span>
                   </button>

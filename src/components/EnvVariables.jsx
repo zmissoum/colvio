@@ -116,7 +116,7 @@ export default function EnvVariables({ bp, orgInfo }) {
         const noVal = eff.source === "none";
         const isSecret = v.type === 100000005;
         return (
-          <div key={v.id} style={{ ...crd({ padding: "10px 14px", ...(noVal ? { borderColor: C.yw + "66" } : {}) }), marginBottom: 6 }}>
+          <div key={v.id} style={{ ...crd({ padding: "10px 14px", borderColor: noVal ? C.yw + "66" : C.bd }), marginBottom: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 13.5, fontWeight: 600 }} title={v.description}>{v.displayName}</span>
               <span style={{ ...mono, fontSize: 11, color: C.txd }}>{v.schemaName}</span>

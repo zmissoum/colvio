@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
+import { normalizeAccessEvent, sortNewestFirst, accessStats } from "../loginHistoryUtils.js";
 
 export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
   const[search,setSearch]=useState("");
@@ -42,10 +43,10 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
       if(!data?.length){
         setError("No audit records found for this user. Check that auditing is enabled: Settings > Administration > System Settings > Auditing tab > enable 'Start Auditing' AND 'Audit user access'.");
       } else if(data.length===1 && data[0].action==="__AUDIT_EXISTS_BUT_NO_LOGINS"){
-        setError(`Auditing is active (${data[0].info}) but no login events were found. Enable 'Audit user access' in Settings > Administration > System Settings > Auditing tab.`);
+        setError(`Auditing is active (${data[0].info}) but no user-access events were found. Enable 'Audit user access' in Settings > Administration > System Settings > Auditing tab.`);
         setHistory([]);
       } else {
-        setHistory(data);
+        setHistory(sortNewestFirst(data.map(normalizeAccessEvent)));
       }
     }catch(e){
       if(e.message?.includes("401")||e.message?.includes("SESSION_EXPIRED")){
@@ -69,41 +70,13 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
     return Object.entries(groups);
   },[history]);
 
-  const stats = useMemo(()=>{
-    if(!history.length) return null;
-    const logins=history.filter(h=>h.action==="Login");
-    const logouts=history.filter(h=>h.action==="Logout");
-    const first=logins.length?new Date(logins[logins.length-1].date):null;
-    const last=logins.length?new Date(logins[0].date):null;
-    const uniqueDays=new Set(logins.map(h=>new Date(h.date).toDateString())).size;
-    const accessTypes={};
-    logins.forEach(h=>{const t=h.accessType||"Login";accessTypes[t]=(accessTypes[t]||0)+1;});
-    return {total:logins.length,logouts:logouts.length,first,last,uniqueDays,accessTypes};
-  },[history]);
-
-  const sessionsWithDuration = useMemo(()=>{
-    const sessions=[];
-    const sorted=[...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
-    let lastLogin=null;
-    for(const ev of sorted){
-      if(ev.action==="Login"){
-        if(lastLogin){sessions.push({...lastLogin,duration:null});}
-        lastLogin=ev;
-      } else if(ev.action==="Logout"&&lastLogin){
-        const dur=Math.round((new Date(ev.date)-new Date(lastLogin.date))/60000);
-        sessions.push({...lastLogin,duration:dur,logoutAt:ev.date});
-        lastLogin=null;
-      }
-    }
-    if(lastLogin) sessions.push({...lastLogin,duration:null});
-    return sessions.reverse();
-  },[history]);
+  const stats = useMemo(()=>accessStats(history),[history]);
 
   const copyAll=(format="csv")=>{
-    const headers=["Date","Time","Action","Access Type","Operation","Session Info","Additional Info"];
+    const headers=["Date","Time","Channel","Audit action","Operation","Change data","Additional Info"];
     const rows=history.map(h=>{
       const d=new Date(h.date);
-      return [d.toLocaleDateString("en-US"),d.toLocaleTimeString("en-US"),h.action,h.accessType||"",h.operation||"",h.changedata||"",h.info||""];
+      return [d.toLocaleDateString("en-US"),d.toLocaleTimeString("en-US"),h.label,h.accessType||"",h.operation||"",h.changedata||"",h.info||""];
     });
     exportTable(headers,rows,`login_history_${selectedUser?.fullname?.replace(/\s+/g,"_")||"export"}`,format,"Login History");
   };
@@ -111,7 +84,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
   return(
     <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1500,margin:"0 auto"}}>
       <h2 style={{fontSize:16,fontWeight:700,marginBottom:4,display:"flex",alignItems:"center",gap:8}}><I.Clock/> Login History</h2>
-      <p style={{color:C.txm,fontSize:14,marginBottom:16}}>Search for a user to view their D365 login history (via Audit).</p>
+      <p style={{color:C.txm,fontSize:14,marginBottom:16}}>Search for a user to view their D365 access history (user access audit).</p>
       {orgFeatures?.auditEnabled===false&&<div style={{padding:"10px 14px",background:C.yw+"14",border:`1px solid ${C.yw}44`,borderRadius:8,color:C.yw,fontSize:13,marginBottom:14,lineHeight:1.6}}>⚠ {t("featuregate.audit_off")}</div>}
 
       <div style={{position:"relative",marginBottom:16}}>
@@ -121,7 +94,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
             <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.txd}}><I.Search s={14}/></span>
             {loading&&<span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)"}}><Spin s={14}/></span>}
           </div>
-          <select value={limit} onChange={e=>setLimit(+e.target.value)} style={inp({width:"auto",fontSize:13,padding:"6px 10px"})}>
+          <select value={limit} onChange={e=>{const n=+e.target.value;setLimit(n);if(selectedUser)selectUser(selectedUser,n);}} style={inp({width:"auto",fontSize:13,padding:"6px 10px"})}>
             <option value={50}>Last 50</option>
             <option value={100}>Last 100</option>
             <option value={200}>Last 200</option>
@@ -182,7 +155,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
                 <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
                   <div style={{fontSize:18,fontWeight:600,color:C.cy}}>{stats.total}</div>
-                  <div style={{fontSize:11,color:C.txd}}>Logins</div>
+                  <div style={{fontSize:11,color:C.txd}}>Access events</div>
                 </div>
                 <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
                   <div style={{fontSize:18,fontWeight:600,color:C.gn}}>{stats.uniqueDays}</div>
@@ -190,20 +163,19 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
                 </div>
                 <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
                   <div style={{fontSize:13,fontWeight:500,color:C.gn}}>{stats.last?.toLocaleString("en-US",{month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
-                  <div style={{fontSize:11,color:C.txd}}>Last login</div>
+                  <div style={{fontSize:11,color:C.txd}}>Last access</div>
                 </div>
                 <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
                   <div style={{fontSize:13,fontWeight:500,color:C.txm}}>{stats.first?.toLocaleString("en-US",{month:"short",day:"2-digit"})}</div>
                   <div style={{fontSize:11,color:C.txd}}>Oldest</div>
                 </div>
               </div>
-              {Object.keys(stats.accessTypes).length>1&&(
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {Object.entries(stats.accessTypes).map(([type,count])=>(
-                    <span key={type} style={{fontSize:11,padding:"3px 10px",borderRadius:3,background:C.sfh,color:C.txm,border:`1px solid ${C.bd}`}}>{type}: <strong style={{color:C.cy}}>{count}</strong></span>
-                  ))}
-                </div>
-              )}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                {[["App (web)",stats.app,C.gn],["Web services",stats.api,C.cy],...(stats.other?[["Other",stats.other,C.txm]]:[])].map(([label,count,col])=>(
+                  <span key={label} style={{fontSize:11,padding:"3px 10px",borderRadius:3,background:C.sfh,color:C.txm,border:`1px solid ${C.bd}`}}>{label}: <strong style={{color:col}}>{count}</strong></span>
+                ))}
+                <span style={{fontSize:11,color:C.txd,lineHeight:1.5}}>Dataverse logs at most one access per user per interval (4 h by default) and has no sign-out event — these are access events, not sessions.</span>
+              </div>
             </div>
           )}
         </div>
@@ -219,20 +191,17 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
               <div style={{paddingLeft:12,borderLeft:`2px solid ${C.bd}`}}>
                 {events.map((ev,i)=>{
                   const d=new Date(ev.date);
-                  const isLogin=ev.action==="Login";
-                  const session=isLogin?sessionsWithDuration.find(s=>s.date===ev.date):null;
-                  const durStr=session?.duration!=null?(session.duration<60?`${session.duration}min`:`${Math.floor(session.duration/60)}h${String(session.duration%60).padStart(2,"0")}`):null;
+                  const col=ev.channel==="app"?C.gn:ev.channel==="api"?C.cy:C.txm;
                   return(
                     <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"6px 0",position:"relative"}}>
-                      <div style={{width:10,height:10,borderRadius:"50%",background:isLogin?C.gn:C.rd,flexShrink:0,marginTop:3,marginLeft:-17,border:`2px solid ${C.bg}`}}/>
+                      <div style={{width:10,height:10,borderRadius:"50%",background:col,flexShrink:0,marginTop:3,marginLeft:-17,border:`2px solid ${C.bg}`}}/>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                           <span style={{fontSize:14,fontWeight:500,...mono}}>{d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</span>
-                          <span style={{fontSize:12,padding:"2px 8px",borderRadius:3,fontWeight:600,background:isLogin?C.gn+"22":C.rd+"22",color:isLogin?C.gn:C.rd}}>{ev.action}</span>
-                          {ev.accessType&&ev.accessType!=="Login"&&ev.accessType!=="Logout"&&(
+                          <span style={{fontSize:12,padding:"2px 8px",borderRadius:3,fontWeight:600,background:col+"22",color:col}}>{ev.label}</span>
+                          {ev.accessType&&ev.accessType!==ev.label&&(
                             <span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:C.sfh,color:C.txm,border:`1px solid ${C.bd}`}}>{ev.accessType}</span>
                           )}
-                          {durStr&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:C.cy+"22",color:C.cy,...mono}}>⏱ {durStr}</span>}
                         </div>
                         {ev.info&&<div style={{fontSize:12,color:C.txd,marginTop:2,...mono}}>{ev.info}</div>}
                         {ev.changedata&&<div style={{fontSize:11,color:C.txd,marginTop:1,...mono}}>prev: {ev.changedata}</div>}
@@ -249,7 +218,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
       {!loadingHistory&&!selectedUser&&(
         <div style={{textAlign:"center",padding:40,color:C.txd}}>
           <div style={{fontSize:24,marginBottom:8}}>🔍</div>
-          <div style={{fontSize:15}}>Search for a user to view their login history</div>
+          <div style={{fontSize:15}}>Search for a user to view their access history</div>
           <div style={{fontSize:13,marginTop:4}}>Auditing must be enabled in your D365 org</div>
         </div>
       )}

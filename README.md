@@ -226,8 +226,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **📊 One-click PowerPoint report** — a 5-slide management deck with **native editable charts** (not images): title, KPI grid with the honesty note, trend, weekday & per-BU adoption charts, findings (never-signed-in by license, inactivity, silent service accounts); the ~370 KB PowerPoint library loads only when you click
 
 ### Login History
-- User search, login/logout audit timeline
-- Session duration calculation, access type breakdown, CSV export
+- User search, access timeline from the user-access audit — app (web, action 64) vs web services (API, action 65)
+- Access events per channel, active days, last access, CSV/Excel export — no session durations: Dataverse logs at most one access per interval and has no sign-out event
 
 ### Help & Onboarding
 - Built-in Help tab with feature guide
@@ -266,7 +266,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~21,200 |
 | API actions | 73 |
 | React components | 40 |
-| Unit tests | 336 |
+| Unit tests | 347 |
 | Build size | ~996 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |

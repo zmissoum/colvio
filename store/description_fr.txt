@@ -34,7 +34,7 @@ ADMINISTRATION
 • Audit de sécurité — les privilèges d'un rôle en clair, une matrice table × opération, les droits sensibles signalés, qui détient chaque rôle (utilisateurs et teams), et une analyse « qui peut faire quoi » sur toute l'org. Attribution de rôles en masse.
 • Teams — teams owner, groupes Entra et teams d'accès, leurs membres et leurs rôles hérités.
 • Adoption — événements d'accès, DAU / WAU / MAU et fidélité, adoption par business unit, licences payées jamais utilisées, et un rapport PowerPoint de 5 diapositives avec de vrais graphiques.
-• Historique de connexion — la chronologie des connexions par utilisateur, depuis le journal d'audit.
+• Historique de connexion — la chronologie des accès de chaque utilisateur, via l'application ou les services web (API), depuis l'audit d'accès.
 • Stockage — volume et stockage fichier par table, les tables qui grossissent en silence et comment les nettoyer.
 • Opérations système — travaux système bloqués (annulation / reprise en masse), traces de plug-ins, historique d'exécution des flux cloud.
 

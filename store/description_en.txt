@@ -34,7 +34,7 @@ ADMIN
 • Security Audit — role privileges in plain words, a table × operation matrix, sensitive rights flagged, who holds each role (users and teams), and an org-wide "who can do what" scan. Bulk role assignment.
 • Teams — owner, Entra group and access teams, their members and their inherited roles.
 • Adoption — access events, DAU / WAU / MAU and stickiness, adoption per business unit, paid seats that never sign in, and a 5-slide PowerPoint report with native charts.
-• Login History — sign-in timeline per user, from the audit log.
+• Login History — each user's access timeline from the user-access audit, app vs web services (API).
 • Storage — row counts and file storage per table, the tables that grow silently and how to clean them.
 • System Ops — stuck system jobs (bulk cancel / resume), plug-in trace logs, cloud flow run history.
 

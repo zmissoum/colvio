@@ -202,7 +202,8 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
       });
     }
     setEdits(newEdits);
-    setSaveMsg(`Imported ${Object.keys(newEdits).length} changes from CSV`);
+    const nImported=Object.values(newEdits).reduce((n,o)=>n+Object.keys(o).length,0);
+    setSaveMsg(`Imported ${nImported} label change${nImported===1?"":"s"} from CSV`);
   };
 
   const filteredAttrs=attributes.filter(a=>!attrSearch||a.logical.includes(attrSearch.toLowerCase())||a.labels.some(l=>l.label.toLowerCase().includes(attrSearch.toLowerCase())));

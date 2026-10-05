@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.11.172] — 2026-10-05
+### Fixed — Login History invented logouts and session durations
+- Audit action **65 is "User Access via Web Services"** (API / any client other than a model-driven app), not a logout — and Dataverse has NO sign-out event (it logs at most one access per user per interval, 4 h by default). Colvio labelled every 65 a red "Logout" and computed "⏱ session" durations between two unrelated access events. Events are now **access events by channel** — App (web, 64) vs Web services (API, 65) — with per-channel counts, active days, last access and the platform truth stated on screen; session durations are gone. Pure `loginHistoryUtils.js` + 6 tests. Help texts, README and generated docs reworded.
+- The "Last N" selector now reloads the history right away (it only stored the value; Refresh was needed).
+
+### Fixed — found while filming the per-module deep-dive videos
+- **Apps**: with the tables / forms / views filter active, the inclusion badges counted only the FILTERED items ("0 VIEW PICKED" on an app that picked one). The badges state what the app picked, filter or not.
+- **Custom detection**: publisher prefixes with digits (`cr4d2_`, the Power Apps default publisher style) were classed Standard — Show All Data "Custom only", Metadata categories and Schema diff's custom scope missed them. `address1_…` columns stay Standard. 3 tests.
+- **Adoption**: stickiness on windows longer than 30 days divided the whole-window DAU average by the last-30-day MAU (two periods mixed, understated). It now uses the same 30 days for both; a 30-day window is unchanged. Test added. Also "1 users" → "1 user".
+- **Relationships**: a business lookup to systemuser / team / currency (e.g. preferredsystemuserid) was swallowed by the createdby/ownerid group targeting the same table and hidden behind "Show N system". Parents are now grouped per target AND kind (pure `groupParents` + test). The "(d2)" and "(×n)" markers are appended after truncation — they were always cut off.
+- **Environment Variables**: setting a value on a variable that had none turned its card border white (a conditional `borderColor` key wiped the `border` colour when removed).
+- **Translations**: "Imported N changes from CSV" counted columns while Save counts label changes — it counts label changes now, with the right plural.
+- **Business Units**: the move result modal said "Move 0 user…" after a successful move (the title read the selection, which keeps only the failures).
+- **Show All Data**: lookup values fall back to the value when no formatted display exists. Schema diff: "(1 tables)" → "(1 table)".
+- **Demo data**: Login History events newest-first and deterministic (both channels), stable last-login per user, role member count matching the member list, web resources typed Web Resource (61) in the solution components.
+
 ## [1.11.171] — 2026-10-02
 ### Added — Storage module (21st): where the Dataverse capacity goes, per table
 - **Rows per table for the whole org** from `RetrieveTotalRecordCount` — Dataverse's OWN snapshot (≤ 24 h old), so the module READS a precomputed result instead of counting: a handful of chunked calls (URL-length-safe lots, 4 in parallel), not a scan — seconds even on a 1,000-table org, unlike Adoption which has to aggregate the audit table day by day. A chunk the function refuses is split in half until the offending table is isolated, so one bad table can't blank its neighbours; tables that still can't be counted are listed, never silently dropped.

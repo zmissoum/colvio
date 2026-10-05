@@ -170,6 +170,18 @@ export function encode(framesDir, frames, endTs, outFile) {
     "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-movflags", "+faststart", outFile], path.basename(outFile));
 }
 
+// Optional soundtrack: the track loops under the whole video at low volume, fades in over 1.5 s and
+// out over the last 2.5 s. Its licence is the caller's call (royalty-free, cleared for commercial use).
+export function addMusic(videoFile, musicFile, durationS, volume = 0.16) {
+  const tmp = videoFile.replace(/\.mp4$/, ".music.mp4");
+  const fadeOut = Math.max(0, durationS - 2.5).toFixed(2);
+  ffmpeg(["-i", videoFile, "-stream_loop", "-1", "-i", musicFile,
+    "-filter_complex", `[1:a]volume=${volume},afade=t=in:st=0:d=1.5,afade=t=out:st=${fadeOut}:d=2.5[a]`,
+    "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", durationS.toFixed(2), "-movflags", "+faststart", tmp],
+    `${path.basename(videoFile)} + music`);
+  fs.renameSync(tmp, videoFile);
+}
+
 export function cut(src, startS, endS, outFile) {
   ffmpeg(["-ss", startS.toFixed(2), "-to", endS.toFixed(2), "-i", src, "-c:v", "libx264", "-preset", "medium", "-crf", "18",
     "-movflags", "+faststart", outFile], path.basename(outFile));

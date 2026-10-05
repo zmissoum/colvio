@@ -50,14 +50,17 @@ export function computeEngagement(daySets, fromIso, toIso) {
     if (inW) wau++;
     if (inM) mau++;
   }
-  let sum = 0;
-  for (const c of daily.values()) sum += c;
+  let sum = 0, sum30 = 0;
+  for (const [d, c] of daily) { sum += c; if (d > mauFloor) sum30 += c; }
   const dauAvg = sum / windowDays; // quiet days count as 0 — dividing by active days would flatter
+  // Stickiness = average DAU ÷ MAU over the SAME 30 days: on a 90-day window, dividing the 90-day
+  // DAU average by the last-30-day MAU mixed two periods and understated it.
+  const dau30 = windowDays > 30 ? sum30 / 30 : dauAvg;
   return {
     dauAvg,
     wau: windowDays >= 7 ? wau : null,
     mau: windowDays >= 30 ? mau : null,
-    stickiness: windowDays >= 30 && mau > 0 ? dauAvg / mau : null,
+    stickiness: windowDays >= 30 && mau > 0 ? dau30 / mau : null,
     windowDays,
   };
 }

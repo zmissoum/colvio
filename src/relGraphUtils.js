@@ -22,6 +22,19 @@ export const SYS_CHILD_ENTITIES = new Set([
 export function isSystemParent(rel) { return SYS_PARENT_FIELDS.has((rel?.lookupField || "").toLowerCase()); }
 export function isSystemChild(rel) { return SYS_CHILD_ENTITIES.has((rel?.targetEntity || "").toLowerCase()); }
 
+// Parent lookups grouped per target table AND per kind: a business lookup to systemuser
+// (preferredsystemuserid…) must not be swallowed by the createdby/ownerid group that also
+// targets systemuser — that group is system plumbing and starts hidden.
+export function groupParents(rels) {
+  const groups = new Map();
+  for (const r of rels || []) {
+    const key = `${r.targetEntity}|${isSystemParent(r) ? "sys" : "biz"}`;
+    const g = groups.get(key);
+    if (g) g.count++; else groups.set(key, { ...r, count: 1 });
+  }
+  return [...groups.values()];
+}
+
 // Splits into {business, system}, each sorted by target so the layout is deterministic
 // (metadata order isn't) — business first is the whole point.
 export function splitRels(rels, isSystem) {

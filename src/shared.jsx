@@ -190,9 +190,10 @@ export function confirmProd(isProduction, actionLabel){
 // Microsoft entities NEVER have a publisher underscore prefix — they use plain names (account, contact)
 // or Microsoft prefixes (msdyn_, adx_). Both are NOT custom.
 // IsManaged=true is also always Standard regardless of name.
-const CUSTOM_PREFIX = /^[a-z]{2,10}_/; // matches new_, cr123_, foe_, colvio_, etc.
+const CUSTOM_PREFIX = /^[a-z][a-z0-9]{1,9}_/; // matches new_, cr123_, cr4d2_, foe_, colvio_ — prefixes start with a letter, digits allowed
+const STANDARD_DIGIT_PREFIX = /^address[0-9]+_/; // address1_city… are Microsoft columns that look like a digit prefix
 const MS_PREFIX = /^(msdyn|msdyncrm|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat)_/;
-export function isTrulyCustom(logicalName){ if(!CUSTOM_PREFIX.test(logicalName))return false; if(MS_PREFIX.test(logicalName))return false; return true; }
+export function isTrulyCustom(logicalName){ if(!CUSTOM_PREFIX.test(logicalName))return false; if(MS_PREFIX.test(logicalName)||STANDARD_DIGIT_PREFIX.test(logicalName))return false; return true; }
 
 // ── Detect extension mode ──
 export function detectExtension() {

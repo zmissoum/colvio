@@ -519,10 +519,11 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
           setMoving(false);
         };
         const nameOf = (id) => (selUsers.find(u => String(u.id).toLowerCase() === String(id).toLowerCase())?.fullname) || id;
+        const nMove = moveResults ? moveResults.length : checkedUsers.size; // after a run the selection holds only the failures
         return (
           <div onClick={() => !moving && setMoveModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 265, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 520, maxWidth: "92vw", background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 18 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>➡ Move {checkedUsers.size} user{checkedUsers.size > 1 ? "s" : ""} to another business unit</div>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>➡ Move {nMove} user{nMove > 1 ? "s" : ""} to another business unit</div>
               {!moveResults && <>
                 <select value={moveTarget} onChange={e => setMoveTarget(e.target.value)} style={inp({ fontSize: 13 })}>
                   <option value="">— pick the target business unit —</option>

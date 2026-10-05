@@ -5,7 +5,7 @@ Free, in-browser toolkit for Dynamics 365 / Dataverse. Query, inspect, load, tes
 
 ## Detailed Description
 
-Paste-ready plain text, refreshed for v1.11.171 (Teams, Storage, native SQL, data model, environment badge, history privacy):
+Paste-ready plain text, refreshed for v1.11.172 (Teams, Storage, native SQL, data model, environment badge, history privacy, Login History by access channel):
 
 - English → `store/description_en.txt` (~5,500 characters)
 - French → `store/description_fr.txt` (~6,700 characters) — add French under Store listing → language selector, so French-speaking users get it

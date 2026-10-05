@@ -342,7 +342,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
                         </span>
                       ):isLookup&&!empty?(
                         <span style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <span style={{color:C.vil}}>{f.display||f.rawValue}</span>
+                          <span style={{color:C.vil}}>{f.display||f.value||f.rawValue}</span>
                           {f.rawValue&&<span style={{fontSize:11,color:C.txd}}>{String(f.rawValue).substring(0,13)}…</span>}
                           {d365Link&&<a href={d365Link} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{fontSize:11,padding:"2px 8px",borderRadius:3,background:C.vi+"22",color:C.vi,textDecoration:"none",border:`1px solid ${C.vi}44`}}>Open in D365 ↗</a>}
                           {editable&&<button onClick={e=>{e.stopPropagation();startEdit(f);}} title="Relink this lookup — paste the target record's GUID (direct API write, empty clears)" style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:13,flexShrink:0,lineHeight:1}}>✎</button>}

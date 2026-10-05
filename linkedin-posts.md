@@ -742,7 +742,7 @@ What's the first SQL query you'll throw at Dataverse? 👇
 
 ## Campaign — "Colvio in video" (Posts 26 → 31, 3 weeks)
 
-> Built on the generated videos and store graphics (`tools/video`). START GATE: J = the first Tuesday after the Chrome Web Store shows **v1.11.171** — the tour shows Teams and Storage, which the store build doesn't have before that. If Post 25 (native SQL + Teams) isn't out yet, publish it the week before J: it's the release news, this campaign is the show-and-tell that follows.
+> Built on the generated videos and store graphics (`tools/video`). START GATE: J = the first Tuesday after the Chrome Web Store shows **v1.11.172** (or later) — the tour shows Teams and Storage, which the store build doesn't have before that. If Post 25 (native SQL + Teams) isn't out yet, publish it the week before J: it's the release news, this campaign is the show-and-tell that follows.
 >
 > Rules (unchanged): Colvio page voice ("we", "Colvio") except Post 31 (Zakaria's personal profile, first person) · upload the video NATIVELY to LinkedIn (no YouTube link: native video reaches far more people) · link in the FIRST COMMENT · reply to every comment within the first hour · FR version for the French audience — either a separate post the same day at 12:15 or LinkedIn's "add a translation" if available.
 >
@@ -753,11 +753,11 @@ What's the first SQL query you'll throw at Dataverse? 👇
 | J · Tue 8:30 | 26 — 2 minutes, 16 modules | `tools/video/out/video/colvio_tour_en.mp4` / `_fr.mp4` |
 | J+2 · Thu 17:30 | 27 — 94 seconds inside the Data Explorer | `tools/video/out/deep/colvio_explorer_en.mp4` / `_fr.mp4` |
 | J+7 · Tue 8:30 | 28 — 5 questions, 5 screens (carousel) | `tools/video/out/linkedin/colvio_5_screens_en.pdf` / `_fr.pdf` (document post) |
-| J+9 · Thu 17:30 | 29 — What's filling your capacity? | `store/en/05_storage.png` / `store/fr/…` (or clip `tools/video/out/video/clips_en/16_storage.mp4`) |
-| J+14 · Tue 8:30 | 30 — Who uses the CRM you pay for? | `store/en/04_adoption.png` / `store/fr/…` (or clip `tools/video/out/video/clips_en/14_adoption.mp4`) |
+| J+9 · Thu 17:30 | 29 — What's filling your capacity? | `tools/video/out/deep/colvio_storage_en.mp4` / `_fr.mp4` (still image: `store/en/05_storage.png`) |
+| J+14 · Tue 8:30 | 30 — Who uses the CRM you pay for? | `tools/video/out/deep/colvio_adoption_en.mp4` / `_fr.mp4` (still image: `store/en/04_adoption.png`) |
 | J+16 · Thu 17:30 | 31 — A script recorded our videos (personal profile; Colvio page reshares J+17) | `colvio_tour_en.mp4` |
 
-Example: v1.11.171 live by Monday 12 October → 13, 15, 20, 22, 27 and 29 October.
+Example: v1.11.172 live by Monday 12 October → 13, 15, 20, 22, 27 and 29 October.
 
 ### Post 26 — 2 minutes, 16 modules, zero setup
 
@@ -775,7 +775,7 @@ Here's the answer, in motion: 16 modules on demo data, back to back.
 
 What you won't see in the video: a sign-up screen, an API key, an app registration. Colvio runs in your browser on the Dynamics 365 session you already have, and talks to nothing but your own org.
 
-Free, open source, 21 modules in total, 336 automated tests.
+Free, open source, 21 modules in total, 347 automated tests.
 
 Which module would you open first? 👇
 
@@ -795,7 +795,7 @@ La réponse, en vidéo : 16 modules sur des données de démo, l'un après l'aut
 
 Ce que vous ne verrez pas dans la vidéo : un écran d'inscription, une clé d'API, une app registration. Colvio tourne dans votre navigateur, sur la session Dynamics 365 que vous avez déjà, et ne parle qu'à votre propre org.
 
-Gratuit, open source, 21 modules au total, 336 tests automatisés.
+Gratuit, open source, 21 modules au total, 347 tests automatisés.
 
 Quel module ouvririez-vous en premier ? 👇
 
@@ -990,7 +990,7 @@ One command gives the full tour in English and French, plus one clip per module.
 
 The part I like most: each render replays every scene, and a failed click or a single console error fails the run. The video pipeline doubles as an end-to-end test of the whole UI.
 
-Next: one deep-dive video per module, chapter by chapter. The Data Explorer one is done.
+It now also renders one deep-dive video per module, chapter by chapter: 16 of them, in two languages.
 
 Demo data only. No client org ever goes on camera.
 
@@ -1013,7 +1013,7 @@ Une commande donne la visite complète en anglais et en français, plus un clip 
 
 Ce que je préfère : chaque rendu rejoue toutes les scènes, et un clic raté ou une seule erreur de console fait échouer le rendu. La chaîne vidéo sert aussi de test de bout en bout de toute l'interface.
 
-Prochaine étape : une vidéo détaillée par module, chapitre par chapitre. Celle du Data Explorer est prête.
+Elle produit aussi une vidéo détaillée par module, chapitre par chapitre : 16 vidéos, en deux langues.
 
 Uniquement des données de démo. Aucune org client ne passe jamais à l'écran.
 
@@ -1022,6 +1022,26 @@ Une vidéo de démo enregistrée par un script, ça vous inspire plus ou moins c
 #Dynamics365 #Playwright #OpenSource #TestAutomation #DevTools
 
 ---
+
+### After the campaign — "One module a week" (deep-dive series)
+
+> From J+21, one post a week (Tuesday 8:30), Colvio page voice, native upload of `tools/video/out/deep/colvio_<module>_<lang>.mp4` (1 to 1 min 40 s, chapters captioned, demo data only). Each post = the hook below + 3–4 lines picked from the video's chapter captions (`tools/video/deep/<module>.mjs`) + the question. Link in first comment, ≤ 5 hashtags (#Dynamics365 #Dataverse #PowerPlatform #D365 + one topical).
+
+| Week | Module (video key) | Hook EN | Accroche FR | Closing question EN / FR |
+|---|---|---|---|---|
+| 1 | Security Audit (`security`) | "Who can delete accounts in this org?" — one screen, every role, every depth. | « Qui peut supprimer des comptes dans cette org ? » — un écran, tous les rôles, toutes les profondeurs. | When did you last audit your roles? / À quand remonte votre dernier audit des rôles ? |
+| 2 | Teams (`teams`) | The rights a user has that never show on their profile. | Les droits d'un utilisateur qui n'apparaissent jamais sur sa fiche. | Owner teams or Entra groups? / Teams propriétaires ou groupes Entra ? |
+| 3 | Show All Data (`showalldata`) | Every field of the record you're on — including the ones the form hides. | Tous les champs de l'enregistrement ouvert — y compris ceux que le formulaire cache. | What's the field you always hunt for? / Quel champ cherchez-vous toujours ? |
+| 4 | Apps (`apps`) | "Include all forms" — the checkbox the maker portal never shows you again. | « Inclure tous les formulaires » — la case que le portail maker ne vous montre plus jamais. | Ever had a form show up where it shouldn't? / Un formulaire déjà apparu là où il ne devait pas ? |
+| 5 | Business Units (`bu`) | Move 40 users to another BU by pasting their emails. | Déplacer 40 utilisateurs vers une autre BU en collant leurs emails. | How many BUs does your org have? / Combien de BU dans votre org ? |
+| 6 | Solutions (`solutions`) | What's different between DEV and PROD — component by component. | Ce qui diffère entre DEV et PROD — composant par composant. | How do you check a deployment today? / Comment vérifiez-vous un déploiement aujourd'hui ? |
+| 7 | Env Variables (`envvars`) | The environment variable with no value — the bug that shows up three screens later. | La variable d'environnement sans valeur — le bug qui apparaît trois écrans plus loin. | Ever been bitten by an empty variable? / Déjà piégé par une variable vide ? |
+| 8 | Automation (`automation`) | "Why did this field change?" — every plug-in step and process, on one list. | « Pourquoi ce champ a changé ? » — chaque étape de plug-in et chaque processus, sur une liste. | Plug-ins or flows? / Plug-ins ou flows ? |
+| 9 | Metadata (`metadata`) | A data dictionary in one click — and a schema diff between two orgs. | Un dictionnaire de données en un clic — et un diff de schéma entre deux orgs. | Do you keep a data dictionary? / Tenez-vous un dictionnaire de données ? |
+| 10 | Relationships (`relationships`) | Your data model, business relations first. | Votre modèle de données, relations métier d'abord. | Which table has the most relations in your org? / Quelle table a le plus de relations chez vous ? |
+| 11 | Users & Licenses (`licenses`) | Paid seats, disabled users, service accounts — the license picture in one list. | Licences payées, utilisateurs désactivés, comptes de service — le tableau des licences en une liste. | How many unused licenses would you bet on? / Combien de licences inutilisées pariez-vous ? |
+| 12 | Translations (`translations`) | Fix field labels in every language — and round-trip them through a CSV file. | Corriger les libellés dans chaque langue — et les faire passer par un fichier CSV. | How many languages does your org run? / Combien de langues dans votre org ? |
+| 13 | Login History (`logins`) | App or API? Each user's access trail, from the audit — and why there's no "logout". | Application ou API ? La trace d'accès de chaque utilisateur — et pourquoi il n'y a pas de « déconnexion ». | Did you know Dataverse has no sign-out event? / Saviez-vous que Dataverse n'a pas d'événement de déconnexion ? |
 
 ## Posting Strategy
 

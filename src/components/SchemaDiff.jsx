@@ -107,7 +107,7 @@ export default function SchemaDiff({ bp, orgInfo, entities }) {
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <label style={{ fontSize: 12.5, color: C.txm, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
             <input type="checkbox" checked={customOnly} onChange={e => setCustomOnly(e.target.checked)} style={{ accentColor: C.vi }} />
-            {t("schemadiff.custom_only")} ({scope().length} {t("schemadiff.tables")})
+            {t("schemadiff.custom_only")} ({scope().length} {t(scope().length === 1 ? "schemadiff.table" : "schemadiff.tables")})
           </label>
           <button onClick={exportSnapshot} disabled={!!progress} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`, { fontSize: 12.5 })}>
             <I.Download /> {t("schemadiff.export_btn")}
@@ -121,7 +121,7 @@ export default function SchemaDiff({ bp, orgInfo, entities }) {
           <input ref={fileRef} type="file" accept=".json" style={{ display: "none" }}
             onChange={e => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = ev => loadSnapshot(ev.target.result); r.readAsText(f); } e.target.value = ""; }} />
           <button onClick={() => fileRef.current?.click()} style={bt(null, { fontSize: 12.5 })}><I.Upload /> {t("schemadiff.load_btn")}</button>
-          {snapA && <span style={{ fontSize: 12, color: C.gn }}>✓ {snapA.org || "snapshot"} · {new Date(snapA.takenAt).toLocaleString()} · {snapA.entityCount} {t("schemadiff.tables")}</span>}
+          {snapA && <span style={{ fontSize: 12, color: C.gn }}>✓ {snapA.org || "snapshot"} · {new Date(snapA.takenAt).toLocaleString()} · {snapA.entityCount} {t(snapA.entityCount === 1 ? "schemadiff.table" : "schemadiff.tables")}</span>}
           {snapA && <button onClick={compareToCurrentOrg} disabled={!!progress} style={bt(`linear-gradient(135deg,${C.gn},${C.cyd})`, { fontSize: 12.5, fontWeight: 700 })}>⇄ {t("schemadiff.compare_btn")}</button>}
         </div>
       </div>

@@ -563,7 +563,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
               <button key={k} onClick={() => setUserSort(k)} style={{ padding: "3px 9px", fontSize: 11, border: "none", cursor: "pointer", background: userSort === k ? C.cy + "22" : "transparent", color: userSort === k ? C.cy : C.txm }}>{lbl}</button>
             ))}
           </div>
-          <span style={{ fontSize: 11, color: C.txd, ...mono }}>{shownUsers.length} users</span>
+          <span style={{ fontSize: 11, color: C.txd, ...mono }}>{shownUsers.length} user{shownUsers.length === 1 ? "" : "s"}</span>
         </div>
         {(() => {
           const cols = tableMode === "all" ? "1.5fr 1fr 90px 75px 75px 1fr 85px" : "1.6fr 1.2fr 80px 90px 1fr";

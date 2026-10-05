@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, inp, bt } from "../shared.jsx";
-import { isSystemParent, isSystemChild, splitRels } from "../relGraphUtils.js";
+import { isSystemParent, isSystemChild, splitRels, groupParents } from "../relGraphUtils.js";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 
@@ -35,7 +35,7 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
     try{
       const[p,c,mm]=await Promise.all([bridge.getLookups(e.l),bridge.getChildRelationships(e.l),bridge.getManyToManyRelationships(e.l)]);
       if(selectGen.current!==gen)return; // stale
-      const pMap={};(p||[]).forEach(r=>{if(!pMap[r.targetEntity])pMap[r.targetEntity]={...r,count:1};else pMap[r.targetEntity].count++;});
+      const pMap={};groupParents(p).forEach(r=>{pMap[`${r.targetEntity}|${isSystemParent(r)?"sys":"biz"}`]=r;});
       const cMap={};(c||[]).forEach(r=>{if(!cMap[r.targetEntity])cMap[r.targetEntity]={...r,count:1};else cMap[r.targetEntity].count++;});
       const mMap={};(mm||[]).forEach(r=>{
         const other=r.entity1===e.l?r.entity2:r.entity1;
@@ -53,13 +53,14 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
         Object.values(mMap).forEach(r=>allRelated.add(r.otherEntity));
         const relatedArr=[...allRelated].slice(0,10);
         const extraP={...pMap};const extraC={...cMap};const extraM={...mMap};
+        const seenP=new Set(Object.values(pMap).map(r=>r.targetEntity));
         let totalEntities=Object.keys(pMap).length+Object.keys(cMap).length+Object.keys(mMap).length;
         for(const rel of relatedArr){
           if(selectGen.current!==gen||totalEntities>=30)break; // stale or cap reached
           try{
             const[rp,rc,rm]=await Promise.all([bridge.getLookups(rel),bridge.getChildRelationships(rel),bridge.getManyToManyRelationships(rel)]);
             if(selectGen.current!==gen)break; // stale
-            (rp||[]).forEach(r=>{if(!extraP[r.targetEntity]&&r.targetEntity!==e.l&&totalEntities<30){extraP[r.targetEntity]={...r,count:1,depth2:true};totalEntities++;}});
+            (rp||[]).forEach(r=>{if(!seenP.has(r.targetEntity)&&r.targetEntity!==e.l&&totalEntities<30){seenP.add(r.targetEntity);extraP[`${r.targetEntity}|d2`]={...r,count:1,depth2:true};totalEntities++;}});
             (rc||[]).forEach(r=>{if(!extraC[r.targetEntity]&&r.targetEntity!==e.l&&totalEntities<30){extraC[r.targetEntity]={...r,count:1,depth2:true};totalEntities++;}});
             (rm||[]).forEach(r=>{const other=r.entity1===rel?r.entity2:r.entity1;if(!extraM[other]&&other!==e.l&&totalEntities<30){extraM[other]={...r,otherEntity:other,count:1,depth2:true};totalEntities++;}});
           }catch{}
@@ -100,11 +101,12 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
   const centerY=m2m.length>0?m2mY+NODE_H+80:190;
   const childY=centerY+NODE_H+80;
 
-  const renderNode=(x,y,label,sub,isCenter,onClick,colorOverride)=>(
+  // suffix (×n, d2) is appended AFTER truncating the field name — it used to be cut off.
+  const renderNode=(x,y,label,sub,isCenter,onClick,colorOverride,suffix="")=>(
     <g key={label+sub+y} onClick={onClick} style={{cursor:onClick?"pointer":"default"}}>
       <rect x={x-NODE_W/2} y={y} width={NODE_W} height={NODE_H} rx={8} fill={isCenter?C.vi:colorOverride||C.sf} stroke={isCenter?C.vi:colorOverride||C.bd} strokeWidth={1.5}/>
       <text x={x} y={y+22} textAnchor="middle" fill={isCenter?"white":C.tx} fontSize={12} fontWeight={600}>{label.length>18?label.substring(0,18)+"\u2026":label}</text>
-      <text x={x} y={y+38} textAnchor="middle" fill={isCenter?"rgba(255,255,255,0.6)":C.txd} fontSize={10}>{sub.length>20?sub.substring(0,20)+"\u2026":sub}</text>
+      <text x={x} y={y+38} textAnchor="middle" fill={isCenter?"rgba(255,255,255,0.6)":C.txd} fontSize={10}>{(sub.length>20-suffix.length?sub.substring(0,Math.max(4,20-suffix.length))+"\u2026":sub)+suffix}</text>
     </g>
   );
 
@@ -161,19 +163,19 @@ export default function RelationshipGraph({bp,orgInfo,theme}){
                 {/* Parent nodes */}
                 {visP.map((p,i)=>{
                   const px=centerX-((visP.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return renderNode(px,parentY,p.targetEntity,p.lookupField+(p.count>1?` (\u00d7${p.count})`:"")+( p.depth2?" (d2)":""),false,()=>handleSelect({l:p.targetEntity,d:p.targetEntity}));
+                  return renderNode(px,parentY,p.targetEntity,p.lookupField,false,()=>handleSelect({l:p.targetEntity,d:p.targetEntity}),undefined,(p.count>1?` (\u00d7${p.count})`:"")+(p.depth2?" (d2)":""));
                 })}
                 {/* M2M nodes */}
                 {m2m.length>0&&visM.map((m,i)=>{
                   const mx=centerX-((visM.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return renderNode(mx,m2mY,m.otherEntity,m.schemaName+(m.count>1?` (\u00d7${m.count})`:"")+( m.depth2?" (d2)":""),false,()=>handleSelect({l:m.otherEntity,d:m.otherEntity}),C.lv+"22");
+                  return renderNode(mx,m2mY,m.otherEntity,m.schemaName,false,()=>handleSelect({l:m.otherEntity,d:m.otherEntity}),C.lv+"22",(m.count>1?` (\u00d7${m.count})`:"")+(m.depth2?" (d2)":""));
                 })}
                 {/* Center node */}
                 {renderNode(centerX,centerY,selEnt.d||selEnt.l,selEnt.l,true,null)}
                 {/* Child nodes */}
                 {visC.map((c,i)=>{
                   const cx=centerX-((visC.length-1)*(NODE_W+GAP))/2+i*(NODE_W+GAP);
-                  return renderNode(cx,childY,c.targetEntity,c.lookupField+(c.count>1?` (\u00d7${c.count})`:"")+( c.depth2?" (d2)":""),false,()=>handleSelect({l:c.targetEntity,d:c.targetEntity}));
+                  return renderNode(cx,childY,c.targetEntity,c.lookupField,false,()=>handleSelect({l:c.targetEntity,d:c.targetEntity}),undefined,(c.count>1?` (\u00d7${c.count})`:"")+(c.depth2?" (d2)":""));
                 })}
                 {/* Section labels — positioned above each row */}
                 <text x={centerX} y={parentY-8} textAnchor="middle" fill={C.or} fontSize={11} fontWeight={700}>N:1 Parents ({visP.length})</text>

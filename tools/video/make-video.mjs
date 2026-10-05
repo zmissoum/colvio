@@ -6,16 +6,19 @@
 //   node make-video.mjs            → EN + FR, full tour + clips
 //   node make-video.mjs --lang=fr  → one language
 //   node make-video.mjs --no-clips → full tours only
+//   node make-video.mjs --music=music/track.mp3 → soundtrack under the tours (and so the clips)
 //
 // Only modules that show real content in demo mode are filmed (checked with recon/probe):
 // Data Loader, Recycle Bin, API Tester, System Ops and Schema wait for richer demo data.
 import fs from "node:fs";
 import path from "node:path";
-import { HERE, serveDist, openDemo, OVERLAY, helpers, record, encode, cut } from "./lib.mjs";
+import { HERE, serveDist, openDemo, OVERLAY, helpers, record, encode, cut, addMusic } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const LANGS = args.find(a => a.startsWith("--lang="))?.split("=")[1]?.split(",") || ["en", "fr"];
 const WITH_CLIPS = !args.includes("--no-clips");
+const MUSIC = args.find(a => a.startsWith("--music="))?.slice("--music=".length);
+if (MUSIC && !fs.existsSync(MUSIC)) { console.error(`music file not found: ${MUSIC}`); process.exit(2); }
 const OUT = path.join(HERE, "out", "video");
 
 // ── Scenes ──────────────────────────────────────────────────────────────────────────────────
@@ -117,6 +120,7 @@ try {
     const full = path.join(OUT, `colvio_tour_${lang}.mp4`);
     console.log(`[${lang}] ${rec.frames.length} frames, ${(endTs - rec.frames[0].ts).toFixed(1)} s — encoding…`);
     encode(framesDir, rec.frames, endTs, full);
+    if (MUSIC) addMusic(full, MUSIC, endTs - rec.frames[0].ts);
     if (WITH_CLIPS) {
       const clipDir = path.join(OUT, `clips_${lang}`); fs.mkdirSync(clipDir, { recursive: true });
       const offset = t0 - rec.frames[0].ts; // wall-clock marks → video time

@@ -2,6 +2,8 @@
 //
 //   node make-deep.mjs --module=explorer            → EN + FR deep dive of one module
 //   node make-deep.mjs --module=explorer --lang=fr
+//   node make-deep.mjs --module=explorer --port=5201 → own port, to probe several modules in parallel
+//   node make-deep.mjs --module=explorer --music=music/track.mp3 → soundtrack under the video
 //   node make-deep.mjs --module=explorer --probe    → no recording: screenshot each chapter's end
 //                                                    state into out/deep-probe/ (to tune actions)
 //
@@ -9,13 +11,16 @@
 // chapter is { key, en:[title, text], fr:[title, text], run: async (h) => … }.
 import fs from "node:fs";
 import path from "node:path";
-import { HERE, serveDist, openDemo, OVERLAY, helpers, record, encode } from "./lib.mjs";
+import { HERE, serveDist, openDemo, OVERLAY, helpers, record, encode, addMusic } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const arg = (k) => args.find(a => a.startsWith(`--${k}=`))?.split("=")[1];
 const MODULES = (arg("module") || "").split(",").filter(Boolean);
 const LANGS = arg("lang")?.split(",") || ["en", "fr"];
 const PROBE = args.includes("--probe");
+const PORT = +(arg("port") || 5190);
+const MUSIC = args.find(a => a.startsWith("--music="))?.slice("--music=".length);
+if (MUSIC && !fs.existsSync(MUSIC)) { console.error(`music file not found: ${MUSIC}`); process.exit(2); }
 if (!MODULES.length) { console.error("usage: node make-deep.mjs --module=explorer[,teams…] [--lang=fr] [--probe]"); process.exit(2); }
 
 const NOTE = { en: "Demo data · every feature, step by step", fr: "Données de démo · chaque fonctionnalité, pas à pas" };
@@ -24,7 +29,7 @@ const OUTRO = {
   fr: ["Installez Colvio", "Chrome Web Store : « Colvio for Dynamics 365 »", "Gratuit · open source · github.com/zmissoum/colvio"],
 };
 
-const { server, url } = await serveDist();
+const { server, url } = await serveDist(PORT);
 const failures = [];
 const summary = [];
 try {
@@ -62,6 +67,7 @@ try {
         const out = path.join(HERE, "out", "deep", `colvio_${m}_${lang}.mp4`);
         console.log(`[${m}/${lang}] ${rec.frames.length} frames, ${(endTs - rec.frames[0].ts).toFixed(1)} s — encoding…`);
         encode(framesDir, rec.frames, endTs, out);
+        if (MUSIC) addMusic(out, MUSIC, endTs - rec.frames[0].ts);
         fs.rmSync(framesDir, { recursive: true, force: true });
         summary.push({ module: m, lang, file: out, seconds: +(endTs - rec.frames[0].ts).toFixed(1), consoleErrors: consoleErrors.filter(e => !/ws:\/\/|WebSocket|Failed to load resource/.test(e)) });
       } else {

@@ -37,6 +37,16 @@ describe("computeEngagement", () => {
     expect(e.wau).toBe(1);                 // only b active in the last 7 days
     expect(e.stickiness).toBeCloseTo(0.5, 5);
   });
+  it("stickiness uses the last 30 days only on longer windows (same period as MAU)", () => {
+    // 90-day window, one user active every one of the last 30 days and never before:
+    // MAU 1, DAU over the last 30 days = 1 → stickiness 100% (the 90-day DAU average, 1/3, does not apply)
+    const days = new Set();
+    for (let i = 1; i <= 30; i++) days.add(new Date(Date.parse("2026-09-30T12:00:00Z") - (30 - i) * 86400000).toISOString().slice(0, 10));
+    const e = computeEngagement([days], "2026-07-02T12:00:00Z", "2026-09-30T12:00:00Z");
+    expect(e.mau).toBe(1);
+    expect(e.dauAvg).toBeCloseTo(30 / 90, 5);
+    expect(e.stickiness).toBeCloseTo(1, 5);
+  });
   it("wau/mau are null (not misleading zeros) on windows shorter than 7/30 days", () => {
     const e = computeEngagement([new Set(["2026-07-29"])], "2026-07-28T00:00:00Z", "2026-07-31T00:00:00Z");
     expect(e.wau).toBeNull();

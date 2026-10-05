@@ -1186,14 +1186,15 @@
             validateGuid(userId);
             const top = Math.min(parseInt(params.top, 10) || 100, 5000);
 
-            // Strategy 1: User Access Audit (action 64=Login, 65=Logout)
+            // Strategy 1: user-access audit — 64 = User Access via Web (model-driven app),
+            // 65 = User Access via Web Services (API / other clients). Neither is a sign-in or a
+            // sign-out (Dataverse has no sign-out event): the panel labels them by channel.
             let path = `audits?$select=createdon,action,_userid_value,_objectid_value,useradditionalinfo,operation,changedata&$filter=_objectid_value eq ${userId} and (action eq 64 or action eq 65)&$top=${top}&$orderby=createdon desc`;
             let data = await dvRequest("GET", path);
             let records = (data.value || []).map(a => ({
               date: a.createdon,
-              action: a.action === 64 ? "Login" : a.action === 65 ? "Logout" : `Action ${a.action}`,
               actionCode: a.action,
-              accessType: a["action@OData.Community.Display.V1.FormattedValue"] || (a.action === 64 ? "Login" : "Logout"),
+              accessType: a["action@OData.Community.Display.V1.FormattedValue"] || "",
               userId: a["_objectid_value"],
               userName: a["_objectid_value@OData.Community.Display.V1.FormattedValue"] || "",
               info: a.useradditionalinfo || "",

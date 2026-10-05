@@ -656,14 +656,14 @@ export const bridge = {
 
   async getLoginHistory(userId, top = 100) {
     if (isExtension) return callD365("getLoginHistory", { userId, top });
-    // Mock data
-    const now = Date.now();
-    return Array.from({ length: 15 }, (_, i) => ({
-      date: new Date(now - i * 3600000 * (2 + Math.random() * 10)).toISOString(),
-      action: i % 5 === 0 ? "Logout" : "Login",
-      userId,
-      info: "",
-    }));
+    // Mock data: newest first like the real query; hours between consecutive access events
+    const gaps = [0.6, 4.3, 5.2, 18.5, 4.4, 26, 4.8, 5.3, 20, 4.1, 30, 4.6, 22, 5.0, 4.2];
+    let t = Date.now();
+    return gaps.map((g, i) => {
+      t -= g * 3600000;
+      const api = i % 4 === 2;
+      return { date: new Date(t).toISOString(), actionCode: api ? 65 : 64, accessType: api ? "User Access via Web Services" : "User Access via Web", userId, info: "" };
+    });
   },
 
   // Login stats over a window, aggregated per user per UTC day — the scalable replacement for
@@ -874,8 +874,8 @@ export const bridge = {
       { id: "c10", type: 26, objectId: "d1d2d3d4-0001", behavior: 0, name: "Active Accounts" },
       { id: "c11", type: 26, objectId: "d1d2d3d4-0002", behavior: 0, name: "My Active Contacts" },
       { id: "c12", type: 26, objectId: "d1d2d3d4-0003", behavior: 0, name: "All Leads" },
-      { id: "c13", type: 60, objectId: "e1e2e3e4-0001", behavior: 0, name: "new_custom_script.js" },
-      { id: "c14", type: 60, objectId: "e1e2e3e4-0002", behavior: 0, name: "new_style.css" },
+      { id: "c13", type: 61, objectId: "e1e2e3e4-0001", behavior: 0, name: "new_custom_script.js" },
+      { id: "c14", type: 61, objectId: "e1e2e3e4-0002", behavior: 0, name: "new_style.css" },
       { id: "c15", type: 10, objectId: "f1f2f3f4-0001", behavior: 0, name: "account_parent_account (1:N)" },
       { id: "c16", type: 10, objectId: "f1f2f3f4-0002", behavior: 0, name: "contact_customer_accounts (N:1)" },
       { id: "c17", type: 59, objectId: "g1g2g3g4-0001", behavior: 0, name: "Accounts by Industry" },
@@ -1078,7 +1078,9 @@ export const bridge = {
 
   async getUserLastLogin(userId) {
     if (!isExtension) {
-      const daysAgo = Math.floor(Math.random() * 90);
+      // stable per user (renders and re-opens agree): a hash of the id → 0..89 days ago, ≥ 60 = never
+      let h = 0; for (const ch of String(userId)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      const daysAgo = h % 90;
       return daysAgo < 60 ? { date: new Date(Date.now() - daysAgo * 86400000).toISOString() } : null;
     }
     return callD365("getUserLastLogin", { userId });
@@ -1131,7 +1133,7 @@ export const bridge = {
   },
 
   async getRoleUserCount(roleName) {
-    if (!isExtension) return { count: Math.floor(Math.random() * 50) + 1 };
+    if (!isExtension) return { count: 4 }; // = the demo getRoleUsers list
     return callD365("getRoleUserCount", { roleName });
   },
 
