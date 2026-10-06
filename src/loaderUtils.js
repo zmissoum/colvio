@@ -283,3 +283,12 @@ export function flushNeverSent(agg, chunks, nextIdx, totalItems, processedRecord
   }
   emit();
 }
+
+// Existence / lookup checks query OR-chunks of N values with $top = N. When the match field is
+// NOT unique in the org, duplicates fill that page and push other existing values out, which
+// then read as "not found" (an UPSERT would create yet another duplicate). A page that comes back
+// full may be truncated: its values not seen in it must be re-checked one by one.
+export function valuesToVerifyOneByOne(slice, recordCount, isSeen) {
+  if (slice.length < 2 || recordCount < slice.length) return [];
+  return slice.filter(v => !isSeen(v));
+}

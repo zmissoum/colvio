@@ -118,6 +118,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     if (!selected.size || !meta) return;
     if (!confirmProd(orgInfo?.isProduction, `Restore ${selected.size} deleted record${selected.size > 1 ? "s" : ""} (${entity?.l || ""}) back into the live table.`)) return;
     const ids = [...selected];
+    setResults(null);
     setRestoring({ done: 0, total: ids.length });
     const out = [];
     for (const id of ids) {

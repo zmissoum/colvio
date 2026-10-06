@@ -22,7 +22,7 @@ const TEMPLATES = [
   { name: "Upsert by alt-key", method: "PATCH", path: "accounts(accountnumber='ABC123')", body: '{\n  "name": "Upserted via alt-key"\n}' },
   { name: "Delete record", method: "DELETE", path: "accounts(00000000-0000-0000-0000-000000000000)", body: "" },
   { name: "WhoAmI", method: "GET", path: "WhoAmI()", body: "" },
-  { name: "RetrievePrivilegeSet (current user)", method: "GET", path: "RetrieveCurrentOrganization(AccessType=Microsoft.Dynamics.CRM.EndpointAccessType'Default')", body: "" },
+  { name: "RetrieveCurrentOrganization", method: "GET", path: "RetrieveCurrentOrganization(AccessType=Microsoft.Dynamics.CRM.EndpointAccessType'Default')", body: "" },
 ];
 
 const API_PREFIX = "/api/data/v9.2/";
@@ -79,7 +79,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
       const msg = e.message || String(e);
       const m = msg.match(/position (\d+)/i);
       const line = m ? positionToLine(body, parseInt(m[1], 10)) : null;
-      setBodyError(line ? `${msg} (line ${line})` : msg);
+      setBodyError(line && !/\bline \d+/i.test(msg) ? `${msg} (line ${line})` : msg); // Chrome already says "(line 4 column 3)"
     }
   }, [body, method]);
 
@@ -87,17 +87,18 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   // app.jsx exposes the org base as `orgUrl` in the extension; `clientUrl` only exists on the
   // standalone mock. Fall back through both so the URL preview + cURL export show the real origin.
   const orgBase = orgInfo?.orgUrl || orgInfo?.clientUrl || "";
-  const fullUrl = `${orgBase}${API_PREFIX}${path}`;
+  const fullUrl = /^https?:\/\//i.test(path.trim()) ? path.trim() : `${orgBase}${API_PREFIX}${path}`; // absolute URLs (nextLink…) are sent as typed
 
   // Two-step confirmation for DELETE only: first Send (or Ctrl+Enter) arms the button,
   // the second one within 3s actually sends. DELETE is the one irreversible method here
-  // (no recycle bin in Dataverse) and history recall + Ctrl+Enter muscle memory make an
+  // (a recycle bin only covers tables the org keeps deleted records for) and history recall + Ctrl+Enter muscle memory make an
   // accidental send realistic. Re-arms on method/path change; other methods are untouched.
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmTimer = useRef(null);
   useEffect(() => { setConfirmDelete(false); clearTimeout(confirmTimer.current); }, [method, path]);
   useEffect(() => () => clearTimeout(confirmTimer.current), []);
   const trySend = () => {
+    if (hasBody && bodyError) return; // Send is disabled on invalid JSON — Ctrl+Enter must not bypass it
     if (method === "DELETE" && !confirmDelete) {
       setConfirmDelete(true);
       clearTimeout(confirmTimer.current);
@@ -256,7 +257,7 @@ export default function ApiTester({ bp, orgInfo, theme }) {
             onClick={trySend}
             disabled={loading || (hasBody && bodyError && body.trim())}
             style={{ ...bt(confirmDelete ? C.rd : `linear-gradient(135deg,${C.vi},${C.vid})`, { fontSize: 14, fontWeight: 700, padding: "8px 18px", opacity: loading ? 0.6 : 1 }) }}
-            title={confirmDelete ? "Click again to permanently delete — no recycle bin in Dataverse" : "Ctrl/Cmd + Enter"}
+            title={confirmDelete ? "Click again to delete — only restorable if the org's recycle bin keeps this table" : "Ctrl/Cmd + Enter"}
           >
             {loading ? <><Spin s={12} /> Sending...</> : confirmDelete ? <>⚠ Confirm DELETE</> : <><I.Zap /> Send</>}
           </button>

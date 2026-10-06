@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, flushNeverSent, coerceForFieldType } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, flushNeverSent, coerceForFieldType, valuesToVerifyOneByOne } from "../loaderUtils.js";
 
 describe("coerceForFieldType — Edm string/number 400 killer", () => {
   it("coerces clean dot-decimal strings to JSON numbers for Decimal/Money/Double", () => {
@@ -306,5 +306,20 @@ describe("flushNeverSent — scale-safe honest accounting", () => {
     const a2 = { aborted: true, errors: [], log: [] };
     flushNeverSent(a2, chunks, 4, 400, 400, null);
     expect(a2.errors.length).toBe(0);
+  });
+});
+
+describe("valuesToVerifyOneByOne", () => {
+  const seen = (set) => (v) => set.has(v);
+  it("re-checks the unseen values when the page came back full (duplicates may have pushed them out)", () => {
+    // 3 values queried with $top=3; ACC-1 has 3 duplicates in the org, so ACC-2 and ACC-3 never made the page
+    expect(valuesToVerifyOneByOne(["ACC-1", "ACC-2", "ACC-3"], 3, seen(new Set(["ACC-1"])))).toEqual(["ACC-2", "ACC-3"]);
+  });
+  it("trusts a page that is not full: absent values really are absent", () => {
+    expect(valuesToVerifyOneByOne(["ACC-1", "ACC-2", "ACC-3"], 2, seen(new Set(["ACC-1", "ACC-2"])))).toEqual([]);
+  });
+  it("has nothing to re-check when every value was seen, or for a single-value query", () => {
+    expect(valuesToVerifyOneByOne(["a", "b"], 2, seen(new Set(["a", "b"])))).toEqual([]);
+    expect(valuesToVerifyOneByOne(["a"], 1, seen(new Set()))).toEqual([]);
   });
 });

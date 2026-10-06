@@ -10,6 +10,8 @@
  */
 
 import { FLDS } from "./shared.jsx";
+import { demoApiResponse } from "./apiDemo.js";
+import { demoFields } from "./schemaDemo.js";
 
 // ── Demo constants shared by several mocks ──
 // Views: the account ones the Apps demo exposes, plus the contact view the Account form's
@@ -203,6 +205,10 @@ async function callD365(action, params = {}) {
 // test can lock its no-argument-spread contract.
 import { flushNeverSent } from "./loaderUtils.js";
 import { countAll, parseRecordCounts, buildFileSumFetch, parseAggRows, FILE_SOURCES } from "./storageUtils.js";
+import { createDemoBin, demoBinMeta, DEMO_BIN_TABLES } from "./recycleBinDemo.js";
+// One demo recycle bin per page load: a demo restore stays restored until the page reloads.
+let demoBin = null;
+const getDemoBin = () => demoBin || (demoBin = createDemoBin(Date.now()));
 
 // ── Public API ───────────────────────────────────────────────
 // One GUID shape check for the team methods below (review finding: was pasted twice).
@@ -289,7 +295,7 @@ export const bridge = {
     return f?.recycleBin || { enabled: false, unknown: true };
   },
   async restoreRecord(entitySet, id) {
-    if (!isExtension) return { id };
+    if (!isExtension) { await new Promise(r => setTimeout(r, 450)); return getDemoBin().restore(entitySet, id); }
     return callD365("restoreRecord", { entitySet, id });
   },
   // Logical names of tables enabled for restore (cached 10 min, org-scoped). null = couldn't
@@ -297,11 +303,11 @@ export const bridge = {
   // Best-effort map { objectIdLower: {by, on} } of who/when deleted records of a table (audit log).
   // Returns {} or null when unavailable (audit off / no privilege) — caller treats as "unknown".
   async recordsDeletedBy(logicalName, top = 2000) {
-    if (!isExtension) return {};
+    if (!isExtension) return getDemoBin().deletedBy(logicalName, top);
     try { return await callD365("deletesByEntity", { logicalName, top }); } catch { return null; }
   },
   async recycleBinTables() {
-    if (!isExtension) return ["account", "contact"];
+    if (!isExtension) return DEMO_BIN_TABLES;
     const k = cacheKey("rbtables", "all");
     const cached = await cacheGet(k);
     if (cached) return cached.list;
@@ -378,7 +384,7 @@ export const bridge = {
   },
 
   async getFields(logicalName) {
-    if (!isExtension) return null;
+    if (!isExtension) return demoFields(logicalName);
     const k = cacheKey("fields3", logicalName); // v3: entries now carry metadataId (dependency-graph resolution)
     const cached = await cacheGet(k);
     if (cached) return cached;
@@ -403,26 +409,24 @@ export const bridge = {
   // can inspect Dataverse error messages directly.
   async customRequest({ method, path, headers, body }) {
     if (!isExtension) {
-      return {
-        ok: true, status: 200, statusText: "OK",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mock: true, method, path }, null, 2),
-        bodyParsed: { mock: true, method, path },
-        elapsed: 42, url: path,
-      };
+      const r = demoApiResponse({ method, path, headers, body }); // throws like the live guard does
+      await new Promise(res => setTimeout(res, r.elapsed));
+      return r;
     }
     return callD365("customRequest", { method, path, headers, body });
   },
 
   async executeFetchXml(fetchXml) {
     if (isExtension) return callD365("fetchXml", { fetchXml });
+    // Demo: only the Recycle Bin's datasource='bin' reads have data behind them.
+    if (/datasource=['"]bin['"]/.test(fetchXml || "")) return getDemoBin().query(fetchXml);
     return { records: [], count: 0, moreRecords: false };
   },
 
   // withCanDelete: also fetch the CanBeDeleted managed property (best-effort; only the bulk-delete
   // pre-check needs it). Left off elsewhere so a non-selectable CanBeDeleted can't 400 the call.
   async getEntityMetadata(logicalName, withCanDelete = false) {
-    if (!isExtension) return { canBeDeleted: true, displayName: logicalName };
+    if (!isExtension) return { canBeDeleted: true, displayName: logicalName, ...demoBinMeta(logicalName) };
     return callD365("getEntityMetadata", { logicalName, withCanDelete });
   },
 

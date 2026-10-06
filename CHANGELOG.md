@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.11.174] — 2026-10-06
+### Fixed — Data Loader: existing records reported "not found" when the match column has duplicates
+- Existence checks (UPDATE-only / DELETE / delta / dry run) and batched lookup resolution query OR-chunks of N values with `$top = N`. On a match field that is NOT unique in the org, duplicates filled the page and pushed other existing values out: they read as "not found" — an UPSERT then created yet another duplicate, a DELETE dry run said "nothing to delete". A page that comes back full is now treated as possibly truncated and its unseen values are re-checked one by one (pure `valuesToVerifyOneByOne` + 3 tests). Unique keys cost nothing extra.
+- Import Log header counts every status present (unchanged, would create / update, deleted…) instead of four fixed ones that showed "0 skipped" next to a delta "Skipped 1". Pre-flight texts: "1 option-set field has", and the numeric hint points to the transforms that exist ("float", "int"). The alternate-key hint follows the mode (delete / update / upsert).
+
+### Fixed — found while filming the last four modules
+- **Layout**: the floating ? / FR / theme buttons covered the last row of every module — and the Loader wizard's Preview / Dry run / Load buttons at the end of the page. The content area keeps room for them.
+- **Schema (ERD)**: hovering an N:N line now shows its relationship name (as the help text said; the line ignored the mouse). A lookup to the card's own table, or between cards stacked in the same column, loops outside the cards instead of cutting through them. Fit uses the current card heights (expanded / tables-only); the toolbar zoom keeps the view's centre. Pure `erdGeometry.js` + 7 tests.
+- **API Tester**: an absolute URL (nextLink…) is previewed and copied as cURL as typed, not prefixed with the org's API path; Ctrl+Enter no longer sends a body the JSON check rejects; JSON errors give the line once; the RetrieveCurrentOrganization template carries its own name; the DELETE confirmation no longer says Dataverse has no recycle bin.
+- **Recycle Bin**: starting a new restore clears the previous result card.
+
+### Changed — demo mode, now filmable
+- **Data Loader**: a demo run goes through the real import engine (transforms, option sets, existence checks, delta, dry run, live per-row log, result, rollback) against an in-memory copy of the demo accounts — it used to show a fixed "N-1 created, 1 updated" after 2 s. Account gets the demo org's own columns and its alternate key. `loaderDemo.js` + 14 tests.
+- **Recycle Bin**: a plausible bin (accounts and contacts deleted by named users, a 153-row mass delete paged 100 at a time, server-side name search, restore that leaves the list, one deterministic key-conflict failure). `recycleBinDemo.js` + 15 tests.
+- **API Tester**: realistic Dataverse responses instead of `"mock": true` — WhoAmI, $select / $filter / $orderby / $top on the demo accounts, writes with OData-EntityId, Dataverse-shaped 404 / 400 errors. `apiDemo.js` + 24 tests.
+- **Schema**: demo tables have real columns, lookups and N:N, so the diagram draws its curves. `schemaDemo.js` + 8 tests.
+
 ## [1.11.173] — 2026-10-06
 ### Fixed — Relationships map wider than its pane
 - Each band (parents, N:N, children) was ONE row: at 1280 px, 6 children made a 1044 px map in a ~780 px pane — the last boxes sat behind a sideways scroll that reset on every table switch. Rows now wrap to the pane's width (measured live, follows resizes), each row centred; nothing is off-screen any more. Pure `nodesPerRow` / `wrapRow` + 3 tests. Table names fit up to 20 characters, and every box carries its full name and relationship as a tooltip.

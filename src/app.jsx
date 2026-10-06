@@ -310,7 +310,7 @@ export default function App(){
           <div style={{flex:1}}/>
           <span style={{fontSize:12,color:C.txd,...mono}}>{t("explorer.execute_hint")}</span>
         </div>
-        <div style={{flex:1,overflow:"auto"}}>
+        <div style={{flex:1,overflow:"auto",paddingBottom:48}}>{/* room for the fixed ? / FR / theme buttons */}
           {/* Explorer stays mounted (never unmounts) so queries persist across tab switches.
               ExplorerTabs adds browser-style query tabs — several queries open at once, run one at a time to compare. */}
           <div style={{display:tab==="explorer"?"block":"none",height:"100%"}}><ErrorBoundary><ExplorerTabs bp={bp} addHistory={addHistory} orgInfo={orgInfo} theme={theme}/></ErrorBoundary></div>

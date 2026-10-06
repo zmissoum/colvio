@@ -3,6 +3,8 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, useDebounce, isTrulyCustom, mono, inp, bt, crd } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
+import { demoLookups, demoManyToMany } from "../schemaDemo.js";
+import { edgeAnchors, edgePath, zoomViewBox } from "../erdGeometry.js";
 
 const CARD_W=300, HEADER_H=50, ROW_H=24, MAX_FIELDS=15, GAP_X=380, GAP_Y=450;
 
@@ -61,8 +63,10 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     try{
       const[fieldsData,lookupsData,m2mData]=await Promise.all([
         bridge.getFields(e.l).catch(()=>[]),
-        bridge.getLookups(e.l).catch(()=>[]),
-        bridge.getManyToManyRelationships(e.l).catch(()=>[]), // N:N edges were never drawn (user-hit: "relations missing" in the ERD)
+        // Demo: per-table relationships. The bridge's demo getLookups / getManyToMany return ONE list
+        // for every table (the Relationships demo walk is filmed on it): every card would point at the same targets.
+        isLive?bridge.getLookups(e.l).catch(()=>[]):demoLookups(e.l),
+        isLive?bridge.getManyToManyRelationships(e.l).catch(()=>[]):demoManyToMany(e.l), // N:N edges were never drawn (user-hit: "relations missing" in the ERD)
       ]);
       const fields=(fieldsData||[]).map(f=>({l:f.logical,d:f.display||f.logical,t:f.type||"String",cust:f.isCustom})).sort((a,b)=>a.l.localeCompare(b.l));
       const lookups=(lookupsData||[]).map(lk=>({field:lk.lookupField,target:lk.targetEntity,nav:lk.navProperty}));
@@ -139,12 +143,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           const tgtH=cardH(selected[lk.target].fields.length,!!expanded[lk.target],false);
           ty=tgtPos.y+tgtH/2;
         }
-        // Smart side: connect from closest sides
-        const srcCx=srcPos.x+CARD_W/2,tgtCx=tgtPos.x+CARD_W/2;
-        let sx,tx,dir;
-        if(srcCx<tgtCx){sx=srcPos.x+CARD_W;tx=tgtPos.x;dir=1;}
-        else{sx=srcPos.x;tx=tgtPos.x+CARD_W;dir=-1;}
-        result.push({key:`${srcName}-${lk.field}-${lk.target}`,sx,sy,tx,ty,dir,src:srcName,tgt:lk.target,field:lk.field});
+        result.push({key:`${srcName}-${lk.field}-${lk.target}`,...edgeAnchors(srcPos,tgtPos,CARD_W,srcName===lk.target),sy,ty,src:srcName,tgt:lk.target,field:lk.field});
       });
     });
     // N:N edges — header-to-header, drawn once per pair (both cards carry the relationship).
@@ -156,11 +155,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
         if(srcName>other)return; // dedupe: the lexicographically smaller side draws
         const srcPos=positions[srcName],tgtPos=positions[other];
         const sy=srcPos.y+HEADER_H/2,ty=tgtPos.y+HEADER_H/2;
-        const srcCx=srcPos.x+CARD_W/2,tgtCx=tgtPos.x+CARD_W/2;
-        let sx,tx,dir;
-        if(srcCx<tgtCx){sx=srcPos.x+CARD_W;tx=tgtPos.x;dir=1;}
-        else{sx=srcPos.x;tx=tgtPos.x+CARD_W;dir=-1;}
-        result.push({key:`m2m-${r.schemaName}-${srcName}`,type:"m2m",sx,sy,tx,ty,dir,src:srcName,tgt:other,field:r.schemaName});
+        result.push({key:`m2m-${r.schemaName}-${srcName}`,type:"m2m",...edgeAnchors(srcPos,tgtPos,CARD_W,false),sy,ty,src:srcName,tgt:other,field:r.schemaName});
       });
     });
     return result;
@@ -200,12 +195,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     if(!rect)return;
     const mx=vb.x+(e.clientX-rect.left)/rect.width*vb.w;
     const my=vb.y+(e.clientY-rect.top)/rect.height*vb.h;
-    setVb(prev=>{
-      const nw=Math.max(400,Math.min(6000,prev.w*factor));
-      const nh=Math.max(300,Math.min(5000,prev.h*factor));
-      const ratio=nw/prev.w;
-      return{x:mx-(mx-prev.x)*ratio,y:my-(my-prev.y)*ratio,w:nw,h:nh};
-    });
+    setVb(prev=>zoomViewBox(prev,factor,mx,my));
   },[vb]);
 
   useEffect(()=>{
@@ -221,7 +211,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     keys.forEach(k=>{const p=positions[k];const h=cardH(selected[k]?.fields?.length||5,!!expanded[k],collapseAll);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+CARD_W);maxY=Math.max(maxY,p.y+h);});
     setVb({x:minX-60,y:minY-60,w:maxX-minX+120,h:maxY-minY+120});
-  },[positions,selected]);
+  },[positions,selected,expanded,collapseAll]);
 
   const autoLayout=useCallback(()=>{
     const keys=Object.keys(selected);
@@ -439,8 +429,8 @@ export default function SchemaViewer({bp,orgInfo,theme}){
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {/* Toolbar */}
         <div style={{position:"absolute",top:8,right:8,zIndex:10,display:"flex",gap:4}}>
-          <button onClick={()=>setVb(prev=>({...prev,w:prev.w*0.8,h:prev.h*0.8}))} style={bt(null,{padding:"4px 8px",fontSize:12})}>+</button>
-          <button onClick={()=>setVb(prev=>({...prev,w:prev.w*1.2,h:prev.h*1.2}))} style={bt(null,{padding:"4px 8px",fontSize:12})}>-</button>
+          <button onClick={()=>setVb(prev=>zoomViewBox(prev,0.8,prev.x+prev.w/2,prev.y+prev.h/2))} style={bt(null,{padding:"4px 8px",fontSize:12})}>+</button>
+          <button onClick={()=>setVb(prev=>zoomViewBox(prev,1.2,prev.x+prev.w/2,prev.y+prev.h/2))} style={bt(null,{padding:"4px 8px",fontSize:12})}>-</button>
           <button onClick={fitAll} style={bt(null,{padding:"4px 8px",fontSize:12})}>Fit</button>
           <button onClick={autoLayout} style={bt(null,{padding:"4px 8px",fontSize:12})}>Layout</button>
           <button onClick={()=>setCollapseAll(prev=>!prev)} style={bt(collapseAll?C.vi:null,{padding:"4px 8px",fontSize:12})}>{collapseAll?"Fields":"Tables"}</button>
@@ -473,26 +463,26 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           {/* Lines first (behind cards) */}
           {lines.map(l=>{
             const isHov=hoveredLine&&hoveredLine.src===l.src&&hoveredLine.field===l.field;
-            const cp=Math.min(100,Math.abs(l.tx-l.sx)*0.35);
-            const midX=(l.sx+l.tx)/2;
-            const midY=(l.sy+l.ty)/2;
+            const {d,midX,midY}=edgePath(l);
             const isM2m=l.type==="m2m";
             // Clean field name for label; N:N edges label as such (schemaName on hover)
             const label=isM2m?(isHov?l.field:"N:N"):l.field.replace(/^_/,"").replace(/_value$/,"");
             const edgeColor=isM2m?C.lv:C.cy;
             return(
               <g key={l.key}>
+                <path d={d} stroke="transparent" strokeWidth={12} fill="none"
+                  onMouseEnter={()=>setHoveredLine({src:l.src,field:l.field,tgt:l.tgt})} onMouseLeave={()=>setHoveredLine(null)}/>
                 <path
-                  d={`M ${l.sx} ${l.sy} C ${l.sx+cp*l.dir} ${l.sy}, ${l.tx-cp*l.dir} ${l.ty}, ${l.tx} ${l.ty}`}
+                  d={d} style={{pointerEvents:"none",transition:"stroke .15s, stroke-width .15s"}}
                   stroke={isHov?edgeColor:edgeColor+"44"} strokeWidth={isHov?2.5:1.2} fill="none"
                   strokeDasharray={isM2m?"5,4":undefined}
-                  markerEnd={isM2m?undefined:"url(#erd-arrow)"} style={{transition:"stroke .15s, stroke-width .15s"}}/>
+                  markerEnd={isM2m?undefined:"url(#erd-arrow)"}/>
                 {/* Relationship label on line */}
                 {isHov&&<text x={midX} y={midY-6} textAnchor="middle" fill={edgeColor} fontSize={9} {...mono} style={{pointerEvents:"none"}}>
                   {label.length>20?label.substring(0,20)+"…":label}
                 </text>}
                 {/* Subtle label when not hovered for lines that are not too short */}
-                {!isHov&&(isM2m||Math.abs(l.tx-l.sx)>200)&&<text x={midX} y={midY-5} textAnchor="middle" fill={isM2m?C.lv+"aa":C.txd+"66"} fontSize={8} {...mono} style={{pointerEvents:"none"}}>
+                {!isHov&&(isM2m||l.loop||Math.abs(l.tx-l.sx)>200)&&<text x={midX} y={midY-5} textAnchor="middle" fill={isM2m?C.lv+"aa":C.txd+"66"} fontSize={8} {...mono} style={{pointerEvents:"none"}}>
                   {label.length>18?label.substring(0,18)+"…":label}
                 </text>}
               </g>

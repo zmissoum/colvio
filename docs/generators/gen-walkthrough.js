@@ -153,7 +153,7 @@ function stat(s, x, y, w, value, label, color) {
     "Successive audits (4-dimension, write-path, 8-lens product, pre-publication): 0 open critical/high findings",
     "Zero egress verified at code level",
     "Secrets redacted in saved history; CSV formula-injection guards",
-    "350 automated tests",
+    "421 automated tests",
   ], { x: 7.0, y: 1.55, w: 2.55, h: 3.2 });
 }
 

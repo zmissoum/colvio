@@ -30,7 +30,7 @@ node recon.mjs                     # screenshot every module's landing screen (d
 
 Outputs land in `tools/video/out/` (git-ignored):
 
-- `video/colvio_tour_en.mp4`, `video/colvio_tour_fr.mp4` — intro card, 16 modules, outro card (~2 min 15 s)
+- `video/colvio_tour_en.mp4`, `video/colvio_tour_fr.mp4` — intro card, 20 modules, outro card (~2 min 45 s)
 - `video/clips_en/NN_<module>.mp4`, `video/clips_fr/…` — one clip per module, for LinkedIn posts
 - `video/summary.json` — duration, scene count and console errors per language
 
@@ -52,11 +52,12 @@ Write the chapters, run `--probe` until every chapter passes and every screensho
 caption claims, then render. Render one module at a time (or a comma list in one run): parallel
 renders compete for the CPU and the screencast drops frames.
 
-Available (16): `explorer`, `showalldata`, `metadata`, `relationships`, `solutions`, `automation`,
-`apps`, `envvars`, `translations`, `licenses`, `bu`, `security`, `teams`, `adoption`, `logins`,
-`storage`. Some chapters feed the page in-memory files through Playwright's file chooser (a
-solution-compare file, a schema snapshot, a translations CSV) — nothing is downloaded or read from
-disk, and download buttons are only hovered.
+Available (20): `explorer`, `loader`, `recyclebin`, `showalldata`, `apitester`, `metadata`,
+`automation`, `apps`, `relationships`, `schema`, `solutions`, `envvars`, `translations`, `licenses`,
+`bu`, `security`, `teams`, `adoption`, `logins`, `storage`. Some chapters feed the page in-memory
+files through Playwright's file chooser (a solution-compare file, a schema snapshot, a translations
+CSV) — nothing is downloaded or read from disk, and download buttons are only hovered. The tour's
+Data Loader, Recycle Bin, API Tester and Schema scenes replay the first chapters of these scripts.
 
 Selectors: the Explorer's query tabs stay mounted (hidden) while another module is open — always
 target visible elements (`h.vis(text)`, `>> visible=true`).
@@ -89,15 +90,12 @@ as a LinkedIn document post). Headlines live in `SHOTS` in the script; re-run af
 
 ## What's filmed
 
-Only modules that show **real content in demo mode** (checked screenshot by screenshot):
-Data Explorer, Show All Data, Metadata, Relationships, Solutions, Automation, Apps,
-Environment Variables, Translations, Users & Licenses, Business Units, Security Audit, Teams,
-Adoption, Login History, Storage.
+Only modules that show **real content in demo mode** (checked screenshot by screenshot): every
+module except System Ops — 20 of 21.
 
-**Not filmed yet** (demo data too thin): Data Loader (needs a pasted file walked through the
-wizard), Recycle Bin (empty bin), API Tester (the demo response says `"mock": true`), System Ops
-(no jobs / traces / flow runs), Schema (cards have no fields in demo). Enrich their demo mocks,
-re-run `recon.mjs`, then add a scene to `SCENES` in `make-video.mjs`.
+**Not filmed**: System Ops (no system jobs, plug-in traces or flow runs in demo). The Data Loader,
+Recycle Bin, API Tester and Schema demos were enriched for filming (`src/loaderDemo.js`,
+`recycleBinDemo.js`, `apiDemo.js`, `schemaDemo.js`) — demo mode only, live paths untouched.
 
 ## Notes
 

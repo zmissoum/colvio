@@ -2,9 +2,9 @@
 
 **Objectif :** présenter les fonctionnalités de Colvio en vidéo, et rien d'autre. Les posts 1 à 25 (`linkedin-posts.md`) ont déjà présenté Colvio et annoncé chaque nouveauté ; aucun n'a encore montré les fonctionnalités en action. Donc ici : pas d'annonce de version, pas de « quoi de neuf », pas de coulisses. Un post = une vidéo + ce qu'elle montre.
 
-**17 posts, 17 vidéos :** la présentation générale (2 min 14) puis une vidéo détaillée par module (53 à 94 s), toutes en anglais et en français, légendes incrustées, données de démo uniquement.
+**21 posts, 21 vidéos :** la présentation générale (2 min 54, 20 modules) puis une vidéo détaillée par module (52 s à 1 min 54) — tous les modules sauf System Ops, toutes en anglais et en français, légendes incrustées, données de démo uniquement.
 
-**Démarrage :** J = le premier mardi après que le Chrome Web Store affiche la **v1.11.173** (ou plus récente) — les vidéos montrent Teams, Stockage et le Login History actuel, absents des versions plus anciennes du store.
+**Démarrage :** J = le premier mardi après que le Chrome Web Store affiche la **v1.11.174** (ou plus récente) — les vidéos montrent Teams, Stockage, le Login History actuel et les démos enrichies de la v1.11.174, absents des versions plus anciennes du store.
 
 ## Règles de publication
 
@@ -17,44 +17,48 @@
 
 ## Calendrier
 
-Deux posts par semaine le premier mois (mardi 8h30, jeudi 17h30), puis un par semaine le mardi. Les dates sont un exemple si la v1.11.173 est en ligne le lundi 12 octobre, avec une pause pendant les fêtes. Cochez « Publié » au fur et à mesure.
+Deux posts par semaine le premier mois (mardi 8h30, jeudi 17h30), puis un par semaine le mardi. Les dates sont un exemple si la v1.11.174 est en ligne le lundi 12 octobre, avec une pause pendant les fêtes. Cochez « Publié » au fur et à mesure.
 
 | Post | Sem. | Créneau | Date (exemple) | Sujet | Vidéo (`tools/video/out/…`) | Durée | Publié |
 |---|---|---|---|---|---|---|---|
-| 26 | 1 | Mar 8h30 | 13/10 | Colvio en 2 minutes (présentation) | `video/colvio_tour_en.mp4` / `_fr.mp4` | 2 min 14 | ☐ |
+| 26 | 1 | Mar 8h30 | 13/10 | Colvio en quelques minutes (présentation) | `video/colvio_tour_en.mp4` / `_fr.mp4` | 2 min 54 | ☐ |
 | 27 | 1 | Jeu 17h30 | 15/10 | Data Explorer | `deep/colvio_explorer_en.mp4` / `_fr.mp4` | 94 s | ☐ |
-| 28 | 2 | Mar 8h30 | 20/10 | Security Audit | `deep/colvio_security_en.mp4` / `_fr.mp4` | 90 s | ☐ |
-| 29 | 2 | Jeu 17h30 | 22/10 | Adoption | `deep/colvio_adoption_en.mp4` / `_fr.mp4` | 87 s | ☐ |
-| 30 | 3 | Mar 8h30 | 27/10 | Stockage | `deep/colvio_storage_en.mp4` / `_fr.mp4` | 62 s | ☐ |
-| 31 | 3 | Jeu 17h30 | 29/10 | Teams | `deep/colvio_teams_en.mp4` / `_fr.mp4` | 73 s | ☐ |
-| 32 | 4 | Mar 8h30 | 03/11 | Show All Data | `deep/colvio_showalldata_en.mp4` / `_fr.mp4` | 67 s | ☐ |
-| 33 | 4 | Jeu 17h30 | 05/11 | Apps | `deep/colvio_apps_en.mp4` / `_fr.mp4` | 68 s | ☐ |
-| 34 | 5 | Mar 8h30 | 10/11 | Business Units | `deep/colvio_bu_en.mp4` / `_fr.mp4` | 81 s | ☐ |
-| 35 | 6 | Mar 8h30 | 17/11 | Solutions | `deep/colvio_solutions_en.mp4` / `_fr.mp4` | 70 s | ☐ |
-| 36 | 7 | Mar 8h30 | 24/11 | Variables d'environnement | `deep/colvio_envvars_en.mp4` / `_fr.mp4` | 75 s | ☐ |
-| 37 | 8 | Mar 8h30 | 01/12 | Automation | `deep/colvio_automation_en.mp4` / `_fr.mp4` | 72 s | ☐ |
-| 38 | 9 | Mar 8h30 | 08/12 | Metadata | `deep/colvio_metadata_en.mp4` / `_fr.mp4` | 83 s | ☐ |
-| 39 | 10 | Mar 8h30 | 15/12 | Relationships | `deep/colvio_relationships_en.mp4` / `_fr.mp4` | 59 s | ☐ |
-| 40 | 11 | Mar 8h30 | 05/01 | Users & Licenses | `deep/colvio_licenses_en.mp4` / `_fr.mp4` | 64 s | ☐ |
-| 41 | 12 | Mar 8h30 | 12/01 | Translations | `deep/colvio_translations_en.mp4` / `_fr.mp4` | 64 s | ☐ |
-| 42 | 13 | Mar 8h30 | 19/01 | Login History | `deep/colvio_logins_en.mp4` / `_fr.mp4` | 53 s | ☐ |
+| 28 | 2 | Mar 8h30 | 20/10 | Data Loader | `deep/colvio_loader_en.mp4` / `_fr.mp4` | 95 s | ☐ |
+| 29 | 2 | Jeu 17h30 | 22/10 | Security Audit | `deep/colvio_security_en.mp4` / `_fr.mp4` | 90 s | ☐ |
+| 30 | 3 | Mar 8h30 | 27/10 | Adoption | `deep/colvio_adoption_en.mp4` / `_fr.mp4` | 87 s | ☐ |
+| 31 | 3 | Jeu 17h30 | 29/10 | Stockage | `deep/colvio_storage_en.mp4` / `_fr.mp4` | 62 s | ☐ |
+| 32 | 4 | Mar 8h30 | 03/11 | Teams | `deep/colvio_teams_en.mp4` / `_fr.mp4` | 73 s | ☐ |
+| 33 | 4 | Jeu 17h30 | 05/11 | Show All Data | `deep/colvio_showalldata_en.mp4` / `_fr.mp4` | 67 s | ☐ |
+| 34 | 5 | Mar 8h30 | 10/11 | Apps | `deep/colvio_apps_en.mp4` / `_fr.mp4` | 68 s | ☐ |
+| 35 | 6 | Mar 8h30 | 17/11 | API Tester | `deep/colvio_apitester_en.mp4` / `_fr.mp4` | 1 min 54 | ☐ |
+| 36 | 7 | Mar 8h30 | 24/11 | Recycle Bin | `deep/colvio_recyclebin_en.mp4` / `_fr.mp4` | 79 s | ☐ |
+| 37 | 8 | Mar 8h30 | 01/12 | Business Units | `deep/colvio_bu_en.mp4` / `_fr.mp4` | 81 s | ☐ |
+| 38 | 9 | Mar 8h30 | 08/12 | Solutions | `deep/colvio_solutions_en.mp4` / `_fr.mp4` | 70 s | ☐ |
+| 39 | 10 | Mar 8h30 | 15/12 | Variables d'environnement | `deep/colvio_envvars_en.mp4` / `_fr.mp4` | 75 s | ☐ |
+| 40 | 11 | Mar 8h30 | 05/01 | Automation | `deep/colvio_automation_en.mp4` / `_fr.mp4` | 72 s | ☐ |
+| 41 | 12 | Mar 8h30 | 12/01 | Metadata | `deep/colvio_metadata_en.mp4` / `_fr.mp4` | 83 s | ☐ |
+| 42 | 13 | Mar 8h30 | 19/01 | Schema | `deep/colvio_schema_en.mp4` / `_fr.mp4` | 76 s | ☐ |
+| 43 | 14 | Mar 8h30 | 26/01 | Relationships | `deep/colvio_relationships_en.mp4` / `_fr.mp4` | 59 s | ☐ |
+| 44 | 15 | Mar 8h30 | 02/02 | Users & Licenses | `deep/colvio_licenses_en.mp4` / `_fr.mp4` | 64 s | ☐ |
+| 45 | 16 | Mar 8h30 | 09/02 | Translations | `deep/colvio_translations_en.mp4` / `_fr.mp4` | 64 s | ☐ |
+| 46 | 17 | Mar 8h30 | 16/02 | Login History | `deep/colvio_logins_en.mp4` / `_fr.mp4` | 52 s | ☐ |
 
 Les vidéos se régénèrent avec `node make-deep.mjs --module=<module>` et `node make-video.mjs` dans `tools/video` (voir son README).
 
-## Les 17 textes (EN puis FR)
+## Les 21 textes (EN puis FR)
 
-### Post 26 — Colvio in 2 minutes (tour)
+### Post 26 — Colvio in a few minutes (tour) (2 min 54)
 
 **EN**
 
-🎬 2 minutes, 16 modules, zero setup.
+🎬 2 min 54, 20 modules, zero setup.
 
 We keep getting the same question: "OK, but what does Colvio actually DO?"
 
-Here's the answer, in motion: 16 modules on demo data, back to back.
+Here's the answer, in motion: 20 modules on demo data, back to back.
 
-🔎 Data: query any table (Builder, OData, FetchXML or SQL), inspect every field of a record
-🛠 Develop: metadata, relationships, solutions, apps, automation, environment variables, translations
+🔎 Data: query any table (Builder, OData, FetchXML or SQL), load a spreadsheet, restore deleted records, inspect every field of a record
+🛠 Develop: API tester, metadata, automation, apps, relationships, data model diagram, solutions, environment variables, translations
 🛡 Admin: users & licenses, business units, security roles, teams, adoption, login history, storage
 
 What you won't see in the video: a sign-up screen, an API key, an app registration. Colvio runs in your browser on the Dynamics 365 session you already have, and talks to nothing but your own org.
@@ -67,14 +71,14 @@ Which module would you open first? 👇
 
 **FR**
 
-🎬 2 minutes, 16 modules, zéro configuration.
+🎬 2 min 54, 20 modules, zéro configuration.
 
 On nous pose souvent la même question : « OK, mais concrètement, Colvio fait quoi ? »
 
-La réponse, en vidéo : 16 modules sur des données de démo, l'un après l'autre.
+La réponse, en vidéo : 20 modules sur des données de démo, l'un après l'autre.
 
-🔎 Données : interroger n'importe quelle table (Builder, OData, FetchXML ou SQL), inspecter chaque champ d'un enregistrement
-🛠 Développement : métadonnées, relations, solutions, apps, automatisations, variables d'environnement, traductions
+🔎 Données : interroger n'importe quelle table (Builder, OData, FetchXML ou SQL), charger un tableur, restaurer des enregistrements supprimés, inspecter chaque champ d'un enregistrement
+🛠 Développement : API tester, métadonnées, automatisations, apps, relations, schéma du modèle de données, solutions, variables d'environnement, traductions
 🛡 Administration : utilisateurs et licences, business units, rôles de sécurité, teams, adoption, historique de connexion, stockage
 
 Ce que vous ne verrez pas dans la vidéo : un écran d'inscription, une clé d'API, une app registration. Colvio tourne dans votre navigateur, sur la session Dynamics 365 que vous avez déjà, et ne parle qu'à votre propre org.
@@ -133,7 +137,51 @@ Laquelle de ces huit étapes faites-vous encore à la main aujourd'hui ? 👇
 
 ---
 
-### Post 28 — Security Audit (`security`, 90 s)
+### Post 28 — Data Loader (`loader`, 95 s)
+
+**EN**
+
+📥 From a spreadsheet to Dataverse, without a single blind click.
+
+▶️ 95 seconds in Colvio's Data Loader:
+
+→ Paste rows straight from Excel: the delimiter is detected, the headers come along
+→ Pick the target table: columns named after a field map themselves
+→ Four modes: CREATE, UPSERT on an alternate key, UPDATE that never creates, DELETE with a typed confirmation, and Delta skips rows that wouldn't change
+→ Checked before anything is sent: the exact record that will be written, and pre-flight warnings
+→ One transform per column: option-set labels to values, HTML to plain text
+→ A dry run that writes nothing, then the real load: every row lands in a live log, and any row shows the exact request sent
+→ Rollback: type ROLLBACK and the records this run created are deleted again
+
+Demo data in the video. Free and open source.
+
+What's the biggest file you've ever had to load into Dataverse? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataMigration
+
+**FR**
+
+📥 D'un tableur à Dataverse, sans un seul clic à l'aveugle.
+
+▶️ 95 secondes dans le Data Loader de Colvio :
+
+→ Collez les lignes directement depuis Excel : le séparateur est détecté, les en-têtes suivent
+→ Choisissez la table cible : les colonnes qui portent le nom d'un champ se mappent toutes seules
+→ Quatre modes : CREATE, UPSERT sur une clé alternative, UPDATE qui ne crée jamais, DELETE avec confirmation saisie, et le mode Delta ignore les lignes qui ne changeraient rien
+→ Vérifié avant tout envoi : l'enregistrement exact qui sera écrit, et les alertes de contrôle préalable
+→ Une transformation par colonne : libellés d'option set en valeurs, HTML en texte brut
+→ Une simulation qui n'écrit rien, puis le vrai chargement : chaque ligne arrive dans un journal en direct, et chacune montre la requête exacte envoyée
+→ Retour arrière : tapez ROLLBACK et les enregistrements créés par ce chargement sont supprimés
+
+Données de démo dans la vidéo. Gratuit et open source.
+
+Quel est le plus gros fichier que vous ayez dû charger dans Dataverse ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataMigration
+
+---
+
+### Post 29 — Security Audit (`security`, 90 s)
 
 **EN**
 
@@ -177,7 +225,7 @@ Données de démo dans la vidéo. Gratuit et open source.
 
 ---
 
-### Post 29 — Adoption (`adoption`, 87 s)
+### Post 30 — Adoption (`adoption`, 87 s)
 
 **EN**
 
@@ -225,7 +273,7 @@ Si vous pouviez connaître un seul chiffre d'adoption de votre org aujourd'hui, 
 
 ---
 
-### Post 30 — Storage (`storage`, 62 s)
+### Post 31 — Storage (`storage`, 62 s)
 
 **EN**
 
@@ -269,7 +317,7 @@ Quelle est la plus grosse table de votre org, et l'auriez-vous devinée ? 👇
 
 ---
 
-### Post 31 — Teams (`teams`, 73 s)
+### Post 32 — Teams (`teams`, 73 s)
 
 **EN**
 
@@ -313,7 +361,7 @@ Teams owner ou groupes Entra : sur quoi repose votre org ? 👇
 
 ---
 
-### Post 32 — Show All Data (`showalldata`, 67 s)
+### Post 33 — Show All Data (`showalldata`, 67 s)
 
 **EN**
 
@@ -355,7 +403,7 @@ Quel champ finissez-vous toujours par chercher ? 👇
 
 ---
 
-### Post 33 — Apps (`apps`, 68 s)
+### Post 34 — Apps (`apps`, 68 s)
 
 **EN**
 
@@ -401,7 +449,99 @@ Un formulaire est-il déjà apparu là où personne ne l'avait ajouté ? 👇
 
 ---
 
-### Post 34 — Business Units (`bu`, 81 s)
+### Post 35 — API Tester (`apitester`, 1 min 54)
+
+**EN**
+
+🧪 Calling the Dataverse Web API shouldn't start with an app registration.
+
+▶️ 1 min 54 in Colvio's API Tester, on the session you're already signed in with:
+
+→ Seven ready-made requests: WhoAmI, create, upsert by alternate key, delete…
+→ Any query after /api/data/v9.2/ ($select, $filter, $top) with status, time, size and pretty-printed JSON
+→ Add headers (Prefer for formatted values) and read the ones that come back
+→ A JSON editor that names the line of a syntax error
+→ Create a record: 204 with the new record's URL, or the record itself with return=representation
+→ DELETE asks twice, and requests only go to your own org
+→ History with filter and body values blanked, tabs, copy as cURL
+
+Demo data in the video. Free and open source.
+
+What's the first request you'd send? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #WebAPI
+
+**FR**
+
+🧪 Appeler l'API Web de Dataverse ne devrait pas commencer par une app registration.
+
+▶️ 1 min 54 dans l'API Tester de Colvio, sur la session avec laquelle vous êtes déjà connecté :
+
+→ Sept requêtes prêtes à l'emploi : WhoAmI, création, upsert par clé alternative, suppression…
+→ N'importe quelle requête après /api/data/v9.2/ ($select, $filter, $top) avec statut, durée, taille et JSON mis en forme
+→ Ajoutez des en-têtes (Prefer pour les valeurs formatées) et lisez ceux qui reviennent
+→ Un éditeur JSON qui indique la ligne d'une erreur de syntaxe
+→ Créez un enregistrement : 204 avec l'URL du nouvel enregistrement, ou l'enregistrement lui-même avec return=representation
+→ DELETE demande deux fois, et les requêtes ne partent que vers votre propre org
+→ Un historique où les valeurs de filtre et de corps sont masquées, des onglets, la copie en cURL
+
+Données de démo dans la vidéo. Gratuit et open source.
+
+Quelle serait votre première requête ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #WebAPI
+
+---
+
+### Post 36 — Recycle Bin (`recyclebin`, 79 s)
+
+**EN**
+
+🗑 "Someone deleted 140 accounts last night. Can we get them back?"
+
+If the org keeps deleted records for that table, yes, and Colvio shows you what's in the bin.
+
+▶️ 79 seconds in Colvio's Recycle Bin:
+
+→ Only the tables enabled for restore, with the org's retention
+→ Each deleted record with who deleted it and when, plus who created and last modified it
+→ Page through a mass delete 100 to 1,000 rows at a time, and search by name across the whole bin
+→ Export the list before you restore, as evidence
+→ Restore with Dataverse's own Restore action: the record comes back and leaves the bin
+→ When a restore is refused (here, a live record already uses the same alternate key), the reason and the fix, record by record
+→ The platform's limits spelled out under the list
+
+Demo data in the video. Free and open source.
+
+Has a mass delete ever ruined your morning? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataRecovery
+
+**FR**
+
+🗑 « Quelqu'un a supprimé 140 comptes cette nuit. On peut les récupérer ? »
+
+Si l'org conserve les enregistrements supprimés pour cette table, oui, et Colvio vous montre ce que contient la corbeille.
+
+▶️ 79 secondes dans la corbeille de Colvio :
+
+→ Seulement les tables activées pour la restauration, avec la durée de conservation de l'org
+→ Chaque enregistrement supprimé avec qui l'a supprimé et quand, ainsi que qui l'a créé et modifié en dernier
+→ Parcourez une suppression massive par pages de 100 à 1 000 lignes, et cherchez par nom dans toute la corbeille
+→ Exportez la liste avant de restaurer, comme preuve
+→ Restaurez avec l'action Restore de Dataverse : l'enregistrement revient et quitte la corbeille
+→ Quand une restauration est refusée (ici, un enregistrement existant utilise déjà la même clé alternative), la raison et la solution, enregistrement par enregistrement
+→ Les limites de la plateforme expliquées sous la liste
+
+Données de démo dans la vidéo. Gratuit et open source.
+
+Une suppression massive vous a-t-elle déjà gâché une matinée ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataRecovery
+
+---
+
+### Post 37 — Business Units (`bu`, 81 s)
 
 **EN**
 
@@ -441,7 +581,7 @@ Combien de business units dans votre org ? 👇
 
 ---
 
-### Post 35 — Solutions (`solutions`, 70 s)
+### Post 38 — Solutions (`solutions`, 70 s)
 
 **EN**
 
@@ -481,7 +621,7 @@ Comment vérifiez-vous un déploiement aujourd'hui ? 👇
 
 ---
 
-### Post 36 — Environment Variables (`envvars`, 75 s)
+### Post 39 — Environment Variables (`envvars`, 75 s)
 
 **EN**
 
@@ -523,7 +663,7 @@ Déjà piégé par une variable vide après un déploiement ? 👇
 
 ---
 
-### Post 37 — Automation (`automation`, 72 s)
+### Post 40 — Automation (`automation`, 72 s)
 
 **EN**
 
@@ -569,7 +709,7 @@ Plug-ins ou flux : où vit l'essentiel de votre logique ? 👇
 
 ---
 
-### Post 38 — Metadata (`metadata`, 83 s)
+### Post 41 — Metadata (`metadata`, 83 s)
 
 **EN**
 
@@ -611,7 +751,51 @@ Tenez-vous votre dictionnaire de données à jour ? 👇
 
 ---
 
-### Post 39 — Relationships (`relationships`, 59 s)
+### Post 42 — Schema (`schema`, 76 s)
+
+**EN**
+
+🗺 Your Dataverse data model, drawn from the org itself.
+
+▶️ 76 seconds in Colvio's Schema module:
+
+→ Click tables: each lands on the canvas with its columns and types, lookups first
+→ Each lookup curves to its target table; hover one to light it up
+→ N:N relationships as dashed lines between card headers
+→ The + on a card adds the tables its lookups point to
+→ Drag the cards, pan, zoom, Fit: every curve follows
+→ Every column, or tables only for the big picture
+→ Export as PNG, SVG or a Mermaid erDiagram for your docs
+
+Demo data in the video. Free and open source.
+
+How do you document your data model today? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
+
+**FR**
+
+🗺 Votre modèle de données Dataverse, dessiné à partir de l'org elle-même.
+
+▶️ 76 secondes dans le module Schema de Colvio :
+
+→ Cliquez des tables : chacune arrive sur le canevas avec ses colonnes et leurs types, les lookups en premier
+→ Chaque lookup trace une courbe vers sa table cible ; survolez-le pour l'éclairer
+→ Les relations N:N en pointillés entre les en-têtes des cartes
+→ Le + d'une carte ajoute les tables vers lesquelles pointent ses lookups
+→ Déplacez les cartes, faites défiler, zoomez, Fit : chaque courbe suit
+→ Toutes les colonnes, ou seulement les tables pour la vue d'ensemble
+→ Export en PNG, SVG ou en erDiagram Mermaid pour votre documentation
+
+Données de démo dans la vidéo. Gratuit et open source.
+
+Comment documentez-vous votre modèle de données aujourd'hui ? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
+
+---
+
+### Post 43 — Relationships (`relationships`, 59 s)
 
 **EN**
 
@@ -651,7 +835,7 @@ Quelle table a le plus de relations dans votre org ? 👇
 
 ---
 
-### Post 40 — Users & Licenses (`licenses`, 64 s)
+### Post 44 — Users & Licenses (`licenses`, 64 s)
 
 **EN**
 
@@ -693,7 +877,7 @@ Combien de licences inutilisées parieriez-vous que votre org paie ? 👇
 
 ---
 
-### Post 41 — Translations (`translations`, 64 s)
+### Post 45 — Translations (`translations`, 64 s)
 
 **EN**
 
@@ -735,7 +919,7 @@ Combien de langues dans votre org ? 👇
 
 ---
 
-### Post 42 — Login History (`logins`, 53 s)
+### Post 46 — Login History (`logins`, 52 s)
 
 **EN**
 
@@ -743,7 +927,7 @@ Combien de langues dans votre org ? 👇
 
 It records user access at most once per user per interval (4 hours by default), through two channels: the app (audit action 64) and web services, meaning the API (action 65). Any "session duration" built from the audit is a guess.
 
-▶️ 53 seconds in Colvio's Login History, showing what the audit really holds:
+▶️ 52 seconds in Colvio's Login History, showing what the audit really holds:
 
 → Find a user as you type
 → Access events, active days, latest and oldest, split between the app and web services
@@ -763,7 +947,7 @@ Did you know Dataverse has no sign-out event? 👇
 
 Il enregistre les accès des utilisateurs au plus une fois par intervalle (4 heures par défaut), selon deux canaux : l'application (action d'audit 64) et les services web, c'est-à-dire l'API (action 65). Toute « durée de session » tirée de l'audit est une supposition.
 
-▶️ 53 secondes dans l'historique de connexion de Colvio, qui montre ce que l'audit contient vraiment :
+▶️ 52 secondes dans l'historique de connexion de Colvio, qui montre ce que l'audit contient vraiment :
 
 → Trouvez un utilisateur au fil de la frappe
 → Événements d'accès, jours actifs, le plus récent et le plus ancien, répartis entre l'application et les services web

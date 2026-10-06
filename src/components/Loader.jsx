@@ -1,8 +1,14 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES } from "../loaderUtils.js";
-import { C, I, Spin, ENTS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProd } from "../shared.jsx";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES, valuesToVerifyOneByOne } from "../loaderUtils.js";
+import { createDemoLoaderIO } from "../loaderDemo.js";
+import { C, I, Spin, ENTS, FLDS, ROWS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProd } from "../shared.jsx";
+
+const logStatusColor=(st)=>st==="CREATED"||st==="WOULD CREATE"?C.gn
+  :st==="UPSERTED"||st==="UPDATED"||st==="WOULD UPDATE"||st==="WOULD UPSERT"?C.cy
+  :st==="SKIPPED"||st==="NOT FOUND"||st==="UNCHANGED"||st==="UNVERIFIED"?C.yw
+  :st==="WOULD DELETE"||st==="DELETED"?C.or:C.rd;
 
 // System / audit fields the loader never writes by default (platform-managed or write-protected).
 // Migration mode re-enables a small allowlist so a data migration can preserve original audit values.
@@ -186,6 +192,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const handlePaste=()=>{if(pasteText.trim()){setCsvFile({name:"clipboard_data.csv"});parseData(pasteText);}};
 
   const isLive = orgInfo?.isExtension;
+  // Demo mode runs the SAME engine as a live run, against an in-memory copy of the demo accounts
+  // (loaderDemo.js) — not the bridge: its mocks only apply outside the extension, and a demo run
+  // must never reach an org.
+  const[demoIO]=useState(()=>createDemoLoaderIO({tables:{accounts:ROWS},fields:FLDS,entities:ENTS}));
+  const io=isLive?bridge:demoIO;
   const[loadProgress,setLoadProgress]=useState({done:0,total:0,current:""});
   const[startedAt,setStartedAt]=useState(null); // wall-clock time the import was launched (Date)
   const[expandedLog,setExpandedLog]=useState(null); // csvRowNumber of the live-log row expanded to show its request
@@ -473,7 +484,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   },[csvData.r,lookups,maps,migrationMode,deleteMode,targetFieldsMeta]);
 
   useEffect(()=>{
-    if(!isLive||!target){setTargetLookups([]);setTargetAltKeys([]);setTargetFieldsMeta([]);return;}
+    // Demo: the account table carries the demo org's own columns (FLDS) and alternate key.
+    if(!isLive||!target){const demoAcc=!isLive&&target==="account";setTargetLookups([]);setTargetAltKeys(demoAcc?["accountnumber"]:[]);setTargetFieldsMeta(demoAcc?FLDS:[]);if(!isLive)setTargetFields(demoAcc?FLDS.map(f=>f.l).sort():D365CF);return;}
     const gen=++fieldGen.current;
     setLoadingFields(true);
     Promise.all([
@@ -651,7 +663,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // $select the filter field itself — guaranteed to exist, unlike `${entity}id` (activities'
     // PK is activityid, abstract owners' isn't ownerid → permanent 400). Dataverse always
     // includes the primary key attribute in the response regardless of $select.
-    const data=await bridge.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:lk.d365f});
+    const data=await io.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:lk.d365f});
     if(data?.records?.length>0){
       const rec=data.records[0];
       const fkey=lk.d365f.toLowerCase();
@@ -684,10 +696,14 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     let nextIdx = 0, done = 0;
     const queryChunk = async (slice) => {
       const filter = slice.map(v => `${fkey} eq '${String(v).replace(/'/g, "''")}'`).join(" or ");
-      const data = await bridge.query(set, { filter, select: fkey, top: String(slice.length) });
-      for (const rec of (data?.records || [])) {
+      const data = await io.query(set, { filter, select: fkey, top: String(slice.length) });
+      const recs = data?.records || [];
+      for (const rec of recs) {
         const kv = rec[fkey]; const g = pkOf(rec);
         if (kv != null && g) found.set(norm(kv), g);
+      }
+      for (const v of valuesToVerifyOneByOne(slice, recs.length, v => found.has(norm(v)))) {
+        const g = await resolveLookup(lk, v); if (g) found.set(norm(v), g);
       }
     };
     const CONC = Math.min(6, chunks.length || 1);
@@ -738,8 +754,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const selectCols=selectFields?[...new Set([keyField,...selectFields])].join(","):keyField;
     const queryChunk=async(slice)=>{
       const filter=slice.map(v=>`${keyField} eq ${lit(v)}`).join(" or ");
-      const data=await bridge.query(entitySet,{filter,select:selectCols,top:String(slice.length)});
-      for(const rec of (data?.records||[])){ const kv=rec[keyField]; if(kv!=null){ existing.add(norm(kv)); if(records) records.set(norm(kv),rec); } }
+      const data=await io.query(entitySet,{filter,select:selectCols,top:String(slice.length)});
+      const recs=data?.records||[];
+      for(const rec of recs){ const kv=rec[keyField]; if(kv!=null){ existing.add(norm(kv)); if(records) records.set(norm(kv),rec); } }
+      for(const v of valuesToVerifyOneByOne(slice,recs.length,v=>existing.has(norm(v)))) await queryChunk([v]);
     };
     const CONC=Math.min(6,chunks.length||1); // run several existence queries in parallel
     const worker=async()=>{
@@ -886,11 +904,6 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const errors=[];
     const logEntries=[];
 
-    if(!isLive){
-      setTimeout(()=>setResult({created:total-1,updated:1,errors:[],skipped:0,elapsed:"2.1"}),2000);
-      return;
-    }
-
     // ── DELETE mode ── (no lookups, no body — just key-identified deletions)
     if(deleteMode && uKey.d && uKey.c){
       const entitySetD=entitySetFor(target);
@@ -939,7 +952,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         const effChunkD=isRetry?Math.min(batchSize,50):batchSize;
         setLoadProgress({done:0,total:deleteItems.length,current:`Deleting ${deleteItems.length} records...`});
         try{
-          const res=await bridge.batchDeleteKeyed(entitySetD,uKey.d,deleteItems,isPKD,p=>{
+          const res=await io.batchDeleteKeyed(entitySetD,uKey.d,deleteItems,isPKD,p=>{
             setLoadProgress({done:p.done,total:p.total,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Deleting records ${p.done}/${p.total}...`});
             pushBatchLog(p.newLog,deleteRowMap,rows);
           },()=>loadAbort.current,{chunk:effChunkD,concurrency:effThreadsD,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic,keyIsNumeric:!isPKD&&["Integer","BigInt","Decimal","Double","Money"].includes(targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.type||targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.t)});
@@ -1003,13 +1016,13 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           setLoadProgress({done:0,total:guids.length,current:`Resolving owner type (user vs team) for ${guids.length} unique ids...`});
           let doneO=0,nextO=0;
           const probeOne=async(g)=>{
-            try{ await bridge.query(`systemusers(${g})`,{select:"systemuserid"}); ownerSetCache[g]="systemusers"; }
+            try{ await io.query(`systemusers(${g})`,{select:"systemuserid"}); ownerSetCache[g]="systemusers"; }
             catch(e1){
               // Only a definitive 404 means "not a user, try team". A transient error (429/5xx/
               // network) must NOT make us guess — otherwise a throttled team GUID gets bound to
               // /systemusers and silently fails per row.
               if(!isNotFound(e1)){ ownerErrored.add(g); }
-              else{ try{ await bridge.query(`teams(${g})`,{select:"teamid"}); ownerSetCache[g]="teams"; }
+              else{ try{ await io.query(`teams(${g})`,{select:"teamid"}); ownerSetCache[g]="teams"; }
                     catch(e2){ if(!isNotFound(e2)) ownerErrored.add(g); /* else: neither user nor team — leave unresolved */ } }
             }
             doneO++; if(doneO%20===0) setLoadProgress({done:doneO,total:guids.length,current:`Resolving owner type ${doneO}/${guids.length}...`});
@@ -1048,7 +1061,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);
       const attrType=meta?.type||meta?.t||"Picklist";
       try{
-        const opts=await bridge.getOptionSet(target,m.d365,attrType);
+        const opts=await io.getOptionSet(target,m.d365,attrType);
         if(Array.isArray(opts)){
           const map={};
           // The user's-language labels first, then EVERY provisioned language (Label.LocalizedLabels)
@@ -1307,7 +1320,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(createRecords.length>0){
       setLoadProgress({done:0,total:sendTotal,current:`Sending ${createRecords.length.toLocaleString()} records (CREATE)...`});
       try{
-        const res=await bridge.batchCreate(entitySet,createRecords,p=>{
+        const res=await io.batchCreate(entitySet,createRecords,p=>{
           setLoadProgress({done:p.done,total:sendTotal,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (CREATE) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,createRowMap,rows);
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic});
@@ -1323,7 +1336,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       setLoadProgress({done:createRecords.length,total:sendTotal,current:`Sending ${upsertItems.length.toLocaleString()}${notSent>0?` of ${total.toLocaleString()}`:""} records (${updateOnly?"UPDATE":"UPSERT"})${notSent>0?` — ${notSent.toLocaleString()} not eligible`:""}...`});
       try{
         const isPK = uKey.d.toLowerCase() === target + "id" || (!!pkLogical && uKey.d === pkLogical);
-        const res=await bridge.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
+        const res=await io.batchUpsert(entitySet,uKey.d,upsertItems,isPK,p=>{
           setLoadProgress({done:createRecords.length+p.done,total:sendTotal,current:loadAbort.current?`Cancelling — ${p.done}/${p.total}...`:`Sending records (${updateOnly?"UPDATE":"UPSERT"}) ${p.done}/${p.total}...`});
           pushBatchLog(p.newLog,upsertRowMap,rows);
         },()=>loadAbort.current,{chunk:effChunk,concurrency:effThreads,bypassPlugins:canShowSpeedBoosters&&bypassPlugins,suppressDuplicates:canShowSpeedBoosters&&suppressDuplicates,bypassAsyncLogic:canShowSpeedBoosters&&bypassAsyncLogic,updateOnly,keyIsNumeric:!isPK&&["Integer","BigInt","Decimal","Double","Money"].includes(targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.type||targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d)?.t)});
@@ -1580,7 +1593,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                     <span style={{color:C.txd}}>←</span>
                     <select value={uKey.c} onChange={e=>setUKey({...uKey,c:e.target.value})} style={inp({flex:1,fontSize:13})}><option value="">—</option>{csvData.h.map(h=><option key={h}>{h}</option>)}</select>
                   </div>
-                  {isUsingAltKey&&<div style={{fontSize:11,color:C.gn,marginTop:3,fontWeight:600}}>🔑 alt-key — direct upsert (no GUID resolve)</div>}
+                  {isUsingAltKey&&<div style={{fontSize:11,color:C.gn,marginTop:3,fontWeight:600}}>🔑 alt-key — {deleteMode?"rows deleted":updateOnly?"rows updated":"direct upsert"} by key (no GUID resolve)</div>}
                   {pkMisconfig&&<div style={{fontSize:11,color:C.rd,marginTop:3,fontWeight:600}}>⚠ Primary key selected but CSV value &quot;{String(sampleVal).substring(0,30)}&quot; is not a GUID — pick an alt-key instead</div>}
                 </div>);
               })()}
@@ -1794,7 +1807,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             // Picklist/State/Status columns mapped without a transform chosen
             const picklistTypes=new Set(["Picklist","State","Status"]);
             const pickNoTransform=maps.filter(m=>{if(!m.d365||m.skip||m.transform)return false;const meta=targetFieldsMeta.find(f=>(f.logical||f.l)===m.d365);return meta&&picklistTypes.has(meta.type||meta.t);}).map(m=>m.d365);
-            if(pickNoTransform.length) warnings.push({k:"pick",t:`${pickNoTransform.length} option-set field${pickNoTransform.length>1?"s":""} have no transform chosen: ${pickNoTransform.slice(0,5).join(", ")} — labels won't convert to option values.`});
+            if(pickNoTransform.length) warnings.push({k:"pick",t:`${pickNoTransform.length} option-set field${pickNoTransform.length>1?"s have":" has"} no transform chosen: ${pickNoTransform.slice(0,5).join(", ")} — labels won't convert to option values.`});
             // UPSERT key set but no CSV column chosen
             if(uKey.d&&!uKey.c) warnings.push({k:"uk",t:`UPSERT key "${uKey.d}" has no CSV column selected — the import can't match existing records.`});
             keyWarnings.forEach((w,wi)=>warnings.push({k:"key"+wi,t:w}));
@@ -1812,7 +1825,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             }
             // Numbers/booleans that won't parse — the run errors these rows with the same reason.
             for(const nw of numericWarnings){
-              warnings.push({k:"num_"+nw.field,t:`"${nw.field}" is ${nw.type} but ${nw.count.toLocaleString()} value${nw.count>1?"s":""} in "${nw.col}" won't parse (e.g. "${nw.example}") — ${nw.type==="Boolean"?"expected true/false, 1/0 or yes/no (or the Boolean transform)":'comma decimals and thousand separators need the "Number (locale)" transform'}. Those rows will be errored with a clear message instead of a cryptic 400.`});
+              warnings.push({k:"num_"+nw.field,t:`"${nw.field}" is ${nw.type} but ${nw.count.toLocaleString()} value${nw.count>1?"s":""} in "${nw.col}" won't parse (e.g. "${nw.example}") — ${nw.type==="Boolean"?"expected true/false, 1/0 or yes/no (or the Boolean transform)":'comma decimals and thousand separators need the "float" transform (or "int" for whole numbers)'}. Those rows will be errored with a clear message instead of a cryptic 400.`});
             }
             if(emptyAsNull&&emptyClearCount>0) warnings.push({k:"emptynull",t:`Empty-as-NULL is ON: ${emptyClearCount.toLocaleString()} empty cell${emptyClearCount>1?"s":""} across mapped columns will CLEAR the corresponding field on every matched record (lookups included). If a mapped column is only partially filled, those records will lose that data.`});
             if(!warnings.length) return null;
@@ -2148,7 +2161,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                           const es=entitySetFor(result.entity||target);
                           setRollback({running:true,doneCount:0,total:ids.length});
                           try{
-                            const res=await bridge.batchDeleteKeyed(es,(result.entity||target)+"id",ids.map(id=>({keyValue:id})),true,
+                            const res=await io.batchDeleteKeyed(es,(result.entity||target)+"id",ids.map(id=>({keyValue:id})),true,
                               p=>setRollback({running:true,doneCount:p.done,total:p.total}),()=>false,{chunk:batchSize,concurrency:threads});
                             setRollback({running:false,done:true,deleted:res.deleted||0,failed:(res.errors||[]).length,total:ids.length});
                           }catch(e){ setRollback({running:false,done:true,deleted:0,failed:ids.length,total:ids.length,error:e.message}); }
@@ -2212,11 +2225,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 <div style={{...crd({padding:12}),marginTop:12}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                     <span style={{fontSize:14,fontWeight:600}}>Import Log {result.logTruncated?`(showing ${result.log.length.toLocaleString()} of ${(result.logTotal||0).toLocaleString()} — use Download Log for all)`:`(${result.log.length.toLocaleString()} rows)`}</span>
-                    <span style={{fontSize:11,color:C.txd}}>
-                      <span style={{color:C.gn}}>● {result.log.filter(e=>e.status==="CREATED").length} created</span>
-                      {" "}<span style={{color:C.cy}}>● {result.log.filter(e=>e.status==="UPSERTED").length} upserted</span>
-                      {" "}<span style={{color:C.yw}}>● {result.log.filter(e=>e.status==="SKIPPED").length} skipped</span>
-                      {" "}<span style={{color:C.rd}}>● {result.log.filter(e=>e.status==="ERROR").length} errors</span>
+                    <span style={{fontSize:11,color:C.txd,display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                      {Object.entries(result.log.reduce((m,e)=>{m[e.status]=(m[e.status]||0)+1;return m;},{})).map(([st,n])=>(
+                        <span key={st} style={{color:logStatusColor(st)}}>● {n.toLocaleString()} {st.toLowerCase()}</span>
+                      ))}
                     </span>
                   </div>
                   <div style={{fontSize:11,color:C.txd,marginBottom:4,fontStyle:"italic"}}>Click a row to see the exact request that was sent.</div>
@@ -2228,10 +2240,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                         <th style={ths()}>Detail</th>
                       </tr></thead>
                       <tbody>{result.log.map((e,i)=>{
-                        const sc=e.status==="CREATED"||e.status==="WOULD CREATE"?C.gn
-                          :e.status==="UPSERTED"||e.status==="WOULD UPDATE"||e.status==="WOULD UPSERT"?C.cy
-                          :e.status==="SKIPPED"||e.status==="NOT FOUND"||e.status==="UNCHANGED"?C.yw
-                          :e.status==="WOULD DELETE"?C.or:C.rd;
+                        const sc=logStatusColor(e.status);
                         const canExpand=e.row>=2; // has a CSV row to reconstruct (skip synthetic row 0 entries)
                         const isExpanded=canExpand&&expandedLog===e.row;
                         const req=isExpanded?buildRequestForRow(csvData.r[e.row-2]):null;
