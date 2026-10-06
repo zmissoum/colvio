@@ -110,7 +110,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
 
   const inlineEdit=async(record,field,newValue)=>{
     const id=getRecordId(record);
-    if(!id||!res.entity?.p) return;
+    if(!res.entity?.p) return;
+    if(!id){showFeedback(`Add the table's key column${res.entity?.pk?` (${res.entity.pk})`:""} to the query to edit its rows`,true);return;}
     const prep=prepareUpdate(field,newValue);
     if(!prep.ok){showFeedback(prep.needsTarget?`"${field}" can target several tables \u2014 use bulk Update (checkbox \u2192 Update) to pick the target`:prep.reason,true);return;}
     // Same gesture, same rule: Show All Data's identical inline edit confirms on production \u2014
@@ -166,7 +167,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const abortRef=useRef(false);             // one cancel flag serving BOTH bulk operations
 
   // Canonical id resolver (shared with the parent's post-delete row removal so they can't disagree).
-  const getRecordId=(r)=>recordId(r,res.entity?.l);
+  const getRecordId=(r)=>recordId(r,res.entity?.l,res.entity?.pk);
   const toggleSel=(id)=>setSelected(prev=>{const s=new Set(prev);s.has(id)?s.delete(id):s.add(id);return s;});
   const toggleAll=()=>{
     // Additive over the VISIBLE (filtered) rows only — never silently drop rows selected then hidden
@@ -183,7 +184,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       // which took tens of minutes on a few thousand rows (user-reported). shouldAbort is checked
       // between chunks: ✕ Cancel lets in-flight chunks finish, nothing else is sent.
       const ids=Array.from(selected);
-      const result=await bridge.batchDeleteKeyed(res.entity.p,`${res.entity.l}id`,ids.map(id=>({keyValue:id})),true,
+      const result=await bridge.batchDeleteKeyed(res.entity.p,res.entity.pk||`${res.entity.l}id`,ids.map(id=>({keyValue:id})),true,
         p=>setDelProg({done:p.done,total:p.total}),()=>abortRef.current,{chunk:100,concurrency:4});
       const clean=!result.aborted&&!(result.errors?.length);
       if(clean){

@@ -281,12 +281,13 @@
             // (Cosmos-backed — 500-row max pages, the audit-table gotcha). Selectable on current
             // orgs; fall back without it so the entity list can never break on an older schema.
             let rawE;
-            try { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsManaged,MetadataId,TableType"); }
-            catch { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsManaged,MetadataId"); }
+            try { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,PrimaryIdAttribute,IsCustomEntity,IsManaged,MetadataId,TableType"); }
+            catch { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,PrimaryIdAttribute,IsCustomEntity,IsManaged,MetadataId"); }
             result = (rawE.value || []).map(e => ({
               logical: e.LogicalName,
               display: e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName,
               entitySet: e.EntitySetName || (e.LogicalName + "s"),
+              primaryId: e.PrimaryIdAttribute || null,
               isCustom: e.IsCustomEntity || false,
               isManaged: e.IsManaged || false,
               metadataId: e.MetadataId || null,
@@ -1073,7 +1074,8 @@
           case "update":
             validateEntitySet(params.entitySet);
             if (params.id) validateGuid(params.id);
-            result = await dvRequest("PATCH", `${params.entitySet}(${params.id})`, params.data);
+            // If-Match: * = update only. A bare PATCH upserts: a wrong id would CREATE a record instead of failing.
+            result = await dvRequest("PATCH", `${params.entitySet}(${params.id})`, params.data, { "If-Match": "*" });
             break;
 
           case "getOptionSet": {

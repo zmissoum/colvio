@@ -165,8 +165,12 @@ export function persistList(key, mutate){
 // on which value is the record's OWN primary key. Prefers `<entity>id`, then a column ending in "id"
 // holding a GUID, then any non-lookup GUID. NEVER returns a `_..._value` lookup GUID or an annotation —
 // matching the wrong GUID would target/remove the wrong record. Returns null when none is usable.
-export function recordId(r, entityLogical){
+// pkField: the table's PrimaryIdAttribute when known (usersettings → systemuserid, activities →
+// activityid). Known but absent from the row = null: guessing another GUID column would write to
+// the wrong record.
+export function recordId(r, entityLogical, pkField){
   if(!r) return null;
+  if(pkField) return r[pkField]||null;
   const idKey=`${entityLogical}id`;
   if(r[idKey]) return r[idKey];
   const isGuid=(v)=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);

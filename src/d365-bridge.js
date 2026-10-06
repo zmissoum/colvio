@@ -209,6 +209,24 @@ import { createDemoBin, demoBinMeta, DEMO_BIN_TABLES } from "./recycleBinDemo.js
 // One demo recycle bin per page load: a demo restore stays restored until the page reloads.
 let demoBin = null;
 const getDemoBin = () => demoBin || (demoBin = createDemoBin(Date.now()));
+import { SETTINGS_TABLES, selectFor } from "./userSettingsCatalog.js";
+import { createDemoUserSettings } from "./userSettingsDemo.js";
+// One demo settings store per page load: a demo bulk write stays written until the page reloads.
+let demoSettings = null;
+const getDemoSettings = () => demoSettings || (demoSettings = createDemoUserSettings());
+
+// Every page of a query: Dataverse serves 5000 rows a page plus an @odata.nextLink, which the
+// generic query action accepts as-is (absolute URL, org-host-checked in content.js). `more` =
+// the page cap was hit and the list is NOT complete.
+async function queryAllPages(entitySet, options, maxPages = 50) {
+  let r = await callD365("query", { entitySet, options });
+  const rows = [...(r?.records || [])];
+  for (let p = 1; r?.nextLink && p < maxPages; p++) {
+    r = await callD365("query", { entitySet: r.nextLink, options: {} });
+    rows.push(...(r?.records || []));
+  }
+  return { rows, more: !!r?.nextLink };
+}
 
 // ── Public API ───────────────────────────────────────────────
 // One GUID shape check for the team methods below (review finding: was pasted twice).
@@ -360,7 +378,7 @@ export const bridge = {
 
   async getEntities() {
     if (!isExtension) return null;
-    const k = cacheKey("entities");
+    const k = cacheKey("entities2"); // v2: entries carry primaryId (the Explorer's record key)
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getEntities");
@@ -1116,6 +1134,42 @@ export const bridge = {
       return daysAgo < 60 ? { date: new Date(Date.now() - daysAgo * 86400000).toISOString() } : null;
     }
     return callD365("getUserLastLogin", { userId });
+  },
+
+  // ── Bulk user settings (Users & Licenses › Bulk settings) ──
+  // Reads ride the generic query action (all pages), writes ride the existing update action —
+  // no new content.js surface.
+  async getSettingsRows(table) {
+    const t = SETTINGS_TABLES[table];
+    if (!t) throw new Error("Unknown settings table");
+    if (!isExtension) return { rows: getDemoSettings().rows(table), more: false };
+    return queryAllPages(t.entitySet, { select: selectFor(table) });
+  },
+
+  async getTimeZones() {
+    if (!isExtension) return getDemoSettings().timeZones();
+    return (await queryAllPages("timezonedefinitions", { select: "timezonecode,userinterfacename,standardname,bias,retiredorder" })).rows;
+  },
+
+  async getCurrencies() {
+    if (!isExtension) return getDemoSettings().currencies();
+    return (await queryAllPages("transactioncurrencies", { select: "transactioncurrencyid,currencyname,isocurrencycode,currencysymbol,statecode", orderby: "currencyname asc" })).rows;
+  },
+
+  async updateSettingsRow(table, id, body) {
+    const t = SETTINGS_TABLES[table];
+    if (!t) throw new Error("Unknown settings table");
+    if (!isExtension) { await new Promise(r => setTimeout(r, 450)); return getDemoSettings().update(table, id, body); }
+    if (!TEAM_GUID_RE.test(id)) throw new Error("Invalid record id");
+    return callD365("update", { entitySet: t.entitySet, id, data: body });
+  },
+
+  // Direct holders of a role across every business-unit copy (Security Audit's Users tab call),
+  // as a Set of lower-case user ids. Roles inherited through a team are not included.
+  async getRoleMemberIds(roleName) {
+    if (!isExtension) return new Set(Object.keys(DEMO_USER_ROLES).filter(u => DEMO_USER_ROLES[u].some(r => DEMO_ROLE_NAMES[r] === roleName)));
+    const list = await callD365("getRoleUsers", { roleName, cap: 50000 });
+    return new Set((list || []).map(u => String(u.id).toLowerCase()));
   },
 
   // ── Security Audit ──

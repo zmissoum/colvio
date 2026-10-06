@@ -188,7 +188,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     bridge.getEntities().then(data=>{
       if(data && Array.isArray(data)){
         const mapped = data.map(e=>({
-          l:e.logical, d:e.display, p:e.entitySet||e.logical+"s",
+          l:e.logical, d:e.display, p:e.entitySet||e.logical+"s", pk:e.primaryId||null,
           i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",
           tt:e.tableType||"Standard"
         })).sort((a,b)=>a.d.localeCompare(b.d));
@@ -1517,7 +1517,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               </div>
             </div>
           </div>
-          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>!ids.has(recordId(r,prev.entity?.l)))}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} onUpdateRecords={(updates)=>setRes(prev=>({...prev,data:prev.data.map(r=>updates.get(r)||r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
+          <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>!ids.has(recordId(r,prev.entity?.l,prev.entity?.pk)))}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} onUpdateRecords={(updates)=>setRes(prev=>({...prev,data:prev.data.map(r=>updates.get(r)||r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
         </>:null}
       </div>
       {saveModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setSaveModal(false)}>

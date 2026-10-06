@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
+import BulkUserSettings from "./BulkUserSettings.jsx";
 import { t } from "../i18n.js";
 
 const ACCESS_COLORS = { 0: C.gn, 1: C.vi, 2: C.cy, 3: C.yw, 4: C.txd, 5: C.or };
@@ -20,6 +21,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
   const [detailErr, setDetailErr] = useState(""); // detail-fetch failure — shown IN the card, never as fake "no data"
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [view, setView] = useState("users"); // "users" | "bulk"
   const selectGen = useRef(0);
 
   // Load all users on mount
@@ -108,11 +110,21 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
     <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: (color || C.txd) + "22", color: color || C.txd, fontWeight: 600 }}>{label}</span>
   );
 
+  const viewToggle = (
+    <div style={{ display: "inline-flex", border: `1px solid ${C.bd}`, borderRadius: 6, overflow: "hidden" }}>
+      {[["users", t("licenses.view_users")], ["bulk", t("licenses.view_bulk")]].map(([k, label]) => (
+        <button key={k} onClick={() => setView(k)} style={{ padding: "3px 10px", fontSize: 11, border: "none", cursor: "pointer", background: view === k ? C.vi + "33" : "transparent", color: view === k ? C.tx : C.txd, fontWeight: view === k ? 600 : 400 }}>{label}</button>
+      ))}
+    </div>
+  );
+  if (view === "bulk") return <BulkUserSettings bp={bp} orgInfo={orgInfo} users={users} usersLoading={loading} usersError={error} viewToggle={viewToggle} />;
+
   return (
     <div style={{ display: "flex", height: "100%" }}>
       {/* Left panel */}
       <div style={{ width: bp.mobile ? "100%" : 320, borderRight: `1px solid ${C.bd}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
         <div style={{ padding: "12px 10px", borderBottom: `1px solid ${C.bd}` }}>
+          <div style={{ marginBottom: 8 }}>{viewToggle}</div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
             {t("nav.licenses")} <Tooltip text="Monitor all D365 users, their access modes, CAL types, security roles, and last login dates. Identify unused licenses." />
           </div>

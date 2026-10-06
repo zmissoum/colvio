@@ -29,7 +29,7 @@ DEVELOP
 • Translations — field labels in every provisioned language, CSV export / import, automatic publish.
 
 ADMIN
-• Users & Licenses — access mode, license type, roles, last sign-in; unused licenses at a glance.
+• Users & Licenses — access mode, license type, roles, last sign-in; unused licenses at a glance. Bulk settings: email tracking, time zone, language, currency and mailbox sync options for many users at once, with readable values and a per-user result.
 • Business Units — hierarchy tree and org chart, members, bulk moves by pasting a list of emails.
 • Security Audit — role privileges in plain words, a table × operation matrix, sensitive rights flagged, who holds each role (users and teams), and an org-wide "who can do what" scan. Bulk role assignment.
 • Teams — owner, Entra group and access teams, their members and their inherited roles.

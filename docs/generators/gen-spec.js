@@ -57,7 +57,7 @@ const COMMON_STATS = (L) => [
   [L.stats1, "~21 200"],
   [L.stats2, "40"],
   [L.stats3, "73"],
-  [L.stats4, "421 (Vitest)"],
+  [L.stats4, "458 (Vitest)"],
   [L.stats5, "~996 KB (+ ~430 KB xlsx, ~373 KB pptxgen " + L.onDemand + ")"],
   [L.stats6, "React 18, react-dom, xlsx (lazy), pptxgenjs (lazy)"],
   [L.stats7, "scripting · storage · declarativeContent"],
@@ -157,7 +157,7 @@ const FR = {
     "Caps de rendu (500 lignes + bandeau honnête) sur les listes potentiellement énormes (membres de rôle/BU/team, utilisateurs, adoption) — sélection, filtres et exports couvrent toujours la liste complète.",
   ],
   s8: "8. Build, tests et release",
-  s8p1: "Vite (build < 2 s) + script post-build (copie manifest/content/background, icônes). **421 tests Vitest** : parseur SQL (43), envDetect/sqlNative/teamUtils/relGraphUtils/loginHistoryUtils (badge d'environnement fail-closed, moteur SQL natif, Teams, classification des relations, canaux d'accès de l'audit), loaderUtils (transforms, parser RFC-4180, coercition typée), updateUtils/filterUtils/historyUtils (écritures, filtres, historique), adoption/BU/solutions/doublons, couverture i18n (chaque clé t() présente dans les deux locales). ESLint (règles vrais-bugs : no-undef, no-dupe-keys…) dans chaque passe pré-release.",
+  s8p1: "Vite (build < 2 s) + script post-build (copie manifest/content/background, icônes). **458 tests Vitest** : parseur SQL (43), envDetect/sqlNative/teamUtils/relGraphUtils/loginHistoryUtils (badge d'environnement fail-closed, moteur SQL natif, Teams, classification des relations, canaux d'accès de l'audit), loaderUtils (transforms, parser RFC-4180, coercition typée), updateUtils/filterUtils/historyUtils (écritures, filtres, historique), adoption/BU/solutions/doublons, couverture i18n (chaque clé t() présente dans les deux locales). ESLint (règles vrais-bugs : no-undef, no-dupe-keys…) dans chaque passe pré-release.",
   s8b: [
     "`npm run build` → `dist/` chargeable en mode développeur ; zip de release `colvio-<version>.zip` (`npm run pack`).",
     "Flux : commit sur main → build + tests + lint → zip → push GitHub → upload Chrome Web Store.",
@@ -260,7 +260,7 @@ const EN = {
     "Render caps (500 rows + honest banner) on potentially huge lists (role/BU/team members, users, adoption) — selection, filters and exports still cover the full list.",
   ],
   s8: "8. Build, tests & release",
-  s8p1: "Vite (build < 2 s) + post-build script (manifest/content/background copy, icons). **421 Vitest tests**: SQL parser (43), envDetect/sqlNative/teamUtils/relGraphUtils/loginHistoryUtils (fail-closed environment badge, native SQL engine, Teams, relationship classification, audit access channels), loaderUtils (transforms, RFC-4180 parser, typed coercion), updateUtils/filterUtils/historyUtils (writes, filters, history), adoption/BU/solutions/duplicates, i18n coverage (every t() key present in both locales). ESLint (real-bug rules: no-undef, no-dupe-keys…) in every pre-release pass.",
+  s8p1: "Vite (build < 2 s) + post-build script (manifest/content/background copy, icons). **458 Vitest tests**: SQL parser (43), envDetect/sqlNative/teamUtils/relGraphUtils/loginHistoryUtils (fail-closed environment badge, native SQL engine, Teams, relationship classification, audit access channels), loaderUtils (transforms, RFC-4180 parser, typed coercion), updateUtils/filterUtils/historyUtils (writes, filters, history), adoption/BU/solutions/duplicates, i18n coverage (every t() key present in both locales). ESLint (real-bug rules: no-undef, no-dupe-keys…) in every pre-release pass.",
   s8b: [
     "`npm run build` → `dist/` loadable in Developer Mode; release zip `colvio-<version>.zip` (`npm run pack`).",
     "Flow: commit on main → build + tests + lint → zip → GitHub push → Chrome Web Store upload.",

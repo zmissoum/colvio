@@ -29,7 +29,7 @@ DÉVELOPPEMENT
 • Traductions — les libellés des champs dans chaque langue installée, export / import CSV, publication automatique.
 
 ADMINISTRATION
-• Utilisateurs & licences — mode d'accès, type de licence, rôles, dernière connexion ; les licences inutilisées en un coup d'œil.
+• Utilisateurs & licences — mode d'accès, type de licence, rôles, dernière connexion ; les licences inutilisées en un coup d'œil. Paramètres en masse : suivi des e-mails, fuseau horaire, langue, devise et options de synchronisation des boîtes aux lettres pour de nombreux utilisateurs à la fois, avec des valeurs lisibles et un résultat par utilisateur.
 • Business units — arborescence et organigramme, membres, déplacements en masse en collant une liste d'emails.
 • Audit de sécurité — les privilèges d'un rôle en clair, une matrice table × opération, les droits sensibles signalés, qui détient chaque rôle (utilisateurs et teams), et une analyse « qui peut faire quoi » sur toute l'org. Attribution de rôles en masse.
 • Teams — teams owner, groupes Entra et teams d'accès, leurs membres et leurs rôles hérités.

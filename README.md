@@ -175,6 +175,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Access Mode + CAL Type **breakdown stats** across all users
 - **CSV export** of full user list (formula injection protected)
 - Identify unused licenses: disabled users, users who never logged in
+- **Bulk settings** — change a setting for many users at once, with readable values: personal settings (`usersettings`: email tracking, time zone from the org's own definitions, UI / help language among the provisioned ones, regional format, currency, records per page, send-as, script error reporting, default search) and server-side-sync mailbox options (`mailbox`: incoming / outgoing / appointments-contacts-tasks delivery methods, email approval). Filter users by search, business unit, security role, status and people vs service accounts; each row shows the current value and what would change (users already at the value are skipped); production confirmation, 4 writes in parallel with Cancel, per-user result with the server's message, retry of the failures only, CSV/Excel export of the current values
 
 ### Security Audit
 - Browse all D365 security roles (filter: Custom / Managed)
@@ -266,7 +267,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~21,200 |
 | API actions | 73 |
 | React components | 40 |
-| Unit tests | 421 |
+| Unit tests | 458 |
 | Build size | ~996 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
