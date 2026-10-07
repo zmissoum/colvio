@@ -91,7 +91,7 @@ as a LinkedIn document post). Headlines live in `SHOTS` in the script; re-run af
 ## YouTube channel art
 
 ```bash
-node youtube-art.mjs   # → store/youtube_banner_2560x1440.png (text inside the 1546×423 safe area), store/youtube_avatar_800.png
+node youtube-art.mjs   # → store/youtube_banner_2560x1440.png (text inside the 1546×423 safe area), store/youtube_avatar_800.png, store/youtube_watermark_150.png
 ```
 
 ## What's filmed

@@ -1,5 +1,5 @@
 // YouTube channel art from the Colvio icon: banner 2560×1440 (text inside the 1546×423 area every
-// device shows) and avatar 800×800 (YouTube crops it to a circle). → store/youtube_*.png
+// device shows) and avatar 800×800 (YouTube crops it to a circle), watermark 150×150. → store/youtube_*.png
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
@@ -37,4 +37,6 @@ for (const [html, size, name] of [[banner, { width: 2560, height: 1440 }, "youtu
   fs.rmSync(tmp);
 }
 await browser.close();
-console.log("✓ store/youtube_banner_2560x1440.png, store/youtube_avatar_800.png");
+// watermark (the corner "subscribe" badge): the icon itself, transparent corners kept
+ffmpeg(["-i", path.join(REPO, "icons", "icon512.png"), "-vf", "scale=150:150:flags=lanczos", "-pix_fmt", "rgba", path.join(OUT, "youtube_watermark_150.png")], "watermark");
+console.log("✓ store/youtube_banner_2560x1440.png, store/youtube_avatar_800.png, store/youtube_watermark_150.png");
