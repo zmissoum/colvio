@@ -217,3 +217,37 @@ describe("runPool", () => {
     expect(await runPool([], async () => {})).toEqual({ results: [], notSent: [], stopped: false });
   });
 });
+
+describe("filterUsers · signed-in filter", () => {
+  const users = [
+    { id: "A", fullname: "Ann", buId: "b", accessMode: 0 },
+    { id: "B", fullname: "Bob", buId: "b", accessMode: 0 },
+    { id: "C", fullname: "Cat", buId: "b", accessMode: 0 },
+    { id: "D", fullname: "Dan", buId: "b", accessMode: 0 },
+  ];
+  const lastLogins = new Map([["a", { date: "2026-09-30T08:00:00Z" }], ["b", { date: null }], ["c", { error: "HTTP 403" }]]);
+  const names = (opts) => filterUsers(users, { lastLogins, ...opts }).map(u => u.fullname);
+  it("keeps everyone when the filter is off", () => {
+    expect(names({ signedIn: "any" })).toEqual(["Ann", "Bob", "Cat", "Dan"]);
+  });
+  it("'yes' keeps users with a known login, 'never' those known to have none", () => {
+    expect(names({ signedIn: "yes" })).toEqual(["Ann"]);
+    expect(names({ signedIn: "never" })).toEqual(["Bob"]);
+  });
+  it("never assumes: unread (Dan) and unreadable (Cat) users match neither", () => {
+    expect(names({ signedIn: "yes" })).not.toContain("Dan");
+    expect(names({ signedIn: "never" })).not.toContain("Cat");
+  });
+});
+
+describe("exportRows · last login column", () => {
+  it("adds the column only when last logins are passed — date, Never, or empty when unknown", () => {
+    const users = [{ id: "A", fullname: "Ann" }, { id: "B", fullname: "Bob" }, { id: "C", fullname: "Cat" }];
+    const ll = new Map([["a", { date: "2026-09-30T08:00:00Z" }], ["b", { date: null }]]);
+    const withLL = exportRows("usersettings", users, new Map(), {}, ll);
+    const col = withLL.headers.indexOf("Last login");
+    expect(col).toBeGreaterThan(-1);
+    expect(withLL.rows.map(r => r[col])).toEqual(["2026-09-30T08:00:00Z", "Never", ""]);
+    expect(exportRows("usersettings", users, new Map(), {}).headers).not.toContain("Last login");
+  });
+});

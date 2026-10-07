@@ -17,6 +17,11 @@ const TABLE_NOTES = {
   mailbox: "Each user's mailbox record is PATCHed — Read and Write on the Mailbox table are required. Changing a delivery method doesn't test the mailbox: run Test & Enable Mailbox afterwards from Power Platform admin center › Settings › Email › Mailboxes (an admin action, not a column — Colvio doesn't run it). Queue mailboxes aren't listed.",
 };
 const SOURCE_NAMES = { timezones: "Time zones", languages: "Provisioned languages", currencies: "Currencies" };
+const LL_CONCURRENCY = 6;
+const LL_NOTE = "Last login = the last time the user opened a model-driven app, from the user-access audit (action 64 — the same source as the Users list). \"Never\" = no such event in what the audit keeps; it needs \"Audit user access\" turned on.";
+// "<org>|<user id>" → { date } (date null = never) or { error }: read once per org and session,
+// kept across view and filter switches.
+const LAST_LOGIN = new Map();
 
 // Users & Licenses › Bulk settings — personal options and server-side-sync mailbox options for
 // many users at once, with readable values (never raw codes or GUIDs). Users already at the
@@ -40,6 +45,10 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
   const [modal, setModal] = useState(null);         // { phase: confirm|running|done, … }
   const [lastRun, setLastRun] = useState(null);
   const [feedback, setFeedback] = useState("");
+  const [signedIn, setSignedIn] = useState("any");
+  const [llTick, setLlTick] = useState(0);
+  const [llRun, setLlRun] = useState({ done: 0, total: 0 });
+  const [llReload, setLlReload] = useState(0);
   const cancelRef = useRef(false);
   const loadGen = useRef({});
   const roleGen = useRef(0);
@@ -92,7 +101,17 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
   const setting = findSetting(settingKey[table]);
   const cur = data[table];
   const index = useMemo(() => indexRows(table, cur?.rows, users), [table, cur?.rows, users]);
-  const shown = useMemo(() => filterUsers(users, { search, buId, status, kind, roleIds }), [users, search, buId, status, kind, roleIds]);
+  const orgKey = orgInfo?.orgUrl || "demo";
+  const llKey = (id) => `${orgKey}|${String(id).toLowerCase()}`;
+  const lastLogins = useMemo(() => {
+    const m = new Map();
+    for (const u of users || []) { const v = LAST_LOGIN.get(llKey(u.id)); if (v) m.set(String(u.id).toLowerCase(), v); }
+    return m;
+  }, [users, llTick, orgKey]);
+  const baseList = useMemo(() => filterUsers(users, { buId, status, kind, roleIds }), [users, buId, status, kind, roleIds]);
+  const shown = useMemo(() => filterUsers(users, { search, buId, status, kind, roleIds, signedIn, lastLogins }), [users, search, buId, status, kind, roleIds, signedIn, lastLogins]);
+  const llPending = baseList.filter(u => !LAST_LOGIN.has(llKey(u.id))).length;
+  const llErrors = baseList.map(u => LAST_LOGIN.get(llKey(u.id))).filter(v => v?.error);
   const bus = useMemo(() => buOptions(users), [users]);
   const writeOpts = useMemo(() => optionsFor(setting, ctx, { forWrite: true }), [setting, ctx]);
   const newOpt = writeOpts.find(o => String(o.value) === newVal) || null;
@@ -109,8 +128,28 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
   const toggleAll = () => setChecked(prev => { const n = new Set(prev); if (allShownChecked) shown.forEach(u => n.delete(u.id)); else shown.forEach(u => n.add(u.id)); return n; });
   const toggleOne = (id) => setChecked(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
+  // Last logins of the users the filters (search aside) list, a few requests at a time.
+  useEffect(() => {
+    const todo = baseList.filter(u => !LAST_LOGIN.has(llKey(u.id)));
+    if (!todo.length) { setLlRun({ done: 0, total: 0 }); return; }
+    let stop = false, n = 0;
+    setLlRun({ done: 0, total: todo.length });
+    runPool(todo, async u => {
+      try { const r = await bridge.getUserLastLogin(u.id); LAST_LOGIN.set(llKey(u.id), { date: r?.date || null }); }
+      catch (e) { LAST_LOGIN.set(llKey(u.id), { error: e.message || String(e) }); throw e; }
+      finally { if (++n % 15 === 0 && !stop) setLlTick(x => x + 1); }
+    }, {
+      concurrency: LL_CONCURRENCY,
+      shouldStop: () => stop,
+      isFatal: e => /SESSION_EXPIRED/.test(e),
+      onProgress: p => { if (!stop && (p.done % 5 === 0 || p.done === p.total)) setLlRun({ done: p.done, total: p.total }); },
+    }).then(() => { if (!stop) { setLlTick(x => x + 1); setLlRun({ done: 0, total: 0 }); } });
+    return () => { stop = true; };
+  }, [baseList, orgKey, llReload]);
+  const retryLastLogins = () => { for (const u of baseList) if (LAST_LOGIN.get(llKey(u.id))?.error) LAST_LOGIN.delete(llKey(u.id)); setLlTick(x => x + 1); setLlReload(x => x + 1); };
+
   const doExport = (format) => {
-    const { headers, rows } = exportRows(table, shown, index.byUser, ctx);
+    const { headers, rows } = exportRows(table, shown, index.byUser, ctx, lastLogins);
     exportTable(headers, rows, table === "mailbox" ? "user_mailboxes" : "user_settings", format, SETTINGS_TABLES[table].label);
     setFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${rows.length} user${rows.length === 1 ? "" : "s"})`);
     setTimeout(() => setFeedback(""), 2500);
@@ -155,7 +194,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
   const stepLbl = { fontSize: 10, fontWeight: 700, letterSpacing: ".6px", color: C.txd, textTransform: "uppercase", minWidth: 96, display: "inline-flex", alignItems: "center", gap: 5 };
   const Step = ({ n, label }) => <span style={stepLbl}><span style={{ width: 16, height: 16, borderRadius: "50%", background: C.vi + "33", color: C.vil, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, letterSpacing: 0 }}>{n}</span>{label}</span>;
   const Badge = ({ label, color }) => <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: (color || C.txd) + "22", color: color || C.txd, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</span>;
-  const cols = bp?.mobile ? "26px 1.4fr 1.6fr" : `26px minmax(150px,1.2fr) minmax(170px,1.3fr) minmax(90px,.8fr) 120px minmax(200px,1.8fr)${runShown ? " minmax(110px,1fr)" : ""}`;
+  const cols = bp?.mobile ? "26px 1.4fr 1.6fr" : `26px minmax(150px,1.2fr) minmax(170px,1.3fr) minmax(90px,.8fr) 120px minmax(110px,.8fr) minmax(200px,1.8fr)${runShown ? " minmax(110px,1fr)" : ""}`;
   const srcErr = setting.source && ctxErr[setting.source];
   const srcLoading = setting.source && SOURCE_NAMES[setting.source] && !srcErr && writeOpts.length === 0;
 
@@ -209,7 +248,15 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
           {[["enabled", "Enabled"], ["disabled", "Disabled"], ["all", "All"]].map(([k, l]) => <button key={k} onClick={() => setStatus(k)} style={chip(status === k)}>{l}</button>)}
           <span style={{ width: 1, height: 16, background: C.bd, margin: "0 2px" }} />
           {[["people", "People"], ["service", "Service & app accounts"], ["all", "All"]].map(([k, l]) => <button key={k} onClick={() => setKind(k)} title={k === "people" ? "Non-interactive, support, delegated-admin and application users are left out — they never sign in" : undefined} style={chip(kind === k, C.vi)}>{l}</button>)}
+          <span style={{ width: 1, height: 16, background: C.bd, margin: "0 2px" }} />
+          {[["any", "Any login"], ["yes", "Signed in"], ["never", "Never signed in"]].map(([k, l]) => {
+            const off = k !== "any" && llPending > 0; // filtering on half-read dates could leave people out of a write
+            return <button key={k} onClick={() => !off && setSignedIn(k)} disabled={off} title={off ? `Reading last logins (${llRun.done}/${llRun.total}) — available once every listed user's date is known` : LL_NOTE} style={{ ...chip(signedIn === k, C.gn), opacity: off ? 0.45 : 1, cursor: off ? "default" : "pointer" }}>{l}</button>;
+          })}
+          {llRun.total > 0 && <span style={{ fontSize: 11, color: C.txd, display: "inline-flex", alignItems: "center", gap: 4, ...mono }}><Spin s={10} /> last logins {llRun.done}/{llRun.total}</span>}
+          <Tooltip text={LL_NOTE} />
         </div>
+        {llErrors.length > 0 && llRun.total === 0 && <div style={{ fontSize: 11.5, color: C.yw, paddingLeft: 104 }}>⚠ {llErrors.length} last login{llErrors.length > 1 ? "s" : ""} couldn't be read ({llErrors[0].error}) — those users match neither "Signed in" nor "Never signed in". <button onClick={retryLastLogins} style={{ ...bt(null, { fontSize: 11, padding: "1px 8px" }), marginLeft: 6 }}>↻ Retry</button></div>}
         {roleState.error && <div style={{ fontSize: 11.5, color: C.rd, paddingLeft: 104 }}>⚠ Role members couldn't be loaded — nobody is listed under that role: {roleState.error}</div>}
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -240,7 +287,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
         <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "6px 16px", position: "sticky", top: 0, background: C.sf, borderBottom: `2px solid ${C.bd}`, fontSize: 11, fontWeight: 600, color: C.txd, zIndex: 1, alignItems: "center" }}>
           <input type="checkbox" checked={allShownChecked} onChange={toggleAll} disabled={!shown.length} title={`Select all ${shown.length} listed users (beyond the ${RENDER_CAP} rendered too)`} style={{ accentColor: C.vi }} />
           <span>Name</span><span>Email</span>
-          {!bp?.mobile && <><span>Business unit</span><span>Status</span><span>Current: {setting.label}</span>{runShown && <span>Last run</span>}</>}
+          {!bp?.mobile && <><span>Business unit</span><span>Status</span><span>Last login</span><span>Current: {setting.label}</span>{runShown && <span>Last run</span>}</>}
         </div>
         {usersLoading && <div style={{ textAlign: "center", padding: 24 }}><Spin /> {t("licenses.loading")}</div>}
         {!usersLoading && shown.length === 0 && <div style={{ textAlign: "center", padding: 24, color: C.txd, fontSize: 13 }}>{roleState.loading ? "Loading the role's members…" : "No user matches these filters."}</div>}
@@ -260,6 +307,13 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
                   <Badge label={u.disabled ? "Disabled" : "Enabled"} color={u.disabled ? C.rd : C.gn} />
                   {isServiceAccount(u) && <Badge label="Service" color={C.or} />}
                 </span>
+                {(() => {
+                  const ll = lastLogins.get(k);
+                  const days = ll?.date ? Math.floor((Date.now() - Date.parse(ll.date)) / 86400000) : null;
+                  return <span title={ll?.date ? new Date(ll.date).toLocaleString() : ll?.error || (ll ? LL_NOTE : "")} style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: ll?.date ? C.txm : C.txd }}>
+                    {!ll ? <Spin s={10} /> : ll.error ? <span style={{ color: C.yw }}>⚠ unreadable</span> : ll.date ? <>{new Date(ll.date).toLocaleDateString()} <span style={{ color: C.txd }}>· {days <= 0 ? "today" : `${days} d`}</span></> : <i>Never</i>}
+                  </span>;
+                })()}
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {!cur?.rows ? (cur?.loading ? <Spin s={10} /> : "—")
                     : !hit ? <i style={{ color: C.txd }}>({missingLabel})</i>

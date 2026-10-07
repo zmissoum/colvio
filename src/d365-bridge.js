@@ -1128,10 +1128,10 @@ export const bridge = {
 
   async getUserLastLogin(userId) {
     if (!isExtension) {
-      // stable per user (renders and re-opens agree): a hash of the id → 0..89 days ago, ≥ 60 = never
-      let h = 0; for (const ch of String(userId)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-      const daysAgo = h % 90;
-      return daysAgo < 60 ? { date: new Date(Date.now() - daysAgo * 86400000).toISOString() } : null;
+      // stable per demo user (renders and re-opens agree); null = never signed in
+      const DAYS = { u1: 0, u2: 3, u3: 12, u4: 140, u5: null, u6: null, u7: 1, u8: 21 };
+      const d = Object.prototype.hasOwnProperty.call(DAYS, userId) ? DAYS[userId] : 30;
+      return d == null ? null : { date: new Date(Date.now() - d * 86400000 - 3600000 * 2).toISOString() };
     }
     return callD365("getUserLastLogin", { userId });
   },

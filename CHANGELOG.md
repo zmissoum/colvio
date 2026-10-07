@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.176] — 2026-10-07
+### Added — Bulk settings: Last login column and a signed-in filter
+- Each listed user's last login (the last time they opened a model-driven app — user-access audit, action 64, the same source as the Users list), read in the background a few requests at a time and kept for the session; shown as date + days ago, or "Never".
+- Filter chips Any login / Signed in / Never signed in, to change a setting only for the people who actually use the app. They unlock once every listed user's date is known — filtering on half-read dates could leave people out of a write — and a user whose date couldn't be read matches neither (never assumed), with a Retry. The CSV / Excel export gains a Last login column. 6 tests.
+- Demo: last logins follow a fixed, plausible table (recent logins, an analyst who never signed in, old dates on disabled accounts) — the previous hash put every demo user at "Never".
+
 ## [1.11.175] — 2026-10-07
 ### Added — Users & Licenses › Bulk settings: users' personal settings and mailboxes, in bulk
 - A second view in Users & Licenses (Users | Bulk settings) for the settings a project start changes for everyone. **Personal settings** (`usersettings`, one row per user): email tracking (`incomingemailfilteringmethod`, 0–4), time zone (the org's own `timezonedefinitions`), UI and help language (provisioned languages only), regional format (`localeid`), currency (`transactioncurrencyid@odata.bind`), records per page, send-as, script error reporting, default search. **Mailboxes** (`mailbox`, user mailboxes only — queue mailboxes skipped): incoming / outgoing / appointments-contacts-tasks delivery methods and email approval, with the approval rights stated on screen (privilege + System Administrator + Global / Exchange admin or Delegated Mailbox Approver with Exchange Online; a user may approve their own mailbox). Test & Enable is an admin action, not a column — the help says to run it after changing delivery methods.

@@ -245,7 +245,10 @@ export function planChange(selectedIds, byUser, s, newValue) {
 // User-list filters. kind: "people" (default — support, non-interactive, delegated-admin and
 // application users never sign in), "service", "all". status: "enabled" | "disabled" | "all".
 // roleIds: Set of lower-case user ids, or null for no role filter.
-export function filterUsers(users, { search = "", buId = "", status = "enabled", kind = "people", roleIds = null } = {}) {
+// signedIn: "any" | "yes" | "never", read from lastLogins (Map lower-case id → { date } with date
+// null for never). A user whose last login isn't known (not read yet, or unreadable) matches
+// neither "yes" nor "never" — never assumed.
+export function filterUsers(users, { search = "", buId = "", status = "enabled", kind = "people", roleIds = null, signedIn = "any", lastLogins = null } = {}) {
   const q = search.trim().toLowerCase();
   return (users || []).filter(u => {
     if (status === "enabled" && u.disabled) return false;
@@ -254,6 +257,11 @@ export function filterUsers(users, { search = "", buId = "", status = "enabled",
     if (kind === "service" && !isServiceAccount(u)) return false;
     if (buId && u.buId !== buId) return false;
     if (roleIds && !roleIds.has(String(u.id).toLowerCase())) return false;
+    if (signedIn !== "any") {
+      const ll = lastLogins?.get(String(u.id).toLowerCase());
+      if (!ll || ll.error) return false;
+      if (signedIn === "yes" ? !ll.date : !!ll.date) return false;
+    }
     if (q && !`${u.fullname || ""} ${u.email || ""}`.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -266,13 +274,16 @@ export function buOptions(users) {
 }
 
 // Export: one row per listed user, every setting of the table as a readable column.
-export function exportRows(table, users, byUser, ctx = {}) {
+// lastLogins (optional): adds a "Last login" column — ISO date, "Never", or empty when unknown.
+export function exportRows(table, users, byUser, ctx = {}, lastLogins = null) {
   const list = settingsFor(table);
   const mb = table === "mailbox";
-  const headers = ["Name", "Email", "Business unit", "Status", "Account type", ...(mb ? ["Mailbox"] : []), ...list.map(s => s.label)];
+  const headers = ["Name", "Email", "Business unit", "Status", "Account type", ...(lastLogins ? ["Last login"] : []), ...(mb ? ["Mailbox"] : []), ...list.map(s => s.label)];
   const rows = (users || []).map(u => {
     const hit = byUser?.get(String(u.id).toLowerCase());
+    const ll = lastLogins?.get(String(u.id).toLowerCase());
     return [u.fullname || "", u.email || "", u.buName || "", u.disabled ? "Disabled" : "Enabled", isServiceAccount(u) ? "Service / application" : "Person",
+      ...(lastLogins ? [!ll || ll.error ? "" : ll.date || "Never"] : []),
       ...(mb ? [hit ? (hit.row.emailaddress || hit.row.name || "") : "(no mailbox)"] : []),
       ...list.map(s => hit ? formatValue(s, hit.row, ctx) : "")];
   });
