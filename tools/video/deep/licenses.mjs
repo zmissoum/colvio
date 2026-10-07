@@ -1,17 +1,21 @@
-// Deep dive — Users & Licenses. Every action below was checked against demo mode (make-deep --probe).
-// The demo's last-login date is random (it may read "Never"): captions stay generic about it.
+// Deep dive — Users & Licenses, then its Bulk settings view. Every action below was checked against
+// demo mode (make-deep --probe). Demo email tracking: Zakaria and Marie already at "Leads, Contacts
+// and Accounts", Alex and Pierre not, Lucas never signed in — so "Signed in" + that value plans 2 writes.
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 const chip = (h, label) => h.page.locator("button >> visible=true").filter({ hasText: new RegExp(`^${label}$`) }).first();
 // A user row of the left list, by display name.
 const user = (h, name) => h.page.locator("button >> visible=true").filter({ has: h.page.locator(`span:text-is("${name}")`) }).first();
 const search = (h) => h.page.getByPlaceholder("Search users...");
+const selectWith = (h, value) => h.page.locator("select >> visible=true").filter({ has: h.page.locator(`option[value="${value}"]`) }).first();
+const newValue = (h) => h.page.locator("select >> visible=true").filter({ has: h.page.locator("option", { hasText: "pick the new value" }) }).first();
+const exact = (h, name) => h.page.getByRole("button", { name, exact: true });
 
 export default {
   key: "licenses",
   label: "Users & Licenses",
   tagline: {
-    en: "Every user with their CAL type, access mode, security roles and last login — filtered, sorted, exported",
-    fr: "Chaque utilisateur avec son type de CAL, son mode d'accès, ses rôles de sécurité et sa dernière connexion — filtré, trié, exporté",
+    en: "Every user with their CAL type, access mode, roles and last login — and their settings changed in bulk",
+    fr: "Chaque utilisateur avec son type de CAL, son mode d'accès, ses rôles et sa dernière connexion — et ses paramètres modifiés en masse",
   },
   chapters: [
     { key: "overview",
@@ -68,6 +72,51 @@ export default {
         await h.click(chip(h, "Active")); await h.wait(1300);
         await h.hover(btn(h, /Export CSV$/)); await h.wait(1100);
         await h.hover(btn(h, /Excel$/)); await h.wait(1400);
+      } },
+    { key: "bulk-view",
+      en: ["8 · Bulk settings", "A second view sets one setting for many users at once — personal options or mailboxes — with each user's current value in plain words."],
+      fr: ["8 · Paramètres en masse", "Une deuxième vue règle un paramètre pour de nombreux utilisateurs à la fois — options personnelles ou boîtes aux lettres — avec la valeur actuelle de chacun en clair."],
+      run: async (h) => {
+        await h.click(exact(h, "Bulk settings")); await h.wait(1500);
+        await h.hover(h.page.getByText("Current: Email tracking").first()); await h.wait(2200);
+      } },
+    { key: "signed-in",
+      en: ["9 · Only the people who sign in", "Each user's last login comes from the access audit. Signed in keeps those who actually use the app — the filter waits until every date is read."],
+      fr: ["9 · Seulement ceux qui se connectent", "La dernière connexion de chacun vient de l'audit d'accès. Signed in ne garde que ceux qui utilisent vraiment l'app — le filtre attend que toutes les dates soient lues."],
+      run: async (h) => {
+        await h.hover(h.page.getByText("Last login", { exact: true }).first()); await h.wait(1500);
+        await h.click(exact(h, "Signed in")); await h.wait(2400);
+      } },
+    { key: "preview",
+      en: ["10 · See what will change", "Tick the users, pick the new value: each row shows its change, and the users already at that value are skipped."],
+      fr: ["10 · Voir ce qui va changer", "Cochez les utilisateurs, choisissez la nouvelle valeur : chaque ligne montre son changement, et ceux qui l'ont déjà sont ignorés."],
+      run: async (h) => {
+        await h.click(h.page.locator("input[type=checkbox] >> visible=true").first()); await h.wait(700);
+        await h.select(newValue(h), "2"); await h.wait(1200);
+        await h.hover(h.page.getByText(/will change/).first()); await h.wait(2200);
+      } },
+    { key: "apply",
+      en: ["11 · Apply, user by user", "A confirmation first — and one more on production — then 4 writes at a time and a result per user, with the server's reason if one is refused."],
+      fr: ["11 · Appliquer, utilisateur par utilisateur", "Une confirmation d'abord — et une de plus en production — puis 4 écritures à la fois et un résultat par utilisateur, avec la raison du serveur en cas de refus."],
+      run: async (h) => {
+        await h.click(btn(h, /^Apply to \d+ user/)); await h.wait(1600);
+        await h.click(h.page.locator("button >> visible=true").filter({ hasText: /^Apply to \d+ user/ }).last()); await h.wait(2600);
+        await h.click(exact(h, "Close")); await h.wait(1500);
+      } },
+    { key: "other-settings",
+      en: ["12 · Time zone, language, currency…", "Readable choices instead of codes: the org's own time zones, its installed languages, its currencies — and records per page, among others."],
+      fr: ["12 · Fuseau horaire, langue, devise…", "Des choix lisibles plutôt que des codes : les fuseaux horaires de l'org, ses langues installées, ses devises — et le nombre d'enregistrements par page, entre autres."],
+      run: async (h) => {
+        await h.select(selectWith(h, "timezonecode"), "timezonecode"); await h.wait(1300);
+        await h.select(newValue(h), "(GMT+01:00) Brussels, Copenhagen, Madrid, Paris"); await h.wait(2400);
+      } },
+    { key: "mailboxes",
+      en: ["13 · Mailboxes too", "Server-side sync delivery methods and email approval for every user mailbox — the rights that approval needs are spelled out on screen."],
+      fr: ["13 · Les boîtes aux lettres aussi", "Les modes de synchronisation côté serveur et l'approbation de l'e-mail pour chaque boîte aux lettres utilisateur — les droits que l'approbation demande sont indiqués à l'écran."],
+      run: async (h) => {
+        await h.click(exact(h, "Mailboxes")); await h.wait(1600);
+        await h.select(selectWith(h, "emailrouteraccessapproval"), "emailrouteraccessapproval"); await h.wait(1200);
+        await h.hover(h.page.getByText(/Approving needs/).first()); await h.wait(2600);
       } },
   ],
 };

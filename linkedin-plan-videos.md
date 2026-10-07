@@ -4,7 +4,7 @@
 
 **21 posts, 21 vidéos :** la présentation générale (2 min 54, 20 modules) puis une vidéo détaillée par module (52 s à 1 min 54) — tous les modules sauf System Ops, toutes en anglais et en français, légendes incrustées, données de démo uniquement.
 
-**Démarrage :** J = le premier mardi après que le Chrome Web Store affiche la **v1.11.174** (ou plus récente) — les vidéos montrent Teams, Stockage, le Login History actuel et les démos enrichies de la v1.11.174, absents des versions plus anciennes du store.
+**Démarrage :** J = le premier mardi après que le Chrome Web Store affiche la **v1.11.176** (ou plus récente) — les vidéos montrent Teams, Stockage, le Login History actuel et les démos enrichies de la v1.11.174, absents des versions plus anciennes du store.
 
 ## Règles de publication
 
@@ -17,7 +17,7 @@
 
 ## Calendrier
 
-Deux posts par semaine le premier mois (mardi 8h30, jeudi 17h30), puis un par semaine le mardi. Les dates sont un exemple si la v1.11.174 est en ligne le lundi 12 octobre, avec une pause pendant les fêtes. Cochez « Publié » au fur et à mesure.
+Deux posts par semaine le premier mois (mardi 8h30, jeudi 17h30), puis un par semaine le mardi. Les dates sont un exemple si la v1.11.176 est en ligne le lundi 12 octobre, avec une pause pendant les fêtes. Cochez « Publié » au fur et à mesure.
 
 | Post | Sem. | Créneau | Date (exemple) | Sujet | Vidéo (`tools/video/out/…`) | Durée | Publié |
 |---|---|---|---|---|---|---|---|
@@ -27,7 +27,7 @@ Deux posts par semaine le premier mois (mardi 8h30, jeudi 17h30), puis un par se
 | 29 | 2 | Jeu 17h30 | 22/10 | Security Audit | `deep/colvio_security_en.mp4` / `_fr.mp4` | 90 s | ☐ |
 | 30 | 3 | Mar 8h30 | 27/10 | Adoption | `deep/colvio_adoption_en.mp4` / `_fr.mp4` | 87 s | ☐ |
 | 31 | 3 | Jeu 17h30 | 29/10 | Stockage | `deep/colvio_storage_en.mp4` / `_fr.mp4` | 62 s | ☐ |
-| 32 | 4 | Mar 8h30 | 03/11 | Teams | `deep/colvio_teams_en.mp4` / `_fr.mp4` | 73 s | ☐ |
+| 32 | 4 | Mar 8h30 | 03/11 | Users & Licenses + paramètres en masse | `deep/colvio_licenses_en.mp4` / `_fr.mp4` | 1 min 53 | ☐ |
 | 33 | 4 | Jeu 17h30 | 05/11 | Show All Data | `deep/colvio_showalldata_en.mp4` / `_fr.mp4` | 67 s | ☐ |
 | 34 | 5 | Mar 8h30 | 10/11 | Apps | `deep/colvio_apps_en.mp4` / `_fr.mp4` | 68 s | ☐ |
 | 35 | 6 | Mar 8h30 | 17/11 | API Tester | `deep/colvio_apitester_en.mp4` / `_fr.mp4` | 1 min 54 | ☐ |
@@ -39,7 +39,7 @@ Deux posts par semaine le premier mois (mardi 8h30, jeudi 17h30), puis un par se
 | 41 | 12 | Mar 8h30 | 12/01 | Metadata | `deep/colvio_metadata_en.mp4` / `_fr.mp4` | 83 s | ☐ |
 | 42 | 13 | Mar 8h30 | 19/01 | Schema | `deep/colvio_schema_en.mp4` / `_fr.mp4` | 76 s | ☐ |
 | 43 | 14 | Mar 8h30 | 26/01 | Relationships | `deep/colvio_relationships_en.mp4` / `_fr.mp4` | 59 s | ☐ |
-| 44 | 15 | Mar 8h30 | 02/02 | Users & Licenses | `deep/colvio_licenses_en.mp4` / `_fr.mp4` | 64 s | ☐ |
+| 44 | 15 | Mar 8h30 | 02/02 | Teams | `deep/colvio_teams_en.mp4` / `_fr.mp4` | 73 s | ☐ |
 | 45 | 16 | Mar 8h30 | 09/02 | Translations | `deep/colvio_translations_en.mp4` / `_fr.mp4` | 64 s | ☐ |
 | 46 | 17 | Mar 8h30 | 16/02 | Login History | `deep/colvio_logins_en.mp4` / `_fr.mp4` | 52 s | ☐ |
 
@@ -317,47 +317,45 @@ Quelle est la plus grosse table de votre org, et l'auriez-vous devinée ? 👇
 
 ---
 
-### Post 32 — Teams (`teams`, 73 s)
+### Post 32 — Users & Licenses (`licenses`, 1 min 53)
 
 **EN**
 
-👥 Some of a user's rights never show on their profile.
+🎫 Day one of a Dynamics 365 rollout: hundreds of users who all need the same email tracking, time zone and language.
 
-In Dataverse, a security role held by a team is inherited by every member, and it doesn't appear in the user's own role list. That's usually where "why can this user do that?" ends.
+▶️ 1 min 53 in Colvio's Users & Licenses module:
 
-▶️ 73 seconds in Colvio's Teams module:
-
-→ Every team badged by type (Owner, Entra group, BU default), with one search across name, business unit and administrator
-→ An owner team's security roles: the ones its members inherit
-→ Entra group teams: the group's Object ID to copy, and the truth about membership: a new group member appears only after their next access
-→ Members with access mode, license type and status, exportable
-→ Access teams (one per shared record, sometimes thousands) loaded only when you ask
+→ Every user with license (CAL) type, status and last login; disabled and service accounts in one click
+→ Open a user: business unit, access mode, license, security roles; org-wide breakdowns; export to CSV or Excel
+→ Bulk settings: pick a personal setting (email tracking, time zone, language, currency…) or a mailbox option, with each user's current value in plain words
+→ Keep only the people who actually sign in, then see each user's change before anything is written
+→ Apply: a confirmation first, 4 writes at a time, and a result per user with the server's reason if one is refused
+→ Mailboxes too: server-side sync delivery methods and email approval, with the rights approval needs spelled out
 
 Demo data in the video. Free and open source.
 
-Owner teams or Entra groups: which does your org rely on? 👇
+Which setting do you end up changing for everyone at the start of a project? 👇
 
-#Dynamics365 #Dataverse #PowerPlatform #D365 #EntraID
+#Dynamics365 #Dataverse #PowerPlatform #D365 #CRMAdmin
 
 **FR**
 
-👥 Certains droits d'un utilisateur n'apparaissent jamais sur sa fiche.
+🎫 Premier jour d'un déploiement Dynamics 365 : des centaines d'utilisateurs qui ont tous besoin du même suivi des e-mails, du même fuseau horaire et de la même langue.
 
-Dans Dataverse, un rôle de sécurité porté par une team est hérité par chacun de ses membres, et il n'apparaît pas dans la liste des rôles de l'utilisateur. C'est souvent là que s'arrête la question « pourquoi cet utilisateur peut-il faire ça ? ».
+▶️ 1 min 53 dans le module Utilisateurs & licences de Colvio :
 
-▶️ 73 secondes dans le module Teams de Colvio :
-
-→ Chaque team avec son type (Owner, groupe Entra, team par défaut de BU), et une recherche sur le nom, la business unit et l'administrateur
-→ Les rôles de sécurité d'une team owner : ceux dont ses membres héritent
-→ Les teams de groupe Entra : l'Object ID du groupe à copier, et la vérité sur l'appartenance : un nouveau membre du groupe n'apparaît qu'après son prochain accès
-→ Les membres avec mode d'accès, type de licence et statut, exportables
-→ Les teams d'accès (une par enregistrement partagé, parfois des milliers) chargées seulement à la demande
+→ Chaque utilisateur avec son type de licence (CAL), son statut et sa dernière connexion ; les comptes désactivés et de service en un clic
+→ Ouvrez un utilisateur : business unit, mode d'accès, licence, rôles de sécurité ; la répartition sur toute l'org ; l'export en CSV ou Excel
+→ Paramètres en masse : choisissez un paramètre personnel (suivi des e-mails, fuseau horaire, langue, devise…) ou une option de boîte aux lettres, avec la valeur actuelle de chacun en clair
+→ Ne gardez que les personnes qui se connectent vraiment, puis voyez le changement de chacun avant toute écriture
+→ Appliquez : une confirmation d'abord, 4 écritures à la fois, et un résultat par utilisateur avec la raison du serveur en cas de refus
+→ Les boîtes aux lettres aussi : modes de synchronisation côté serveur et approbation de l'e-mail, avec les droits nécessaires indiqués
 
 Données de démo dans la vidéo. Gratuit et open source.
 
-Teams owner ou groupes Entra : sur quoi repose votre org ? 👇
+Quel paramètre finissez-vous par changer pour tout le monde en début de projet ? 👇
 
-#Dynamics365 #Dataverse #PowerPlatform #D365 #EntraID
+#Dynamics365 #Dataverse #PowerPlatform #D365 #CRMAdmin
 
 ---
 
@@ -835,45 +833,47 @@ Quelle table a le plus de relations dans votre org ? 👇
 
 ---
 
-### Post 44 — Users & Licenses (`licenses`, 64 s)
+### Post 44 — Teams (`teams`, 73 s)
 
 **EN**
 
-🎫 Paid seats, disabled users, service accounts: the license picture in one list.
+👥 Some of a user's rights never show on their profile.
 
-▶️ 64 seconds in Colvio's Users & Licenses module:
+In Dataverse, a security role held by a team is inherited by every member, and it doesn't appear in the user's own role list. That's usually where "why can this user do that?" ends.
 
-→ Every user with license (CAL) type and status, live counts of active and disabled accounts
-→ One click for the disabled users, or the non-interactive accounts integrations use
-→ Search by name, email or business unit; sort by license to group users on the same plan
-→ Open a user: business unit, title, access mode, license, creation date, last login, security roles
-→ Org-wide breakdowns per access mode and license type
-→ Export the filtered list to CSV or Excel
+▶️ 73 seconds in Colvio's Teams module:
+
+→ Every team badged by type (Owner, Entra group, BU default), with one search across name, business unit and administrator
+→ An owner team's security roles: the ones its members inherit
+→ Entra group teams: the group's Object ID to copy, and the truth about membership: a new group member appears only after their next access
+→ Members with access mode, license type and status, exportable
+→ Access teams (one per shared record, sometimes thousands) loaded only when you ask
 
 Demo data in the video. Free and open source.
 
-How many unused licenses would you bet your org is paying for? 👇
+Owner teams or Entra groups: which does your org rely on? 👇
 
-#Dynamics365 #Dataverse #PowerPlatform #D365 #Licensing
+#Dynamics365 #Dataverse #PowerPlatform #D365 #EntraID
 
 **FR**
 
-🎫 Licences payées, utilisateurs désactivés, comptes de service : l'état des licences en une liste.
+👥 Certains droits d'un utilisateur n'apparaissent jamais sur sa fiche.
 
-▶️ 64 secondes dans le module Utilisateurs & licences de Colvio :
+Dans Dataverse, un rôle de sécurité porté par une team est hérité par chacun de ses membres, et il n'apparaît pas dans la liste des rôles de l'utilisateur. C'est souvent là que s'arrête la question « pourquoi cet utilisateur peut-il faire ça ? ».
 
-→ Chaque utilisateur avec son type de licence (CAL) et son statut, et le décompte en direct des comptes actifs et désactivés
-→ Un clic pour les utilisateurs désactivés, ou les comptes non interactifs des intégrations
-→ Recherche par nom, email ou business unit ; tri par licence pour regrouper ceux qui ont la même
-→ Ouvrez un utilisateur : business unit, fonction, mode d'accès, licence, date de création, dernière connexion, rôles de sécurité
-→ Répartition sur toute l'org par mode d'accès et par type de licence
-→ Export de la liste filtrée en CSV ou Excel
+▶️ 73 secondes dans le module Teams de Colvio :
+
+→ Chaque team avec son type (Owner, groupe Entra, team par défaut de BU), et une recherche sur le nom, la business unit et l'administrateur
+→ Les rôles de sécurité d'une team owner : ceux dont ses membres héritent
+→ Les teams de groupe Entra : l'Object ID du groupe à copier, et la vérité sur l'appartenance : un nouveau membre du groupe n'apparaît qu'après son prochain accès
+→ Les membres avec mode d'accès, type de licence et statut, exportables
+→ Les teams d'accès (une par enregistrement partagé, parfois des milliers) chargées seulement à la demande
 
 Données de démo dans la vidéo. Gratuit et open source.
 
-Combien de licences inutilisées parieriez-vous que votre org paie ? 👇
+Teams owner ou groupes Entra : sur quoi repose votre org ? 👇
 
-#Dynamics365 #Dataverse #PowerPlatform #D365 #Licensing
+#Dynamics365 #Dataverse #PowerPlatform #D365 #EntraID
 
 ---
 

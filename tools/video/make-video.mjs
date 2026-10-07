@@ -71,9 +71,12 @@ const SCENES = [
   { key: "translations", en: ["Translations", "Field labels in every language side by side — edit, export, re-import."],
     fr: ["Translations", "Les libellés dans toutes les langues côte à côte — édition, export, réimport."],
     run: async (h) => { await h.open("Translations"); await h.click(h.vis("Account")); await h.wait(3000); } },
-  { key: "licenses", en: ["Users & Licenses", "Every user's access mode, licence type, security roles and last login."],
-    fr: ["Users & Licenses", "Le mode d'accès, le type de licence, les rôles et la dernière connexion de chaque utilisateur."],
-    run: async (h) => { await h.open("Users & Licenses"); await h.wait(1200); await h.click(h.page.locator("button >> visible=true").filter({ hasText: /Zakaria Missoum/ }).first()); await h.wait(2600); } },
+  { key: "licenses", en: ["Users & Licenses", "Every user's access mode, licence type, roles and last login — and their settings changed in bulk."],
+    fr: ["Users & Licenses", "Le mode d'accès, la licence, les rôles et la dernière connexion de chaque utilisateur — et ses paramètres modifiés en masse."],
+    run: async (h) => {
+      await h.open("Users & Licenses"); await h.wait(1500);
+      await h.click(h.page.getByRole("button", { name: "Bulk settings", exact: true })); await h.wait(2800);
+    } },
   { key: "bu", en: ["Business Units", "The BU hierarchy and its members — with bulk moves by simply pasting a list of emails."],
     fr: ["Business Units", "La hiérarchie des BU et leurs membres — avec des déplacements en masse en collant simplement une liste d'emails."],
     run: async (h) => { await h.open("Business Units"); await h.wait(1800); await h.click(h.vis("Sales EU")); await h.wait(2400); } },
