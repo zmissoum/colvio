@@ -20,29 +20,34 @@
 
 Two posts a week for the first month (Tuesday 8:30, Thursday 17:30), then one a week on Tuesdays. The dates are an example if v1.11.176 is live on Monday, October 12, with a break over the holidays. Tick "Posted" as you go.
 
-| Post | Week | Slot | Date (example) | Topic | Video (`tools/video/out/…`) | Length | Posted |
-|---|---|---|---|---|---|---|---|
-| 26 | 1 | Tue 8:30 | Oct 13 | Colvio in a few minutes (tour) | `video/colvio_tour_en.mp4` | 2 min 54 | ☐ |
-| 27 | 1 | Thu 17:30 | Oct 15 | Data Explorer | `deep/colvio_explorer_en.mp4` | 94 s | ☐ |
-| 28 | 2 | Tue 8:30 | Oct 20 | Data Loader | `deep/colvio_loader_en.mp4` | 95 s | ☐ |
-| 29 | 2 | Thu 17:30 | Oct 22 | Security Audit | `deep/colvio_security_en.mp4` | 90 s | ☐ |
-| 30 | 3 | Tue 8:30 | Oct 27 | Adoption | `deep/colvio_adoption_en.mp4` | 87 s | ☐ |
-| 31 | 3 | Thu 17:30 | Oct 29 | Storage | `deep/colvio_storage_en.mp4` | 62 s | ☐ |
-| 32 | 4 | Tue 8:30 | Nov 3 | Users & Licenses + Bulk settings | `deep/colvio_licenses_en.mp4` | 1 min 53 | ☐ |
-| 33 | 4 | Thu 17:30 | Nov 5 | Show All Data | `deep/colvio_showalldata_en.mp4` | 67 s | ☐ |
-| 34 | 5 | Tue 8:30 | Nov 10 | Apps | `deep/colvio_apps_en.mp4` | 68 s | ☐ |
-| 35 | 6 | Tue 8:30 | Nov 17 | API Tester | `deep/colvio_apitester_en.mp4` | 1 min 54 | ☐ |
-| 36 | 7 | Tue 8:30 | Nov 24 | Recycle Bin | `deep/colvio_recyclebin_en.mp4` | 79 s | ☐ |
-| 37 | 8 | Tue 8:30 | Dec 1 | Business Units | `deep/colvio_bu_en.mp4` | 81 s | ☐ |
-| 38 | 9 | Tue 8:30 | Dec 8 | Solutions | `deep/colvio_solutions_en.mp4` | 70 s | ☐ |
-| 39 | 10 | Tue 8:30 | Dec 15 | Environment Variables | `deep/colvio_envvars_en.mp4` | 75 s | ☐ |
-| 40 | 11 | Tue 8:30 | Jan 5 | Automation | `deep/colvio_automation_en.mp4` | 72 s | ☐ |
-| 41 | 12 | Tue 8:30 | Jan 12 | Metadata | `deep/colvio_metadata_en.mp4` | 83 s | ☐ |
-| 42 | 13 | Tue 8:30 | Jan 19 | Schema | `deep/colvio_schema_en.mp4` | 76 s | ☐ |
-| 43 | 14 | Tue 8:30 | Jan 26 | Relationships | `deep/colvio_relationships_en.mp4` | 59 s | ☐ |
-| 44 | 15 | Tue 8:30 | Feb 2 | Teams | `deep/colvio_teams_en.mp4` | 73 s | ☐ |
-| 45 | 16 | Tue 8:30 | Feb 9 | Translations | `deep/colvio_translations_en.mp4` | 64 s | ☐ |
-| 46 | 17 | Tue 8:30 | Feb 16 | Login History | `deep/colvio_logins_en.mp4` | 52 s | ☐ |
+**Scheduling in two batches** — LinkedIn schedules at most ~3 months ahead:
+- **Batch 1 — now:** Posts 26 → 39 (Oct 13 → Dec 15), everything up to the holiday break.
+- **Batch 2 — from Nov 16:** Posts 40 → 46 (Jan 5 → Feb 16). On Nov 16 the 3-month window reaches Feb 16, so the seven can be scheduled in one sitting.
+If the start date moves (store approval), shift both batches by the same number of weeks.
+
+| Post | Week | Slot | Date (example) | Topic | Video (`tools/video/out/…`) | Length | Batch | Posted |
+|---|---|---|---|---|---|---|---|---|
+| 26 | 1 | Tue 8:30 | Oct 13 | Colvio in a few minutes (tour) | `video/colvio_tour_en.mp4` | 2 min 54 | 1 | ☐ |
+| 27 | 1 | Thu 17:30 | Oct 15 | Data Explorer | `deep/colvio_explorer_en.mp4` | 94 s | 1 | ☐ |
+| 28 | 2 | Tue 8:30 | Oct 20 | Data Loader | `deep/colvio_loader_en.mp4` | 95 s | 1 | ☐ |
+| 29 | 2 | Thu 17:30 | Oct 22 | Security Audit | `deep/colvio_security_en.mp4` | 90 s | 1 | ☐ |
+| 30 | 3 | Tue 8:30 | Oct 27 | Adoption | `deep/colvio_adoption_en.mp4` | 87 s | 1 | ☐ |
+| 31 | 3 | Thu 17:30 | Oct 29 | Storage | `deep/colvio_storage_en.mp4` | 62 s | 1 | ☐ |
+| 32 | 4 | Tue 8:30 | Nov 3 | Users & Licenses + Bulk settings | `deep/colvio_licenses_en.mp4` | 1 min 53 | 1 | ☐ |
+| 33 | 4 | Thu 17:30 | Nov 5 | Show All Data | `deep/colvio_showalldata_en.mp4` | 67 s | 1 | ☐ |
+| 34 | 5 | Tue 8:30 | Nov 10 | Apps | `deep/colvio_apps_en.mp4` | 68 s | 1 | ☐ |
+| 35 | 6 | Tue 8:30 | Nov 17 | API Tester | `deep/colvio_apitester_en.mp4` | 1 min 54 | 1 | ☐ |
+| 36 | 7 | Tue 8:30 | Nov 24 | Recycle Bin | `deep/colvio_recyclebin_en.mp4` | 79 s | 1 | ☐ |
+| 37 | 8 | Tue 8:30 | Dec 1 | Business Units | `deep/colvio_bu_en.mp4` | 81 s | 1 | ☐ |
+| 38 | 9 | Tue 8:30 | Dec 8 | Solutions | `deep/colvio_solutions_en.mp4` | 70 s | 1 | ☐ |
+| 39 | 10 | Tue 8:30 | Dec 15 | Environment Variables | `deep/colvio_envvars_en.mp4` | 75 s | 1 | ☐ |
+| 40 | 11 | Tue 8:30 | Jan 5 | Automation | `deep/colvio_automation_en.mp4` | 72 s | 2 | ☐ |
+| 41 | 12 | Tue 8:30 | Jan 12 | Metadata | `deep/colvio_metadata_en.mp4` | 83 s | 2 | ☐ |
+| 42 | 13 | Tue 8:30 | Jan 19 | Schema | `deep/colvio_schema_en.mp4` | 76 s | 2 | ☐ |
+| 43 | 14 | Tue 8:30 | Jan 26 | Relationships | `deep/colvio_relationships_en.mp4` | 59 s | 2 | ☐ |
+| 44 | 15 | Tue 8:30 | Feb 2 | Teams | `deep/colvio_teams_en.mp4` | 73 s | 2 | ☐ |
+| 45 | 16 | Tue 8:30 | Feb 9 | Translations | `deep/colvio_translations_en.mp4` | 64 s | 2 | ☐ |
+| 46 | 17 | Tue 8:30 | Feb 16 | Login History | `deep/colvio_logins_en.mp4` | 52 s | 2 | ☐ |
 
 To re-render a video after a UI change: `node make-deep.mjs --module=<module> --lang=en` or `node make-video.mjs --lang=en --no-clips` in `tools/video` (see its README).
 
