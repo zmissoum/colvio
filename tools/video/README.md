@@ -88,6 +88,12 @@ headline band over a 2× capture, 24-bit PNG, full bleed), `store/promo_small_44
 `store/marquee_1400x560.png`, and `out/linkedin/colvio_5_screens_<lang>.pdf` (the five screenshots
 as a LinkedIn document post). Headlines live in `SHOTS` in the script; re-run after a UI change.
 
+## YouTube channel art
+
+```bash
+node youtube-art.mjs   # → store/youtube_banner_2560x1440.png (text inside the 1546×423 safe area), store/youtube_avatar_800.png
+```
+
 ## What's filmed
 
 Only modules that show **real content in demo mode** (checked screenshot by screenshot): every
