@@ -94,6 +94,16 @@ as a LinkedIn document post). Headlines live in `SHOTS` in the script; re-run af
 node youtube-art.mjs   # → store/youtube_banner_2560x1440.png (text inside the 1546×423 safe area), store/youtube_avatar_800.png, store/youtube_watermark_150.png
 ```
 
+## YouTube upload kit
+
+```bash
+node make-video.mjs --lang=en --no-clips   # records each scene's start in out/video/summary.json
+node youtube-kit.mjs                       # → store/youtube-tour.md: title, description with chapters, tags, settings
+```
+
+YouTube chapters must start at 0:00, be at least 3 and each last 10 s or more, so scenes (~8 s) are grouped.
+Re-run both after the tour changes — the timestamps move.
+
 ## What's filmed
 
 Only modules that show **real content in demo mode** (checked screenshot by screenshot): every

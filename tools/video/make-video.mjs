@@ -151,7 +151,9 @@ try {
       marks.forEach((m, i) => cut(full, Math.max(0, m.start + offset - 0.2), m.end + offset, path.join(clipDir, `${String(i + 1).padStart(2, "0")}_${m.key}.mp4`)));
     }
     fs.rmSync(framesDir, { recursive: true, force: true });
-    summary.push({ lang, file: full, seconds: +(endTs - rec.frames[0].ts).toFixed(1), scenes: marks.length, consoleErrors: errs });
+    const toVideo = t0 - rec.frames[0].ts; // wall-clock marks → video time
+    summary.push({ lang, file: full, seconds: +(endTs - rec.frames[0].ts).toFixed(1), scenes: marks.length, consoleErrors: errs,
+      sceneStarts: marks.map(m => ({ key: m.key, at: +Math.max(0, m.start + toVideo).toFixed(1) })) }); // → YouTube chapters
   }
 } finally { server.close(); }
 fs.writeFileSync(path.join(OUT, "summary.json"), JSON.stringify(summary, null, 1));
