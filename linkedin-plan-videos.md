@@ -1,55 +1,54 @@
-# Plan LinkedIn — les fonctionnalités de Colvio en vidéo
+# LinkedIn plan — Colvio's features in video
 
-**Objectif :** présenter les fonctionnalités de Colvio en vidéo, et rien d'autre. Les posts 1 à 25 (`linkedin-posts.md`) ont déjà présenté Colvio et annoncé chaque nouveauté ; aucun n'a encore montré les fonctionnalités en action. Donc ici : pas d'annonce de version, pas de « quoi de neuf », pas de coulisses. Un post = une vidéo + ce qu'elle montre.
+**Goal:** show Colvio's features in video — nothing else. Posts 1–25 (`linkedin-posts.md`) already introduced Colvio and announced each release; none showed the features in motion. So here: no release news, no "what's new", no behind-the-scenes. One post = one video + what it shows.
 
-**21 posts, 21 vidéos :** la présentation générale (2 min 54, 20 modules) puis une vidéo détaillée par module (52 s à 1 min 54) — tous les modules sauf System Ops, toutes en anglais et en français, légendes incrustées, données de démo uniquement.
+**Language:** English only — posts, comments and videos (the `_en.mp4` files).
 
-**Démarrage :** J = le premier mardi après que le Chrome Web Store affiche la **v1.11.176** (ou plus récente) — les vidéos montrent Teams, Stockage, le Login History actuel et les démos enrichies de la v1.11.174, absents des versions plus anciennes du store.
+**21 posts, 21 videos:** the tour (2 min 54, 20 modules), then one deep-dive video per module (52 s to 1 min 54) — every module except System Ops. Captions burned in, demo data only.
 
-## Règles de publication
+**Start:** J = the first Tuesday after the Chrome Web Store shows **v1.11.176** (or later). The videos show Teams, Storage, Bulk settings, the current Login History and the enriched demos, which older store versions don't have.
 
-- Page **Colvio**, voix « nous / Colvio » (jamais « je »).
-- Importer le **MP4 directement sur LinkedIn** (pas de lien YouTube : une vidéo native touche beaucoup plus de monde). Les légendes sont incrustées : la vidéo se comprend sans le son.
-- **Lien en premier commentaire**, jamais dans le texte : `🔗 Chrome Web Store : https://chromewebstore.google.com/detail/edieednbdaclheikneelkjfbckibhdgl · Code source : https://github.com/zmissoum/colvio`
-- Répondre à **tous les commentaires dans la première heure**.
-- **Version française :** post séparé le même jour à 12h15, ou la fonction « ajouter une traduction » de LinkedIn si elle est disponible.
-- Chaque affirmation des textes est visible dans la vidéo ou dans ses légendes (`tools/video/deep/<module>.mjs`).
+## Posting rules
 
-## Calendrier
+- **Colvio** page, "we / Colvio" voice (never "I").
+- Upload the **MP4 natively** to LinkedIn (no YouTube link: native video reaches far more people). Captions are burned in, so the video works muted.
+- **Link in the first comment**, never in the post: `🔗 Chrome Web Store: https://chromewebstore.google.com/detail/edieednbdaclheikneelkjfbckibhdgl · Source: https://github.com/zmissoum/colvio`
+- Reply to **every comment within the first hour**.
+- Every claim in the texts is visible in the video or in its chapter captions (`tools/video/deep/<module>.mjs`).
 
-Deux posts par semaine le premier mois (mardi 8h30, jeudi 17h30), puis un par semaine le mardi. Les dates sont un exemple si la v1.11.176 est en ligne le lundi 12 octobre, avec une pause pendant les fêtes. Cochez « Publié » au fur et à mesure.
+## Calendar
 
-| Post | Sem. | Créneau | Date (exemple) | Sujet | Vidéo (`tools/video/out/…`) | Durée | Publié |
+Two posts a week for the first month (Tuesday 8:30, Thursday 17:30), then one a week on Tuesdays. The dates are an example if v1.11.176 is live on Monday, October 12, with a break over the holidays. Tick "Posted" as you go.
+
+| Post | Week | Slot | Date (example) | Topic | Video (`tools/video/out/…`) | Length | Posted |
 |---|---|---|---|---|---|---|---|
-| 26 | 1 | Mar 8h30 | 13/10 | Colvio en quelques minutes (présentation) | `video/colvio_tour_en.mp4` / `_fr.mp4` | 2 min 54 | ☐ |
-| 27 | 1 | Jeu 17h30 | 15/10 | Data Explorer | `deep/colvio_explorer_en.mp4` / `_fr.mp4` | 94 s | ☐ |
-| 28 | 2 | Mar 8h30 | 20/10 | Data Loader | `deep/colvio_loader_en.mp4` / `_fr.mp4` | 95 s | ☐ |
-| 29 | 2 | Jeu 17h30 | 22/10 | Security Audit | `deep/colvio_security_en.mp4` / `_fr.mp4` | 90 s | ☐ |
-| 30 | 3 | Mar 8h30 | 27/10 | Adoption | `deep/colvio_adoption_en.mp4` / `_fr.mp4` | 87 s | ☐ |
-| 31 | 3 | Jeu 17h30 | 29/10 | Stockage | `deep/colvio_storage_en.mp4` / `_fr.mp4` | 62 s | ☐ |
-| 32 | 4 | Mar 8h30 | 03/11 | Users & Licenses + paramètres en masse | `deep/colvio_licenses_en.mp4` / `_fr.mp4` | 1 min 53 | ☐ |
-| 33 | 4 | Jeu 17h30 | 05/11 | Show All Data | `deep/colvio_showalldata_en.mp4` / `_fr.mp4` | 67 s | ☐ |
-| 34 | 5 | Mar 8h30 | 10/11 | Apps | `deep/colvio_apps_en.mp4` / `_fr.mp4` | 68 s | ☐ |
-| 35 | 6 | Mar 8h30 | 17/11 | API Tester | `deep/colvio_apitester_en.mp4` / `_fr.mp4` | 1 min 54 | ☐ |
-| 36 | 7 | Mar 8h30 | 24/11 | Recycle Bin | `deep/colvio_recyclebin_en.mp4` / `_fr.mp4` | 79 s | ☐ |
-| 37 | 8 | Mar 8h30 | 01/12 | Business Units | `deep/colvio_bu_en.mp4` / `_fr.mp4` | 81 s | ☐ |
-| 38 | 9 | Mar 8h30 | 08/12 | Solutions | `deep/colvio_solutions_en.mp4` / `_fr.mp4` | 70 s | ☐ |
-| 39 | 10 | Mar 8h30 | 15/12 | Variables d'environnement | `deep/colvio_envvars_en.mp4` / `_fr.mp4` | 75 s | ☐ |
-| 40 | 11 | Mar 8h30 | 05/01 | Automation | `deep/colvio_automation_en.mp4` / `_fr.mp4` | 72 s | ☐ |
-| 41 | 12 | Mar 8h30 | 12/01 | Metadata | `deep/colvio_metadata_en.mp4` / `_fr.mp4` | 83 s | ☐ |
-| 42 | 13 | Mar 8h30 | 19/01 | Schema | `deep/colvio_schema_en.mp4` / `_fr.mp4` | 76 s | ☐ |
-| 43 | 14 | Mar 8h30 | 26/01 | Relationships | `deep/colvio_relationships_en.mp4` / `_fr.mp4` | 59 s | ☐ |
-| 44 | 15 | Mar 8h30 | 02/02 | Teams | `deep/colvio_teams_en.mp4` / `_fr.mp4` | 73 s | ☐ |
-| 45 | 16 | Mar 8h30 | 09/02 | Translations | `deep/colvio_translations_en.mp4` / `_fr.mp4` | 64 s | ☐ |
-| 46 | 17 | Mar 8h30 | 16/02 | Login History | `deep/colvio_logins_en.mp4` / `_fr.mp4` | 52 s | ☐ |
+| 26 | 1 | Tue 8:30 | Oct 13 | Colvio in a few minutes (tour) | `video/colvio_tour_en.mp4` | 2 min 54 | ☐ |
+| 27 | 1 | Thu 17:30 | Oct 15 | Data Explorer | `deep/colvio_explorer_en.mp4` | 94 s | ☐ |
+| 28 | 2 | Tue 8:30 | Oct 20 | Data Loader | `deep/colvio_loader_en.mp4` | 95 s | ☐ |
+| 29 | 2 | Thu 17:30 | Oct 22 | Security Audit | `deep/colvio_security_en.mp4` | 90 s | ☐ |
+| 30 | 3 | Tue 8:30 | Oct 27 | Adoption | `deep/colvio_adoption_en.mp4` | 87 s | ☐ |
+| 31 | 3 | Thu 17:30 | Oct 29 | Storage | `deep/colvio_storage_en.mp4` | 62 s | ☐ |
+| 32 | 4 | Tue 8:30 | Nov 3 | Users & Licenses + Bulk settings | `deep/colvio_licenses_en.mp4` | 1 min 53 | ☐ |
+| 33 | 4 | Thu 17:30 | Nov 5 | Show All Data | `deep/colvio_showalldata_en.mp4` | 67 s | ☐ |
+| 34 | 5 | Tue 8:30 | Nov 10 | Apps | `deep/colvio_apps_en.mp4` | 68 s | ☐ |
+| 35 | 6 | Tue 8:30 | Nov 17 | API Tester | `deep/colvio_apitester_en.mp4` | 1 min 54 | ☐ |
+| 36 | 7 | Tue 8:30 | Nov 24 | Recycle Bin | `deep/colvio_recyclebin_en.mp4` | 79 s | ☐ |
+| 37 | 8 | Tue 8:30 | Dec 1 | Business Units | `deep/colvio_bu_en.mp4` | 81 s | ☐ |
+| 38 | 9 | Tue 8:30 | Dec 8 | Solutions | `deep/colvio_solutions_en.mp4` | 70 s | ☐ |
+| 39 | 10 | Tue 8:30 | Dec 15 | Environment Variables | `deep/colvio_envvars_en.mp4` | 75 s | ☐ |
+| 40 | 11 | Tue 8:30 | Jan 5 | Automation | `deep/colvio_automation_en.mp4` | 72 s | ☐ |
+| 41 | 12 | Tue 8:30 | Jan 12 | Metadata | `deep/colvio_metadata_en.mp4` | 83 s | ☐ |
+| 42 | 13 | Tue 8:30 | Jan 19 | Schema | `deep/colvio_schema_en.mp4` | 76 s | ☐ |
+| 43 | 14 | Tue 8:30 | Jan 26 | Relationships | `deep/colvio_relationships_en.mp4` | 59 s | ☐ |
+| 44 | 15 | Tue 8:30 | Feb 2 | Teams | `deep/colvio_teams_en.mp4` | 73 s | ☐ |
+| 45 | 16 | Tue 8:30 | Feb 9 | Translations | `deep/colvio_translations_en.mp4` | 64 s | ☐ |
+| 46 | 17 | Tue 8:30 | Feb 16 | Login History | `deep/colvio_logins_en.mp4` | 52 s | ☐ |
 
-Les vidéos se régénèrent avec `node make-deep.mjs --module=<module>` et `node make-video.mjs` dans `tools/video` (voir son README).
+To re-render a video after a UI change: `node make-deep.mjs --module=<module> --lang=en` or `node make-video.mjs --lang=en --no-clips` in `tools/video` (see its README).
 
-## Les 21 textes (EN puis FR)
+## The 21 posts
 
 ### Post 26 — Colvio in a few minutes (tour) (2 min 54)
-
-**EN**
 
 🎬 2 min 54, 20 modules, zero setup.
 
@@ -69,31 +68,9 @@ Which module would you open first? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #OpenSource
 
-**FR**
-
-🎬 2 min 54, 20 modules, zéro configuration.
-
-On nous pose souvent la même question : « OK, mais concrètement, Colvio fait quoi ? »
-
-La réponse, en vidéo : 20 modules sur des données de démo, l'un après l'autre.
-
-🔎 Données : interroger n'importe quelle table (Builder, OData, FetchXML ou SQL), charger un tableur, restaurer des enregistrements supprimés, inspecter chaque champ d'un enregistrement
-🛠 Développement : API tester, métadonnées, automatisations, apps, relations, schéma du modèle de données, solutions, variables d'environnement, traductions
-🛡 Administration : utilisateurs et licences, business units, rôles de sécurité, teams, adoption, historique de connexion, stockage
-
-Ce que vous ne verrez pas dans la vidéo : un écran d'inscription, une clé d'API, une app registration. Colvio tourne dans votre navigateur, sur la session Dynamics 365 que vous avez déjà, et ne parle qu'à votre propre org.
-
-Dans les semaines qui viennent, on les reprend un par un, chacun dans sa vidéo.
-
-Quel module ouvririez-vous en premier ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #OpenSource
-
 ---
 
 ### Post 27 — Data Explorer (`explorer`, 94 s)
-
-**EN**
 
 ⏱ 94 seconds inside Colvio's Data Explorer.
 
@@ -114,32 +91,9 @@ Which of the eight do you still do by hand today? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #DataManagement
 
-**FR**
-
-⏱ 94 secondes dans le Data Explorer de Colvio.
-
-Une table, une requête, et tout ce qu'on peut en faire, en huit étapes :
-
-1. Choisir une table et ses colonnes (chaque table affiche son volume)
-2. Filtrer visuellement, avec les opérateurs adaptés au type de chaque colonne
-3. Exécuter (sans plafond à 5 000 lignes), puis trier et affiner les résultats
-4. Voir la même requête en OData ou en FetchXML, ou écrire du SQL : exécuté nativement par Dataverse, ou converti en FetchXML
-5. Double-cliquer une cellule pour la modifier : la valeur est vérifiée selon le type de la colonne avant tout envoi
-6. Cocher des enregistrements, choisir une colonne et une valeur : une mise à jour en masse, après confirmation
-7. Trouver les doublons sur les colonnes que VOUS choisissez, l'excédent présélectionné pour le nettoyage
-8. Des onglets de requêtes, un historique sans les valeurs de filtre, et les exports Excel / CSV / JSON
-
-Tout sur des données de démo. Aucune vraie org à l'écran.
-
-Laquelle de ces huit étapes faites-vous encore à la main aujourd'hui ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #DataManagement
-
 ---
 
 ### Post 28 — Data Loader (`loader`, 95 s)
-
-**EN**
 
 📥 From a spreadsheet to Dataverse, without a single blind click.
 
@@ -159,31 +113,9 @@ What's the biggest file you've ever had to load into Dataverse? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #DataMigration
 
-**FR**
-
-📥 D'un tableur à Dataverse, sans un seul clic à l'aveugle.
-
-▶️ 95 secondes dans le Data Loader de Colvio :
-
-→ Collez les lignes directement depuis Excel : le séparateur est détecté, les en-têtes suivent
-→ Choisissez la table cible : les colonnes qui portent le nom d'un champ se mappent toutes seules
-→ Quatre modes : CREATE, UPSERT sur une clé alternative, UPDATE qui ne crée jamais, DELETE avec confirmation saisie, et le mode Delta ignore les lignes qui ne changeraient rien
-→ Vérifié avant tout envoi : l'enregistrement exact qui sera écrit, et les alertes de contrôle préalable
-→ Une transformation par colonne : libellés d'option set en valeurs, HTML en texte brut
-→ Une simulation qui n'écrit rien, puis le vrai chargement : chaque ligne arrive dans un journal en direct, et chacune montre la requête exacte envoyée
-→ Retour arrière : tapez ROLLBACK et les enregistrements créés par ce chargement sont supprimés
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Quel est le plus gros fichier que vous ayez dû charger dans Dataverse ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #DataMigration
-
 ---
 
 ### Post 29 — Security Audit (`security`, 90 s)
-
-**EN**
 
 🛡 "Who can delete accounts in this org?"
 
@@ -203,31 +135,9 @@ When did you last review who can delete what? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #SecurityAudit
 
-**FR**
-
-🛡 « Qui peut supprimer des comptes dans cette org ? »
-
-La question que pose chaque audit, et à laquelle l'éditeur de rôles vous fait répondre rôle par rôle.
-
-▶️ 90 secondes dans l'audit de sécurité de Colvio :
-
-→ Chaque rôle en clair : privilèges niveau Organisation et privilèges sensibles (suppressions, exports, gestion des utilisateurs et des rôles, personnalisation) comptés et signalés
-→ La vue matrice : chaque table × les 8 droits d'accès, la profondeur dessinée en cercle qui se remplit
-→ Qui détient vraiment le rôle : les membres de toutes les copies du rôle par business unit, et les teams qui le transmettent sans qu'il apparaisse jamais sur l'utilisateur
-→ Attribuer le rôle à une liste de personnes : collez leurs emails, Colvio prend pour chacun la copie du rôle de sa propre business unit
-→ Toute l'org en une analyse : choisissez un droit et une profondeur minimale (« Delete » niveau Organisation), puis regroupez par table, exportable en CSV ou Excel
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-À quand remonte votre dernière revue de « qui peut supprimer quoi » ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #SecurityAudit
-
 ---
 
 ### Post 30 — Adoption (`adoption`, 87 s)
-
-**EN**
 
 📈 "How many people actually use the CRM we pay for?"
 
@@ -249,33 +159,9 @@ If you could know one adoption number for your org today, which would it be? �
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #Adoption
 
-**FR**
-
-📈 « Combien de personnes utilisent vraiment le CRM qu'on paie ? »
-
-La direction pose la question. Personne n'a le chiffre sous la main.
-
-▶️ 87 secondes dans le module Adoption de Colvio :
-
-→ Événements d'accès, utilisateurs distincts, DAU / WAU / MAU, lus dans l'audit d'accès de Dataverse
-→ La tendance jour par jour : connexions, utilisateurs distincts, ou les deux
-→ Qui l'utilise le plus, par jours actifs ou par accès le plus récent
-→ La liste que personne n'a sous la main : les utilisateurs qui ne se sont jamais connectés
-→ Tout le périmètre avec licence et inactivité : qui n'est pas venu depuis 30 jours ou plus
-→ Filtre par rôle de sécurité ou business unit, sous-BU comprises ; 7, 30, 90 jours ou une période libre
-→ Comparaison avec la période précédente, export CSV ou Excel, ou un PowerPoint de 5 diapositives
-
-Honnête par conception : Dataverse enregistre au plus un accès par utilisateur et par intervalle (4 h par défaut), donc Colvio compte des « événements d'accès », pas des connexions, et les comptes de service sont exclus par défaut. Il faut que l'audit de l'accès utilisateur (« Audit user access ») soit activé, et l'écran le dit.
-
-Si vous pouviez connaître un seul chiffre d'adoption de votre org aujourd'hui, ce serait lequel ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #Adoption
-
 ---
 
 ### Post 31 — Storage (`storage`, 62 s)
-
-**EN**
 
 💾 "We're over our Dataverse capacity. Which tables are filling it?"
 
@@ -295,31 +181,9 @@ What's the biggest table in your org, and would you have guessed it? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #Storage
 
-**FR**
-
-💾 « On a dépassé notre capacité Dataverse. Quelles tables la remplissent ? »
-
-Le centre d'administration vous dit COMBIEN vous consommez. Pas OÙ.
-
-▶️ 62 secondes dans le module Stockage de Colvio :
-
-→ Le volume de chaque table de l'org en quelques secondes, lu dans le snapshot de Dataverse lui-même (rafraîchi par la plateforme, 24 h maximum)
-→ Les tables qui grossissent en silence (audit, travaux système, journaux de workflow, traces de plug-ins, emails, restes d'imports), chacune avec le nettoyage adapté
-→ Le stockage fichier mesuré en octets réels par table : notes, colonnes fichier et image, pièces jointes d'emails
-→ Filtre par type de stockage (Base de données, Fichier, Journal) ou recherche sur n'importe quelle table
-→ Actualisation à la demande
-
-Ce qu'il ne prétend pas : les Go qui vous sont facturés ne se lisent que dans le centre d'administration Power Platform. Colvio le dit à l'écran et vous y emmène.
-
-Quelle est la plus grosse table de votre org, et l'auriez-vous devinée ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #Stockage
-
 ---
 
 ### Post 32 — Users & Licenses (`licenses`, 1 min 53)
-
-**EN**
 
 🎫 Day one of a Dynamics 365 rollout: hundreds of users who all need the same email tracking, time zone and language.
 
@@ -338,30 +202,9 @@ Which setting do you end up changing for everyone at the start of a project? �
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #CRMAdmin
 
-**FR**
-
-🎫 Premier jour d'un déploiement Dynamics 365 : des centaines d'utilisateurs qui ont tous besoin du même suivi des e-mails, du même fuseau horaire et de la même langue.
-
-▶️ 1 min 53 dans le module Utilisateurs & licences de Colvio :
-
-→ Chaque utilisateur avec son type de licence (CAL), son statut et sa dernière connexion ; les comptes désactivés et de service en un clic
-→ Ouvrez un utilisateur : business unit, mode d'accès, licence, rôles de sécurité ; la répartition sur toute l'org ; l'export en CSV ou Excel
-→ Paramètres en masse : choisissez un paramètre personnel (suivi des e-mails, fuseau horaire, langue, devise…) ou une option de boîte aux lettres, avec la valeur actuelle de chacun en clair
-→ Ne gardez que les personnes qui se connectent vraiment, puis voyez le changement de chacun avant toute écriture
-→ Appliquez : une confirmation d'abord, 4 écritures à la fois, et un résultat par utilisateur avec la raison du serveur en cas de refus
-→ Les boîtes aux lettres aussi : modes de synchronisation côté serveur et approbation de l'e-mail, avec les droits nécessaires indiqués
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Quel paramètre finissez-vous par changer pour tout le monde en début de projet ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #CRMAdmin
-
 ---
 
 ### Post 33 — Show All Data (`showalldata`, 67 s)
-
-**EN**
 
 👁 The form shows 30 fields. The record has 120.
 
@@ -380,30 +223,9 @@ Which field do you always end up hunting for? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #PowerApps
 
-**FR**
-
-👁 Le formulaire affiche 30 champs. L'enregistrement en a 120.
-
-▶️ 67 secondes dans Show All Data :
-
-→ Collez l'URL d'un enregistrement (ou table/GUID) : chaque colonne renseignée avec son nom logique, son libellé et son type
-→ Tapez pour trouver une colonne, par nom logique ou par libellé
-→ Cochez « Empty columns » pour lister toutes les colonnes de la table, remplies ou non
-→ Les colonnes de choix affichent leur libellé, pas le nombre stocké
-→ « Custom only » ne garde que les colonnes de vos propres éditeurs ; celles de Microsoft (msdyn_, adx_) restent à l'écart
-→ Copiez une valeur, le GUID de l'enregistrement, ou tout l'enregistrement en JSON
-
-Sur votre propre org (non montré avec les données de démo) : modifiez une valeur sur place, lookups compris, la sécurité des champs restant appliquée par Dataverse.
-
-Quel champ finissez-vous toujours par chercher ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #PowerApps
-
 ---
 
 ### Post 34 — Apps (`apps`, 68 s)
-
-**EN**
 
 🧩 "Why does this form show up in that app?"
 
@@ -424,32 +246,9 @@ Ever had a form appear where nobody added it? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #PowerApps
 
-**FR**
-
-🧩 « Pourquoi ce formulaire apparaît-il dans cette app ? »
-
-Souvent à cause d'une case : « inclure tous les formulaires ». Laissée cochée, elle fait entrer dans l'app chaque formulaire actuel ET futur de la table, et le portail maker n'affiche plus cet état ensuite.
-
-▶️ 68 secondes dans le module Apps de Colvio :
-
-→ Les tables, formulaires et vues de chaque app, marqués EXPLICIT (choisis à la main) ou IMPLICIT (amenés par « inclure tout »)
-→ Les boutons modernes de la barre de commandes de l'app
-→ Les sous-grilles d'un formulaire : la table enfant, la vue affichée, la relation qui les relie
-→ Ouvrez cette vue : ses filtres, ses colonnes, son tri, la réponse à « pourquoi ma ligne n'est pas dans cette sous-grille ? »
-→ La recherche inversée : tapez le nom d'un formulaire, d'une vue ou d'un bouton, et voyez toutes les apps qui l'exposent
-→ Un clic envoie le FetchXML de la vue dans le Data Explorer
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Un formulaire est-il déjà apparu là où personne ne l'avait ajouté ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #PowerApps
-
 ---
 
 ### Post 35 — API Tester (`apitester`, 1 min 54)
-
-**EN**
 
 🧪 Calling the Dataverse Web API shouldn't start with an app registration.
 
@@ -469,31 +268,9 @@ What's the first request you'd send? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #WebAPI
 
-**FR**
-
-🧪 Appeler l'API Web de Dataverse ne devrait pas commencer par une app registration.
-
-▶️ 1 min 54 dans l'API Tester de Colvio, sur la session avec laquelle vous êtes déjà connecté :
-
-→ Sept requêtes prêtes à l'emploi : WhoAmI, création, upsert par clé alternative, suppression…
-→ N'importe quelle requête après /api/data/v9.2/ ($select, $filter, $top) avec statut, durée, taille et JSON mis en forme
-→ Ajoutez des en-têtes (Prefer pour les valeurs formatées) et lisez ceux qui reviennent
-→ Un éditeur JSON qui indique la ligne d'une erreur de syntaxe
-→ Créez un enregistrement : 204 avec l'URL du nouvel enregistrement, ou l'enregistrement lui-même avec return=representation
-→ DELETE demande deux fois, et les requêtes ne partent que vers votre propre org
-→ Un historique où les valeurs de filtre et de corps sont masquées, des onglets, la copie en cURL
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Quelle serait votre première requête ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #WebAPI
-
 ---
 
 ### Post 36 — Recycle Bin (`recyclebin`, 79 s)
-
-**EN**
 
 🗑 "Someone deleted 140 accounts last night. Can we get them back?"
 
@@ -515,33 +292,9 @@ Has a mass delete ever ruined your morning? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #DataRecovery
 
-**FR**
-
-🗑 « Quelqu'un a supprimé 140 comptes cette nuit. On peut les récupérer ? »
-
-Si l'org conserve les enregistrements supprimés pour cette table, oui, et Colvio vous montre ce que contient la corbeille.
-
-▶️ 79 secondes dans la corbeille de Colvio :
-
-→ Seulement les tables activées pour la restauration, avec la durée de conservation de l'org
-→ Chaque enregistrement supprimé avec qui l'a supprimé et quand, ainsi que qui l'a créé et modifié en dernier
-→ Parcourez une suppression massive par pages de 100 à 1 000 lignes, et cherchez par nom dans toute la corbeille
-→ Exportez la liste avant de restaurer, comme preuve
-→ Restaurez avec l'action Restore de Dataverse : l'enregistrement revient et quitte la corbeille
-→ Quand une restauration est refusée (ici, un enregistrement existant utilise déjà la même clé alternative), la raison et la solution, enregistrement par enregistrement
-→ Les limites de la plateforme expliquées sous la liste
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Une suppression massive vous a-t-elle déjà gâché une matinée ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #DataRecovery
-
 ---
 
 ### Post 37 — Business Units (`bu`, 81 s)
-
-**EN**
 
 🏢 A reorganisation reaches the admin as a spreadsheet of email addresses.
 
@@ -559,29 +312,9 @@ How many business units does your org have? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #CRMAdmin
 
-**FR**
-
-🏢 Une réorganisation arrive chez l'admin sous forme de tableau d'adresses email.
-
-▶️ 81 secondes dans le module Business Units de Colvio :
-
-→ Toute l'arborescence des BU avec le nombre d'utilisateurs directs, ou un vrai organigramme : dépliez les branches, zoomez, exportez en PNG
-→ Ouvrez une BU : membres directs, total avec les sous-BU, exports de la BU seule ou de toute sa sous-arborescence
-→ Les membres avec mode d'accès et type de licence ; les comptes désactivés ressortent
-→ Collez la liste d'emails (format Outlook compris) : chaque correspondance est cochée, les absents de cette BU sont listés
-→ Déplacez-les vers une autre BU, avec un avertissement sur les rôles de sécurité AVANT toute écriture, puis le résultat utilisateur par utilisateur
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Combien de business units dans votre org ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #CRMAdmin
-
 ---
 
 ### Post 38 — Solutions (`solutions`, 70 s)
-
-**EN**
 
 📦 "What's different between DEV and PROD?"
 
@@ -599,29 +332,9 @@ How do you check a deployment today? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #ALM
 
-**FR**
-
-📦 « Qu'est-ce qui diffère entre DEV et PROD ? »
-
-▶️ 70 secondes dans le module Solutions de Colvio :
-
-→ Chaque solution avec sa version et son nombre de composants, managée ou non
-→ Son contenu, groupé par type : tables, colonnes, option sets, vues, graphiques, assemblies de plug-ins
-→ La liste complète des composants en CSV ou Excel : votre checklist de déploiement
-→ Comparez deux solutions de l'org : seulement ici, dans les deux, seulement là-bas
-→ Entre deux orgs : exportez un fichier de comparaison sur DEV, chargez-le sur PROD, lisez l'écart type par type, rapproché par GUID ou par type et nom
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Comment vérifiez-vous un déploiement aujourd'hui ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #ALM
-
 ---
 
 ### Post 39 — Environment Variables (`envvars`, 75 s)
-
-**EN**
 
 ⚙️ An environment variable with no value doesn't fail at import. It fails later, as an empty string in a flow or a plug-in.
 
@@ -640,30 +353,9 @@ Ever been caught by an empty variable after a deployment? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #ALM
 
-**FR**
-
-⚙️ Une variable d'environnement sans valeur n'échoue pas à l'import. Elle échoue plus tard, en chaîne vide dans un flux ou un plug-in.
-
-▶️ 75 secondes dans le module Variables d'environnement de Colvio :
-
-→ Compte et liste les variables sans valeur courante NI valeur par défaut : le piège classique après un déploiement
-→ Édition typée : oui/non pour les booléens, le JSON doit être valide, les nombres doivent être des nombres ; une valeur invalide est refusée avec la raison, avant tout envoi
-→ Supprimez une surcharge pour revenir à la valeur par défaut de la définition
-→ Voyez ce que cet environnement surcharge
-→ Variables secrètes : Colvio affiche et modifie la référence Key Vault, jamais le secret
-→ Export avec valeur par défaut, valeur courante et origine de la valeur effective
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Déjà piégé par une variable vide après un déploiement ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #ALM
-
 ---
 
 ### Post 40 — Automation (`automation`, 72 s)
-
-**EN**
 
 ⚡ "Why did this field change?"
 
@@ -684,32 +376,9 @@ Plug-ins or flows: where does most of your logic live? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #PowerAutomate
 
-**FR**
-
-⚡ « Pourquoi ce champ a-t-il changé ? »
-
-Avant d'ouvrir le Plugin Registration Tool, regardez tout ce qui est enregistré pour s'exécuter, sur un seul écran.
-
-▶️ 72 secondes dans le module Automatisation de Colvio :
-
-→ Chaque étape de plug-in : type de plug-in, message, table, étape, synchrone ou asynchrone, état, origine
-→ Filtrez par assembly, table ou message en quelques secondes
-→ Seulement les étapes désactivées : la première vérification quand « mon plug-in ne se déclenche pas »
-→ Personnalisé, managé ou Microsoft (au mieux, d'après les préfixes d'éditeur et l'indicateur managé)
-→ Les workflows classiques avec leurs déclencheurs, et un onglet par type de processus : flux cloud, règles métier, actions, BPF, dialogues, flux de bureau
-→ Exportez ce qui est affiché pour l'audit
-
-En lecture seule, donc sans risque à explorer en production. Données de démo dans la vidéo. Gratuit et open source.
-
-Plug-ins ou flux : où vit l'essentiel de votre logique ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #PowerAutomate
-
 ---
 
 ### Post 41 — Metadata (`metadata`, 83 s)
-
-**EN**
 
 📚 A data dictionary in one click.
 
@@ -728,30 +397,9 @@ Do you keep your data dictionary up to date? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
 
-**FR**
-
-📚 Un dictionnaire de données en un clic.
-
-▶️ 83 secondes dans le module Métadonnées de Colvio :
-
-→ Les tables filtrées par catégorie, les tables Virtual et Elastic mises en évidence
-→ Chaque colonne avec son libellé et son type, les obligatoires et les personnalisées signalées
-→ Les valeurs d'un option set, une par une, exportables
-→ Un clic sur un nom logique le copie, prêt pour le FetchXML, le code ou Power Automate
-→ Exportez toutes les colonnes d'une table (nom logique, libellé, nom OData, type, obligatoire, personnalisé) ou toutes les valeurs d'option sets
-→ Snapshot de schéma : exportez-le en JSON sur une org, chargez-le sur une autre, et voyez les tables et colonnes manquantes, les écarts de type et d'obligation
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Tenez-vous votre dictionnaire de données à jour ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
-
 ---
 
 ### Post 42 — Schema (`schema`, 76 s)
-
-**EN**
 
 🗺 Your Dataverse data model, drawn from the org itself.
 
@@ -771,31 +419,9 @@ How do you document your data model today? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
 
-**FR**
-
-🗺 Votre modèle de données Dataverse, dessiné à partir de l'org elle-même.
-
-▶️ 76 secondes dans le module Schema de Colvio :
-
-→ Cliquez des tables : chacune arrive sur le canevas avec ses colonnes et leurs types, les lookups en premier
-→ Chaque lookup trace une courbe vers sa table cible ; survolez-le pour l'éclairer
-→ Les relations N:N en pointillés entre les en-têtes des cartes
-→ Le + d'une carte ajoute les tables vers lesquelles pointent ses lookups
-→ Déplacez les cartes, faites défiler, zoomez, Fit : chaque courbe suit
-→ Toutes les colonnes, ou seulement les tables pour la vue d'ensemble
-→ Export en PNG, SVG ou en erDiagram Mermaid pour votre documentation
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Comment documentez-vous votre modèle de données aujourd'hui ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
-
 ---
 
 ### Post 43 — Relationships (`relationships`, 59 s)
-
-**EN**
 
 🔗 Your data model, one click at a time.
 
@@ -813,29 +439,9 @@ Which table has the most relationships in your org? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
 
-**FR**
-
-🔗 Votre modèle de données, clic après clic.
-
-▶️ 59 secondes dans le module Relations de Colvio :
-
-→ Choisissez une table : les parents en haut, les N:N au milieu, les enfants en bas, chaque bloc indiquant son lookup ou sa relation
-→ Les liens système (propriétaire, devise, créé par) existent sur toutes les tables, donc ils démarrent masqués ; un clic les affiche, et vos propres lookups vers ces mêmes tables restent visibles
-→ Cliquez une table liée : elle passe au centre, et vous parcourez le modèle de table en table
-→ Depth 2 ajoute les relations des tables liées, plafonné à 30 tables pour rester lisible
-→ ↻ vide le cache des métadonnées : une relation créée il y a quelques minutes apparaît
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Quelle table a le plus de relations dans votre org ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
-
 ---
 
 ### Post 44 — Teams (`teams`, 73 s)
-
-**EN**
 
 👥 Some of a user's rights never show on their profile.
 
@@ -855,31 +461,9 @@ Owner teams or Entra groups: which does your org rely on? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #EntraID
 
-**FR**
-
-👥 Certains droits d'un utilisateur n'apparaissent jamais sur sa fiche.
-
-Dans Dataverse, un rôle de sécurité porté par une team est hérité par chacun de ses membres, et il n'apparaît pas dans la liste des rôles de l'utilisateur. C'est souvent là que s'arrête la question « pourquoi cet utilisateur peut-il faire ça ? ».
-
-▶️ 73 secondes dans le module Teams de Colvio :
-
-→ Chaque team avec son type (Owner, groupe Entra, team par défaut de BU), et une recherche sur le nom, la business unit et l'administrateur
-→ Les rôles de sécurité d'une team owner : ceux dont ses membres héritent
-→ Les teams de groupe Entra : l'Object ID du groupe à copier, et la vérité sur l'appartenance : un nouveau membre du groupe n'apparaît qu'après son prochain accès
-→ Les membres avec mode d'accès, type de licence et statut, exportables
-→ Les teams d'accès (une par enregistrement partagé, parfois des milliers) chargées seulement à la demande
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Teams owner ou groupes Entra : sur quoi repose votre org ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #EntraID
-
 ---
 
 ### Post 45 — Translations (`translations`, 64 s)
-
-**EN**
 
 🌍 Fixing one label in four languages shouldn't take an afternoon.
 
@@ -898,30 +482,9 @@ How many languages does your org run? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #Localization
 
-**FR**
-
-🌍 Corriger un libellé dans quatre langues ne devrait pas prendre un après-midi.
-
-▶️ 64 secondes dans le module Traductions de Colvio :
-
-→ Chaque libellé de colonne d'une table, dans toutes les langues installées sur l'org, côte à côte
-→ Masquez les langues inutiles (l'export suit)
-→ Recherchez par nom logique ou par n'importe quel libellé, dans n'importe quelle langue
-→ Tapez directement dans la grille : les cellules modifiées sont surlignées et comptées, Save les écrit et publie la table
-→ Des modifications non enregistrées ? Changer de table demande d'abord confirmation
-→ Ou l'aller-retour : export CSV, traduction dans Excel, réimport sous forme de modifications en attente
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Combien de langues dans votre org ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #Localization
-
 ---
 
 ### Post 46 — Login History (`logins`, 52 s)
-
-**EN**
 
 🕐 Dataverse has no "logout" event.
 
@@ -940,25 +503,3 @@ Demo data in the video. Free and open source.
 Did you know Dataverse has no sign-out event? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #Audit
-
-**FR**
-
-🕐 Dataverse n'a pas d'événement de « déconnexion ».
-
-Il enregistre les accès des utilisateurs au plus une fois par intervalle (4 heures par défaut), selon deux canaux : l'application (action d'audit 64) et les services web, c'est-à-dire l'API (action 65). Toute « durée de session » tirée de l'audit est une supposition.
-
-▶️ 52 secondes dans l'historique de connexion de Colvio, qui montre ce que l'audit contient vraiment :
-
-→ Trouvez un utilisateur au fil de la frappe
-→ Événements d'accès, jours actifs, le plus récent et le plus ancien, répartis entre l'application et les services web
-→ Une frise jour par jour avec l'heure exacte et le canal de chaque événement
-→ De 50 à 500 derniers événements chargés
-→ Export en CSV ou Excel
-
-Données de démo dans la vidéo. Gratuit et open source.
-
-Saviez-vous que Dataverse n'a pas d'événement de déconnexion ? 👇
-
-#Dynamics365 #Dataverse #PowerPlatform #D365 #Audit
-
----
