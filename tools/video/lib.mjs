@@ -135,7 +135,11 @@ export function helpers(page) {
 }
 
 // ── Recording: CDP screencast → timestamped JPEG frames ──────────────────────────────────────
-export async function record(page, framesDir) {
+// Output resolutions: the viewport stays 1280×720 CSS px (same layout everywhere); the device scale
+// factor sets the pixel density. 1440p gets YouTube's higher-bitrate encodes (sharper UI text).
+export const RESOLUTIONS = { 1080: { dsf: 1.5, w: 1920, h: 1080 }, 1440: { dsf: 2, w: 2560, h: 1440 } };
+
+export async function record(page, framesDir, { maxWidth = 1920, maxHeight = 1080 } = {}) {
   fs.rmSync(framesDir, { recursive: true, force: true }); fs.mkdirSync(framesDir, { recursive: true });
   const cdp = await page.context().newCDPSession(page);
   const frames = [];
@@ -145,7 +149,7 @@ export async function record(page, framesDir) {
     frames.push({ file, ts: metadata.timestamp });
     try { await cdp.send("Page.screencastFrameAck", { sessionId }); } catch { /* page closing */ }
   });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 90, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 2 });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 90, maxWidth, maxHeight, everyNthFrame: 2 });
   return {
     frames,
     async stop() { await cdp.send("Page.stopScreencast"); await new Promise(r => setTimeout(r, 300)); return Date.now() / 1000; },
@@ -157,7 +161,7 @@ export function ffmpeg(argv, label) {
   if (r.status !== 0) throw new Error(`ffmpeg failed (${label})`);
 }
 
-export function encode(framesDir, frames, endTs, outFile) {
+export function encode(framesDir, frames, endTs, outFile, { width = 1920, height = 1080 } = {}) {
   const lines = ["ffconcat version 1.0"];
   frames.forEach((f, i) => {
     const next = i + 1 < frames.length ? frames[i + 1].ts : endTs;
@@ -166,7 +170,7 @@ export function encode(framesDir, frames, endTs, outFile) {
   lines.push(`file '${frames[frames.length - 1].file}'`);
   const list = path.join(framesDir, "list.ffconcat");
   fs.writeFileSync(list, lines.join("\n"));
-  ffmpeg(["-f", "concat", "-safe", "0", "-i", list, "-vf", "fps=30,scale=1920:1080:flags=lanczos,format=yuv420p",
+  ffmpeg(["-f", "concat", "-safe", "0", "-i", list, "-vf", `fps=30,scale=${width}:${height}:flags=lanczos,format=yuv420p`,
     "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-movflags", "+faststart", outFile], path.basename(outFile));
 }
 

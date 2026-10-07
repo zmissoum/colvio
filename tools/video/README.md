@@ -62,6 +62,14 @@ Data Loader, Recycle Bin, API Tester and Schema scenes replay the first chapters
 Selectors: the Explorer's query tabs stay mounted (hidden) while another module is open — always
 target visible elements (`h.vis(text)`, `>> visible=true`).
 
+## Resolution
+
+Default 1080p (1920×1080). `--res=1440` renders 2560×1440 on both scripts — same 1280×720 layout,
+twice the pixel density, same frame rate — written with a `_1440` suffix (`colvio_explorer_en_1440.mp4`,
+`colvio_tour_en_1440.mp4`, `clips_en_1440/`, `summary_1440.json`) so the 1080p files are never overwritten.
+Use 1440p for YouTube: it gets YouTube's higher-quality encodes, so UI text stays sharp even when watched
+in 1080p. Files are about 40 % bigger.
+
 ## Music (optional)
 
 Both scripts take `--music=<file>`: the track loops under the whole video at low volume, fades in

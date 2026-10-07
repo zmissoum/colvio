@@ -12,7 +12,7 @@
 // System Ops (no jobs / traces / flow runs in demo) is left out.
 import fs from "node:fs";
 import path from "node:path";
-import { HERE, serveDist, openDemo, OVERLAY, helpers, record, encode, cut, addMusic } from "./lib.mjs";
+import { HERE, RESOLUTIONS, serveDist, openDemo, OVERLAY, helpers, record, encode, cut, addMusic } from "./lib.mjs";
 import loaderDeep from "./deep/loader.mjs";
 import apitesterDeep from "./deep/apitester.mjs";
 import schemaDeep from "./deep/schema.mjs";
@@ -23,6 +23,9 @@ const fromDeep = (def, n) => async (h) => { for (const ch of def.chapters.slice(
 const args = process.argv.slice(2);
 const LANGS = args.find(a => a.startsWith("--lang="))?.split("=")[1]?.split(",") || ["en", "fr"];
 const WITH_CLIPS = !args.includes("--no-clips");
+const RES = RESOLUTIONS[args.find(a => a.startsWith("--res="))?.split("=")[1] || "1080"];
+if (!RES) { console.error(`--res must be one of ${Object.keys(RESOLUTIONS).join(", ")}`); process.exit(2); }
+const SUFFIX = RES.h === 1080 ? "" : `_${RES.h}`; // a 1440p render never overwrites the 1080p files
 const MUSIC = args.find(a => a.startsWith("--music="))?.slice("--music=".length);
 if (MUSIC && !fs.existsSync(MUSIC)) { console.error(`music file not found: ${MUSIC}`); process.exit(2); }
 const OUT = path.join(HERE, "out", "video");
@@ -111,12 +114,12 @@ const summary = [];
 const failures = []; // scene actions that failed — the run doubles as an e2e smoke test
 try {
   for (const lang of LANGS) {
-    const { browser, page, consoleErrors } = await openDemo({ url, locale: "en" }); // UI stays EN (mostly-EN app); captions follow lang
+    const { browser, page, consoleErrors } = await openDemo({ url, locale: "en", deviceScaleFactor: RES.dsf }); // UI stays EN (mostly-EN app); captions follow lang
     await page.evaluate(OVERLAY);
     const h = helpers(page);
     const C = CARDS[lang];
-    const framesDir = path.join(OUT, `frames_${lang}`);
-    const rec = await record(page, framesDir);
+    const framesDir = path.join(OUT, `frames_${lang}${SUFFIX}`);
+    const rec = await record(page, framesDir, { maxWidth: RES.w, maxHeight: RES.h });
     const t0 = Date.now() / 1000;
     const marks = [];
 
@@ -141,12 +144,12 @@ try {
     await browser.close();
 
     const errs = consoleErrors.filter(e => !/ws:\/\/|WebSocket|Failed to load resource/.test(e));
-    const full = path.join(OUT, `colvio_tour_${lang}.mp4`);
+    const full = path.join(OUT, `colvio_tour_${lang}${SUFFIX}.mp4`);
     console.log(`[${lang}] ${rec.frames.length} frames, ${(endTs - rec.frames[0].ts).toFixed(1)} s — encoding…`);
-    encode(framesDir, rec.frames, endTs, full);
+    encode(framesDir, rec.frames, endTs, full, { width: RES.w, height: RES.h });
     if (MUSIC) addMusic(full, MUSIC, endTs - rec.frames[0].ts);
     if (WITH_CLIPS) {
-      const clipDir = path.join(OUT, `clips_${lang}`); fs.mkdirSync(clipDir, { recursive: true });
+      const clipDir = path.join(OUT, `clips_${lang}${SUFFIX}`); fs.mkdirSync(clipDir, { recursive: true });
       const offset = t0 - rec.frames[0].ts; // wall-clock marks → video time
       marks.forEach((m, i) => cut(full, Math.max(0, m.start + offset - 0.2), m.end + offset, path.join(clipDir, `${String(i + 1).padStart(2, "0")}_${m.key}.mp4`)));
     }
@@ -156,7 +159,7 @@ try {
       sceneStarts: marks.map(m => ({ key: m.key, at: +Math.max(0, m.start + toVideo).toFixed(1) })) }); // → YouTube chapters
   }
 } finally { server.close(); }
-fs.writeFileSync(path.join(OUT, "summary.json"), JSON.stringify(summary, null, 1));
+fs.writeFileSync(path.join(OUT, `summary${SUFFIX}.json`), JSON.stringify(summary, null, 1));
 for (const s of summary) console.log(`✓ ${s.lang}: ${s.file} (${s.seconds} s, ${s.scenes} scenes, console errors: ${s.consoleErrors.length})`);
 const consoleErrorCount = summary.reduce((n, s) => n + s.consoleErrors.length, 0);
 if (failures.length || consoleErrorCount) {
