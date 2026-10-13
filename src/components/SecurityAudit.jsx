@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
+import { formatPrivName, searchPrivileges, rolesHolding, holderExportRows, DEPTH_LABEL } from "../rolePrivilegeFilter.js";
 
 // Privileges considered sensitive for security review
 const SENSITIVE_PRIVS = new Set([
@@ -26,7 +27,6 @@ const USERS_CAP = 10000;
 
 // The 8 access rights, in the same column order the make.powerapps role editor uses.
 const OPS = ["Create", "Read", "Write", "Delete", "Append", "AppendTo", "Assign", "Share"];
-const DEPTH_LABEL = { 0: "None", 1: "User", 2: "Business Unit", 4: "Parent: Child BU", 8: "Organization" };
 const DEPTH_FRAC = { 0: 0, 1: 0.25, 2: 0.5, 4: 0.75, 8: 1 };
 
 // The make.powerapps depth circle: empty ring = None, then a pie filled ¼/½/¾/full for
@@ -48,31 +48,6 @@ function DepthPie({ depth }) {
       {slice && <path d={slice} fill={color} />}
     </svg>
   );
-}
-
-// Parse privilege name into readable label
-// prvAppendToCustomerGroup -> Append To · CustomerGroup
-// prvDeleteAccount -> Delete · Account
-// prvReadAudit -> Read · Audit
-function formatPrivName(name) {
-  if (!name || !name.startsWith("prv")) return name || "";
-  const raw = name.substring(3); // strip "prv"
-  // Split on camelCase boundaries: "AppendToCustomerGroup" -> ["Append", "To", "Customer", "Group"]
-  const parts = raw.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2").split(" ");
-  if (parts.length <= 1) return raw;
-  // Known action words
-  const actions = new Set(["Read","Write","Create","Delete","Append","Assign","Share","Import","Export","Publish","Bulk","Execute","Act"]);
-  // Find where the action ends and the entity begins
-  let actionEnd = 1;
-  for (let i = 1; i < parts.length; i++) {
-    if (actions.has(parts[i]) || parts[i] === "To" || parts[i] === "On" || parts[i] === "All") {
-      actionEnd = i + 1;
-    } else break;
-  }
-  const action = parts.slice(0, actionEnd).join(" ");
-  const entity = parts.slice(actionEnd).join("");
-  if (!entity) return action;
-  return action + " · " + entity;
 }
 
 export default function SecurityAudit({ bp, orgInfo, theme }) {
@@ -126,6 +101,20 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [matrixSearch, setMatrixSearch] = useState("");
   const [showAllTables, setShowAllTables] = useState(false); // include tables the role can't touch
   const selectGen = useRef(0);
+  // "Has privilege" filter: pick ONE privilege (table or miscellaneous — Export to Excel, Bulk
+  // Delete…) and the role list keeps only the roles that hold it, with their depth. One query on
+  // the role ↔ privilege table per pick; the catalog for the picker loads on first focus.
+  const [privCatalog, setPrivCatalog] = useState(null);  // [{ id, name }]
+  const [catalogErr, setCatalogErr] = useState("");
+  const catalogLoading = useRef(false);
+  const [privQuery, setPrivQuery] = useState("");
+  const [pickOpen, setPickOpen] = useState(false);
+  const [hasPriv, setHasPriv] = useState(null);          // { id, name } — the picked privilege
+  const [privGrants, setPrivGrants] = useState(null);    // [{ roleId, mask }] for hasPriv
+  const [grantsErr, setGrantsErr] = useState("");
+  const [hasPrivDepth, setHasPrivDepth] = useState(1);   // minimum depth: 1 any … 8 Organization only
+  const [holderFeedback, setHolderFeedback] = useState("");
+  const grantsGen = useRef(0);
 
   // Load all roles on mount
   useEffect(() => {
@@ -377,9 +366,29 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     return list;
   }, [privileges, privFilter]);
 
+  const loadCatalog = () => {
+    if (privCatalog || catalogLoading.current) return;
+    catalogLoading.current = true; setCatalogErr("");
+    bridge.getPrivilegeCatalog().then(list => setPrivCatalog(list || []))
+      .catch(e => setCatalogErr(e.message || String(e)))
+      .finally(() => { catalogLoading.current = false; });
+  };
+  const loadGrants = (p) => {
+    const gen = ++grantsGen.current;
+    setPrivGrants(null); setGrantsErr("");
+    bridge.getRolesWithPrivilege(p.id).then(rows => { if (grantsGen.current === gen) setPrivGrants(rows || []); })
+      .catch(e => { if (grantsGen.current === gen) setGrantsErr(e.message || String(e)); });
+  };
+  const pickPrivilege = (p) => { setHasPriv(p); setPrivQuery(""); setPickOpen(false); setHolderFeedback(""); loadGrants(p); };
+  const clearHasPriv = () => { grantsGen.current++; setHasPriv(null); setPrivGrants(null); setGrantsErr(""); setHolderFeedback(""); };
+  const privMatches = useMemo(() => searchPrivileges(privCatalog, privQuery, 30), [privCatalog, privQuery]);
+  const holders = useMemo(() => (hasPriv && privGrants ? rolesHolding(roles, privGrants, hasPrivDepth) : null), [hasPriv, privGrants, roles, hasPrivDepth]);
+  const holderDepth = useMemo(() => new Map((holders || []).map(h => [h.role.id, h.depth])), [holders]);
+
   // Filtered roles
   const filteredRoles = useMemo(() => {
     let list = roles;
+    if (hasPriv) list = holders ? holders.map(h => h.role) : [];
     if (filter === "custom") list = list.filter(r => r.isCustom);
     if (filter === "managed") list = list.filter(r => r.isManaged);
     if (search) {
@@ -387,9 +396,17 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
       list = list.filter(r => r.name.toLowerCase().includes(s));
     }
     return list;
-  }, [roles, filter, search]);
+  }, [roles, filter, search, hasPriv, holders]);
 
   const isSensitive = (name) => SENSITIVE_PRIVS.has(name?.toLowerCase());
+
+  const exportHolders = (format = "csv") => {
+    if (!hasPriv || !filteredRoles.length) return;
+    const shown = filteredRoles.map(r => ({ role: r, depth: holderDepth.get(r.id) || 0 }));
+    exportTable(["role", "type", "privilege", "label", "depth"], holderExportRows(hasPriv, shown), `security_roles_with_${hasPriv.name}`, format, "Roles");
+    setHolderFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${shown.length} role${shown.length > 1 ? "s" : ""})`);
+    setTimeout(() => setHolderFeedback(""), 2000);
+  };
 
   const exportCSV = (format = "csv") => {
     if (!selRole || !privileges.length) return;
@@ -480,7 +497,59 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
               <button key={k} onClick={() => setFilter(k)} style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, border: `1px solid ${filter === k ? C.cy : C.bd}`, background: filter === k ? C.cy + "22" : "transparent", color: filter === k ? C.cy : C.txd, cursor: "pointer" }}>{label}</button>
             ))}
           </div>
-          {!loading && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{filteredRoles.length} roles ({roles.filter(r => r.isCustom).length} custom)</div>}
+          {/* Has privilege — keep only the roles that hold ONE privilege */}
+          <div style={{ position: "relative", marginTop: 6 }}>
+            {!hasPriv ? (<>
+              <input value={privQuery} disabled={loading}
+                onFocus={() => { loadCatalog(); setPickOpen(true); }}
+                onBlur={() => setTimeout(() => setPickOpen(false), 150)}
+                onChange={e => { setPrivQuery(e.target.value); setPickOpen(true); }}
+                onKeyDown={e => {
+                  if (e.key === "Escape") { e.stopPropagation(); setPickOpen(false); e.currentTarget.blur(); }
+                  if (e.key === "Enter" && privMatches[0]) pickPrivilege(privMatches[0]);
+                }}
+                placeholder="Has privilege… (e.g. export excel)" title="Show only the roles that hold one privilege — table rights or miscellaneous ones like Export to Excel"
+                style={inp({ fontSize: 12 })} />
+              {pickOpen && privQuery.trim() && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 2, background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 6, maxHeight: 280, overflow: "auto", boxShadow: "0 6px 18px #0005" }}>
+                  {!privCatalog && !catalogErr && <div style={{ padding: 8, fontSize: 12, color: C.txd }}><Spin s={11} /> Loading the org's privileges…</div>}
+                  {catalogErr && <div style={{ padding: 8, fontSize: 12, color: C.rd }}>Couldn't load the privileges: {catalogErr} <button onMouseDown={e => { e.preventDefault(); loadCatalog(); }} style={bt(null, { fontSize: 11, padding: "2px 8px", marginLeft: 6 })}>↻ Retry</button></div>}
+                  {privCatalog && privMatches.length === 0 && <div style={{ padding: 8, fontSize: 12, color: C.txd }}>No privilege matches "{privQuery.trim()}"</div>}
+                  {privMatches.map(p => (
+                    <button key={p.id} onMouseDown={e => { e.preventDefault(); pickPrivilege(p); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 9px", border: "none", borderBottom: `1px solid ${C.bd}22`, background: "transparent", cursor: "pointer", color: C.tx }}>
+                      <div style={{ fontSize: 12 }}>{formatPrivName(p.name)}{isSensitive(p.name) && <span style={{ color: C.yw, marginLeft: 6 }} title="Sensitive privilege">⚠</span>}</div>
+                      <div style={{ fontSize: 10, color: C.txd, ...mono }}>{p.name}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>) : (
+              <div style={{ ...crd({ padding: "7px 9px", borderColor: C.cy + "66" }) }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={hasPriv.name}>🔑 {formatPrivName(hasPriv.name)}</span>
+                  <button onClick={clearHasPriv} title="Clear the privilege filter" aria-label="Clear the privilege filter" style={{ background: "none", border: "none", color: C.txd, cursor: "pointer", fontSize: 13, padding: 0 }}>✕</button>
+                </div>
+                <div style={{ fontSize: 10, color: C.txd, ...mono, marginBottom: 6 }}>{hasPriv.name}</div>
+                <select value={hasPrivDepth} onChange={e => setHasPrivDepth(+e.target.value)} title="Minimum depth the role grants" style={inp({ fontSize: 11, padding: "3px 6px" })}>
+                  <option value={1}>Any depth</option>
+                  <option value={2}>Business Unit and wider</option>
+                  <option value={4}>Parent: Child BU and wider</option>
+                  <option value={8}>Organization only</option>
+                </select>
+              </div>
+            )}
+          </div>
+          {!loading && !hasPriv && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono }}>{filteredRoles.length} roles ({roles.filter(r => r.isCustom).length} custom)</div>}
+          {!loading && hasPriv && !privGrants && !grantsErr && <div style={{ fontSize: 11, color: C.txd, marginTop: 6 }}><Spin s={10} /> Finding the roles that hold it…</div>}
+          {!loading && hasPriv && grantsErr && <div style={{ fontSize: 11, color: C.rd, marginTop: 6 }}>Couldn't read who holds it: {grantsErr} <button onClick={() => loadGrants(hasPriv)} style={bt(C.rd, { fontSize: 11, padding: "2px 8px", marginLeft: 4 })}>↻ Retry</button></div>}
+          {!loading && hasPriv && privGrants && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
+              <span style={{ fontSize: 11, color: C.txd, ...mono, flex: 1, minWidth: 0 }}>{filteredRoles.length} of {roles.length} roles hold it{hasPrivDepth > 1 ? ` (${DEPTH_LABEL[hasPrivDepth]}${hasPrivDepth < 8 ? " or wider" : ""})` : ""}</span>
+              <button onClick={() => exportHolders("csv")} disabled={!filteredRoles.length} style={bt(C.cy, { fontSize: 10.5, padding: "2px 7px", opacity: filteredRoles.length ? 1 : 0.5 })}><I.Download /> CSV</button>
+              <button onClick={() => exportHolders("xlsx")} disabled={!filteredRoles.length} style={bt(C.cy, { fontSize: 10.5, padding: "2px 7px", opacity: filteredRoles.length ? 1 : 0.5 })}><I.Download /> Excel</button>
+            </div>
+          )}
+          {holderFeedback && <div style={{ fontSize: 11, color: C.gn, marginTop: 4 }}>{holderFeedback}</div>}
           <button onClick={() => orgView ? closeOrgView() : openOrgView()} disabled={loading} style={bt(orgView ? C.cy : null, { fontSize: 12, width: "100%", justifyContent: "center", marginTop: 8, opacity: loading ? 0.5 : 1 })}>🌐 Org-wide view — who can do what</button>
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
@@ -490,10 +559,12 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
             <button key={r.id} onClick={() => handleSelect(r)} style={{ width: "100%", textAlign: "left", padding: "6px 8px", border: "none", borderRadius: 6, cursor: "pointer", marginBottom: 1, background: selRole?.id === r.id ? C.sfa : "transparent", color: selRole?.id === r.id ? C.tx : C.txm, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
                 <span style={{ fontWeight: selRole?.id === r.id ? 600 : 400, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                {hasPriv && holderDepth.has(r.id) && <span title={`${hasPriv.name}: ${DEPTH_LABEL[holderDepth.get(r.id)]}`} style={{ flexShrink: 0 }}><DepthPie depth={holderDepth.get(r.id)} /></span>}
                 <Badge label={r.isCustom ? "Custom" : "Managed"} color={r.isCustom ? C.or : C.txd} />
               </div>
             </button>
           ))}
+          {!loading && hasPriv && privGrants && filteredRoles.length === 0 && <div style={{ padding: 10, color: C.txd, fontSize: 12 }}>No role holds {formatPrivName(hasPriv.name)}{hasPrivDepth > 1 ? ` at ${DEPTH_LABEL[hasPrivDepth]} depth${hasPrivDepth < 8 ? " or wider" : ""}` : ""}{search || filter !== "all" ? " with these filters" : ""}.</div>}
         </div>
       </div>
 

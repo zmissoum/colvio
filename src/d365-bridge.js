@@ -152,7 +152,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -231,6 +231,32 @@ async function queryAllPages(entitySet, options, maxPages = 50) {
 // ── Public API ───────────────────────────────────────────────
 // One GUID shape check for the team methods below (review finding: was pasted twice).
 const TEAM_GUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+// Demo "Has privilege" data: which demo role (r1 System Administrator · r2 Sales Manager ·
+// r3 Basic User · r4 Custom CRM Admin · r5 Custom Sales Rep · r6 Marketing User) holds which
+// privilege, at which depth (1 User · 2 BU · 4 Parent: Child BU · 8 Organization).
+const DEMO_PRIV_GRANTS = {
+  prvReadAccount:              { r1: 8, r2: 4, r3: 1, r4: 8, r5: 2, r6: 2 },
+  prvWriteAccount:             { r1: 8, r2: 4, r3: 1, r4: 8, r5: 1 },
+  prvCreateAccount:            { r1: 8, r2: 2, r3: 1, r4: 8, r5: 1 },
+  prvDeleteAccount:            { r1: 8, r4: 8, r5: 1 },
+  prvReadContact:              { r1: 8, r2: 4, r3: 1, r4: 8, r5: 2, r6: 8 },
+  prvWriteContact:             { r1: 8, r2: 4, r3: 1, r4: 8, r5: 1, r6: 2 },
+  prvDeleteContact:            { r1: 8, r4: 8 },
+  prvReadOpportunity:          { r1: 8, r2: 4, r4: 8, r5: 1 },
+  prvWriteOpportunity:         { r1: 8, r2: 4, r4: 8, r5: 1 },
+  prvReadIncident:             { r1: 8, r3: 1, r4: 8 },
+  prvExportToExcel:            { r1: 8, r2: 8, r3: 8, r4: 8, r5: 8, r6: 8 },
+  prvBulkDelete:               { r1: 8, r4: 8 },
+  prvWriteSystemUser:          { r1: 8, r4: 8 },
+  prvAssignRole:               { r1: 8, r4: 2 },
+  prvReadAudit:                { r1: 8, r4: 8, r2: 4 },
+  prvDeleteAudit:              { r1: 8 },
+  prvPublishAll:               { r1: 8, r4: 8 },
+  prvImportCustomization:      { r1: 8, r4: 8 },
+  prvActOnBehalfOfAnotherUser: { r1: 8 },
+  prvUseInternetMarketing:     { r1: 8, r6: 8 },
+};
 
 export const bridge = {
   isExtension,
@@ -1216,6 +1242,20 @@ export const bridge = {
       ],
     };
     return callD365("getRolePrivilegeMatrix", { roleId });
+  },
+
+  // "Has privilege" filter: the org's privilege catalog, then the roles holding one privilege.
+  async getPrivilegeCatalog() {
+    if (!isExtension) return Object.keys(DEMO_PRIV_GRANTS).map((name, i) => ({ id: `dp${i + 1}`, name, accessRight: 0 }));
+    return callD365("getPrivilegeCatalog");
+  },
+
+  async getRolesWithPrivilege(privilegeId) {
+    if (!isExtension) {
+      const name = Object.keys(DEMO_PRIV_GRANTS)[Number(String(privilegeId).slice(2)) - 1];
+      return Object.entries(DEMO_PRIV_GRANTS[name] || {}).map(([roleId, depth]) => ({ roleId, mask: depth }));
+    }
+    return callD365("getRolesWithPrivilege", { privilegeId });
   },
 
   async getRoleUserCount(roleName) {

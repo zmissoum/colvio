@@ -220,6 +220,27 @@
     }
   }
 
+  // The org's privilege catalog (id → { name, accessRight }), loaded once per page and shared by
+  // the Security actions. Built in a local map and published only when every page has arrived: the
+  // two inline copies this replaces set the cache BEFORE loading, so one failed page left a partial
+  // catalog that every later call trusted (privileges shown as bare GUIDs until a D365 reload).
+  // FetchXML page numbers — more reliable here than @odata.nextLink.
+  let privCatalog = null;
+  async function ensurePrivCatalog() {
+    if (privCatalog) return privCatalog;
+    const map = {};
+    let page = 1, more = true;
+    while (more) {
+      const fx = `<fetch page="${page}" count="5000"><entity name="privilege"><attribute name="privilegeid"/><attribute name="name"/><attribute name="accessright"/><order attribute="privilegeid"/></entity></fetch>`;
+      const d = await dvRequest("GET", `privileges?fetchXml=${encodeURIComponent(fx)}`);
+      const b = d.value || [];
+      b.forEach(p => { map[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
+      more = b.length === 5000; page++;
+    }
+    privCatalog = map;
+    return map;
+  }
+
   // ── Record URL detection ──────────────────────────────────
   function getCurrentRecord() {
     try {
@@ -1991,6 +2012,30 @@
             break;
           }
 
+          case "getPrivilegeCatalog": {
+            // Every privilege of the org, for the Security "Has privilege" picker.
+            const cat = await ensurePrivCatalog();
+            result = Object.entries(cat).map(([id, p]) => ({ id, name: p.name, accessRight: p.accessRight }));
+            break;
+          }
+
+          case "getRolesWithPrivilege": {
+            // Which roles hold ONE privilege, and at what depth: a single query on the role ↔
+            // privilege intersect table instead of opening every role. Rows cover every
+            // business-unit copy of a role; the panel keeps the root copies it lists.
+            if (!params.privilegeId) throw new Error("Missing privilegeId");
+            validateGuid(params.privilegeId);
+            let url = `roleprivilegescollection?$select=roleid,privilegedepthmask&$filter=privilegeid eq ${params.privilegeId}`;
+            const rows = [];
+            while (url) {
+              const d = await dvRequest("GET", url);
+              for (const r of d.value || []) rows.push({ roleId: r.roleid, mask: r.privilegedepthmask });
+              url = d["@odata.nextLink"] || null; // absolute — dvRequest checks it targets this org
+            }
+            result = rows;
+            break;
+          }
+
           case "getRolePrivileges": {
             validateGuid(params.roleId);
             // Use RetrieveRolePrivilegesRole function to get privileges with depth
@@ -2000,24 +2045,8 @@
             const privs = data.RolePrivileges || [];
             if (privs.length === 0) { result = []; break; }
 
-            // Load ALL privileges once and cache in-memory (shared across role clicks)
-            // Uses FetchXML pagination (page numbers) which is more reliable than @odata.nextLink
-            if (!window.__colvioPrivCache) {
-              window.__colvioPrivCache = {};
-              let allPrivList = [];
-              let page = 1;
-              let hasMore = true;
-              while (hasMore) {
-                const fetchXml = `<fetch page="${page}" count="5000"><entity name="privilege"><attribute name="privilegeid"/><attribute name="name"/><attribute name="accessright"/><order attribute="privilegeid"/></entity></fetch>`;
-                const pData = await dvRequest("GET", `privileges?fetchXml=${encodeURIComponent(fetchXml)}`);
-                const batch = pData.value || [];
-                allPrivList = allPrivList.concat(batch);
-                hasMore = batch.length === 5000;
-                page++;
-              }
-              allPrivList.forEach(p => { window.__colvioPrivCache[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
-            }
-            const privMap = window.__colvioPrivCache;
+            // The org's privilege catalog, loaded once per page (shared across role clicks)
+            const privMap = await ensurePrivCatalog();
 
             const DEPTH_LABELS = { 1: "User", 2: "Business Unit", 4: "Parent: Child BU", 8: "Organization" };
             const DEPTH_MAP = { "Basic": 1, "Local": 2, "Deep": 4, "Global": 8 };
@@ -2053,20 +2082,7 @@
               const depth = typeof p.Depth === "string" ? (DEPTH_MAP_M[p.Depth] || 0) : (p.Depth || 0);
               grantedDepth[p.PrivilegeId] = depth;
             });
-            // Ensure the org's full privilege catalog is cached (name + accessright per privilege).
-            if (!window.__colvioPrivCache) {
-              window.__colvioPrivCache = {};
-              let allP = []; let pg = 1; let more = true;
-              while (more) {
-                const fx = `<fetch page="${pg}" count="5000"><entity name="privilege"><attribute name="privilegeid"/><attribute name="name"/><attribute name="accessright"/><order attribute="privilegeid"/></entity></fetch>`;
-                const pdata = await dvRequest("GET", `privileges?fetchXml=${encodeURIComponent(fx)}`);
-                const b = pdata.value || [];
-                allP = allP.concat(b);
-                more = b.length === 5000; pg++;
-              }
-              allP.forEach(p => { window.__colvioPrivCache[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
-            }
-            const cat = window.__colvioPrivCache;
+            const cat = await ensurePrivCatalog(); // name + accessright per privilege
             // AccessRights enum → operation. A privilege carries exactly one of these.
             const AR = { 1: "Read", 2: "Write", 4: "Append", 16: "AppendTo", 32: "Create", 65536: "Delete", 262144: "Share", 524288: "Assign" };
             const entities = {}; // { schemaName: { op: depth } }

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.177] — 2026-10-13
+### Added — Security Audit: list the roles that hold a privilege
+- A "Has privilege…" picker above the role list: type a few words ("export excel", "read account", "bulk") and pick any privilege of the org — table rights and the miscellaneous ones (Export to Excel, Bulk Delete, Publish, Act on behalf of another user…) that the Org-wide view, built on table operations, never covered. The list keeps only the roles that hold it, widest depth first, each with its depth pie; a minimum depth narrows it (Business Unit and wider … Organization only), the Custom / Managed chips and the search still apply, and what's listed exports to CSV / Excel.
+- One query per pick on the role ↔ privilege table (`roleprivilegescollection`, filtered on the privilege) instead of opening every role; the picker's catalog loads on first focus. Errors are shown with Retry, never as "no role holds it".
+- Pure `rolePrivilegeFilter.js` (readable names, search ranking, depth masks, role matching, export rows) + 12 tests; demo mode has a plausible grant table.
+
+### Fixed — privilege names could stay as bare GUIDs until D365 was reloaded
+- The privilege catalog behind the role privileges list and the Matrix was cached BEFORE it finished loading: one failed page left a partial catalog that every later call trusted. One loader now publishes it only once complete (the two inline copies are gone).
+
 ## [1.11.176] — 2026-10-07
 ### Added — Bulk settings: Last login column and a signed-in filter
 - Each listed user's last login (the last time they opened a model-driven app — user-access audit, action 64, the same source as the Users list), read in the background a few requests at a time and kept for the session; shown as date + days ago, or "Never".

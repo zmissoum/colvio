@@ -186,6 +186,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Filter by: All / Org-level only / Sensitive only
 - User count per role, CSV export
 - **Matrix view (by table)** — the full make.powerapps-style grid: every table × Create/Read/Write/Delete/Append/Append To/Assign/Share with a depth pie per cell, **including what is NOT granted** — and the whole grid exports to CSV/Excel
+- **Has privilege filter** — pick any privilege (table rights or miscellaneous ones like Export to Excel, Bulk Delete, Publish) and the role list keeps only the roles that hold it, widest depth first, with a minimum-depth filter and CSV/Excel export — one query, not one per role
 - **Org-wide view** — "who can do what" across **every role at once**: pick an operation + minimum depth, group by role or by table ("which roles can delete Account?"), full export; failed roles are flagged with a retry (never a silently incomplete audit)
 - **Users sub-tab** — lists exactly who holds the role (name, email, business unit, status), aggregated across **every business-unit copy** of the role and deduplicated so members in child BUs are never missed, with service-account flags; CSV export on both privileges and members
 - **Teams sub-tab** — the teams holding the role (type, BU, administrator, member count) — the answer when a role shows 0 direct users but is very much in use
