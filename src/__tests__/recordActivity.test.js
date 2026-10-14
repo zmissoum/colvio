@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   saveWindow, messageNamesFor, traceWindowFilter, correlationFilter, jobsFilter, pickCorrelations,
   exceptionLine, shortType, buildChains, jobState, flowIdOf, flowVerdict, matchRun, isPending, nextDelay,
-  SYNC_MARGIN_MS,
+  SYNC_MARGIN_MS, chainFilter, jobClass, traceClass, assignAsyncTraces, jobHistory, triggerText, flowLinks, odataString,
 } from "../recordActivity.js";
 import { createActivityLoader } from "../recordActivityLoader.js";
 import { createActivityDemo, DEMO_ACTIVITY_IDS } from "../recordActivityDemo.js";
@@ -118,6 +118,55 @@ describe("jobs and flows", () => {
   });
 });
 
+describe("jobs ↔ traces, history, triggers, links", () => {
+  it("builds the chain filter from correlation and request ids", () => {
+    expect(chainFilter({ correlationIds: [G(1)], requestIds: [G(2), "x", G(2)] }, "A", "B")).toBe(`(correlationid eq ${G(1)} or requestid eq ${G(2)}) and createdon ge A and createdon le B`);
+    expect(chainFilter({}, "A", "B")).toBeNull();
+  });
+  it("reads the plug-in class of a job and of a trace", () => {
+    expect(jobClass({ name: "Retail.Plugins.X: Asynchronous Post Update of fou_station" })).toBe("Retail.Plugins.X");
+    expect(traceClass({ typename: "Retail.Plugins.X, Retail.Plugins, Version=1.0.0.0" })).toBe("Retail.Plugins.X");
+  });
+  it("gives each async job its trace: by id first, else same class inside the job's run", () => {
+    const jobs = [
+      { asyncoperationid: G(10), name: "A.Tempo: Asynchronous Post Update", requestid: G(11), correlationid: G(1), startedon: "2026-10-14T12:10:41Z", completedon: "2026-10-14T12:10:51Z" },
+      { asyncoperationid: G(20), name: "A.Medallia: Asynchronous Post Update", requestid: G(21), correlationid: G(1), startedon: "2026-10-14T12:10:42Z", completedon: "2026-10-14T12:10:45Z" },
+    ];
+    const rows = [
+      { plugintracelogid: "t1", mode: 1, typename: "A.Tempo, A", requestid: G(11), correlationid: G(9), createdon: "2026-10-14T12:10:50Z" },
+      { plugintracelogid: "t2", mode: 1, typename: "A.Medallia, A", requestid: null, correlationid: G(8), createdon: "2026-10-14T12:10:44Z" },
+      { plugintracelogid: "t3", mode: 1, typename: "A.Medallia, A", requestid: null, correlationid: G(7), createdon: "2026-10-14T12:30:00Z" }, // another run
+      { plugintracelogid: "t4", mode: 0, typename: "A.Medallia, A", requestid: G(21), correlationid: G(1), createdon: "2026-10-14T12:10:44Z" }, // sync: never a job's
+    ];
+    const m = assignAsyncTraces(jobs, rows, Date.parse("2026-10-14T13:00:00Z"));
+    expect(m.get(G(10))).toEqual({ rows: [rows[0]], how: "id" });
+    expect(m.get(G(20))).toEqual({ rows: [rows[1]], how: "time" });
+  });
+  it("tells a failing streak from an occasional failure", () => {
+    const at = (h, ok) => ({ createdon: new Date(Date.UTC(2026, 9, 14, h)).toISOString(), statecode: 3, statuscode: ok ? 30 : 31 });
+    expect(jobHistory([at(9, false), at(12, false), at(8, true), at(11, false)])).toEqual({ total: 4, failed: 3, succeeded: 1, streak: 3, failingSince: at(9, false).createdon, lastSuccess: at(8, true).createdon });
+    expect(jobHistory([at(9, true), at(12, false)])).toMatchObject({ streak: 1, failingSince: at(12, false).createdon });
+    expect(jobHistory([])).toMatchObject({ total: 0, streak: 0, failingSince: null, lastSuccess: null });
+  });
+  it("says a trigger in words", () => {
+    expect(triggerText({ message: 3, filteringattributes: "ownerid, revenue", filterexpression: "statecode eq 0", scope: 1 }))
+      .toBe("when a row is modified · columns: ownerid, revenue · filter: statecode eq 0 · rows owned by the flow's user");
+    expect(triggerText({ message: 1, scope: 4 })).toBe("when a row is added");
+  });
+  it("links to Power Automate in the org's cloud, and only with valid ids", () => {
+    const env = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+    expect(flowLinks({ orgUrl: "https://x.crm4.dynamics.com", envId: env, flowId: G(5), runName: "08584739214003" }))
+      .toEqual({ flow: `https://make.powerautomate.com/environments/${env}/flows/${G(5)}/details`, run: `https://make.powerautomate.com/environments/${env}/flows/${G(5)}/runs/08584739214003` });
+    expect(flowLinks({ orgUrl: "https://x.crm9.dynamics.com", envId: "Default-" + env, flowId: G(5) }).run).toBeNull();
+    expect(flowLinks({ orgUrl: "https://x.crm.microsoftdynamics.us", envId: env, flowId: G(5) }).flow).toMatch(/^https:\/\/make\.gov\.powerautomate\.us\//);
+    expect(flowLinks({ orgUrl: "https://x.crm4.dynamics.com", envId: "nope", flowId: G(5) })).toBeNull();
+    expect(flowLinks({ orgUrl: "https://x.crm4.dynamics.com", envId: env, flowId: G(5), runName: "../x" }).run).toBeNull();
+  });
+  it("escapes OData strings", () => {
+    expect(odataString("O'Brien: x")).toBe("'O''Brien: x'");
+  });
+});
+
 describe("loader on the demo org", () => {
   const setup = (elapsedMs) => {
     const startedAt = Date.parse("2026-10-14T10:00:00Z");
@@ -137,7 +186,7 @@ describe("loader on the demo org", () => {
     expect(a.chains).toHaveLength(1);
     expect(a.chains[0].nodes.map(n => n.type)).toEqual(["AccountValidate", "ContactAddressSync", "ContactAddressSync", "ContactAddressSync", "AccountRollup"]);
     expect(a.chains[0].nodes[0].stage).toBe("Pre-validation");
-    expect(a.jobs.map(jobState)).toEqual(["running"]);
+    expect(a.jobs.map(jobState)).toEqual(["running", "running"]);
     expect(a.flows.map(f => [f.name, f.verdict])).toEqual([
       ["Notify finance when revenue changes", "yes"], ["Sync account address to the ERP", "yes"],
       ["Key account review", "maybe"], ["Owner change alert", "no"], ["Welcome pack for new accounts", "no"],
@@ -146,11 +195,31 @@ describe("loader on the demo org", () => {
     expect(a.flows[1].run.status).toBe("Running");
     expect(a.pending).toBe(true);
   });
-  it("later, the asynchronous plug-in has run and nothing is pending", async () => {
+  it("later, the asynchronous plug-ins have run, each job with its trace, and nothing is pending", async () => {
     const { loader, saves, now } = setup(13000);
     const a = await loader.load(saves[0], { entity: "account", recordId: ID, now });
     expect(a.chains[0].nodes.at(-1)).toMatchObject({ type: "SyncToErp", async: true });
+    const survey = a.chains.find(c => c.nodes.some(n => n.type === "SurveySync"));
+    expect(survey.nodes[0].error).toBe("Response status code does not indicate success: 401 (Unauthorized).");
+    expect(a.jobs.map(j => [jobState(j), j.traceMatch, j.traceIds.length])).toEqual([["succeeded", "id", 1], ["failed", "time", 1]]);
     expect(a.pending).toBe(false);
+  });
+  it("a failed job's detail: the full message, its step (config present, never shown) and its history", async () => {
+    const { loader, saves, now } = setup(13000);
+    const a = await loader.load(saves[0], { entity: "account", recordId: ID, now });
+    const d = await loader.jobDetail(a.jobs.find(j => j.asyncoperationid === DEMO_ACTIVITY_IDS.jobSurvey));
+    expect(d.message).toMatch(/^System\.Net\.Http\.HttpRequestException: Response status code does not indicate success: 401/);
+    expect(d.step).toMatchObject({ mode: "Asynchronous", rank: 2, hasSecureConfig: true, hasUnsecureConfig: false, runAs: "the calling user" });
+    expect(d.history).toMatchObject({ total: 20, failed: 6, succeeded: 14, streak: 6 });
+    const erp = await loader.jobDetail(a.jobs.find(j => j.asyncoperationid === DEMO_ACTIVITY_IDS.jobErp));
+    expect(erp.step).toMatchObject({ runAs: "# ERP integration", hasUnsecureConfig: true });
+    expect(JSON.stringify(erp.step)).not.toMatch(/endpoint=/); // only "has a configuration", never its content
+    expect(erp.history).toMatchObject({ failed: 0, streak: 0, failingSince: null });
+  });
+  it("each flow carries its trigger in words", async () => {
+    const { loader, saves, now } = setup(1000);
+    const a = await loader.load(saves[0], { entity: "account", recordId: ID, now });
+    expect(a.flows.find(f => f.id === DEMO_ACTIVITY_IDS.f2).trigger).toBe("when a row is added or modified · columns: address1_line1, address1_city, address1_postalcode");
   });
   it("a failed save: the exception, and no flow can trigger", async () => {
     const { loader, saves, now } = setup(1000);

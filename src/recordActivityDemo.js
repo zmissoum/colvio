@@ -4,7 +4,7 @@
 // flow finish a few seconds after the panel opens, which shows the auto-refresh at work.
 
 const g = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-export const DEMO_ACTIVITY_IDS = { c1: g(101), c2: g(102), f1: g(501), f2: g(502), f3: g(503), f4: g(504), f5: g(505) };
+export const DEMO_ACTIVITY_IDS = { c1: g(101), c2: g(102), f1: g(501), f2: g(502), f3: g(503), f4: g(504), f5: g(505), jobErp: g(401), jobSurvey: g(402), stepSurvey: g(205) };
 
 export function createActivityDemo({ recordId, entitySet = "accounts", startedAt = Date.now(), clock = () => Date.now() }) {
   const id = String(recordId).toLowerCase();
@@ -28,19 +28,46 @@ export function createActivityDemo({ recordId, entitySet = "accounts", startedAt
         exceptiondetails: "Unhandled exception: \nException type: System.ServiceModel.FaultException`1[Microsoft.Xrm.Sdk.OrganizationServiceFault]\nMessage: Revenue can't drop below the signed contracts total (12,000,000).\nDetail: \n<OrganizationServiceFault>…</OrganizationServiceFault>" }),
     ];
     if (elapsed() > 8000) rows.push(trace(16, { typename: "Contoso.Integration.SyncToErp", mode: 1, correlationid: g(101), pluginstepid: g(204), performanceexecutionduration: 1240, performanceexecutionstarttime: iso(startedAt + 6200), createdon: iso(startedAt + 7500) }));
+    // The survey sync's trace carries ANOTHER correlation id than its job — found by class + time.
+    if (elapsed() > 5000) rows.push(trace(17, { typename: "Contoso.Integration.SurveySync, Contoso.Integration, Version=2.4.0.0", mode: 1, correlationid: g(199), pluginstepid: g(205), performanceexecutionduration: 1130, performanceexecutionstarttime: iso(startedAt + 3100), createdon: iso(startedAt + 4250),
+      exceptiondetails: "Unhandled exception: \nException type: System.Net.Http.HttpRequestException\nMessage: Response status code does not indicate success: 401 (Unauthorized).\n   at Contoso.Integration.SurveyClient.PushAsync(…)" }));
     return rows;
   };
   const DETAIL = {
     [g(11)]: "Entered Contoso.Plugins.AccountValidate.Execute()\nTarget: account, 3 attributes\nRules checked: credit hold, revenue floor, phone format — all passed (12 ms)\nExiting",
     [g(12)]: "Recomputing the parent rollups\nParent account: none — nothing to roll up\nExiting",
     [g(21)]: "Entered Contoso.Plugins.AccountValidate.Execute()\nRevenue check: new value 9,500,000 < signed contracts 12,000,000 → rejecting the save",
+    [g(16)]: "Pushing account ACC-001 to the ERP\nPOST /erp/accounts → 200 in 1.1 s",
+    [g(17)]: "Pushing account ACC-001 to the survey platform\nToken from the step's secure configuration\nPOST /v2/accounts → 401 Unauthorized",
   };
   const jobs = () => [{
-    asyncoperationid: g(401), name: "Contoso.Integration.SyncToErp: Update of account", operationtype: 1, correlationid: g(101),
+    asyncoperationid: g(401), name: "Contoso.Integration.SyncToErp: Asynchronous Post Update of account", operationtype: 1, correlationid: g(101), requestid: g(310), _owningextensionid_value: g(204), retrycount: 0,
     statecode: elapsed() > 8000 ? 3 : 2, statuscode: elapsed() > 8000 ? 30 : 20,
     createdon: iso(s1t0 + 500), startedon: iso(startedAt + 6000), completedon: elapsed() > 8000 ? iso(startedAt + 7600) : null, friendlymessage: null,
+  }, {
+    asyncoperationid: g(402), name: "Contoso.Integration.SurveySync: Asynchronous Post Update of account", operationtype: 1, correlationid: g(101), requestid: g(311), _owningextensionid_value: g(205), retrycount: 0,
+    statecode: elapsed() > 5000 ? 3 : 2, statuscode: elapsed() > 5000 ? 31 : 20,
+    createdon: iso(s1t0 + 520), startedon: iso(startedAt + 3000), completedon: elapsed() > 5000 ? iso(startedAt + 4300) : null,
+    friendlymessage: elapsed() > 5000 ? "Response status code does not indicate success: 401 (Unauthorized)." : null,
   }];
-  const STEPS = { [g(201)]: 10, [g(202)]: 40, [g(203)]: 20, [g(204)]: 40 };
+  const JOB_DETAIL = {
+    [g(401)]: { message: "", depth: 1, executiontimespan: 1.6, "_ownerid_value@OData.Community.Display.V1.FormattedValue": "Jean Dupont" },
+    [g(402)]: { message: "System.Net.Http.HttpRequestException: Response status code does not indicate success: 401 (Unauthorized).\n   at System.Net.Http.HttpResponseMessage.EnsureSuccessStatusCode()\n   at Contoso.Integration.SurveyClient.PushAsync(Entity account)\n   at Contoso.Integration.SurveySync.Execute(IServiceProvider serviceProvider)", errorcode: -2147220891, depth: 1, executiontimespan: 1.3, "_ownerid_value@OData.Community.Display.V1.FormattedValue": "Jean Dupont" },
+  };
+  const F = "@OData.Community.Display.V1.FormattedValue";
+  const STEP_DETAIL = {
+    [g(201)]: { name: "Contoso.Plugins.AccountValidate: Update of account", stage: 10, mode: 0, rank: 1, filteringattributes: "revenue,telephone1,creditonhold", ["_plugintypeid_value" + F]: "Contoso.Plugins.AccountValidate" },
+    [g(202)]: { name: "Contoso.Plugins.AccountRollup: Update of account", stage: 40, mode: 0, rank: 1, filteringattributes: "", ["_plugintypeid_value" + F]: "Contoso.Plugins.AccountRollup" },
+    [g(203)]: { name: "Contoso.Plugins.ContactAddressSync: Update of contact", stage: 20, mode: 0, rank: 1, filteringattributes: "address1_line1,address1_city,address1_postalcode", ["_plugintypeid_value" + F]: "Contoso.Plugins.ContactAddressSync" },
+    [g(204)]: { name: "Contoso.Integration.SyncToErp: Update of account", stage: 40, mode: 1, rank: 1, filteringattributes: "name,telephone1,address1_city,revenue", configuration: "endpoint=https://erp.contoso.example", ["_impersonatinguserid_value" + F]: "# ERP integration", _impersonatinguserid_value: g(900), asyncautodelete: true, ["_plugintypeid_value" + F]: "Contoso.Integration.SyncToErp" },
+    [g(205)]: { name: "Contoso.Integration.SurveySync: Update of account", stage: 40, mode: 1, rank: 2, filteringattributes: "", _sdkmessageprocessingstepsecureconfigid_value: g(950), ["_plugintypeid_value" + F]: "Contoso.Integration.SurveySync" },
+  };
+  // The survey sync has failed 6 times in a row, since two days ago; the ERP sync always succeeds.
+  const history = (stepId) => Array.from({ length: 20 }, (_, i) => {
+    const failed = stepId === g(205) && i < 6;
+    return { asyncoperationid: g(800 + i), statecode: 3, statuscode: failed ? 31 : 30, createdon: iso(startedAt - (i === 0 ? 40000 : i * 9 * 3600000)), friendlymessage: failed ? "Response status code does not indicate success: 401 (Unauthorized)." : null };
+  });
+  const STEPS = { [g(201)]: 10, [g(202)]: 40, [g(203)]: 20, [g(204)]: 40, [g(205)]: 40 };
   const REGS = [
     { name: g(501), message: 3, filteringattributes: "revenue", filterexpression: null, scope: 4 },
     { name: g(502) + ":MTA", message: 4, filteringattributes: "address1_line1,address1_city,address1_postalcode", filterexpression: null, scope: 4 },
@@ -66,13 +93,22 @@ export function createActivityDemo({ recordId, entitySet = "accounts", startedAt
     const f = opts.filter || "";
     const one = set.match(/^plugintracelogs\(([0-9a-f-]{36})\)$/i);
     if (one) { const r = traces().find(x => x.plugintracelogid === one[1].toLowerCase()); return { records: r ? [{ messageblock: DETAIL[r.plugintracelogid] || "", exceptiondetails: r.exceptiondetails }] : [] }; }
+    const job = set.match(/^asyncoperations\(([0-9a-f-]{36})\)$/i);
+    if (job) { const j = jobs().find(x => x.asyncoperationid === job[1].toLowerCase()); return { records: j ? [{ friendlymessage: j.friendlymessage, retrycount: 0, ...(JOB_DETAIL[j.asyncoperationid] || {}), message: j.statecode === 3 && j.statuscode === 31 ? JOB_DETAIL[j.asyncoperationid].message : "" }] : [] }; }
+    const step = set.match(/^sdkmessageprocessingsteps\(([0-9a-f-]{36})\)$/i);
+    if (step) { const d = STEP_DETAIL[step[1].toLowerCase()]; return { records: d ? [{ statecode: 0, ...d }] : [] }; }
     switch (set) {
       case "plugintracelogs": {
-        const cids = ids(f, "correlationid");
+        const cids = ids(f, "correlationid"), rids = ids(f, "requestid");
         const ent = (f.match(/primaryentity eq '(\w+)'/) || [])[1];
-        return { records: traces().filter(r => (cids.length ? cids.includes(r.correlationid) : r.primaryentity === ent) && inRange(r, "createdon", f)) };
+        const asyncOnly = /mode eq 1/.test(f);
+        return { records: traces().filter(r => (cids.length || rids.length ? cids.includes(r.correlationid) || rids.includes(r.requestid) : r.primaryentity === ent) && (!asyncOnly || r.mode === 1) && inRange(r, "createdon", f)) };
       }
-      case "asyncoperations": return { records: jobs().filter(j => f.includes(id) && inRange(j, "createdon", f)) };
+      case "asyncoperations": {
+        const ext = ids(f, "_owningextensionid_value")[0];
+        if (ext) return { records: history(ext) };
+        return { records: jobs().filter(j => f.includes(id) && inRange(j, "createdon", f)) };
+      }
       case "sdkmessageprocessingsteps": return { records: ids(f, "sdkmessageprocessingstepid").map(s => ({ sdkmessageprocessingstepid: s, stage: STEPS[s], name: "" })) };
       case "callbackregistrations": return { records: /entityname eq 'account'/.test(f) ? REGS : [] };
       case "workflows": return { records: ids(f, "workflowid").filter(w => FLOWS[w]).map(w => ({ workflowid: w, name: FLOWS[w], statecode: 1 })) };

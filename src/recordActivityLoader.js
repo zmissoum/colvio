@@ -4,18 +4,23 @@
 // bridge's in the extension, a deterministic fake in demo mode and tests. Each part fails on its
 // own and says why; nothing is invented to fill a gap.
 import {
-  saveWindow, messageNamesFor, traceWindowFilter, correlationFilter, jobsFilter, stepsFilter,
+  saveWindow, messageNamesFor, traceWindowFilter, jobsFilter, stepsFilter,
   pickCorrelations, buildChains, flowIdOf, flowVerdict, matchRun, isPending, isGuid, SYNC_MARGIN_MS,
+  chainFilter, assignAsyncTraces, jobHistory, triggerText, odataString,
 } from "./recordActivity.js";
 
 const TRACE_SELECT = "plugintracelogid,typename,messagename,primaryentity,mode,operationtype,depth,correlationid,requestid,pluginstepid,performanceexecutionduration,performanceexecutionstarttime,createdon,exceptiondetails";
-const JOB_SELECT = "asyncoperationid,name,operationtype,statecode,statuscode,createdon,startedon,completedon,friendlymessage,correlationid";
+const JOB_SELECT = "asyncoperationid,name,operationtype,statecode,statuscode,createdon,startedon,completedon,friendlymessage,correlationid,requestid,retrycount,errorcode,_owningextensionid_value";
+const JOB_DETAIL_SELECT = "message,friendlymessage,errorcode,retrycount,depth,executiontimespan,postponeuntil,workflowstagename,messagename,_ownerid_value";
+const STEP_SELECT = "name,stage,mode,rank,filteringattributes,configuration,asyncautodelete,statecode,_impersonatinguserid_value,_sdkmessageprocessingstepsecureconfigid_value,_plugintypeid_value,_sdkmessageid_value";
+const FMT = "@OData.Community.Display.V1.FormattedValue";
 const REG_SELECT = "callbackregistrationid,name,entityname,message,sdkmessagename,filteringattributes,filterexpression,scope,runas,softdeletestatus";
 const recs = (d) => (d && Array.isArray(d.records) ? d.records : Array.isArray(d?.value) ? d.value : []);
 const errText = (e) => String(e?.message || e || "error");
 
 export function createActivityLoader(query) {
   const steps = {};          // step id → { stage, name } — shared by every save of the session
+  const stepInfos = new Map(); // step id → Promise<step facts> (the detail shown on click)
   const flowsByTable = new Map(); // table → Promise<{ regs, names, error }>
 
   async function stepsFor(rows) {
@@ -91,11 +96,27 @@ export function createActivityLoader(query) {
     const pick = pickCorrelations({ windowRows, jobs: out.jobs, requestIds: save.requestIds, messageNames: messageNamesFor(save) });
     out.exact = pick.exact;
     let rows = windowRows.filter(r => pick.ids.includes(String(r.correlationid || "").toLowerCase()));
-    const cf = correlationFilter(pick.ids, w.from, upTo);
+    const asyncJobs = out.jobs.filter(j => j.operationtype === 1);
+    const cf = chainFilter({ correlationIds: pick.ids, requestIds: asyncJobs.flatMap(j => [j.requestid, j.asyncoperationid]) }, w.from, upTo);
     if (cf && !out.errors.traces) {
       try { rows = recs(await query("plugintracelogs", { select: TRACE_SELECT, filter: cf, orderby: "createdon asc", top: "200" })); }
       catch (e) { out.errors.traces = errText(e); }
     }
+    // An asynchronous job whose trace wasn't found by id: same plug-in class, inside the job's run.
+    let byJob = assignAsyncTraces(asyncJobs, rows, now);
+    if (!out.errors.traces && asyncJobs.some(j => !byJob.has(j.asyncoperationid))) {
+      try {
+        const extra = recs(await query("plugintracelogs", { select: TRACE_SELECT, filter: `primaryentity eq '${entity}' and mode eq 1 and createdon ge ${w.from} and createdon le ${upTo}`, orderby: "createdon asc", top: "100" }));
+        const seen = new Set(rows.map(r => r.plugintracelogid));
+        byJob = assignAsyncTraces(asyncJobs, [...rows, ...extra.filter(r => !seen.has(r.plugintracelogid))], now);
+        const used = new Set([...byJob.values()].flatMap(m => m.rows.map(r => r.plugintracelogid)));
+        rows = [...rows, ...extra.filter(r => !seen.has(r.plugintracelogid) && used.has(r.plugintracelogid))];
+      } catch { /* the jobs still show; their traces just stay unknown */ }
+    }
+    out.jobs = out.jobs.map(j => {
+      const m = byJob.get(j.asyncoperationid);
+      return { ...j, traceIds: m ? m.rows.map(r => r.plugintracelogid) : [], traceMatch: m ? m.how : null };
+    });
     await stepsFor(rows);
     out.chains = buildChains(rows, steps);
 
@@ -105,7 +126,7 @@ export function createActivityLoader(query) {
       const id = flowIdOf(reg);
       const meta = flowInfo.names[id];
       const v = meta && meta.on === false ? { verdict: "no", reason: "the flow is turned off" } : flowVerdict(reg, save);
-      return { id, name: meta?.name || id, ...v, run: null };
+      return { id, name: meta?.name || id, ...v, trigger: triggerText(reg), run: null };
     });
     if (out.flows.some(f => f.verdict !== "no")) {
       const r = await runsIn(w.from, recUpTo);
@@ -127,5 +148,55 @@ export function createActivityLoader(query) {
     return { trace: r.messageblock || "", exception: r.exceptiondetails || "" };
   }
 
-  return { load, traceDetail, clearFlows: () => flowsByTable.clear() };
+  // One plug-in step, in words (on click): its name, stage, mode, order, trigger columns, the user it
+  // runs as, and WHETHER it has a configuration — never the configuration itself (it can hold secrets).
+  function stepInfo(stepId) {
+    const id = String(stepId || "").toLowerCase();
+    if (!isGuid(id)) return Promise.resolve(null);
+    if (!stepInfos.has(id)) {
+      stepInfos.set(id, query(`sdkmessageprocessingsteps(${id})`, { select: STEP_SELECT }).then(d => {
+        const s = recs(d)[0] || d || {};
+        return {
+          id, name: s.name || "", stage: s.stage, mode: s.mode === 1 ? "Asynchronous" : "Synchronous", rank: s.rank ?? null,
+          filteringattributes: s.filteringattributes || "",
+          runAs: s["_impersonatinguserid_value" + FMT] || (s._impersonatinguserid_value ? s._impersonatinguserid_value : "the calling user"),
+          pluginType: s["_plugintypeid_value" + FMT] || "",
+          message: s["_sdkmessageid_value" + FMT] || "",
+          hasUnsecureConfig: !!String(s.configuration || "").trim(),
+          hasSecureConfig: !!s._sdkmessageprocessingstepsecureconfigid_value,
+          asyncAutoDelete: !!s.asyncautodelete,
+          enabled: s.statecode !== 1,
+        };
+      }).catch(e => { stepInfos.delete(id); throw e; }));
+    }
+    return stepInfos.get(id);
+  }
+
+  // A system job, on click: the full message, the step behind it, and how its recent runs went.
+  async function jobDetail(job) {
+    if (!isGuid(job?.asyncoperationid)) throw new Error("Invalid job id");
+    const out = { message: "", facts: {}, step: null, history: null, errors: {} };
+    const [d, step] = await Promise.all([
+      query(`asyncoperations(${job.asyncoperationid})`, { select: JOB_DETAIL_SELECT }).then(x => recs(x)[0] || x || {}, e => ({ __error: errText(e) })),
+      stepInfo(job._owningextensionid_value).catch(e => ({ __error: errText(e) })),
+    ]);
+    if (d.__error) out.errors.job = d.__error;
+    else {
+      out.message = d.message || d.friendlymessage || "";
+      out.facts = { retries: d.retrycount ?? null, depth: d.depth ?? null, executionMs: typeof d.executiontimespan === "number" ? d.executiontimespan * 1000 : null,
+        owner: d["_ownerid_value" + FMT] || "", postponeUntil: d.postponeuntil || null, stage: d.workflowstagename || "", errorCode: d.errorcode ?? null };
+    }
+    if (step && step.__error) out.errors.step = step.__error; else out.step = step;
+    const filter = isGuid(job._owningextensionid_value) ? `_owningextensionid_value eq ${String(job._owningextensionid_value).toLowerCase()}`
+      : job.name ? `name eq ${odataString(job.name)}` : null;
+    if (filter) {
+      try {
+        const h = recs(await query("asyncoperations", { select: "asyncoperationid,statecode,statuscode,createdon,friendlymessage", filter, orderby: "createdon desc", top: "20" }));
+        out.history = jobHistory(h);
+      } catch (e) { out.errors.history = errText(e); }
+    }
+    return out;
+  }
+
+  return { load, traceDetail, stepInfo, jobDetail, clearFlows: () => flowsByTable.clear() };
 }

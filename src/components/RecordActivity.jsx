@@ -4,7 +4,7 @@ import { C, Spin, mono, bt, crd, inp, copyText, confirmProd } from "../shared.js
 import { savesForRecord } from "../saveCapture.js";
 import { createActivityLoader } from "../recordActivityLoader.js";
 import { createActivityDemo } from "../recordActivityDemo.js";
-import { TRACE_SETTING, REFRESH_LIMIT_MS, nextDelay, jobState, jobKind, runStatus } from "../recordActivity.js";
+import { TRACE_SETTING, REFRESH_LIMIT_MS, nextDelay, jobState, jobKind, runStatus, STAGE_LABEL, flowLinks } from "../recordActivity.js";
 
 // Record activity — what each save of this record triggered: the plug-in execution chains, the
 // record's system jobs and the cloud flows whose Dataverse trigger watches the table. Saves come
@@ -22,6 +22,89 @@ const hhmmss = (ms) => {
 const durText = (ms) => (ms == null ? "" : ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
 const between = (a, b) => (a && b ? Math.max(0, Date.parse(b) - Date.parse(a)) : null);
 
+// A step in words — "has a configuration" only, never its content (it can hold secrets).
+function StepFacts({ step }) {
+  if (!step) return null;
+  const cols = String(step.filteringattributes || "").split(",").map(s => s.trim()).filter(Boolean);
+  const bits = [
+    STAGE_LABEL[step.stage] || null, step.mode.toLowerCase(), step.rank != null ? `order ${step.rank}` : null,
+    cols.length ? `triggers on: ${cols.join(", ")}` : "triggers on any column",
+    `runs as: ${step.runAs}`,
+    `secure configuration: ${step.hasSecureConfig ? "yes" : "no"}`, `unsecure configuration: ${step.hasUnsecureConfig ? "yes" : "no"}`,
+    step.enabled ? null : "step disabled",
+  ].filter(Boolean);
+  return <div style={{ fontSize: 11.5, color: C.txm, margin: "4px 0" }}><b style={{ fontWeight: 600 }}>Step</b> {step.name ? `${step.name} — ` : ""}{bits.join(" · ")}</div>;
+}
+
+// What a failure message usually means, and where to look first.
+function errorHint(msg) {
+  const m = String(msg || "");
+  if (/\b401\b|unauthori[sz]ed|\b403\b|forbidden|invalid_client|AADSTS\d+/i.test(m)) return "The external service refused the credentials this plug-in sent — usually an expired or changed key, secret or token. Look where the step gets them: its secure / unsecure configuration (Plugin Registration Tool), an environment variable, a configuration table or a Key Vault. Once fixed, save the record again — a failed job doesn't run again on its own.";
+  if (/time(d)? ?out|timeout|2 minutes/i.test(m)) return "Timeout — an external call took too long, or the plug-in hit the 2-minute limit of a single execution.";
+  if (/\b(404|500|502|503|504)\b|name or service not known|could not be resolved/i.test(m)) return "The external service answered with an error or couldn't be reached — check its URL and whether it is up.";
+  return "";
+}
+
+function historyText(h) {
+  if (!h || !h.total) return "";
+  const d = (iso) => (iso ? new Date(iso).toLocaleString() : "?");
+  if (h.streak >= 2) return `Failing every time: the last ${h.streak} runs of this step failed — since ${d(h.failingSince)}${h.lastSuccess ? `; last success ${d(h.lastSuccess)}` : "; no success in the last " + h.total}.`;
+  if (h.failed === 0) return `The last ${h.total} runs of this step all succeeded — this failure is new.`;
+  return `${h.failed} of the last ${h.total} runs of this step failed${h.lastSuccess ? ` (last success ${d(h.lastSuccess)})` : ""}.`;
+}
+
+function JobDetail({ job, loader, orgUrl }) {
+  const [d, setD] = useState(null);
+  const [traces, setTraces] = useState([]);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let alive = true;
+    loader.jobDetail(job).then(x => { if (alive) setD(x); }, e => { if (alive) setErr(e.message || String(e)); });
+    Promise.all((job.traceIds || []).map(id => loader.traceDetail(id).catch(e => ({ error: e.message })))).then(t => { if (alive) setTraces(t); });
+    return () => { alive = false; };
+  }, [job.asyncoperationid, job.statecode, loader]); // re-read when the job finishes
+  const st = jobState(job);
+  const msg = d?.message || job.friendlymessage || "";
+  const hint = st === "failed" ? errorHint(msg) : "";
+  const link = orgUrl ? `${orgUrl}/main.aspx?etn=asyncoperation&id=${job.asyncoperationid}&pagetype=entityrecord` : null;
+  const copy = () => copyText([
+    `${job.name} — ${st}`, `started ${job.startedon || "?"} · ended ${job.completedon || "?"} · retries ${d?.facts?.retries ?? job.retrycount ?? 0}`,
+    d?.history ? historyText(d.history) : "", d?.step ? `step: ${d.step.name} (${d.step.mode}, runs as ${d.step.runAs})` : "",
+    msg ? `── Message ──\n${msg}` : "", ...traces.map(t => (t.trace || t.exception ? `── Trace ──\n${t.trace || ""}${t.exception ? "\n" + t.exception : ""}` : "")),
+  ].filter(Boolean).join("\n"));
+  return (
+    <div style={{ margin: "2px 0 8px", padding: 10, background: C.bg, borderRadius: 6, border: `1px solid ${st === "failed" ? C.rd + "55" : C.bd}`, fontSize: 12 }}>
+      <div style={{ display: "flex", gap: 6, float: "right" }}>
+        {link && <a href={link} target="_blank" rel="noopener" style={{ ...bt(null, { fontSize: 11, padding: "2px 8px" }), textDecoration: "none" }}>Open in D365 ↗</a>}
+        <button onClick={copy} style={bt(null, { fontSize: 11, padding: "2px 8px" })}>⧉ Copy</button>
+      </div>
+      {!d && !err && <div style={{ color: C.txd }}><Spin s={10} /> Loading the job, its step and its history…</div>}
+      {err && <div style={{ color: C.rd }}>{err}</div>}
+      {d && (<>
+        <div style={{ color: C.txm }}>
+          Started {job.startedon ? new Date(job.startedon).toLocaleTimeString() : "—"} · ended {job.completedon ? new Date(job.completedon).toLocaleTimeString() : "—"}
+          {` · retries ${d.facts.retries ?? job.retrycount ?? 0}`}{d.facts.owner ? ` · on behalf of ${d.facts.owner}` : ""}
+        </div>
+        {d.history && <div style={{ color: d.history.streak >= 2 ? C.rd : C.txm, marginTop: 4, fontWeight: d.history.streak >= 2 ? 600 : 400 }}>{historyText(d.history)}</div>}
+        {d.errors.history && <div style={{ color: C.txd, marginTop: 4 }}>History unavailable: {d.errors.history}</div>}
+        <StepFacts step={d.step} />
+        {d.errors.step && <div style={{ color: C.txd }}>Step unavailable: {d.errors.step}</div>}
+        {hint && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 5, background: C.yw + "14", color: C.yw }}>💡 {hint}</div>}
+        {msg ? <pre style={{ margin: "8px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word", ...mono, fontSize: 11.5, color: st === "failed" ? C.rd : C.txm, maxHeight: 220, overflow: "auto" }}>{msg}</pre>
+          : <div style={{ color: C.txd, marginTop: 6 }}>No message on this job.</div>}
+        {(job.traceIds || []).length === 0 && <div style={{ color: C.txd, marginTop: 6 }}>No plug-in trace found for this run — the plug-in may write none (the log only keeps what the code traces, plus exceptions).</div>}
+        {traces.map((t, i) => (
+          <div key={i} style={{ marginTop: 8 }}>
+            <div style={{ color: C.txd, fontSize: 11 }}>Plug-in trace{job.traceMatch === "time" ? " — matched by plug-in class and run time" : ""}</div>
+            {t.error ? <div style={{ color: C.rd }}>{t.error}</div>
+              : <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", ...mono, fontSize: 11.5, color: C.txm }}>{t.trace || "(no trace text)"}</pre>}
+          </div>
+        ))}
+      </>)}
+    </div>
+  );
+}
+
 function kindLabel(s) {
   switch (s.kind) {
     case "create": return "Created";
@@ -33,7 +116,7 @@ function kindLabel(s) {
   }
 }
 
-function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, defaultOpen }) {
+function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, defaultOpen, orgUrl, envId }) {
   const [open, setOpen] = useState(defaultOpen);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -41,6 +124,8 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
   const [attempt, setAttempt] = useState(0);
   const [details, setDetails] = useState({}); // trace id → { loading, trace, exception, error }
   const [showNo, setShowNo] = useState(false);
+  const [openJob, setOpenJob] = useState(null); // asyncoperationid shown in detail
+  const [stepFacts, setStepFacts] = useState({}); // step id → facts (trace rows' detail)
   const [tick, setTick] = useState(0); // re-arms the refresh timer while the panel tab is hidden
   const gen = useRef(0);
 
@@ -70,6 +155,8 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
   const openDetail = async (id) => {
     if (details[id]) { setDetails(d => { const n = { ...d }; delete n[id]; return n; }); return; }
     setDetails(d => ({ ...d, [id]: { loading: true } }));
+    const node = (data?.chains || []).flatMap(c => c.nodes).find(n => n.id === id);
+    if (node?.stepId && !stepFacts[node.stepId]) loader.stepInfo(node.stepId).then(f => setStepFacts(m => ({ ...m, [node.stepId]: f })), () => {});
     try { const r = await loader.traceDetail(id); setDetails(d => ({ ...d, [id]: r })); }
     catch (e) { setDetails(d => ({ ...d, [id]: { error: e.message || String(e) } })); }
   };
@@ -117,7 +204,9 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
             {traceSetting === 1 && <div style={{ fontSize: 12, color: C.yw }}>⚠ Trace log = exceptions only — plug-ins that succeeded aren't recorded.</div>}
             {data.errors.traces && <div style={{ fontSize: 12, color: C.rd }}>Couldn't read the plug-in traces: {data.errors.traces}</div>}
             {!data.errors.traces && plugins > 0 && !data.exact && <div style={{ fontSize: 11.5, color: C.txd }}>Matched by time on the {entity} table — another {entity} saved at the same second would show here too.</div>}
-            {!data.errors.traces && plugins === 0 && traceSetting !== 0 && <div style={{ fontSize: 12, color: C.txd }}>{traceSetting === 2 ? "No plug-in ran for this save." : "No plug-in exception for this save."}</div>}
+            {!data.errors.traces && plugins === 0 && traceSetting !== 0 && <div style={{ fontSize: 12, color: C.txd }}>{data.jobs.some(j => j.operationtype === 1)
+              ? "No synchronous plug-in ran. The asynchronous ones ran as system jobs (below) — click one for its message, its step and its history."
+              : traceSetting === 2 ? "No plug-in ran for this save." : "No plug-in exception for this save."}</div>}
             {data.chains.map(ch => ch.nodes.map(n => (
               <div key={n.id}>
                 <div onClick={() => openDetail(n.id)} title="Show the trace text" style={{ ...row, cursor: "pointer", paddingLeft: (n.depth - 1) * 18 }}>
@@ -137,6 +226,7 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
                       : details[n.id].error ? <span style={{ fontSize: 12, color: C.rd }}>{details[n.id].error}</span>
                       : (<>
                         <button onClick={() => copyText(`${n.typename} · ${n.message} ${n.entity}\n${details[n.id].exception ? `── Exception ──\n${details[n.id].exception}\n` : ""}── Trace ──\n${details[n.id].trace || "(empty)"}`)} style={{ ...bt(null, { fontSize: 11, padding: "2px 8px" }), float: "right" }}>⧉ Copy</button>
+                        <StepFacts step={n.stepId ? stepFacts[n.stepId] : null} />
                         <pre style={{ margin: 0, fontSize: 11.5, whiteSpace: "pre-wrap", wordBreak: "break-word", ...mono, color: C.txm }}>{details[n.id].trace || "(no trace text — the plug-in didn't write any)"}</pre>
                         {details[n.id].exception && <pre style={{ margin: "8px 0 0", fontSize: 11.5, whiteSpace: "pre-wrap", wordBreak: "break-word", ...mono, color: C.rd, maxHeight: 220, overflow: "auto" }}>{details[n.id].exception}</pre>}
                       </>)}
@@ -151,11 +241,16 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
             {data.jobs.map(j => {
               const st = jobState(j);
               return (
-                <div key={j.asyncoperationid} style={row}>
-                  <span style={{ width: 104, flexShrink: 0, color: C.txd, fontSize: 11.5 }}>{jobKind(j)}</span>
-                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={j.friendlymessage || j.name}>{j.name}{st === "failed" && j.friendlymessage ? <span style={{ color: C.rd }}> — {j.friendlymessage}</span> : null}</span>
-                  <span style={{ color: C.txd, fontSize: 11.5, ...mono }}>{durText(between(j.startedon, j.completedon))}</span>
-                  {pill(STATE_COLOR[st] || C.txm, st)}
+                <div key={j.asyncoperationid}>
+                  <div onClick={() => setOpenJob(o => (o === j.asyncoperationid ? null : j.asyncoperationid))} title="Show the message, the step and its recent runs" style={{ ...row, cursor: "pointer" }}>
+                    <span style={{ width: 104, flexShrink: 0, color: C.txd, fontSize: 11.5 }}>{jobKind(j)}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={j.friendlymessage || j.name}>{j.name}{st === "failed" && j.friendlymessage ? <span style={{ color: C.rd }}> — {j.friendlymessage}</span> : null}</span>
+                    {j.traceIds?.length > 0 && <span style={{ fontSize: 10.5, color: C.txd }} title="A plug-in trace was found for this run">trace</span>}
+                    <span style={{ color: C.txd, fontSize: 11.5, ...mono }}>{durText(between(j.startedon, j.completedon))}</span>
+                    {pill(STATE_COLOR[st] || C.txm, st)}
+                    <span style={{ color: C.txd, fontSize: 10 }}>{openJob === j.asyncoperationid ? "▲" : "▼"}</span>
+                  </div>
+                  {openJob === j.asyncoperationid && <JobDetail job={j} loader={loader} orgUrl={orgUrl} />}
                 </div>
               );
             })}
@@ -166,16 +261,19 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
             {!data.errors.flows && data.flows.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No cloud flow has a Dataverse trigger on the {entity} table.</div>}
             {willFlows.map(f => {
               const rs = runStatus(f.run);
+              const links = flowLinks({ orgUrl, envId, flowId: f.id, runName: f.run?.name });
               return (
                 <div key={f.id} style={{ borderTop: `1px solid ${C.bd}55`, padding: "5px 0" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}>
                     <span style={{ width: 104, flexShrink: 0, color: f.verdict === "yes" ? C.gn : C.yw, fontSize: 11.5 }}>{f.verdict === "yes" ? "Triggered" : "May trigger"}</span>
-                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.id}>{f.name}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.id}>{f.name}{links && <a href={links.flow} target="_blank" rel="noopener" title="Open the flow in Power Automate" style={{ color: C.txd, marginLeft: 6, textDecoration: "none" }}>↗</a>}</span>
                     {f.run && <span style={{ color: C.txd, fontSize: 11.5, ...mono }}>{durText(between(f.run.starttime, f.run.endtime))}</span>}
                     {f.run ? pill(RUN_COLOR(rs), f.run.status || "?") : pill(C.txm, f.verdict === "yes" ? "no run yet" : "no run")}
+                    {links?.run && <a href={links.run} target="_blank" rel="noopener" style={{ fontSize: 11, color: rs === "failed" ? C.rd : C.cy, textDecoration: "none", whiteSpace: "nowrap" }}>{rs === "failed" ? "Open failed run ↗" : "Open run ↗"}</a>}
                   </div>
-                  {f.reason && <div style={{ fontSize: 11.5, color: C.txd, paddingLeft: 114 }}>{f.reason}</div>}
-                  {f.run && (f.run.errormessage || f.run.errorcode) && <div style={{ fontSize: 12, color: C.rd, paddingLeft: 114 }}>{String(f.run.errormessage || f.run.errorcode).slice(0, 300)}</div>}
+                  <div style={{ fontSize: 11.5, color: C.txd, paddingLeft: 114 }}>Trigger: {f.trigger}</div>
+                  {f.verdict === "maybe" && f.reason && <div style={{ fontSize: 11.5, color: C.yw, paddingLeft: 114 }}>{f.reason}</div>}
+                  {f.run && (f.run.errorcode || f.run.errormessage) && <div style={{ fontSize: 12, color: C.rd, paddingLeft: 114 }}>{f.run.errorcode ? `${f.run.errorcode}: ` : ""}{String(f.run.errormessage || "").slice(0, 400)}</div>}
                 </div>
               );
             })}
@@ -186,7 +284,12 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
                   <span style={{ flex: 1 }}>{noFlows.length} flow{noFlows.length > 1 ? "s" : ""}{!showNo ? ` · ${noFlows.slice(0, 2).map(f => f.name).join(", ")}${noFlows.length > 2 ? "…" : ""}` : ""}</span>
                   <span style={{ color: C.txd, fontSize: 11 }}>{showNo ? "▲" : "▼"}</span>
                 </div>
-                {showNo && noFlows.map(f => <div key={f.id} style={{ fontSize: 12, color: C.txm, padding: "3px 0 0 114px" }}><b style={{ fontWeight: 600 }}>{f.name}</b> — {f.reason}</div>)}
+                {showNo && noFlows.map(f => (
+                  <div key={f.id} style={{ fontSize: 12, color: C.txm, padding: "3px 0 0 114px" }}>
+                    <b style={{ fontWeight: 600 }}>{f.name}</b> — {f.reason}
+                    <div style={{ fontSize: 11.5, color: C.txd }}>Trigger: {f.trigger}</div>
+                  </div>
+                ))}
               </div>
             )}
             {data.runsMissing && <div style={{ fontSize: 11.5, color: C.txd }}>This org has no flow run table (flowrun) — runs can't be shown.</div>}
@@ -304,7 +407,7 @@ export default function RecordActivity({ record, orgInfo, orgFeatures }) {
         {saves.length === 0 && <div style={{ fontSize: 12.5, color: C.txm, padding: "6px 0" }}>Save this record in its Dynamics 365 tab — the save appears here with what it triggered.</div>}
         {saves.slice(0, 20).map((s, i) => (
           <SaveCard key={s.key} save={s} next={i > 0 ? saves[i - 1] : null} loader={loader} entity={entity} recordId={record.id}
-            labels={labels} traceSetting={setting} defaultOpen={i === 0} />
+            labels={labels} traceSetting={setting} defaultOpen={i === 0} orgUrl={live ? orgInfo?.orgUrl : null} envId={live ? orgInfo?.environmentId : null} />
         ))}
         {saves.length > 20 && <div style={{ fontSize: 11.5, color: C.txd }}>Showing the 20 latest saves of {saves.length}.</div>}
       </>)}

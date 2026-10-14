@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.179] — 2026-10-14
+### Added — Record activity: the details that tell you what to do next
+- **System jobs open on click**: the full message (the stack, not just the one-liner), start / end, retries, on whose behalf; **the step behind the job** (`owningextensionid`): name, stage, mode, order, trigger columns, the user it runs as, and WHETHER it has a secure / unsecure configuration — never their content (they can hold secrets); **its last 20 runs**: "failing every time since …, last success …" vs "this failure is new" vs "3 of the last 20 failed"; an **Open in D365** link and Copy (message, step, history and trace in one paste).
+- **What a failure usually means**: 401 / 403 / invalid credentials → the external service refused the key, secret or token, and where a step usually gets them; timeouts; unreachable services. And the reminder that a failed job doesn't run again on its own — save the record again after the fix.
+- **Plug-in step facts** in every trace's detail (synchronous ones too).
+- **Cloud flows**: each flow shows its trigger in words (when a row is … · columns · filter · scope); the run's error code with its message; **Open run ↗ / Open failed run ↗** and a link to the flow in Power Automate (commercial, US Government and China clouds; the link uses the Dataverse flow id — to confirm on a live org). Dataverse keeps no "failing action" column on flow runs: the error message is what it records.
+
+### Fixed — asynchronous plug-ins' traces weren't found (seen live: "No plug-in ran for this save" next to two async jobs)
+- An asynchronous plug-in's trace doesn't always share its save's correlation id. Traces are now matched to each system job by its request id or id, by correlation + plug-in class, and else by the same plug-in class running inside the job's start → end window (said on screen). The empty message no longer says "no plug-in ran" when asynchronous ones did — it points to their jobs; a job with no trace says the plug-in may write none.
+- 9 tests (jobs ↔ traces, history streaks, trigger text, Power Automate links, OData string escaping); the demo gains a survey-sync plug-in failing with 401 for six runs in a row, whose trace carries another correlation id.
+
 ## [1.11.178] — 2026-10-14
 ### Added — Show All Data › Record activity: what each save of the record triggered
 - Save a record in its Dynamics 365 tab and Show All Data lists that save — time, kind (saved / created / deleted / bound action), outcome (HTTP status and duration, or the failure), the columns sent (by their labels) — with what it set off:

@@ -115,6 +115,7 @@ export function buildChains(rows, steps = {}) {
       const async = r.mode === 1;
       return {
         id: r.plugintracelogid,
+        stepId: r.pluginstepid ? String(r.pluginstepid).toLowerCase() : null,
         typename: r.typename || "",
         type: shortType(r.typename),
         message: r.messagename || "",
@@ -175,9 +176,9 @@ export function flowVerdict(reg, save) {
       if (!hit.length) return { verdict: "no", reason: `none of its trigger columns were sent (${attrs.join(", ")}) — a plug-in could still change them`, columns: attrs };
     }
   }
-  if (String(reg?.filterexpression || "").trim()) return { verdict: "maybe", reason: `row filter: ${String(reg.filterexpression).trim()}` };
+  if (String(reg?.filterexpression || "").trim()) return { verdict: "maybe", reason: "depends on its row filter — Colvio doesn't evaluate it" };
   const scope = Number(reg?.scope);
-  if (SCOPE_LABEL[scope]) return { verdict: "maybe", reason: `scope: ${SCOPE_LABEL[scope]}` };
+  if (SCOPE_LABEL[scope]) return { verdict: "maybe", reason: "depends on who owns the row (the trigger's scope)" };
   return { verdict: "yes", reason: "" };
 }
 
@@ -202,4 +203,85 @@ export const runStatus = (run) => String(run?.status || "").toLowerCase();
 export function isPending({ jobs, flows }) {
   if ((jobs || []).some(j => ["pending", "running", "waiting"].includes(jobState(j)))) return true;
   return (flows || []).some(f => (f.run ? runStatus(f.run) === "running" : f.verdict === "yes"));
+}
+
+// ── v1.11.179: jobs ↔ traces, job history, flow trigger text and links ──
+
+// OData string literal ('' escapes a quote).
+export const odataString = (s) => `'${String(s ?? "").replace(/'/g, "''")}'`;
+
+// The plug-in executions of a save's chains: by correlation id, and by request id (an asynchronous
+// plug-in's trace can carry its system job's request id or id rather than the save's correlation).
+export function chainFilter({ correlationIds = [], requestIds = [] }, fromIso, toIso) {
+  const c = [...new Set(correlationIds.filter(isGuid).map(s => s.toLowerCase()))].slice(0, 10);
+  const r = [...new Set(requestIds.filter(isGuid).map(s => s.toLowerCase()))].slice(0, 20);
+  const parts = [...c.map(id => `correlationid eq ${id}`), ...r.map(id => `requestid eq ${id}`)];
+  if (!parts.length) return null;
+  return `(${parts.join(" or ")}) and createdon ge ${fromIso} and createdon le ${toIso}`;
+}
+
+// "Contoso.Plugins.X: Asynchronous Post Update of account" → "Contoso.Plugins.X";
+// a trace's "Contoso.Plugins.X, Contoso.Plugins, Version=…" → "Contoso.Plugins.X".
+export const jobClass = (j) => String(j?.name || "").split(":")[0].trim();
+export const traceClass = (r) => String(r?.typename || "").split(",")[0].trim();
+
+// Which traces belong to which asynchronous system job: same request / correlation first, else the
+// same plug-in class running inside the job's start → end window (start −5 s, end +10 s).
+export function assignAsyncTraces(jobs, rows, nowMs = Date.now()) {
+  const out = new Map();
+  const taken = new Set();
+  const lc = (v) => String(v || "").toLowerCase();
+  for (const j of jobs || []) {
+    const keys = new Set([lc(j.requestid), lc(j.asyncoperationid)].filter(Boolean));
+    const hit = (rows || []).filter(r => r.mode === 1 && (keys.has(lc(r.requestid)) || (j.correlationid && lc(r.correlationid) === lc(j.correlationid) && traceClass(r) === jobClass(j))));
+    if (hit.length) { out.set(j.asyncoperationid, { rows: hit, how: "id" }); hit.forEach(r => taken.add(r.plugintracelogid)); }
+  }
+  for (const j of jobs || []) {
+    if (out.has(j.asyncoperationid)) continue;
+    const cls = jobClass(j);
+    const a = (Date.parse(j.startedon || j.createdon) || 0) - 5000;
+    const b = (Date.parse(j.completedon) || nowMs) + 10000;
+    const hit = (rows || []).filter(r => r.mode === 1 && !taken.has(r.plugintracelogid) && traceClass(r) === cls)
+      .map(r => ({ r, t: Date.parse(r.performanceexecutionstarttime || r.createdon) || 0 }))
+      .filter(x => x.t >= a && x.t <= b)
+      .sort((x, y) => Math.abs(x.t - a) - Math.abs(y.t - a));
+    if (hit.length) { out.set(j.asyncoperationid, { rows: [hit[0].r], how: "time" }); taken.add(hit[0].r.plugintracelogid); }
+  }
+  return out;
+}
+
+// The last runs of one plug-in step (newest first) → is it failing every time, and since when?
+export function jobHistory(list) {
+  const rows = (list || []).slice().sort((a, b) => (Date.parse(b.createdon) || 0) - (Date.parse(a.createdon) || 0));
+  const states = rows.map(jobState);
+  let streak = 0;
+  while (streak < states.length && states[streak] === "failed") streak++;
+  const lastOk = rows.find(r => jobState(r) === "succeeded");
+  return {
+    total: rows.length,
+    failed: states.filter(s => s === "failed").length,
+    succeeded: states.filter(s => s === "succeeded").length,
+    streak,                                              // failures in a row, newest first
+    failingSince: streak ? rows[streak - 1].createdon : null,
+    lastSuccess: lastOk ? lastOk.createdon : null,
+  };
+}
+
+// A flow trigger in words: "when a row is modified · columns: a, b · filter: … · rows owned by the flow's user".
+export function triggerText(reg) {
+  const parts = [`when a row is ${MESSAGE_LABEL[Number(reg?.message)] || "changed"}`];
+  const cols = String(reg?.filteringattributes || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (cols.length) parts.push(`columns: ${cols.join(", ")}`);
+  if (String(reg?.filterexpression || "").trim()) parts.push(`filter: ${String(reg.filterexpression).trim()}`);
+  if (SCOPE_LABEL[Number(reg?.scope)]) parts.push(SCOPE_LABEL[Number(reg.scope)]);
+  return parts.join(" · ");
+}
+
+// Power Automate links for a flow (and one of its runs). Commercial, US Government and China clouds.
+export function flowLinks({ orgUrl, envId, flowId, runName }) {
+  if (!isGuid(flowId) || !/^[0-9a-f-]{36}$/i.test(String(envId || "").replace(/^Default-/i, ""))) return null;
+  const host = /\.microsoftdynamics\.us/i.test(orgUrl || "") ? "make.gov.powerautomate.us"
+    : /\.dynamics\.cn/i.test(orgUrl || "") ? "make.powerautomate.cn" : "make.powerautomate.com";
+  const base = `https://${host}/environments/${encodeURIComponent(envId)}/flows/${flowId}`;
+  return { flow: `${base}/details`, run: runName && /^[A-Za-z0-9]+$/.test(runName) ? `${base}/runs/${runName}` : null };
 }
