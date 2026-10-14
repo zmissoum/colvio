@@ -5,10 +5,10 @@ Free, in-browser toolkit for Dynamics 365 / Dataverse. Query, inspect, load, tes
 
 ## Detailed Description
 
-Paste-ready plain text, refreshed for v1.11.174 (Teams, Storage, native SQL, data model, environment badge, history privacy, Login History by access channel):
+Paste-ready plain text, refreshed for v1.11.181 (Record activity in Show All Data, the Security "has privilege" filter, plus Teams, Storage, native SQL, Bulk settings, data model, environment badge, history privacy, Login History by access channel):
 
-- English → `store/description_en.txt` (~5,500 characters)
-- French → `store/description_fr.txt` (~6,700 characters) — add French under Store listing → language selector, so French-speaking users get it
+- English → `store/description_en.txt` (~5,900 characters)
+- French → `store/description_fr.txt` (~7,200 characters) — add French under Store listing → language selector, so French-speaking users get it
 
 The full feature-by-feature reference lives in README.md; the store text stays short enough to be read.
 
@@ -42,6 +42,6 @@ Screenshots, 1280×800, 24-bit PNG, full bleed — upload in this order (EN list
 
 Small promo tile 440×280 (required): `store/promo_small_440x280.png`
 Marquee promo tile 1400×560 (optional): `store/marquee_1400x560.png`
-Promo video: upload `tools/video/out/video/colvio_tour_en.mp4` to YouTube (public or unlisted), paste the URL in "Global promo video".
+Promo video (already on YouTube — the 1080p tour, `tools/video/out/upload/colvio_tour_en.mp4`): paste https://youtu.be/QTexhCTIGWI in "Global promo video".
 
 All from demo mode — no real organization on screen.
