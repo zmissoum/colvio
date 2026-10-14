@@ -251,7 +251,24 @@ export function assignAsyncTraces(jobs, rows, nowMs = Date.now()) {
 }
 
 // The last runs of one plug-in step (newest first) → is it failing every time, and since when?
-export function jobHistory(list) {
+export const HISTORY_DAYS = 30;
+
+// The OData filter for a step's recent runs. The system job table can hold millions of rows: the
+// job name leads (the System Jobs search relies on name filters too), the step id narrows it, and
+// the last 30 days bound it. The step lookup alone, unbounded, was seen live keeping the detail
+// on its spinner.
+export function historyFilter(job, nowMs = Date.now()) {
+  const parts = [];
+  if (job?.name) parts.push(`name eq ${odataString(job.name)}`);
+  if (isGuid(job?._owningextensionid_value)) parts.push(`_owningextensionid_value eq ${String(job._owningextensionid_value).toLowerCase()}`);
+  if (!parts.length) return null;
+  parts.push(`createdon ge ${new Date(nowMs - HISTORY_DAYS * 86400000).toISOString()}`);
+  return parts.join(" and ");
+}
+
+// autoDelete: the step deletes its successful jobs ("Delete AsyncOperation if StatusCode =
+// Successful") — then only failures are left, and "failing every time" would be a false alarm.
+export function jobHistory(list, { autoDelete = false } = {}) {
   const rows = (list || []).slice().sort((a, b) => (Date.parse(b.createdon) || 0) - (Date.parse(a.createdon) || 0));
   const states = rows.map(jobState);
   let streak = 0;
@@ -264,6 +281,8 @@ export function jobHistory(list) {
     streak,                                              // failures in a row, newest first
     failingSince: streak ? rows[streak - 1].createdon : null,
     lastSuccess: lastOk ? lastOk.createdon : null,
+    latest: rows[0] ? rows[0].createdon : null,
+    autoDelete: !!autoDelete,
   };
 }
 

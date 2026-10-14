@@ -6,7 +6,7 @@
 import {
   saveWindow, messageNamesFor, traceWindowFilter, jobsFilter, stepsFilter,
   pickCorrelations, buildChains, flowIdOf, flowVerdict, matchRun, isPending, isGuid, SYNC_MARGIN_MS,
-  chainFilter, assignAsyncTraces, jobHistory, triggerText, odataString,
+  chainFilter, assignAsyncTraces, jobHistory, triggerText, historyFilter,
 } from "./recordActivity.js";
 
 const TRACE_SELECT = "plugintracelogid,typename,messagename,primaryentity,mode,operationtype,depth,correlationid,requestid,pluginstepid,performanceexecutionduration,performanceexecutionstarttime,createdon,exceptiondetails";
@@ -172,10 +172,11 @@ export function createActivityLoader(query) {
     return stepInfos.get(id);
   }
 
-  // A system job, on click: the full message, the step behind it, and how its recent runs went.
-  async function jobDetail(job) {
+  // A system job, on click — in two parts so the fast one shows at once: the job itself and its
+  // step (two reads by id), then the step's recent runs (a search in the system job table).
+  async function jobInfo(job) {
     if (!isGuid(job?.asyncoperationid)) throw new Error("Invalid job id");
-    const out = { message: "", facts: {}, step: null, history: null, errors: {} };
+    const out = { message: "", facts: {}, step: null, errors: {} };
     const [d, step] = await Promise.all([
       query(`asyncoperations(${job.asyncoperationid})`, { select: JOB_DETAIL_SELECT }).then(x => recs(x)[0] || x || {}, e => ({ __error: errText(e) })),
       stepInfo(job._owningextensionid_value).catch(e => ({ __error: errText(e) })),
@@ -187,16 +188,21 @@ export function createActivityLoader(query) {
         owner: d["_ownerid_value" + FMT] || "", postponeUntil: d.postponeuntil || null, stage: d.workflowstagename || "", errorCode: d.errorcode ?? null };
     }
     if (step && step.__error) out.errors.step = step.__error; else out.step = step;
-    const filter = isGuid(job._owningextensionid_value) ? `_owningextensionid_value eq ${String(job._owningextensionid_value).toLowerCase()}`
-      : job.name ? `name eq ${odataString(job.name)}` : null;
-    if (filter) {
-      try {
-        const h = recs(await query("asyncoperations", { select: "asyncoperationid,statecode,statuscode,createdon,friendlymessage", filter, orderby: "createdon desc", top: "20" }));
-        out.history = jobHistory(h);
-      } catch (e) { out.errors.history = errText(e); }
-    }
     return out;
   }
+  async function jobRuns(job, { autoDelete = false, now = Date.now() } = {}) {
+    const filter = historyFilter(job, now);
+    if (!filter) return { history: null, error: null };
+    try {
+      const h = recs(await query("asyncoperations", { select: "asyncoperationid,statecode,statuscode,createdon,friendlymessage", filter, orderby: "createdon desc", top: "20" }));
+      return { history: jobHistory(h, { autoDelete }), error: null };
+    } catch (e) { return { history: null, error: errText(e) }; }
+  }
+  async function jobDetail(job, opts = {}) {
+    const info = await jobInfo(job);
+    const runs = await jobRuns(job, { ...opts, autoDelete: !!info.step?.asyncAutoDelete });
+    return { ...info, history: runs.history, errors: { ...info.errors, ...(runs.error ? { history: runs.error } : {}) } };
+  }
 
-  return { load, traceDetail, stepInfo, jobDetail, clearFlows: () => flowsByTable.clear() };
+  return { load, traceDetail, stepInfo, jobInfo, jobRuns, jobDetail, clearFlows: () => flowsByTable.clear() };
 }

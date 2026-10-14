@@ -3,6 +3,7 @@ import {
   saveWindow, messageNamesFor, traceWindowFilter, correlationFilter, jobsFilter, pickCorrelations,
   exceptionLine, shortType, buildChains, jobState, flowIdOf, flowVerdict, matchRun, isPending, nextDelay,
   SYNC_MARGIN_MS, chainFilter, jobClass, traceClass, assignAsyncTraces, jobHistory, triggerText, flowLinks, odataString,
+  historyFilter,
 } from "../recordActivity.js";
 import { createActivityLoader } from "../recordActivityLoader.js";
 import { createActivityDemo, DEMO_ACTIVITY_IDS } from "../recordActivityDemo.js";
@@ -144,7 +145,7 @@ describe("jobs ↔ traces, history, triggers, links", () => {
   });
   it("tells a failing streak from an occasional failure", () => {
     const at = (h, ok) => ({ createdon: new Date(Date.UTC(2026, 9, 14, h)).toISOString(), statecode: 3, statuscode: ok ? 30 : 31 });
-    expect(jobHistory([at(9, false), at(12, false), at(8, true), at(11, false)])).toEqual({ total: 4, failed: 3, succeeded: 1, streak: 3, failingSince: at(9, false).createdon, lastSuccess: at(8, true).createdon });
+    expect(jobHistory([at(9, false), at(12, false), at(8, true), at(11, false)])).toMatchObject({ total: 4, failed: 3, succeeded: 1, streak: 3, failingSince: at(9, false).createdon, lastSuccess: at(8, true).createdon });
     expect(jobHistory([at(9, true), at(12, false)])).toMatchObject({ streak: 1, failingSince: at(12, false).createdon });
     expect(jobHistory([])).toMatchObject({ total: 0, streak: 0, failingSince: null, lastSuccess: null });
   });
@@ -161,6 +162,17 @@ describe("jobs ↔ traces, history, triggers, links", () => {
     expect(flowLinks({ orgUrl: "https://x.crm.microsoftdynamics.us", envId: env, flowId: G(5) }).flow).toMatch(/^https:\/\/make\.gov\.powerautomate\.us\//);
     expect(flowLinks({ orgUrl: "https://x.crm4.dynamics.com", envId: "nope", flowId: G(5) })).toBeNull();
     expect(flowLinks({ orgUrl: "https://x.crm4.dynamics.com", envId: env, flowId: G(5), runName: "../x" }).run).toBeNull();
+  });
+  it("searches a step's runs by job name + step, over the last 30 days", () => {
+    const now = Date.parse("2026-10-14T12:00:00Z");
+    expect(historyFilter({ name: "A.X: Asynchronous Post Update of fou_station", _owningextensionid_value: G(5).toUpperCase() }, now))
+      .toBe(`name eq 'A.X: Asynchronous Post Update of fou_station' and _owningextensionid_value eq ${G(5)} and createdon ge 2026-09-14T12:00:00.000Z`);
+    expect(historyFilter({ name: "O'Neil job" }, now)).toBe("name eq 'O''Neil job' and createdon ge 2026-09-14T12:00:00.000Z");
+    expect(historyFilter({}, now)).toBeNull();
+  });
+  it("doesn't call a step 'failing every time' when its successes are auto-deleted", () => {
+    const f = (h) => ({ createdon: new Date(Date.UTC(2026, 9, 14, h)).toISOString(), statecode: 3, statuscode: 31 });
+    expect(jobHistory([f(9), f(10)], { autoDelete: true })).toMatchObject({ failed: 2, streak: 2, autoDelete: true });
   });
   it("escapes OData strings", () => {
     expect(odataString("O'Brien: x")).toBe("'O''Brien: x'");
@@ -203,6 +215,17 @@ describe("loader on the demo org", () => {
     expect(survey.nodes[0].error).toBe("Response status code does not indicate success: 401 (Unauthorized).");
     expect(a.jobs.map(j => [jobState(j), j.traceMatch, j.traceIds.length])).toEqual([["succeeded", "id", 1], ["failed", "time", 1]]);
     expect(a.pending).toBe(false);
+  });
+  it("loads the job and its step first, the runs separately", async () => {
+    const { loader, saves, now } = setup(13000);
+    const a = await loader.load(saves[0], { entity: "account", recordId: ID, now });
+    const job = a.jobs.find(j => j.asyncoperationid === DEMO_ACTIVITY_IDS.jobSurvey);
+    const info = await loader.jobInfo(job);
+    expect(info).toMatchObject({ step: { hasSecureConfig: true } });
+    expect(info.history).toBeUndefined();
+    expect((await loader.jobRuns(job, { now })).history).toMatchObject({ failed: 6, streak: 6, autoDelete: false });
+    const erp = a.jobs.find(j => j.asyncoperationid === DEMO_ACTIVITY_IDS.jobErp);
+    expect((await loader.jobRuns(erp, { autoDelete: true, now })).history.autoDelete).toBe(true);
   });
   it("a failed job's detail: the full message, its step (config present, never shown) and its history", async () => {
     const { loader, saves, now } = setup(13000);

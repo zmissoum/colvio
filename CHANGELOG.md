@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.180] — 2026-10-14
+### Fixed — a system job's detail stayed on "Loading the job, its step and its history…" (seen live)
+- The step's history searched the system job table on the step lookup alone, with no time bound — on a real org that table holds millions of rows. It now searches by job name + step over the last 30 days, and the detail shows in two parts: the job and its step at once (two reads by id), the runs when they arrive, with their own spinner and, if the search fails, the reason.
+- A step that deletes its successful jobs (asyncautodelete) only leaves failures behind: its history now says so ("N failures in the last 30 days — successful runs are deleted automatically") instead of claiming it fails every time.
+- 3 tests (518).
+
 ## [1.11.179] — 2026-10-14
 ### Added — Record activity: the details that tell you what to do next
 - **System jobs open on click**: the full message (the stack, not just the one-liner), start / end, retries, on whose behalf; **the step behind the job** (`owningextensionid`): name, stage, mode, order, trigger columns, the user it runs as, and WHETHER it has a secure / unsecure configuration — never their content (they can hold secrets); **its last 20 runs**: "failing every time since …, last success …" vs "this failure is new" vs "3 of the last 20 failed"; an **Open in D365** link and Copy (message, step, history and trace in one paste).

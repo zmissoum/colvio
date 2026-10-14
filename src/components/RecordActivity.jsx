@@ -46,20 +46,30 @@ function errorHint(msg) {
 }
 
 function historyText(h) {
-  if (!h || !h.total) return "";
+  if (!h) return "";
   const d = (iso) => (iso ? new Date(iso).toLocaleString() : "?");
-  if (h.streak >= 2) return `Failing every time: the last ${h.streak} runs of this step failed — since ${d(h.failingSince)}${h.lastSuccess ? `; last success ${d(h.lastSuccess)}` : "; no success in the last " + h.total}.`;
-  if (h.failed === 0) return `The last ${h.total} runs of this step all succeeded — this failure is new.`;
-  return `${h.failed} of the last ${h.total} runs of this step failed${h.lastSuccess ? ` (last success ${d(h.lastSuccess)})` : ""}.`;
+  if (h.autoDelete) return h.failed
+    ? `${h.failed} failure${h.failed > 1 ? "s" : ""} of this step in the last 30 days (latest ${d(h.latest)}) — its successful runs are deleted automatically (step setting), so they can't be counted.`
+    : "No failure of this step in the last 30 days — its successful runs are deleted automatically (step setting).";
+  if (!h.total) return "No other run of this step in the last 30 days.";
+  if (h.streak >= 2) return `Failing every time: the last ${h.streak} runs of this step failed — since ${d(h.failingSince)}${h.lastSuccess ? `; last success ${d(h.lastSuccess)}` : `; no success in the last ${h.total} runs (30 days)`}.`;
+  if (h.failed === 0) return `The last ${h.total} runs of this step (30 days) all succeeded.`;
+  return `${h.failed} of the last ${h.total} runs of this step failed (30 days)${h.lastSuccess ? ` — last success ${d(h.lastSuccess)}` : ""}.`;
 }
 
 function JobDetail({ job, loader, orgUrl }) {
-  const [d, setD] = useState(null);
+  const [d, setD] = useState(null);       // the job + its step (fast: two reads by id)
+  const [runs, setRuns] = useState(null); // the step's recent runs (a search — can take a while)
   const [traces, setTraces] = useState([]);
   const [err, setErr] = useState("");
   useEffect(() => {
     let alive = true;
-    loader.jobDetail(job).then(x => { if (alive) setD(x); }, e => { if (alive) setErr(e.message || String(e)); });
+    setRuns(null);
+    loader.jobInfo(job).then(x => {
+      if (!alive) return;
+      setD(x);
+      loader.jobRuns(job, { autoDelete: !!x.step?.asyncAutoDelete }).then(r => { if (alive) setRuns(r); });
+    }, e => { if (alive) setErr(e.message || String(e)); });
     Promise.all((job.traceIds || []).map(id => loader.traceDetail(id).catch(e => ({ error: e.message })))).then(t => { if (alive) setTraces(t); });
     return () => { alive = false; };
   }, [job.asyncoperationid, job.statecode, loader]); // re-read when the job finishes
@@ -69,7 +79,7 @@ function JobDetail({ job, loader, orgUrl }) {
   const link = orgUrl ? `${orgUrl}/main.aspx?etn=asyncoperation&id=${job.asyncoperationid}&pagetype=entityrecord` : null;
   const copy = () => copyText([
     `${job.name} — ${st}`, `started ${job.startedon || "?"} · ended ${job.completedon || "?"} · retries ${d?.facts?.retries ?? job.retrycount ?? 0}`,
-    d?.history ? historyText(d.history) : "", d?.step ? `step: ${d.step.name} (${d.step.mode}, runs as ${d.step.runAs})` : "",
+    runs?.history ? historyText(runs.history) : "", d?.step ? `step: ${d.step.name} (${d.step.mode}, runs as ${d.step.runAs})` : "",
     msg ? `── Message ──\n${msg}` : "", ...traces.map(t => (t.trace || t.exception ? `── Trace ──\n${t.trace || ""}${t.exception ? "\n" + t.exception : ""}` : "")),
   ].filter(Boolean).join("\n"));
   return (
@@ -78,15 +88,16 @@ function JobDetail({ job, loader, orgUrl }) {
         {link && <a href={link} target="_blank" rel="noopener" style={{ ...bt(null, { fontSize: 11, padding: "2px 8px" }), textDecoration: "none" }}>Open in D365 ↗</a>}
         <button onClick={copy} style={bt(null, { fontSize: 11, padding: "2px 8px" })}>⧉ Copy</button>
       </div>
-      {!d && !err && <div style={{ color: C.txd }}><Spin s={10} /> Loading the job, its step and its history…</div>}
+      {!d && !err && <div style={{ color: C.txd }}><Spin s={10} /> Loading the job and its step…</div>}
       {err && <div style={{ color: C.rd }}>{err}</div>}
       {d && (<>
         <div style={{ color: C.txm }}>
           Started {job.startedon ? new Date(job.startedon).toLocaleTimeString() : "—"} · ended {job.completedon ? new Date(job.completedon).toLocaleTimeString() : "—"}
           {` · retries ${d.facts.retries ?? job.retrycount ?? 0}`}{d.facts.owner ? ` · on behalf of ${d.facts.owner}` : ""}
         </div>
-        {d.history && <div style={{ color: d.history.streak >= 2 ? C.rd : C.txm, marginTop: 4, fontWeight: d.history.streak >= 2 ? 600 : 400 }}>{historyText(d.history)}</div>}
-        {d.errors.history && <div style={{ color: C.txd, marginTop: 4 }}>History unavailable: {d.errors.history}</div>}
+        {!runs && <div style={{ color: C.txd, marginTop: 4 }}><Spin s={10} /> Reading this step's runs of the last 30 days…</div>}
+        {runs?.history && <div style={{ color: runs.history.streak >= 2 && !runs.history.autoDelete ? C.rd : C.txm, marginTop: 4, fontWeight: runs.history.streak >= 2 && !runs.history.autoDelete ? 600 : 400 }}>{historyText(runs.history)}</div>}
+        {runs?.error && <div style={{ color: C.txd, marginTop: 4 }}>This step's history couldn't be read: {runs.error}</div>}
         <StepFacts step={d.step} />
         {d.errors.step && <div style={{ color: C.txd }}>Step unavailable: {d.errors.step}</div>}
         {hint && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 5, background: C.yw + "14", color: C.yw }}>💡 {hint}</div>}
