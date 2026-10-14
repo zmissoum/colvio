@@ -12,6 +12,19 @@ Paste-ready plain text, refreshed for v1.11.174 (Teams, Storage, native SQL, dat
 
 The full feature-by-feature reference lives in README.md; the store text stays short enough to be read.
 
+## Privacy practices — permission justifications (Developer Dashboard › Privacy tab)
+
+Paste one per permission. New in v1.11.178: `webRequest`, `alarms` (neither shows an install warning; the host permissions are unchanged).
+
+- **scripting** — Injects Colvio's API proxy script into the user's Dynamics 365 tab, so requests run with the user's own session.
+- **storage** — Keeps saved queries, history, templates and a metadata cache locally, and (session memory only) the list of saves Record activity shows.
+- **declarativeContent** — Enables the toolbar icon on Dynamics 365 pages only.
+- **webRequest** — Observes, read-only, the Web API writes the user's Dynamics 365 tab sends (form saves), so Record activity can show what each save triggered (plug-ins, jobs, flows). Only the record, column names, status and timing are kept, in session memory; requests are never blocked, modified or sent elsewhere.
+- **alarms** — Sets the org's plug-in trace log back to its previous value at the time the user chose after turning on full logging.
+- **Host permissions (*.dynamics.com, *.microsoftdynamics.us, *.dynamics.cn)** — Colvio only talks to the user's own Dynamics 365 / Dataverse environment.
+
+Single purpose: a toolkit to explore, inspect, load and audit the user's own Dynamics 365 / Dataverse data. No data collection, no remote code, no third-party server.
+
 ## Category
 Developer Tools
 

@@ -56,6 +56,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Responsive **multi-column grid** that fills the screen (even 400+ field records stay readable): Logical Name, label, type, value
 - Filter columns, toggle empty/custom-only, clickable lookup links, copy a single field or full JSON
 - **Inline field editing** — a ✎ pencil on every writable field lets you PATCH a value straight through the API, even when the form marks it read-only (text, numbers, yes/no, dates, option sets); field-level security and privileges still enforced server-side, confirmation on production
+- **Record activity** — save the record in its D365 tab and see what each save triggered: plug-in execution chains (stage, class, duration, cascades, exceptions, full trace on click), the record's system jobs, and the cloud flows whose Dataverse trigger watches the table — triggered / may trigger / won't trigger with the reason, and their runs. Saves are observed read-only by the service worker (column names only, never values, session memory), traces matched by the response's request id when possible; auto-refresh only while something is still running; a "log every plug-in for 30 min" switch that reverts by itself
 - **Business Process Flow manager** (System Administrators) — lists every BPF instance on the record, including finished ones the form has locked: reopen, move to any stage, finish or abort (Colvio resolves the flow's real underlying table for the write)
 
 ### Metadata Browser

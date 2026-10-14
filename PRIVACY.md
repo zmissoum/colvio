@@ -1,6 +1,6 @@
 # Privacy Policy — Colvio for Dynamics 365
 
-**Last updated: March 26, 2026**
+**Last updated: October 14, 2026**
 
 ## Overview
 
@@ -32,6 +32,8 @@ Colvio stores the following data **locally in your browser only** (via `chrome.s
 | Theme preference | Dark/Light mode setting | Until changed |
 | Language preference | EN/FR interface language | Until changed |
 | Onboarding status | Track if first-launch tour was completed | Permanent |
+| Record activity saves (`chrome.storage.session`) | The writes your Dynamics 365 tab sent (record id, table, **column names only — never values**, status, timing, request ids), so Show All Data can show what each save triggered | Memory only — cleared when the browser closes (200 per environment at most) |
+| Trace log revert | The previous plug-in trace log setting to restore after a debugging session you started | Until restored |
 
 This data never leaves your browser and is only accessible to the Colvio extension. Imported CSV/Excel file contents are processed in memory only and are never persisted.
 
@@ -46,6 +48,8 @@ Colvio accesses your Dynamics 365 environment using your existing browser sessio
 | `scripting` | Inject the API proxy script into the D365 tab |
 | `storage` | Store saved queries, history, and metadata cache locally |
 | `declarativeContent` | Show/hide the extension icon based on URL |
+| `webRequest` | **Observe** (read-only) the Web API writes your Dynamics 365 tab sends, so Record activity can list each save and find what it triggered — requests are never blocked, modified or sent anywhere |
+| `alarms` | Set the plug-in trace log back to its previous value at the time you chose |
 | `host_permissions: *.dynamics.com` | Execute API calls to Dynamics 365 servers |
 
 ## Data Deletion

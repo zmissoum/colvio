@@ -1198,6 +1198,38 @@ export const bridge = {
     return new Set((list || []).map(u => String(u.id).toLowerCase()));
   },
 
+  // ── Record activity ──
+  // The writes background.js saw for this org during the browser session (chrome.storage.session).
+  async getRecordSaves() {
+    if (!isExtension) return [];
+    const key = `saves|${getOrgUrl()}`;
+    try { return (await chrome.storage.session.get(key))[key] || []; } catch { return []; }
+  },
+  onRecordSaves(cb) {
+    if (!isExtension) return () => {};
+    const key = `saves|${getOrgUrl()}`;
+    const fn = (changes, area) => { if (area === "session" && changes[key]) cb(changes[key].newValue || []); };
+    try { chrome.storage.onChanged.addListener(fn); } catch { return () => {}; }
+    return () => { try { chrome.storage.onChanged.removeListener(fn); } catch { /* page closing */ } };
+  },
+  // A pending "back to the previous trace log setting" for this org: { orgId, prev, at, lastError? }.
+  async getTraceRevert() {
+    if (!isExtension) return null;
+    const key = `traceRevert|${getOrgUrl()}`;
+    try { return (await chrome.storage.local.get(key))[key] || null; } catch { return null; }
+  },
+  async scheduleTraceRevert(job) {
+    if (!isExtension) return;
+    const org = getOrgUrl();
+    await chrome.storage.local.set({ [`traceRevert|${org}`]: job });
+    chrome.alarms.create(`colvioTraceRevert|${org}`, { when: job.at });
+  },
+  async clearTraceRevert() {
+    if (!isExtension) return;
+    const org = getOrgUrl();
+    try { await chrome.storage.local.remove(`traceRevert|${org}`); await chrome.alarms.clear(`colvioTraceRevert|${org}`); } catch { /* nothing scheduled */ }
+  },
+
   // ── Security Audit ──
   async getAllRoles() {
     if (!isExtension) return [

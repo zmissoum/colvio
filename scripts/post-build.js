@@ -11,6 +11,8 @@ const root = resolve(__dirname, "..");
 const dist = resolve(root, "dist");
 
 const files = ["manifest.json", "background.js", "content.js"];
+// Pure modules the service worker imports (background.js is an ES module): src/x.js → dist/x.js
+const moduleFiles = ["saveCapture.js"];
 const dirs = ["icons"];
 
 console.log("📦 Copy static files to dist/...");
@@ -25,6 +27,12 @@ for (const file of files) {
   } else {
     console.warn(`  ⚠ ${file} not found`);
   }
+}
+
+for (const file of moduleFiles) {
+  const src = resolve(root, "src", file);
+  if (existsSync(src)) { cpSync(src, resolve(dist, file)); console.log(`  ✓ ${file} (service worker module)`); }
+  else console.warn(`  ⚠ src/${file} not found — the service worker will fail to load`);
 }
 
 // Copy directories

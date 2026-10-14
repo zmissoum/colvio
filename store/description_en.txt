@@ -16,7 +16,7 @@ DATA
 • Data Explorer — query any table with a visual Builder, OData, FetchXML or SQL. No 5,000-row cap, virtual scrolling on 10k+ rows, AND/OR filter groups, relational filters ("accounts with no open opportunity"), parent and child expands. Edit cells in place, or bulk update / delete on a fast $batch pipeline — values typed and validated against the column's metadata, lookups included. Duplicate finder, query tabs, history, saved queries, Excel / CSV / JSON exports.
 • Data Loader — CSV, TSV or Excel in; CREATE, UPSERT (GUID or alternate key), UPDATE-only and DELETE. Parallel $batch (about 3–4k records per second), a live per-row log with the exact Dataverse error, label → option value transforms, EU / US dates, mapping templates. Safety net: dry run, rollback of what a run created, delta mode, pre-flight checks, retry of transient failures only, optional bypass of custom plug-ins and workflows.
 • Recycle Bin — restore deleted records server-side, with who deleted them and every platform limitation explained.
-• Show All Data — every field of the record open in your tab, with logical names and types, editable in place (field security still enforced). Field-level change history, and a Business Process Flow manager for admins.
+• Show All Data — every field of the record open in your tab, with logical names and types, editable in place (field security still enforced). Record activity: save the record and see what it triggered — plug-in chains, system jobs, and which cloud flows run or not, and why. Field-level change history, and a Business Process Flow manager for admins.
 
 DEVELOP
 • API Tester — a Postman for Dataverse with automatic authentication: GET / POST / PATCH / PUT / DELETE, header autocomplete, JSON editor with validation, templates, a history with secrets redacted, copy as cURL.
@@ -31,7 +31,7 @@ DEVELOP
 ADMIN
 • Users & Licenses — access mode, license type, roles, last sign-in; unused licenses at a glance. Bulk settings: email tracking, time zone, language, currency and mailbox sync options for many users at once, with readable values and a per-user result.
 • Business Units — hierarchy tree and org chart, members, bulk moves by pasting a list of emails.
-• Security Audit — role privileges in plain words, a table × operation matrix, sensitive rights flagged, who holds each role (users and teams), and an org-wide "who can do what" scan. Bulk role assignment.
+• Security Audit — role privileges in plain words, a table × operation matrix, sensitive rights flagged, who holds each role (users and teams), an org-wide "who can do what" scan, and the roles that hold any one privilege (Export to Excel, Bulk Delete…). Bulk role assignment.
 • Teams — owner, Entra group and access teams, their members and their inherited roles.
 • Adoption — access events, DAU / WAU / MAU and stickiness, adoption per business unit, paid seats that never sign in, and a 5-slide PowerPoint report with native charts.
 • Login History — each user's access timeline from the user-access audit, app vs web services (API).

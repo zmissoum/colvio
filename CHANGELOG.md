@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.178] — 2026-10-14
+### Added — Show All Data › Record activity: what each save of the record triggered
+- Save a record in its Dynamics 365 tab and Show All Data lists that save — time, kind (saved / created / deleted / bound action), outcome (HTTP status and duration, or the failure), the columns sent (by their labels) — with what it set off:
+  - **Plug-ins**, as execution chains in order: stage (pre-validation / pre-operation / post-operation / asynchronous, from each trace's step), class, duration, cascades on other tables indented under their depth, the exception message in red; click a row for the full trace text and exception, with Copy.
+  - **System jobs** of the record (asynchronous plug-ins, classic workflows): state and duration, the failure message when one fails.
+  - **Cloud flows** whose Dataverse trigger watches the table (`callbackregistration`): *Triggered* / *May trigger* (row filter, owner scope) with their run (flowrun: status, duration, error), and *Won't trigger* with the reason — none of its trigger columns were sent (a plug-in could still change them), triggers on add only, flow turned off, or the save failed (nothing committed).
+- How a save is found: the background service worker OBSERVES the D365 tab's Web API writes (new `webRequest` permission — read-only: nothing is blocked, changed or sent) and keeps, per org and in session memory only, the record, the column NAMES (never the values), the status, the response's request ids and the server clock. Traces are matched exactly when the response's request id is on a trace or through the record's own system jobs, otherwise by server time on the table (said on screen). A record's jobs and flow runs are only credited to a save until the record's next save.
+- Refreshes on its own only while a job or a run is still going (2 → 5 → 10 → 30 s, 10 minutes at most, paused while the panel tab is hidden); otherwise ↻ Refresh.
+- **Trace log switch**: the org's plug-in trace log setting is shown (Off / Exceptions only / All); "Log every plug-in for 15 / 30 / 60 min" sets it to All after a confirmation (and the production one) and sets it back by itself (new `alarms` permission — the revert goes through a tab of that org and retries every 5 minutes if none is open), with Revert now.
+- Demo mode: three saves of the demo account run through the real matching code against a fake org (an asynchronous plug-in and a flow finish a few seconds later). Pure `saveCapture.js`, `recordActivity.js`, `recordActivityLoader.js` (query injected) and `recordActivityDemo.js` — 33 tests; the built service worker was run under a mocked Chrome API.
+
 ## [1.11.177] — 2026-10-13
 ### Added — Security Audit: list the roles that hold a privilege
 - A "Has privilege…" picker above the role list: type a few words ("export excel", "read account", "bulk") and pick any privilege of the org — table rights and the miscellaneous ones (Export to Excel, Bulk Delete, Publish, Act on behalf of another user…) that the Org-wide view, built on table operations, never covered. The list keeps only the roles that hold it, widest depth first, each with its depth pie; a minimum depth narrows it (Business Unit and wider … Organization only), the Custom / Managed chips and the search still apply, and what's listed exports to CSV / Excel.

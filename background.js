@@ -3,7 +3,9 @@
  *
  * Colvio — Click icon to open panel in new tab
  * Relay API calls between Colvio (tab B) and D365 content script (tab A)
+ * Record activity: observe (read-only) the Web API writes a D365 tab sends
  */
+import { startSave, finishSave, addSave } from "./saveCapture.js";
 
 let d365TabId = null;
 // Tab ids the browser swapped out from under us (memory-saver discard can REPLACE a tab: same
@@ -155,3 +157,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((id) => { if (id === d365TabId) d365TabId = null; });
+
+// ── Record activity: the saves each D365 tab sends ───────────
+// chrome.webRequest only LOOKS at the org's Web API writes (form saves, ribbon actions, Colvio's own
+// edits) — nothing is blocked, changed or sent anywhere. Each one is kept per org in
+// chrome.storage.session (memory only, gone when the browser closes): the record, the column NAMES
+// sent (never the values), the status, the request ids and the timing. The panel's Record activity
+// reads them to find what each save triggered.
+const API_FILTER = { urls: D365_DOMAINS.map(d => `https://*${d}/api/data/*`), types: ["xmlhttprequest"] };
+const openSaves = new Map(); // webRequest requestId → save on its way
+let saveQueue = Promise.resolve(); // one read-modify-write at a time
+const storeSave = (save) => {
+  saveQueue = saveQueue.then(async () => {
+    const key = `saves|${save.origin}`;
+    const cur = (await chrome.storage.session.get(key))[key] || [];
+    await chrome.storage.session.set({ [key]: addSave(cur, save) });
+  }).catch(() => { /* storage unavailable — the panel just won't list this save */ });
+};
+chrome.webRequest.onBeforeRequest.addListener((d) => {
+  const s = startSave(d);
+  if (!s) return;
+  if (openSaves.size > 500) openSaves.clear(); // requests that never completed (tab killed mid-flight)
+  openSaves.set(s.key, s);
+}, API_FILTER, ["requestBody"]);
+const closeSave = (d) => {
+  const s = openSaves.get(String(d.requestId));
+  if (!s) return;
+  openSaves.delete(s.key);
+  storeSave(finishSave(s, d));
+};
+chrome.webRequest.onCompleted.addListener(closeSave, API_FILTER, ["responseHeaders"]);
+chrome.webRequest.onErrorOccurred.addListener(closeSave, API_FILTER);
+
+// ── Plug-in trace log: back to the previous setting ──────────
+// Record activity can switch the org's trace log to "All" for a debugging session; the panel stores
+// { orgId, prev, at } and sets an alarm. When it fires, the previous value is written back through a
+// tab of that org. No tab open → retried every 5 minutes (the panel shows the pending revert).
+const TRACE_REVERT = "colvioTraceRevert|";
+async function revertTraceSetting(orgUrl) {
+  const key = `traceRevert|${orgUrl}`;
+  const job = (await chrome.storage.local.get(key))[key];
+  if (!job) return;
+  const resp = await relayToD365({ orgUrl, action: "update", params: { entitySet: "organizations", id: job.orgId, data: { plugintracelogsetting: job.prev } } });
+  if (resp && !resp.error) { await chrome.storage.local.remove(key); return; }
+  await chrome.storage.local.set({ [key]: { ...job, lastError: (resp && resp.error) || "no answer from the D365 tab", lastTry: Date.now() } });
+  chrome.alarms.create(TRACE_REVERT + orgUrl, { delayInMinutes: 5 });
+}
+chrome.alarms.onAlarm.addListener((a) => { if (a.name.startsWith(TRACE_REVERT)) revertTraceSetting(a.name.slice(TRACE_REVERT.length)); });
