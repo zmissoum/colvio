@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.181] — 2026-10-14
+### Changed — the "What's new" card is rewritten for the users coming from the store's 1.11.176
+- The Chrome Web Store now serves 1.11.176, so its users already saw Teams, Storage, native SQL, Bulk settings and the rest. The card now lists only what this update brings them: Record activity (what a save triggered — plug-ins, system jobs, flows), the failure details (full error, the step, its recent runs, what a 401 means, flow runs in Power Automate), the self-reverting "Log every plug-in" switch, the Security privilege filter, and a plain statement of what the new read-only observation of the tab's requests keeps (record + column names, never values, memory only). EN + FR.
+
 ## [1.11.180] — 2026-10-14
 ### Fixed — a system job's detail stayed on "Loading the job, its step and its history…" (seen live)
 - The step's history searched the system job table on the step lookup alone, with no time bound — on a real org that table holds millions of rows. It now searches by job name + step over the last 30 days, and the detail shows in two parts: the job and its step at once (two reads by id), the runs when they arrive, with their own spinner and, if the search fails, the reason.
