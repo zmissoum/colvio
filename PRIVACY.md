@@ -6,9 +6,14 @@
 
 Colvio is a free, open-source Chrome extension that helps users explore, query, export and load data from Microsoft Dynamics 365 / Dataverse environments. This privacy policy explains how Colvio handles your data.
 
-## Data Collection
+## Data Handling
 
-**Colvio does not collect, transmit, or store any personal data.**
+**Colvio does not transmit, sell or share any data. Everything it reads from your Dynamics 365 environment is processed in your browser, and what it keeps stays there.**
+
+What Colvio handles — locally, on your device (the same categories are declared in the Chrome Web Store privacy section):
+
+- **Website content** — the data of your own Dynamics 365 / Dataverse environment that you choose to look at: records, users, security roles, metadata, logs. It is displayed, exported only to files you download yourself, and cached locally as described under *Data Storage*.
+- **User activity (your Dynamics 365 tab's network requests)** — for Record activity, Colvio observes, read-only, the Web API writes your Dynamics 365 tab sends to your own environment (a form save, for instance): the record, the table, the **column names — never their values** —, the status, the timing and the request ids. They are kept in session memory and cleared when the browser closes. Requests are never blocked, modified, or sent anywhere.
 
 Specifically:
 
@@ -20,7 +25,7 @@ Specifically:
 
 ## Data Storage
 
-Colvio stores the following data **locally in your browser only** (via `chrome.storage.local` and `localStorage`):
+Colvio stores the following data **locally in your browser only** (via `chrome.storage.local`, `chrome.storage.session` and `localStorage`):
 
 | Data | Purpose | Retention |
 |------|---------|-----------|
