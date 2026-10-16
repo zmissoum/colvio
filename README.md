@@ -27,12 +27,12 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Query Builder** — visual SELECT, WHERE (AND/OR groups, 14 operators), EXPAND (parent + child), ORDER BY, LIMIT (defaults to **All** — lower it for a quick preview)
 - **Relational filters (REL)** — filter the ROOT rows by related records, Advanced-Find style: conditions on a parent's fields (`primarycontactid/emailaddress1 contains…`) or has-at-least-one / **has-none** children with conditions (`not opportunity_…/any(o:o/statecode eq 0)` — "accounts with no open opportunity"); the generated OData is shown in the preview
 - **FetchXML mode** — textarea with 3 templates (simple, inner join, aggregation) + paging cookie pagination
-- **OData mode** — raw OData URL editing
+- **OData mode** — raw OData URL editing; **paste any OData query or full Web API URL** (from the browser, Postman, XrmToolBox — even another environment's) and Colvio opens its table, also before any table is picked
 - **Column sorting** — click any header to sort ASC/DESC
 - **Inline edit** — double-click any cell to PATCH the value directly in D365 — **typed by the field's metadata**: numbers, booleans, option values, dates and GUIDs validated *before* sending; **lookups edited properly via `@odata.bind`** (paste the target record's GUID, empty clears; polymorphic lookups get a target-table picker) with readable refusals instead of cryptic server 400s
 - **Virtual scrolling** — 60fps on 10,000+ records (only ~35 rows rendered), with a **sticky horizontal scrollbar** pinned to the window bottom on wide results
 - **Auto-pagination** with live timer and Stop button
-- **Saved queries** — persist across sessions (20 max)
+- **Saved queries** — persist across sessions (20 max); the loaded one shows next to ⭐ with a one-click **Update** that overwrites it, and saving under an existing name says it replaces it
 - **Query History** — auto-save last 20 queries, 1-click reload; **Builder queries restore into the Builder** (columns, condition fields + operators, sort, limit — condition *values* are never persisted, by privacy design)
 - **Query Templates** — 5 pre-built queries for common consultant tasks
 - **Bulk Update** — select records and PATCH a field on all, with the same metadata-typed conversion and pre-send refusals as inline edit

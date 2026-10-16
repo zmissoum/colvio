@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { normalizeODataInput, entityForSet, displayODataPath, looksLikeOData } from "../odataPaste.js";
 import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
@@ -52,6 +53,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[showTemplates,setShowTemplates]=useState(false);
   const[saveModal,setSaveModal]=useState(false);
   const[saveName,setSaveName]=useState("");
+  // The saved query currently loaded (its name shows next to ⭐, with a one-click Update).
+  const[activeSaved,setActiveSaved]=useState(null);
+  const[savedFlash,setSavedFlash]=useState("");
+  const[runNote,setRunNote]=useState("");   // info under the toolbar (e.g. a pasted URL from another environment)
+  const[pasteQ,setPasteQ]=useState("");     // "paste an OData query" box shown before any table is picked
+  const[pasteErr,setPasteErr]=useState("");
   const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
   const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
   const[bookmarks,setBookmarks]=useState([]);
@@ -96,7 +103,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
   const saveCurrentQuery=()=>{
     if(!ent) return;
-    setSaveName("");setSaveModal(true);
+    setSaveName(activeSaved||"");setSaveModal(true);
   };
   const doSaveQuery=(name)=>{
     if(!name||!ent) return;
@@ -104,6 +111,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setSavedQueries([q,...savedQueries.filter(s=>s.name!==name)].slice(0,20));
     persistList("d365_saved_queries",cur=>[q,...cur.filter(s=>s.name!==name)].slice(0,20));
     setSaveModal(false);
+    setActiveSaved(name);setSavedFlash(name);setTimeout(()=>setSavedFlash(""),1600);
   };
 
   const loadSavedQuery=(q)=>{
@@ -113,7 +121,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       // ordering (set callback, then selEnt) let "load query A, click entity B before A's fields
       // resolve" apply A's whole config — including rel filters — onto entity B.
       selEnt(match);
-      onFieldsReady.current=()=>{
+      afterFields(()=>{
+        setActiveSaved(q.name);
         setSf(q.fields||[]);
         setFilterGroups(q.filterGroups||[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
         setGroupLogic(q.groupLogic||"and");
@@ -149,7 +158,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             }catch{return null;}
           })).then(list=>{if(selGen.current===g2)setExpands(list.filter(Boolean));});
         }
-      };
+      });
     } else {
       setError(`The saved query's table "${q.entity}" no longer exists on this org.`);
     }
@@ -157,6 +166,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
 
   const deleteSavedQuery=(name)=>{
+    if(name===activeSaved) setActiveSaved(null);
     setSavedQueries(savedQueries.filter(s=>s.name!==name));
     persistList("d365_saved_queries",cur=>cur.filter(s=>s.name!==name));
   };
@@ -216,6 +226,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setExpands([]);setLookups([]);setShowExpandPicker(false);setChildRelsLoaded(false);
     setRelFilters([]);setShowRelPicker(false);setRelSearch(""); // relational filters belonged to the OLD entity
     setRq("");setFxml("");setSqlQ(""); // raw query text belonged to the previous entity — clear it so a switch can't run against the wrong table
+    setActiveSaved(null);setRunNote(""); // a saved query / pasted URL belonged to the previous selection
     if(bp.mobile)setShowList(false);
     if(isLive){
       setLoadingFields(true);setSf([]);setFields([]);
@@ -261,6 +272,25 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     }
   };
 
+  // Run cb once the selected table's fields are loaded. Live: after the async metadata fetch
+  // (onFieldsReady). Demo: selEnt fills the fields synchronously and never fires the callback — so
+  // run it now (saved queries and templates used to do nothing in demo mode).
+  const afterFields=(cb)=>{ if(isLive) onFieldsReady.current=cb; else cb(); };
+
+  // A pasted OData query / URL → OData mode on ITS table (switching table when needed).
+  const openODataPath=(n)=>{
+    const match=entityForSet(entities,n.entitySet);
+    const apply=()=>{setQm("odata");setRq(displayODataPath(n.path));setRunNote(n.foreignHost?`This URL came from ${n.host} — it runs on this environment.`:"");};
+    if(match&&match.l!==ent?.l){selEnt(match);afterFields(apply);}
+    else apply(); // same table — or a set Colvio doesn't list, which still runs as typed
+  };
+  const openPasted=()=>{
+    const n=normalizeODataInput(pasteQ,orgInfo?.orgUrl);
+    if(n.error){setPasteErr(n.error);return;}
+    if(!entityForSet(entities,n.entitySet)){setPasteErr(`No table with the entity set "${n.entitySet}" on this org.`);return;}
+    setPasteErr("");setPasteQ("");openODataPath(n);
+  };
+
   // Consume a view's FetchXML handed off by the Apps module ("Open in Explorer"). Ref-held
   // handler so the mount-once listener always sees current entities/selEnt; only the ACTIVE
   // query tab consumes the one-shot slot (every tab instance stays mounted and hears the event).
@@ -273,7 +303,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     window.__colvioPendingQuery=null;
     selEnt(match);
     const apply=()=>{setQm("fetchxml");setFxml(d.fetchxml);};
-    if(isLive) onFieldsReady.current=apply; else apply(); // demo: selEnt sets fields synchronously, the callback never fires
+    afterFields(apply);
   };
   useEffect(()=>{
     const h=()=>openHandoffRef.current&&openHandoffRef.current();
@@ -957,12 +987,16 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       // The history redacts filter VALUES to "$filter=..." (they're never persisted — privacy).
       // Executing the placeholder verbatim gets Dataverse's cryptic "Expression expected at
       // position 0 in '…'" — explain it here instead of letting the 400 do the talking.
-      if(/\$filter=\.\.\.(&|$)/.test(rq)){setError('This query came from the history, where filter VALUES are never stored (privacy). Replace "$filter=..." with your condition — or delete that clause to run unfiltered. Use Saved Queries (💾) to keep complete filters.');return;}
+      if(/\$filter=\.\.\.(&|$)/.test(rq)){setError('This query came from the history, where filter VALUES are never stored (privacy). Replace "$filter=..." with your condition — or delete that clause to run unfiltered. Use Saved Queries (⭐) to keep complete filters.');return;}
       setLoading(true);
       const t0=Date.now();
       try{
         // Send the raw OData path directly — no parsing/reconstruction needed
-        const raw=rq.trim().replace(/^GET\s+\/api\/data\/v\d+\.\d+\//i,"").replace(/[\r\n]+/g,"");
+        // Any form: "GET /api/data/v9.2/…", a full URL (this org or another), "/api/data/…", "accounts?…".
+        const norm=normalizeODataInput(rq,orgInfo?.orgUrl);
+        if(norm.error){setError(norm.error);setLoading(false);return;}
+        const raw=norm.path;
+        setRunNote(norm.foreignHost?`This URL came from ${norm.host} — it ran on this environment.`:"");
         const qIdx=raw.indexOf("?");
         const entitySet=qIdx>-1?raw.substring(0,qIdx):raw;
         const data=await bridge.queryRaw(raw);
@@ -1139,7 +1173,19 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       )}
       <div style={{flex:1,overflow:"auto",minWidth:0}}>
         {error&&<div style={{padding:"8px 12px",background:C.rd+"22",borderBottom:`1px solid ${C.rd}33`,color:C.rd,fontSize:13,display:"flex",alignItems:"center",gap:6,position:"sticky",top:0,zIndex:3}}>⚠ {error}<button onClick={()=>setError("")} style={{background:"none",border:"none",color:C.rd,cursor:"pointer",marginLeft:"auto"}}><I.X/></button></div>}
-        {!ent&&!bp.mobile?<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:C.txd}}><I.Database/><span style={{marginLeft:8}}>Select an entity</span></div>
+        {runNote&&<div style={{padding:"6px 12px",background:C.cy+"14",borderBottom:`1px solid ${C.cy}33`,color:C.cy,fontSize:12.5,display:"flex",alignItems:"center",gap:6}}>ℹ {runNote}<button onClick={()=>setRunNote("")} style={{background:"none",border:"none",color:C.cy,cursor:"pointer",marginLeft:"auto"}}><I.X/></button></div>}
+        {!ent&&!bp.mobile?<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"70px 20px",color:C.txd}}>
+          <div style={{display:"flex",alignItems:"center"}}><I.Database/><span style={{marginLeft:8}}>Select an entity</span></div>
+          <div style={{width:"100%",maxWidth:580}}>
+            <div style={{fontSize:12.5,marginBottom:5}}>…or paste an OData query or a Web API URL — Colvio opens its table in OData mode:</div>
+            <textarea value={pasteQ} onChange={e=>{setPasteQ(e.target.value);setPasteErr("");}} onKeyDown={e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();openPasted();}}}
+              placeholder={"https://yourorg.crm.dynamics.com/api/data/v9.2/accounts?$select=name&$top=50"} style={inp({height:56,...mono,fontSize:12.5,resize:"vertical"})}/>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:6,flexWrap:"wrap"}}>
+              <button onClick={openPasted} disabled={!pasteQ.trim()} style={bt(C.vi,{fontSize:12,opacity:pasteQ.trim()?1:.5})}>Open in OData mode</button>
+              {pasteErr&&<span style={{fontSize:12,color:C.rd}}>{pasteErr}</span>}
+            </div>
+          </div>
+        </div>
         :ent?<>
           <div style={{borderBottom:`1px solid ${C.bd}`,padding:bp.mobile?10:12,background:C.sf}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
@@ -1174,7 +1220,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               </div>
               {showSqlFx&&sqlFx&&<pre style={{marginTop:6,padding:8,background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,fontSize:12,color:C.gn,overflow:"auto",maxHeight:160,...mono,whiteSpace:"pre-wrap"}}>{sqlFx}</pre>}
             </div>
-            :qm==="odata"?<textarea value={rq} onChange={e=>setRq(e.target.value)} placeholder={`GET /api/data/v9.2/${ent.p}?$select=name&$top=50`} style={inp({height:50,...mono,color:C.cy,resize:"vertical",fontSize:13})}/>
+            :qm==="odata"?<textarea value={rq} onChange={e=>setRq(e.target.value)}
+              onPaste={e=>{const txt=e.clipboardData?.getData("text")||"";if(!looksLikeOData(txt))return;const n=normalizeODataInput(txt,orgInfo?.orgUrl);if(n.error)return;e.preventDefault();openODataPath(n);}}
+              placeholder={`GET /api/data/v9.2/${ent.p}?$select=name&$top=50 — or paste a full Web API URL`} style={inp({height:50,...mono,color:C.cy,resize:"vertical",fontSize:13})}/>
             :<div style={{display:"flex",flexDirection:"column",gap:5}}>
 
               {/* ── SELECT — collapsible ── */}
@@ -1429,10 +1477,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               {qm==="sql"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sqlQ.replace(/\n/g," ").substring(0,100)}{sqlQ.length>100?"…":""}</code>}
               <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
                 <button onClick={run} disabled={loading||loadingFields} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> Execute <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
-                <button onClick={saveCurrentQuery} disabled={!ent} title="Save this query" style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
+                <button onClick={saveCurrentQuery} disabled={!ent} title={activeSaved?"Save as… (a new name, or overwrite one)":"Save this query"} style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
+                {activeSaved&&<span title={`Loaded from the saved query “${activeSaved}”`} style={{display:"flex",alignItems:"center",gap:4,fontSize:11.5,color:C.txm,border:`1px solid ${C.yw}44`,borderRadius:4,padding:"1px 2px 1px 8px",maxWidth:260}}>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📂 {activeSaved}</span>
+                  <button onClick={()=>doSaveQuery(activeSaved)} title={`Overwrite “${activeSaved}” with the current query`} style={{padding:"2px 7px",background:savedFlash===activeSaved?C.gn+"22":"transparent",border:`1px solid ${savedFlash===activeSaved?C.gn+"66":C.yw+"66"}`,borderRadius:3,color:savedFlash===activeSaved?C.gn:C.yw,cursor:"pointer",fontSize:11,whiteSpace:"nowrap"}}>{savedFlash===activeSaved?"✓ Saved":"💾 Update"}</button>
+                </span>}
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowTemplates(!showTemplates);setShowHistory(false);setShowSaved(false);}} style={{padding:"4px 8px",background:showTemplates?C.gn+"33":"transparent",border:`1px solid ${showTemplates?C.gn+"44":C.bd}`,borderRadius:4,color:showTemplates?C.gn:C.txm,cursor:"pointer",fontSize:12}} title="Query templates">📝 Templates</button>
-                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{selEnt(ent);onFieldsReady.current=()=>{setSf(fields);setFilterGroups(filters);};}} onClose={()=>setShowTemplates(false)}/>}
+                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{selEnt(ent);afterFields(()=>{setSf(fields);setFilterGroups(filters);});}} onClose={()=>setShowTemplates(false)}/>}
                 </div>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowHistory(!showHistory);setShowSaved(false);}} style={{padding:"4px 8px",background:showHistory?C.vi+"33":"transparent",border:`1px solid ${C.bd}`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12}} title="Query history">🕐{queryHistory.length>0?` ${queryHistory.length}`:""}</button>
@@ -1469,7 +1521,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                             else {setQm("odata");setRq(h.query||"");}
                             // Say it up front, not via a cryptic 400 later: the "..." isn't
                             // truncation, it's the privacy redaction of filter values.
-                            if(/\$filter=\.\.\./.test(h.query||"")) setError('ℹ Restored from history: filter VALUES are never stored there (privacy) — "$filter=..." is a placeholder, not truncation. Replace "..." with your condition, or delete the clause to run unfiltered. Use Saved Queries (💾) to keep complete filters.');
+                            if(/\$filter=\.\.\./.test(h.query||"")) setError('ℹ Restored from history: filter VALUES are never stored there (privacy) — "$filter=..." is a placeholder, not truncation. Replace "..." with your condition, or delete the clause to run unfiltered. Use Saved Queries (⭐) to keep complete filters.');
                           };
                           const match=h.entity&&h.entity!=="?"?entities.find(e2=>e2.l===h.entity):null;
                           if(match&&ent?.l!==match.l){
@@ -1501,12 +1553,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                       </div>
                       {importErr&&<div style={{padding:"6px 10px",fontSize:11,color:C.rd,borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",gap:6}}>⚠ {importErr}<button onClick={()=>setImportErr("")} style={{marginLeft:"auto",background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:11}}>✕</button></div>}
                       {savedQueries.map(q=>(
-                        <div key={q.name} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,cursor:"pointer"}} onClick={()=>loadSavedQuery(q)}
+                        <div key={q.name} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,borderLeft:`3px solid ${q.name===activeSaved?C.yw:"transparent"}`,cursor:"pointer"}} onClick={()=>loadSavedQuery(q)}
                           onMouseEnter={e=>e.currentTarget.style.background=C.sfh}
                           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13,fontWeight:500,color:C.tx}}>{q.name}</div>
-                            <div style={{fontSize:11,color:C.txd,...mono}}>{q.entity} • {q.fields?.length||0} columns</div>
+                            <div style={{fontSize:11,color:C.txd,...mono}}>{q.entity} • {q.qm==="odata"?"OData":q.qm==="fetchxml"?"FetchXML":q.qm==="sql"?"SQL":`${q.fields?.length||0} columns`}{q.savedAt?` • ${new Date(q.savedAt).toLocaleDateString()}`:""}{q.name===activeSaved?" • loaded":""}</div>
                           </div>
                           <button onClick={(ev)=>{ev.stopPropagation();deleteSavedQuery(q.name);}} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:2,fontSize:11}}>✕</button>
                         </div>
@@ -1524,9 +1576,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,minWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
           <div style={{fontSize:15,fontWeight:700,marginBottom:12,color:C.tx}}>{t("explorer.query_name")}</div>
           <input value={saveName} onChange={e=>setSaveName(e.target.value)} placeholder={t("explorer.query_name_placeholder")} autoFocus style={inp({fontSize:13,marginBottom:12,width:"100%",boxSizing:"border-box"})} onKeyDown={e=>{if(e.key==="Enter"&&saveName.trim())doSaveQuery(saveName.trim());if(e.key==="Escape")setSaveModal(false);}}/>
+          {savedQueries.some(s=>s.name===saveName.trim())&&<div style={{fontSize:12,color:C.yw,marginTop:-6,marginBottom:12}}>A saved query already has this name — saving replaces it.</div>}
           <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
             <button onClick={()=>setSaveModal(false)} style={bt(null,{fontSize:12})}>{t("common.cancel")}</button>
-            <button onClick={()=>doSaveQuery(saveName.trim())} disabled={!saveName.trim()} style={bt(saveName.trim()?C.vi:C.sfh,{fontSize:12,opacity:saveName.trim()?1:.5})}>{t("common.save")}</button>
+            <button onClick={()=>doSaveQuery(saveName.trim())} disabled={!saveName.trim()} style={bt(saveName.trim()?(savedQueries.some(s=>s.name===saveName.trim())?C.yw:C.vi):C.sfh,{fontSize:12,opacity:saveName.trim()?1:.5})}>{savedQueries.some(s=>s.name===saveName.trim())?"Overwrite":t("common.save")}</button>
           </div>
         </div>
       </div>}

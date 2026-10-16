@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.182] — 2026-10-16
+### Added — Explorer: update a saved query in one click, paste any OData query (a user's request)
+- **Saved queries**: the one you loaded shows next to ⭐ (📂 name) with **💾 Update**, which overwrites it with the current query in one click ("✓ Saved"). ⭐ still saves as a new name — prefilled with the loaded one — and the dialog now says when a name already exists ("saving replaces it", button **Overwrite**) instead of replacing it silently. The saved list marks the loaded query and shows each one's mode (OData / FetchXML / SQL / columns) and date. Switching table detaches it; deleting it too.
+- **Paste an OData query**: the OData box takes a full Web API URL (copied from the browser, Postman, XrmToolBox; %-encoded or not), "/api/data/v9.x/…", or a bare "accounts?$select=…". Pasting one opens ITS table (switching if needed) with the query cleaned up; a URL from another environment runs on this one and says so. Before any table is picked, the Explorer offers a paste box that does the same. Full URLs used to fail with "Invalid path". Pure `odataPaste.js` + 8 tests.
+
+### Fixed — saved queries and templates did nothing in demo mode
+- Their restore waited for a "fields loaded" callback that only the live path fires. One helper (`afterFields`) now runs it right away in demo, for saved queries, templates and the Apps "Open in Explorer" handoff alike.
+
 ## [1.11.181] — 2026-10-14
 ### Changed — the "What's new" card is rewritten for the users coming from the store's 1.11.176
 - The Chrome Web Store now serves 1.11.176, so its users already saw Teams, Storage, native SQL, Bulk settings and the rest. The card now lists only what this update brings them: Record activity (what a save triggered — plug-ins, system jobs, flows), the failure details (full error, the step, its recent runs, what a 401 means, flow runs in Power Automate), the self-reverting "Log every plug-in" switch, the Security privilege filter, and a plain statement of what the new read-only observation of the tab's requests keeps (record + column names, never values, memory only). EN + FR.
