@@ -41,6 +41,8 @@ import SchemaViewer from "./components/SchemaViewer.jsx";
 export default function App(){
   const[tab,setTab]=useState("explorer");
   const[connected,setConnected]=useState(false);
+  // Requests sent in the last 5 minutes vs Dataverse's per-user quota (the content script keeps the meter).
+  const[apiStats,setApiStats]=useState(null);
   const[connecting,setConnecting]=useState(false);
   const[sideOpen,setSideOpen]=useState(false);
   const[theme,setTheme]=useState(()=>{
@@ -224,6 +226,14 @@ export default function App(){
     if(connected&&tab&&!tabs.some(tb=>tb.id===tab)) setTab(tabs[0]?.id||"explorer");
     // deps intentionally partial (load-once semantics)
   },[connected,permsConfirmed,permissions,orgFeatures,tab]);
+  useEffect(()=>{
+    if(!connected||!orgInfo?.isExtension) return undefined;
+    let alive=true;
+    const tick=()=>bridge.getApiStats().then(s=>{if(alive&&s)setApiStats(s);}).catch(()=>{});
+    tick();
+    const id=setInterval(tick,5000);
+    return ()=>{alive=false;clearInterval(id);};
+  },[connected,orgInfo?.isExtension]);
   const paletteActions=[
     {label:t("palette.a_theme"),hint:"dark / light",icon:"🌓",run:toggleTheme},
     {label:t("palette.a_lang"),hint:"EN ⇄ FR",icon:"🌐",run:()=>{const next=getLocale()==="en"?"fr":"en";setLocale(next);setLocaleState(next);}},
@@ -292,8 +302,8 @@ export default function App(){
           </div>
           <div style={{color:C.txd,marginBottom:3,...mono,fontSize:11}}>{orgInfo?.orgName || "demo"}.{orgInfo?.region || "crm4"}.dynamics.com</div>
           <div style={{display:"flex",justifyContent:"space-between",color:C.txd}}>
-            <span>{t("footer.api_calls")}</span>
-            <span style={{color:C.gn}}>— / 60,000</span>
+            <span title="Requests Colvio sent to this environment in the last 5 minutes, against Dataverse's service protection quota (per user). Above 90 % Colvio waits for the window to slide instead of being refused." style={{cursor:"help"}}>{t("footer.api_calls")} (5 min)</span>
+            <span style={{color:apiStats?(apiStats.last5min>=apiStats.paceAt?C.rd:apiStats.last5min>=apiStats.limit*0.6?C.yw:C.gn):C.txd,...mono}} title={apiStats?.pacedMs?`Paced for ${Math.round(apiStats.pacedMs/1000)} s this session to stay under the quota`:undefined}>{apiStats?`${apiStats.last5min.toLocaleString()} / ${apiStats.limit.toLocaleString()}`:"— / 6,000"}</span>
           </div>
           <button onClick={async()=>{await bridge.clearCache();window.location.reload();}} style={{marginTop:6,width:"100%",padding:"3px 0",background:"transparent",border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:10}}>🔄 {t("footer.clear_cache")}</button>
         </div>

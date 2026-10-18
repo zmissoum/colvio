@@ -105,6 +105,36 @@
     }
   };
 
+  // ── API meter and pacing ───────────────────────────────────
+  // Dataverse service protection: ~6,000 requests per user per 5-minute sliding window (each
+  // operation inside a $batch counts). Every request Colvio sends is logged here; above 90 % of the
+  // quota the next request WAITS for the window to slide instead of hitting a 429 and its back-off.
+  // The panel reads the meter (getApiStats) for its sidebar.
+  const API_WINDOW_MS = 300000, API_LIMIT = 6000, API_PACE_AT = 5400;
+  const apiLog = [];
+  let apiTotal = 0, apiPacedMs = 0;
+  const apiTrim = (now) => { while (apiLog.length && apiLog[0] < now - API_WINDOW_MS) apiLog.shift(); };
+  async function apiPace(n = 1) {
+    let now = Date.now();
+    apiTrim(now);
+    if (apiLog.length + n > API_PACE_AT) {
+      // wait until enough of the oldest entries leave the window
+      const idx = Math.min(apiLog.length - 1, apiLog.length + n - API_PACE_AT - 1);
+      const waitMs = Math.max(0, apiLog[Math.max(0, idx)] + API_WINDOW_MS - now);
+      if (waitMs > 0) { await new Promise(r => setTimeout(r, Math.min(waitMs, 60000))); apiPacedMs += Math.min(waitMs, 60000); now = Date.now(); apiTrim(now); }
+    }
+    for (let i = 0; i < n; i++) apiLog.push(now);
+    apiTotal += n;
+  }
+  const batchOps = (body) => Math.max(1, (String(body || "").match(/Content-Type: application\/http/g) || []).length);
+
+  // Annotations: formatted values and lookup table names are what the UI shows; the paging cookie
+  // and record-count annotations drive FetchXML paging. associatednavigationproperty — one more
+  // string per lookup per row — is read nowhere, so it isn't requested (smaller pages). Callers
+  // reading ids only opt out of annotations altogether with NO_ANN.
+  const ANNOTATIONS = "OData.Community.Display.V1.FormattedValue,Microsoft.Dynamics.CRM.lookuplogicalname,Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords,Microsoft.Dynamics.CRM.totalrecordcount,Microsoft.Dynamics.CRM.totalrecordcountlimitexceeded";
+  const NO_ANN = { "X-Colvio-Annotations": "none" };
+
   async function dvRequest(method, path, body = null, extraHeaders = null) {
     const ctx = d365Context || extractContext();
     if (!ctx) throw new Error("D365 context not detected");
@@ -131,16 +161,18 @@
     };
     if (body) headers["Content-Type"] = "application/json";
     if (extraHeaders) Object.assign(headers, extraHeaders);
+    const noAnn = headers["X-Colvio-Annotations"] === "none";
+    const allAnn = headers["X-Colvio-Annotations"] === "all";
+    delete headers["X-Colvio-Annotations"];
 
     const isWrite = method === "POST" || method === "PATCH" || method === "DELETE" || method === "PUT";
 
-    // For reads: request formatted values. For writes: nothing special. Append to (not clobber)
-    // any caller-supplied Prefer — e.g. odata.maxpagesize for server-driven paging — so both
-    // travel together.
-    if (!isWrite && !path.includes("EntityDefinitions")) {
-      headers["Prefer"] = headers["Prefer"]
-        ? `${headers["Prefer"]},odata.include-annotations="*"`
-        : 'odata.include-annotations="*"';
+    // For reads: request the annotations the UI uses (see ANNOTATIONS). For writes: nothing
+    // special. Append to (not clobber) any caller-supplied Prefer — e.g. odata.maxpagesize for
+    // server-driven paging — so both travel together.
+    if (!isWrite && !noAnn && !path.includes("EntityDefinitions")) {
+      const ann = `odata.include-annotations="${allAnn ? "*" : ANNOTATIONS}"`;
+      headers["Prefer"] = headers["Prefer"] ? `${headers["Prefer"]},${ann}` : ann;
     }
 
     // Timeout: 25s for writes, 60s for reads (roles/privileges can be large). The recycle-bin
@@ -152,6 +184,7 @@
     const timeout = setTimeout(() => controller.abort(), isRestore ? 570000 : isWrite ? 25000 : 60000);
 
     try {
+      await apiPace();
       let resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
       clearTimeout(timeout);
 
@@ -165,6 +198,7 @@
         await new Promise(r => setTimeout(r, Math.min(isNaN(ra) ? 2 * (attempt429 + 1) : ra, 30) * 1000));
         if (batchAborted) break;
         attempt429++;
+        await apiPace();
         resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin" });
       }
 
@@ -209,7 +243,9 @@
   // Retry-After (capped) and retries the same batch instead of surfacing a throttle as a row error.
   async function fetchBatchWithRetry(url, options, maxRetries = 4) {
     let attempt = 0;
+    const ops = batchOps(options && options.body);
     while (true) {
+      await apiPace(ops);
       const resp = await fetch(url, options);
       if (resp.status !== 429 || attempt >= maxRetries || batchAborted) return resp;
       const ra = parseInt(resp.headers.get("Retry-After") || "", 10);
@@ -232,7 +268,7 @@
     let page = 1, more = true;
     while (more) {
       const fx = `<fetch page="${page}" count="5000"><entity name="privilege"><attribute name="privilegeid"/><attribute name="name"/><attribute name="accessright"/><order attribute="privilegeid"/></entity></fetch>`;
-      const d = await dvRequest("GET", `privileges?fetchXml=${encodeURIComponent(fx)}`);
+      const d = await dvRequest("GET", `privileges?fetchXml=${encodeURIComponent(fx)}`, null, NO_ANN);
       const b = d.value || [];
       b.forEach(p => { map[p.privilegeid] = { name: p.name, accessRight: p.accessright }; });
       more = b.length === 5000; page++;
@@ -482,6 +518,12 @@
             break;
           }
 
+          case "getApiStats": {
+            apiTrim(Date.now());
+            result = { last5min: apiLog.length, limit: API_LIMIT, paceAt: API_PACE_AT, total: apiTotal, pacedMs: apiPacedMs };
+            break;
+          }
+
           case "customRequest": {
             // Ad-hoc request runner for the API Tester module. Returns the raw
             // response (status, headers, body, elapsed) without throwing —
@@ -525,6 +567,7 @@
             const ctrl = new AbortController();
             const tmo = setTimeout(() => ctrl.abort(), 60000);
             try {
+              await apiPace();
               const resp = await fetch(url, {
                 method,
                 headers: finalHeaders,
@@ -573,7 +616,7 @@
           case "getEntityCount": {
             try {
               validateEntitySet(params.entitySet);
-              const countResp = await dvRequest("GET", `${params.entitySet}/$count`);
+              const countResp = await dvRequest("GET", `${params.entitySet}/$count`, null, NO_ANN);
               // $count returns plain text integer, not JSON
               result = typeof countResp === "number" ? countResp : parseInt(String(countResp), 10) || 0;
             } catch {
@@ -1959,10 +2002,61 @@
             break;
           }
 
+          case "getAccessAuditFloor": {
+            // The oldest user-access audit row: the point past which "never signed in" is certain.
+            try {
+              const d = await dvRequest("GET", "audits?$select=createdon&$filter=action eq 64&$orderby=createdon asc&$top=1", null, NO_ANN);
+              result = { floor: (d.value || [])[0]?.createdon || null };
+            } catch (e) { result = { floor: null, error: e.message }; }
+            break;
+          }
+
+          case "getLastLoginsWindow": {
+            // The latest login of EVERY user inside [from, to): ONE FetchXML aggregate (max createdon
+            // grouped by user) — never a request per user. The audit is an elastic table: an
+            // aggregate answer is clamped at 500 groups and a query scanning > 50k rows is refused
+            // (AggregateQueryRecordLimit) — either way the window is split in two and retried, down
+            // to one hour; an hour still too busy is read raw (500 rows a page) and folded here.
+            const ISO_W = /^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/;
+            if (!ISO_W.test(String(params.from || "")) || !ISO_W.test(String(params.to || ""))) throw new Error("getLastLoginsWindow: invalid from/to");
+            const out = {};
+            let requests = 0, scans = 0;
+            const keep = (id, iso) => { if (!id || !iso) return; const k = String(id).toLowerCase(); if (!out[k] || iso > out[k]) out[k] = iso; };
+            const isoOf = (ms) => new Date(ms).toISOString();
+            const walk = async (fMs, tMs) => {
+              const f = isoOf(fMs), t = isoOf(tMs);
+              const fx = `<fetch aggregate="true" count="5000"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="eq" value="64"/><condition attribute="createdon" operator="ge" value="${f}"/><condition attribute="createdon" operator="lt" value="${t}"/></filter><order alias="uid"/></entity></fetch>`;
+              let d = null, truncated = false;
+              requests++;
+              try {
+                d = await dvRequest("GET", `audits?fetchXml=${encodeURIComponent(fx)}`, null, NO_ANN);
+                const vals = d.value || [];
+                truncated = !!d["@Microsoft.Dynamics.CRM.fetchxmlpagingcookie"] || !!d["@odata.nextLink"] || d["@Microsoft.Dynamics.CRM.morerecords"] === true || vals.length >= 500;
+                if (!truncated) { for (const v of vals) keep(v.uid, v.last); return; }
+              } catch (e) {
+                if (!/AggregateQueryRecordLimit|50000|aggregate/i.test(e.message || "")) throw e;
+                truncated = true;
+              }
+              if (tMs - fMs > 3600000) { const mid = fMs + Math.floor((tMs - fMs) / 2); await walk(mid, tMs); await walk(fMs, mid); return; }
+              scans++;
+              let url = `audits?$select=createdon,_objectid_value&$filter=action eq 64 and createdon ge ${f} and createdon lt ${t}`;
+              while (url) {
+                requests++;
+                const dL = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
+                for (const a of (dL.value || [])) keep(a._objectid_value, a.createdon);
+                const nl = dL["@odata.nextLink"];
+                url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              }
+            };
+            await walk(Date.parse(params.from), Date.parse(params.to));
+            result = { byUser: out, requests, scans };
+            break;
+          }
+
           case "getUserLastLogin": {
             validateGuid(params.userId);
             const data = await dvRequest("GET",
-              `audits?$select=createdon&$filter=_objectid_value eq ${params.userId} and action eq 64&$top=1&$orderby=createdon desc`
+              `audits?$select=createdon&$filter=_objectid_value eq ${params.userId} and action eq 64&$top=1&$orderby=createdon desc`, null, NO_ANN
             );
             const rec = (data.value || [])[0];
             result = rec ? { date: rec.createdon } : null;
@@ -2028,9 +2122,28 @@
             let url = `roleprivilegescollection?$select=roleid,privilegedepthmask&$filter=privilegeid eq ${params.privilegeId}`;
             const rows = [];
             while (url) {
-              const d = await dvRequest("GET", url);
+              const d = await dvRequest("GET", url, null, NO_ANN);
               for (const r of d.value || []) rows.push({ roleId: r.roleid, mask: r.privilegedepthmask });
               url = d["@odata.nextLink"] || null; // absolute — dvRequest checks it targets this org
+            }
+            result = rows;
+            break;
+          }
+
+          case "getRoleGrants": {
+            // Every privilege grant of the given roles in ONE paged read of the role ↔ privilege
+            // table (chunks of 50 role ids per URL) — the org-wide view used to open every role.
+            const ids = [...new Set((params.roleIds || []).map(x => String(x || "").toLowerCase()))];
+            ids.forEach(validateGuid);
+            const rows = [];
+            for (let i = 0; i < ids.length; i += 50) {
+              const chunk = ids.slice(i, i + 50);
+              let url = `roleprivilegescollection?$select=roleid,privilegeid,privilegedepthmask&$filter=${chunk.map(id => `roleid eq ${id}`).join(" or ")}`;
+              while (url) {
+                const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
+                for (const r of d.value || []) rows.push({ roleId: r.roleid, privilegeId: r.privilegeid, mask: r.privilegedepthmask });
+                url = d["@odata.nextLink"] || null; // absolute — dvRequest checks it targets this org
+              }
             }
             result = rows;
             break;
@@ -2359,7 +2472,7 @@
             try {
               const topD = Math.min(Math.max(parseInt(params.top, 10) || 2000, 1), 5000);
               const data = await dvRequest("GET",
-                `audits?$select=_objectid_value,_userid_value,createdon&$filter=action eq 3 and objecttypecode eq '${params.logicalName}'&$orderby=createdon desc&$top=${topD}`);
+                `audits?$select=_objectid_value,_userid_value,createdon&$filter=action eq 3 and objecttypecode eq '${params.logicalName}' and createdon ge ${new Date(Date.now() - 90 * 86400000).toISOString()}&$orderby=createdon desc&$top=${topD}`);
               const map = {};
               for (const a of (data?.value || [])) {
                 const oid = String(a._objectid_value || "").toLowerCase();

@@ -4,6 +4,7 @@ import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../sha
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import { isServiceAccount } from "../adoptionUtils.js";
+import { nextWindow, adaptWindow, mergeFound, remaining, finalize, scanLabel, START_WINDOW, DAY } from "../lastLoginScan.js";
 import {
   SETTINGS_TABLES, settingsFor, findSetting, optionsFor, formatValue, buildPatchBody, indexRows, planChange,
   filterUsers, buOptions, exportRows, runPool, normalizeTimeZones, normalizeCurrencies,
@@ -17,8 +18,7 @@ const TABLE_NOTES = {
   mailbox: "Each user's mailbox record is PATCHed — Read and Write on the Mailbox table are required. Changing a delivery method doesn't test the mailbox: run Test & Enable Mailbox afterwards from Power Platform admin center › Settings › Email › Mailboxes (an admin action, not a column — Colvio doesn't run it). Queue mailboxes aren't listed.",
 };
 const SOURCE_NAMES = { timezones: "Time zones", languages: "Provisioned languages", currencies: "Currencies" };
-const LL_CONCURRENCY = 6;
-const LL_NOTE = "Last login = the last time the user opened a model-driven app, from the user-access audit (action 64 — the same source as the Users list). \"Never\" = no such event in what the audit keeps; it needs \"Audit user access\" turned on.";
+const LL_NOTE = "Last login = the last time the user opened a model-driven app, from the user-access audit (action 64 — the same source as the Users list), read for everyone at once in time windows — never one request per user. \"Never\" = no such event back to the audit's first row; it needs \"Audit user access\" turned on.";
 // "<org>|<user id>" → { date } (date null = never) or { error }: read once per org and session,
 // kept across view and filter switches.
 const LAST_LOGIN = new Map();
@@ -128,25 +128,52 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
   const toggleAll = () => setChecked(prev => { const n = new Set(prev); if (allShownChecked) shown.forEach(u => n.delete(u.id)); else shown.forEach(u => n.add(u.id)); return n; });
   const toggleOne = (id) => setChecked(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  // Last logins of the users the filters (search aside) list, a few requests at a time.
+  // Last logins of the users the filters (search aside) list: time windows walked backwards from
+  // now, ONE aggregate query per window (the content script splits a window the server truncates)
+  // — never a request per user. Stops once everyone is found, or at the audit's first row, where
+  // "never" becomes certain. Cancel keeps what was found; the rest shows "no login since <date>".
+  const llCancel = useRef(false);
   useEffect(() => {
     const todo = baseList.filter(u => !LAST_LOGIN.has(llKey(u.id)));
     if (!todo.length) { setLlRun({ done: 0, total: 0 }); return; }
-    let stop = false, n = 0;
-    setLlRun({ done: 0, total: todo.length });
-    runPool(todo, async u => {
-      try { const r = await bridge.getUserLastLogin(u.id); LAST_LOGIN.set(llKey(u.id), { date: r?.date || null }); }
-      catch (e) { LAST_LOGIN.set(llKey(u.id), { error: e.message || String(e) }); throw e; }
-      finally { if (++n % 15 === 0 && !stop) setLlTick(x => x + 1); }
-    }, {
-      concurrency: LL_CONCURRENCY,
-      shouldStop: () => stop,
-      isFatal: e => /SESSION_EXPIRED/.test(e),
-      onProgress: p => { if (!stop && (p.done % 5 === 0 || p.done === p.total)) setLlRun({ done: p.done, total: p.total }); },
-    }).then(() => { if (!stop) { setLlTick(x => x + 1); setLlRun({ done: 0, total: 0 }); } });
+    let stop = false;
+    llCancel.current = false;
+    const wanted = todo.map(u => String(u.id).toLowerCase());
+    const found = new Map();
+    (async () => {
+      let floorMs = null;
+      try { const f = await bridge.getAccessAuditFloor(); floorMs = f?.floor ? Date.parse(f.floor) : null; } catch { floorMs = null; }
+      const floorKnown = Number.isFinite(floorMs);
+      if (!floorKnown) floorMs = Date.now() - 365 * DAY; // unknown floor: a year back, then "no login since"
+      let cursor = Date.now() + 60000, size = START_WINDOW, requests = 0, left = wanted, failed = null;
+      setLlRun({ done: 0, total: wanted.length, cursorMs: cursor, requests });
+      while (!stop && !llCancel.current && left.length) {
+        const w = nextWindow(cursor, floorMs, size);
+        if (!w) break;
+        let r;
+        try { r = await bridge.getLastLoginsWindow(w.from, w.to); }
+        catch (e) { failed = e.message || String(e); break; }
+        if (stop) return;
+        requests += r?.requests || 1;
+        mergeFound(found, r?.byUser);
+        for (const id of left) if (found.has(id)) LAST_LOGIN.set(llKey(id), { date: found.get(id) });
+        left = remaining(left, found);
+        cursor = w.fromMs; size = adaptWindow(size, r?.requests || 1);
+        setLlTick(x => x + 1);
+        setLlRun({ done: wanted.length - left.length, total: wanted.length, cursorMs: cursor, requests });
+      }
+      if (stop) return;
+      if (failed) { for (const id of left) LAST_LOGIN.set(llKey(id), { error: failed }); }
+      else {
+        const verdicts = finalize(left, found, { reachedFloor: cursor <= floorMs, floorKnown, scannedToMs: cursor });
+        for (const [id, v] of verdicts) LAST_LOGIN.set(llKey(id), v);
+      }
+      setLlTick(x => x + 1); setLlRun({ done: 0, total: 0 });
+    })();
     return () => { stop = true; };
   }, [baseList, orgKey, llReload]);
-  const retryLastLogins = () => { for (const u of baseList) if (LAST_LOGIN.get(llKey(u.id))?.error) LAST_LOGIN.delete(llKey(u.id)); setLlTick(x => x + 1); setLlReload(x => x + 1); };
+  const retryLastLogins = () => { for (const u of baseList) { const v = LAST_LOGIN.get(llKey(u.id)); if (v?.error || v?.since) LAST_LOGIN.delete(llKey(u.id)); } setLlTick(x => x + 1); setLlReload(x => x + 1); };
+  const llPartial = baseList.map(u => LAST_LOGIN.get(llKey(u.id))).filter(v => v?.since).length;
 
   const doExport = (format) => {
     const { headers, rows } = exportRows(table, shown, index.byUser, ctx, lastLogins);
@@ -251,12 +278,13 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
           <span style={{ width: 1, height: 16, background: C.bd, margin: "0 2px" }} />
           {[["any", "Any login"], ["yes", "Signed in"], ["never", "Never signed in"]].map(([k, l]) => {
             const off = k !== "any" && llPending > 0; // filtering on half-read dates could leave people out of a write
-            return <button key={k} onClick={() => !off && setSignedIn(k)} disabled={off} title={off ? `Reading last logins (${llRun.done}/${llRun.total}) — available once every listed user's date is known` : LL_NOTE} style={{ ...chip(signedIn === k, C.gn), opacity: off ? 0.45 : 1, cursor: off ? "default" : "pointer" }}>{l}</button>;
+            return <button key={k} onClick={() => !off && setSignedIn(k)} disabled={off} title={off ? `Reading last logins (${llRun.done}/${llRun.total} found) — available once every listed user's date is known` : LL_NOTE} style={{ ...chip(signedIn === k, C.gn), opacity: off ? 0.45 : 1, cursor: off ? "default" : "pointer" }}>{l}</button>;
           })}
-          {llRun.total > 0 && <span style={{ fontSize: 11, color: C.txd, display: "inline-flex", alignItems: "center", gap: 4, ...mono }}><Spin s={10} /> last logins {llRun.done}/{llRun.total}</span>}
+          {llRun.total > 0 && <span style={{ fontSize: 11, color: C.txd, display: "inline-flex", alignItems: "center", gap: 4, ...mono }}><Spin s={10} /> {scanLabel({ cursorMs: llRun.cursorMs, found: llRun.done, total: llRun.total, requests: llRun.requests })} <button onClick={() => { llCancel.current = true; }} style={bt(null, { fontSize: 10.5, padding: "0 6px" })}>Stop</button></span>}
           <Tooltip text={LL_NOTE} />
         </div>
         {llErrors.length > 0 && llRun.total === 0 && <div style={{ fontSize: 11.5, color: C.yw, paddingLeft: 104 }}>⚠ {llErrors.length} last login{llErrors.length > 1 ? "s" : ""} couldn't be read ({llErrors[0].error}) — those users match neither "Signed in" nor "Never signed in". <button onClick={retryLastLogins} style={{ ...bt(null, { fontSize: 11, padding: "1px 8px" }), marginLeft: 6 }}>↻ Retry</button></div>}
+        {llPartial > 0 && llRun.total === 0 && llErrors.length === 0 && <div style={{ fontSize: 11.5, color: C.txd, paddingLeft: 104 }}>ℹ {llPartial} user{llPartial > 1 ? "s" : ""} with no login found back to the date shown — the scan stopped before the audit's first row, so they aren't counted as "Never signed in". <button onClick={retryLastLogins} style={{ ...bt(null, { fontSize: 11, padding: "1px 8px" }), marginLeft: 6 }}>↻ Scan further</button></div>}
         {roleState.error && <div style={{ fontSize: 11.5, color: C.rd, paddingLeft: 104 }}>⚠ Role members couldn't be loaded — nobody is listed under that role: {roleState.error}</div>}
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -311,7 +339,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
                   const ll = lastLogins.get(k);
                   const days = ll?.date ? Math.floor((Date.now() - Date.parse(ll.date)) / 86400000) : null;
                   return <span title={ll?.date ? new Date(ll.date).toLocaleString() : ll?.error || (ll ? LL_NOTE : "")} style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: ll?.date ? C.txm : C.txd }}>
-                    {!ll ? <Spin s={10} /> : ll.error ? <span style={{ color: C.yw }}>⚠ unreadable</span> : ll.date ? <>{new Date(ll.date).toLocaleDateString()} <span style={{ color: C.txd }}>· {days <= 0 ? "today" : `${days} d`}</span></> : <i>Never</i>}
+                    {!ll ? <Spin s={10} /> : ll.error ? <span style={{ color: C.yw }}>⚠ unreadable</span> : ll.date ? <>{new Date(ll.date).toLocaleDateString()} <span style={{ color: C.txd }}>· {days <= 0 ? "today" : `${days} d`}</span></> : ll.since ? <i title="The scan stopped before the audit's first row — not counted as Never">none since {new Date(ll.since).toLocaleDateString()}</i> : <i>Never</i>}
                   </span>;
                 })()}
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

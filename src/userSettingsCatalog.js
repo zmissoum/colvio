@@ -260,6 +260,7 @@ export function filterUsers(users, { search = "", buId = "", status = "enabled",
     if (signedIn !== "any") {
       const ll = lastLogins?.get(String(u.id).toLowerCase());
       if (!ll || ll.error) return false;
+      if (ll.since && !ll.date) return false; // scan stopped early: neither "signed in" nor "never"
       if (signedIn === "yes" ? !ll.date : !!ll.date) return false;
     }
     if (q && !`${u.fullname || ""} ${u.email || ""}`.toLowerCase().includes(q)) return false;
@@ -283,7 +284,7 @@ export function exportRows(table, users, byUser, ctx = {}, lastLogins = null) {
     const hit = byUser?.get(String(u.id).toLowerCase());
     const ll = lastLogins?.get(String(u.id).toLowerCase());
     return [u.fullname || "", u.email || "", u.buName || "", u.disabled ? "Disabled" : "Enabled", isServiceAccount(u) ? "Service / application" : "Person",
-      ...(lastLogins ? [!ll || ll.error ? "" : ll.date || "Never"] : []),
+      ...(lastLogins ? [!ll || ll.error ? "" : ll.date || (ll.since ? `No login since ${ll.since}` : "Never")] : []),
       ...(mb ? [hit ? (hit.row.emailaddress || hit.row.name || "") : "(no mailbox)"] : []),
       ...list.map(s => hit ? formatValue(s, hit.row, ctx) : "")];
   });

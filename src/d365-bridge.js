@@ -152,7 +152,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -231,6 +231,13 @@ async function queryAllPages(entitySet, options, maxPages = 50) {
 // ── Public API ───────────────────────────────────────────────
 // One GUID shape check for the team methods below (review finding: was pasted twice).
 const TEAM_GUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+// Demo last logins: stable per demo user (renders and re-opens agree); null = never signed in.
+const DEMO_LAST_LOGIN_DAYS = { u1: 0, u2: 3, u3: 12, u4: 140, u5: null, u6: null, u7: 1, u8: 21 };
+const demoLastLogin = (userId) => {
+  const d = Object.prototype.hasOwnProperty.call(DEMO_LAST_LOGIN_DAYS, userId) ? DEMO_LAST_LOGIN_DAYS[userId] : 30;
+  return d == null ? null : new Date(Date.now() - d * 86400000 - 3600000 * 2).toISOString();
+};
 
 // Demo "Has privilege" data: which demo role (r1 System Administrator · r2 Sales Manager ·
 // r3 Basic User · r4 Custom CRM Admin · r5 Custom Sales Rep · r6 Marketing User) holds which
@@ -1154,12 +1161,32 @@ export const bridge = {
 
   async getUserLastLogin(userId) {
     if (!isExtension) {
-      // stable per demo user (renders and re-opens agree); null = never signed in
-      const DAYS = { u1: 0, u2: 3, u3: 12, u4: 140, u5: null, u6: null, u7: 1, u8: 21 };
-      const d = Object.prototype.hasOwnProperty.call(DAYS, userId) ? DAYS[userId] : 30;
-      return d == null ? null : { date: new Date(Date.now() - d * 86400000 - 3600000 * 2).toISOString() };
+      const iso = demoLastLogin(userId);
+      return iso ? { date: iso } : null;
     }
     return callD365("getUserLastLogin", { userId });
+  },
+
+  // Many users' last logins without a request per user: the oldest access-audit row (past it,
+  // "never" is certain), then one aggregate per time window walked backwards (see lastLoginScan.js).
+  async getAccessAuditFloor() {
+    if (!isExtension) return { floor: new Date(Date.now() - 365 * 86400000).toISOString() };
+    return callD365("getAccessAuditFloor");
+  },
+  async getLastLoginsWindow(from, to) {
+    if (!isExtension) {
+      const byUser = {};
+      for (const id of Object.keys(DEMO_LAST_LOGIN_DAYS)) { const iso = demoLastLogin(id); if (iso && iso >= from && iso < to) byUser[id] = iso; }
+      await new Promise(r => setTimeout(r, 120));
+      return { byUser, requests: 1, scans: 0 };
+    }
+    return callD365("getLastLoginsWindow", { from, to });
+  },
+
+  // The API meter the content script keeps (requests in the last 5 minutes vs the quota).
+  async getApiStats() {
+    if (!isExtension) return null;
+    return callD365("getApiStats");
   },
 
   // ── Bulk user settings (Users & Licenses › Bulk settings) ──
@@ -1280,6 +1307,17 @@ export const bridge = {
   async getPrivilegeCatalog() {
     if (!isExtension) return Object.keys(DEMO_PRIV_GRANTS).map((name, i) => ({ id: `dp${i + 1}`, name, accessRight: 0 }));
     return callD365("getPrivilegeCatalog");
+  },
+
+  // Every grant of many roles in one read (the org-wide view) — demo: the same table.
+  async getRoleGrants(roleIds) {
+    if (!isExtension) {
+      const names = Object.keys(DEMO_PRIV_GRANTS);
+      const rows = [];
+      names.forEach((name, i) => { for (const [roleId, depth] of Object.entries(DEMO_PRIV_GRANTS[name])) rows.push({ roleId, privilegeId: `dp${i + 1}`, mask: depth }); });
+      return rows.filter(r => !roleIds || roleIds.includes(r.roleId));
+    }
+    return callD365("getRoleGrants", { roleIds });
   },
 
   async getRolesWithPrivilege(privilegeId) {

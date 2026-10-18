@@ -4,6 +4,7 @@ import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../sha
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import { formatPrivName, searchPrivileges, rolesHolding, holderExportRows, DEPTH_LABEL } from "../rolePrivilegeFilter.js";
+import { matricesFromGrants, catalogIndex } from "../privilegeMatrix.js";
 
 // Privileges considered sensitive for security review
 const SENSITIVE_PRIVS = new Set([
@@ -87,6 +88,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   const [orgGroup, setOrgGroup] = useState("role");    // role | entity
   const [orgScan, setOrgScan] = useState(null);        // {done,total} while scanning
   const [orgFailed, setOrgFailed] = useState([]);      // role names whose privilege fetch failed — view is incomplete
+  const [orgErr, setOrgErr] = useState("");
   const [, setOrgScanned] = useState(0);               // bump-only: re-render as the cache fills
   const orgCache = useRef(new Map());                  // roleId -> entities[] from getRolePrivilegeMatrix
   const orgGen = useRef(0);
@@ -418,29 +420,26 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   };
 
   // ── Org-wide cross-role view ────────────────────────────────
-  // Scans every role's privilege matrix (one RetrieveRolePrivilegesRole each — the privilege
-  // catalog itself is fetched once and cached in the page), concurrency 3 to stay org-friendly.
-  // Results are cached per role, so changing operation/depth/search afterwards is instant.
+  // ONE read of the role ↔ privilege table for every listed role (chunked, paged) plus the
+  // privilege catalog — the matrices are computed here (privilegeMatrix.js). It used to open
+  // every role one by one. Results are cached per role, so changing operation/depth/search
+  // afterwards is instant.
   const scanAllRoles = async () => {
     const gen = ++orgGen.current;
     const todo = roles.filter(r => !orgCache.current.has(r.id));
-    setOrgFailed([]);
+    setOrgFailed([]); setOrgErr("");
     if (!todo.length) return;
-    setOrgScan({ done: roles.length - todo.length, total: roles.length });
-    let idx = 0, completed = 0;
-    const failed = [];
-    const worker = async () => {
-      while (idx < todo.length) {
-        if (orgGen.current !== gen) return; // view closed / role selected / unmounted — stop scanning
-        const role = todo[idx++];
-        try { const m = await bridge.getRolePrivilegeMatrix(role.id); orgCache.current.set(role.id, m?.entities || []); }
-        catch { failed.push(role.name); } // left uncached — surfaced below + "Retry failed" re-scans them
-        completed++; // progress counts COMPLETED fetches, not claimed ones
-        if (orgGen.current === gen) { setOrgScan({ done: Math.min(roles.length, roles.length - todo.length + completed), total: roles.length }); setOrgScanned(n => n + 1); }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(3, todo.length) }, worker));
-    if (orgGen.current === gen) { setOrgScan(null); setOrgFailed(failed); }
+    setOrgScan({ done: 0, total: roles.length });
+    try {
+      const [catalog, grants] = await Promise.all([bridge.getPrivilegeCatalog(), bridge.getRoleGrants(todo.map(r => r.id))]);
+      if (orgGen.current !== gen) return; // view closed / role selected / unmounted
+      const by = matricesFromGrants(grants, catalogIndex(catalog), todo.map(r => r.id));
+      for (const r of todo) orgCache.current.set(r.id, (by.get(String(r.id).toLowerCase()) || { entities: [] }).entities);
+      setOrgScan(null); setOrgScanned(n => n + 1);
+    } catch (e) {
+      if (orgGen.current !== gen) return;
+      setOrgScan(null); setOrgFailed(todo.map(r => r.name)); setOrgErr(e.message || String(e));
+    }
   };
   const openOrgView = () => { setOrgView(true); scanAllRoles(); };
   const closeOrgView = () => { orgGen.current++; setOrgScan(null); setOrgFailed([]); setOrgView(false); };
@@ -597,13 +596,12 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
               </div>
               {orgScan && (
                 <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 11, color: C.txm, marginBottom: 4 }}><Spin s={11} /> Scanning role privileges… {orgScan.done}/{orgScan.total} (results appear as they load)</div>
-                  <div style={{ height: 4, background: C.bd, borderRadius: 2 }}><div style={{ height: 4, width: `${Math.round(orgScan.done / Math.max(1, orgScan.total) * 100)}%`, background: C.cy, borderRadius: 2, transition: "width .3s" }} /></div>
+                  <div style={{ fontSize: 11, color: C.txm, marginBottom: 4 }}><Spin s={11} /> Reading the grants of {orgScan.total} roles — one query, not one per role…</div>
                 </div>
               )}
               {!orgScan && orgFailed.length > 0 && (
                 <div style={{ marginTop: 8, fontSize: 11.5, color: C.rd, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span>⚠ {orgFailed.length} role{orgFailed.length > 1 ? "s" : ""} failed to load and {orgFailed.length > 1 ? "are" : "is"} missing from this view{orgFailed.length <= 5 ? ` (${orgFailed.join(", ")})` : ""} — results and exports below are INCOMPLETE.</span>
+                  <span>⚠ {orgFailed.length} role{orgFailed.length > 1 ? "s" : ""} couldn't be read{orgErr ? ` (${orgErr})` : ""} and {orgFailed.length > 1 ? "are" : "is"} missing from this view — results and exports below are INCOMPLETE.</span>
                   <button onClick={scanAllRoles} style={bt(C.rd, { fontSize: 11, padding: "3px 10px" })}>Retry failed</button>
                 </div>
               )}

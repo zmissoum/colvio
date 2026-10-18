@@ -238,6 +238,11 @@ describe("filterUsers · signed-in filter", () => {
     expect(names({ signedIn: "yes" })).not.toContain("Dan");
     expect(names({ signedIn: "never" })).not.toContain("Cat");
   });
+  it("a scan that stopped early ('no login since') is unknown, not never", () => {
+    const ll = new Map([["b", { date: null, since: "2026-09-01T00:00:00Z" }]]);
+    expect(filterUsers(users, { lastLogins: ll, signedIn: "never" }).map(u => u.fullname)).toEqual([]);
+    expect(filterUsers(users, { lastLogins: ll, signedIn: "yes" }).map(u => u.fullname)).toEqual([]);
+  });
 });
 
 describe("exportRows · last login column", () => {
@@ -248,6 +253,8 @@ describe("exportRows · last login column", () => {
     const col = withLL.headers.indexOf("Last login");
     expect(col).toBeGreaterThan(-1);
     expect(withLL.rows.map(r => r[col])).toEqual(["2026-09-30T08:00:00Z", "Never", ""]);
+    const partial = exportRows("usersettings", users, new Map(), {}, new Map([["a", { date: null, since: "2026-09-01T00:00:00Z" }]]));
+    expect(partial.rows[0][partial.headers.indexOf("Last login")]).toBe("No login since 2026-09-01T00:00:00Z");
     expect(exportRows("usersettings", users, new Map(), {}).headers).not.toContain("Last login");
   });
 });

@@ -13,6 +13,7 @@ const HIGHLIGHTS = {
     "🧪 Debug without forgetting to clean up — \"Log every plug-in\" switches the org's trace log to All for 15, 30 or 60 minutes, then back to its previous setting by itself",
     "📂 Explorer — the saved query you loaded shows next to ⭐ with a one-click Update, and the OData box takes any query or full Web API URL you paste (browser, Postman, XrmToolBox): Colvio opens its table",
     "🔑 Security Audit — list the roles that hold any one privilege, table rights or miscellaneous ones (Export to Excel, Bulk Delete…), widest depth first, with a CSV / Excel export",
+    "🏋️ Built for big orgs — last logins and the org-wide security view no longer send one request per user or per role (time windows and one grants read instead), reads carry only the annotations the screen uses, and the sidebar shows a REAL API meter: requests in the last 5 minutes against Dataverse's quota, with Colvio slowing down before the limit instead of being refused",
     "🔒 Nothing leaves your browser — to list your saves, Colvio now observes (read-only) the requests your Dynamics 365 tab sends to your own org: the record and the column names, never the values, kept in memory until the browser closes",
   ],
   fr: [
@@ -21,6 +22,7 @@ const HIGHLIGHTS = {
     "🧪 Déboguer sans oublier de remettre en ordre — « Log every plug-in » passe le journal des traces de l'org sur All pendant 15, 30 ou 60 minutes, puis revient seul au réglage précédent",
     "📂 Explorer — la requête enregistrée chargée s'affiche à côté de ⭐ avec un bouton Update en un clic, et la zone OData accepte toute requête ou URL Web API complète collée (navigateur, Postman, XrmToolBox) : Colvio ouvre sa table",
     "🔑 Security Audit — la liste des rôles qui détiennent un privilège donné, droits sur les tables ou privilèges divers (Export to Excel, Bulk Delete…), de la profondeur la plus large à la plus étroite, avec export CSV / Excel",
+    "🏋️ Taillé pour les grosses orgs — les dernières connexions et la vue Org-wide de la sécurité n'envoient plus une requête par utilisateur ou par rôle (des fenêtres de temps et une seule lecture des droits), les lectures ne portent que les annotations affichées, et la barre latérale montre un VRAI compteur d'API : les requêtes des 5 dernières minutes face au quota Dataverse, Colvio ralentissant avant la limite au lieu d'être refusé",
     "🔒 Rien ne quitte votre navigateur — pour lister vos sauvegardes, Colvio observe désormais (en lecture seule) les requêtes que votre onglet Dynamics 365 envoie à votre propre org : l'enregistrement et les noms de colonnes, jamais les valeurs, gardés en mémoire jusqu'à la fermeture du navigateur",
   ],
 };

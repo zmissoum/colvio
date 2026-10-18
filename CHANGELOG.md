@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.183] — 2026-10-18
+### Changed — big orgs: sets instead of loops, a real API meter, smaller pages
+- **Last logins (Bulk settings)** are no longer one request per user. The user-access audit is read in time windows walked backwards from now, one aggregate per window (the latest login per user, server-side); a window the server truncates (audit = elastic table, 500 groups, 50k scanned rows) is split in two down to one hour, and a busy hour is read raw. Windows grow while the org is quiet and shrink when they had to be split. The walk stops once every listed user is found or at the audit's first row — only then is "Never" certain. Stop keeps what was found; the rest shows "none since <date>" and matches neither filter; "Scan further" resumes. Pure `lastLoginScan.js` + 5 tests. A 5,000-user org went from ~5,000 requests to a few dozen.
+- **Security › Org-wide view** reads the grants of every role in ONE paged query on the role ↔ privilege table (50 roles per URL) and computes the matrices in the panel (pure `privilegeMatrix.js` + 3 tests) — it used to open every role (one request each). A failed read is said as such, with Retry.
+- **API meter**: the sidebar shows the requests sent in the last 5 minutes against Dataverse's per-user quota (6,000) — the old counter showed nothing. Every operation inside a $batch counts. Above 90 % Colvio **waits for the window to slide** before sending, instead of hitting 429s and their back-off; the time spent waiting is in the tooltip.
+- **Smaller pages**: reads ask for the annotations the UI uses (formatted values, lookup table names, FetchXML paging) instead of every annotation — the navigation-property one, read nowhere, was one more string per lookup per row. Id-only reads (counts, grants, audit scans, privilege catalog) ask for none. The API Tester still shows everything.
+- Recycle Bin's "who deleted" audit read is bounded to the last 90 days (it had no time bound on a table that can hold hundreds of millions of rows).
+
 ## [1.11.182] — 2026-10-16
 ### Added — Explorer: update a saved query in one click, paste any OData query (a user's request)
 - **Saved queries**: the one you loaded shows next to ⭐ (📂 name) with **💾 Update**, which overwrites it with the current query in one click ("✓ Saved"). ⭐ still saves as a new name — prefilled with the loaded one — and the dialog now says when a name already exists ("saving replaces it", button **Overwrite**) instead of replacing it silently. The saved list marks the loaded query and shows each one's mode (OData / FetchXML / SQL / columns) and date. Switching table detaches it; deleting it too.
