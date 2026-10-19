@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.11.184] — 2026-10-19
+### Added — Explorer: every row, whatever the size ("all or nothing")
+- **⬇ To file** next to Execute: runs the query and streams every row to the CSV or Excel file you pick — page after page, written and forgotten, nothing held in the browser. CSV has no limit; Excel gets a new sheet every 1,048,576 rows (its own limit) and cells over its 32,767 characters are cut and counted. Works in every mode (Builder, OData, FetchXML, SQL native or transpiled), with progress, rate and Stop. Stop or an error leaves NO file — a partial file would look complete. The header is exactly the query's columns when it names them ($select, <attribute>, Builder columns); otherwise the first page tells, and a column that only appears later stops the stream with the reason instead of writing an incomplete file.
+- The XLSX is written by hand as a streamed ZIP (one deflate stream per part, sizes in data descriptors) — no in-memory workbook. Pure `streamExport.js` (CSV/XLSX sinks, CRC-32, cell typing) read back by SheetJS in tests.
+- **A result too big for memory is never shown partially**: when the browser's heap passes 70 % while pages arrive, the grid stops, shows nothing, and offers the stream ("N rows read when memory ran short").
+- The Results CSV / Excel buttons stream to a file too above 100,000 rows (a save dialog; smaller lists keep the one-click download).
+
+### Changed — big results load faster
+- Pages are appended in place: every page used to copy the whole accumulated set (quadratic — hundreds of millions of copies on a 2M-row result). The grid repaints on a version counter.
+- **FetchXML pages with the server's paging cookie** (every page as cheap as the first); a query the cookie doesn't fit falls back to page numbers by itself. The table's entity set is read once per table — it was read again for every page.
+
+### Fixed
+- A FetchXML with a client-side HAVING sent the HAVING block to the server from page 2 on (page 1 removed it): grouped results spanning several pages failed at page 2.
+- 11 tests (546).
+
 ## [1.11.183] — 2026-10-18
 ### Changed — big orgs: sets instead of loops, a real API meter, smaller pages
 - **Last logins (Bulk settings)** are no longer one request per user. The user-access audit is read in time windows walked backwards from now, one aggregate per window (the latest login per user, server-side); a window the server truncates (audit = elastic table, 500 groups, 50k scanned rows) is split in two down to one hour, and a busy hour is read raw. Windows grow while the org is quiet and shrink when they had to be split. The walk stops once every listed user is found or at the audit's first row — only then is "Never" certain. Stop keeps what was found; the rest shows "none since <date>" and matches neither filter; "Scan further" resumes. Pure `lastLoginScan.js` + 5 tests. A 5,000-user org went from ~5,000 requests to a few dozen.

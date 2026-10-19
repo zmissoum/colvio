@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId, confirmProd, exportTable } from "../shared.jsx";
+import { createSink, openOutput } from "../streamExport.js";
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
 import { findDuplicateGroups } from "../dupUtils.js";
@@ -139,7 +140,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       if(v==null) return false;
       return String(typeof v==="object"?JSON.stringify(v):v).toLowerCase().includes(q);
     }));
-  },[res.data,res.fields,res.odataFieldMap,deferredSearch]);
+  },[res.data,res.dataVersion,res.fields,res.odataFieldMap,deferredSearch]); // dataVersion: pages are appended in place
   const sortedData=useMemo(()=>{
     if(!sortField) return filteredData;
     const dk2=(f)=>res.odataFieldMap?.[f]||f;
@@ -292,8 +293,30 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows)`);};
   const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
   const copyJSON=()=>{copyText(toJSON());showFeedback(`${t("results.json_copied")} (${n} rows)`);};
-  const dlCSV=()=>{dl(toCSV(),"text/csv;charset=utf-8",expName(res.entity.l,"csv"));showFeedback(`CSV downloaded (${n} rows)`);};
+  // Very large lists go to the file row block by row block (a save dialog, nothing assembled in
+  // memory); smaller ones keep the one-click download.
+  const STREAM_FROM=100000;
+  const streamToFile=async(format)=>{
+    let out;
+    try{ out=await openOutput(expName(res.entity.l,format),format); }catch(e){ showFeedback("Export failed: "+e.message,true); return; }
+    if(!out) return;
+    let sink=null;
+    try{
+      sink=await createSink(out,format,{headers:res.fields,sheetBase:res.entity.l});
+      for(let i=0;i<sortedData.length;i+=5000){
+        await sink.add(sortedData.slice(i,i+5000).map(r=>res.fields.map(f=>{
+          if(format==="csv") return expVal(r,f);
+          const raw=rawGet(r,f); if(typeof raw==="number"||typeof raw==="boolean") return raw;
+          const v=bestGet(r,f); return v==null?"":(typeof v==="object"?JSON.stringify(v):v);
+        })));
+      }
+      await sink.close();
+      showFeedback(`${format==="xlsx"?"XLSX":"CSV"} written — ${n.toLocaleString()} rows${format==="xlsx"&&sink.sheets>1?` on ${sink.sheets} sheets`:""}`);
+    }catch(e){ try{ sink?await sink.abort():await out.abort?.(); }catch{ /* closed */ } showFeedback("Export failed: "+e.message,true); }
+  };
+  const dlCSV=()=>{ if(n>STREAM_FROM) return streamToFile("csv"); dl(toCSV(),"text/csv;charset=utf-8",expName(res.entity.l,"csv"));showFeedback(`CSV downloaded (${n} rows)`);};
   const dlXLSX=async()=>{
+    if(n>STREAM_FROM) return streamToFile("xlsx");
     try{
       // Lazy-load xlsx only when the user actually exports to .xlsx.
       const m=await import("xlsx"); const XLSX=m.utils?m:(m.default||m);

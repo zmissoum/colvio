@@ -32,6 +32,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Inline edit** — double-click any cell to PATCH the value directly in D365 — **typed by the field's metadata**: numbers, booleans, option values, dates and GUIDs validated *before* sending; **lookups edited properly via `@odata.bind`** (paste the target record's GUID, empty clears; polymorphic lookups get a target-table picker) with readable refusals instead of cryptic server 400s
 - **Virtual scrolling** — 60fps on 10,000+ records (only ~35 rows rendered), with a **sticky horizontal scrollbar** pinned to the window bottom on wide results
 - **Auto-pagination** with live timer and Stop button
+- **⬇ To file** — run the query and stream **every row** straight to a CSV or Excel file (page after page, nothing kept in the browser, any size; Excel gets a new sheet every 1,048,576 rows). A result too big for the browser's memory is never shown partially: the grid stays empty and offers the stream instead
 - **Saved queries** — persist across sessions (20 max); the loaded one shows next to ⭐ with a one-click **Update** that overwrites it, and saving under an existing name says it replaces it
 - **Query History** — auto-save last 20 queries, 1-click reload; **Builder queries restore into the Builder** (columns, condition fields + operators, sort, limit — condition *values* are never persisted, by privacy design)
 - **Query Templates** — 5 pre-built queries for common consultant tasks

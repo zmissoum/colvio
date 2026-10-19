@@ -262,6 +262,9 @@
   // catalog that every later call trusted (privileges shown as bare GUIDs until a D365 reload).
   // FetchXML page numbers — more reliable here than @odata.nextLink.
   let privCatalog = null;
+  // Entity set name per table, for FetchXML: one metadata read per table per page load — it used to
+  // be read again for EVERY page of a FetchXML result (400 pages = 400 extra requests).
+  const fxEntitySets = new Map();
   async function ensurePrivCatalog() {
     if (privCatalog) return privCatalog;
     const map = {};
@@ -433,20 +436,27 @@
             if (!entityMatch) throw new Error("Cannot find <entity name='...'> in FetchXML");
             const entityName = entityMatch[1];
             validateName(entityName, "fetchXml entity");
-            // Get entity set name
-            const esDef = await dvRequest("GET", `EntityDefinitions(LogicalName='${entityName}')?$select=EntitySetName`);
-            const esName = esDef?.EntitySetName || (entityName + "s");
+            // Get entity set name (cached per table)
+            let esName = fxEntitySets.get(entityName);
+            if (!esName) {
+              const esDef = await dvRequest("GET", `EntityDefinitions(LogicalName='${entityName}')?$select=EntitySetName`);
+              esName = esDef?.EntitySetName || (entityName + "s");
+              fxEntitySets.set(entityName, esName);
+            }
             // Execute: GET /entitySet?fetchXml=<url-encoded>
             const encoded = encodeURIComponent(xml);
             const data = await dvRequest("GET", `${esName}?fetchXml=${encoded}`);
             // Check for paging cookie (FetchXML pagination)
             const pagingCookie = data["@Microsoft.Dynamics.CRM.fetchxmlpagingcookie"] || null;
+            // morerecords is the server's own "there is a next page"; the cookie's presence is the
+            // fallback signal when the annotation is missing.
+            const more = data["@Microsoft.Dynamics.CRM.morerecords"];
             result = {
               records: data.value || [],
               count: data.value?.length || 0,
               pagingCookie,
               entitySetName: esName,
-              moreRecords: !!pagingCookie,
+              moreRecords: typeof more === "boolean" ? more : !!pagingCookie,
             };
             break;
           }

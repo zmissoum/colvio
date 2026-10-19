@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { normalizeODataInput, entityForSet, displayODataPath, looksLikeOData } from "../odataPaste.js";
+import { createSink, cellValue, openOutput } from "../streamExport.js";
+import { cookieFrom, pagedFetchXml, isCookieMismatch, fetchXmlColumns, streamColumns, uncoveredKey } from "../fetchPaging.js";
 import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
@@ -18,6 +20,16 @@ import Results from "./Results.jsx";
 // detector + one message so every path reports it identically (and can't drift over time).
 const SESSION_EXPIRED_MSG = "Session expired — refresh D365 (F5) then click ⚡ again";
 const isSessionExpired = (msg) => { const s = String(msg || ""); return s.includes("401") || s.includes("SESSION_EXPIRED"); };
+
+function StreamCard({st,onStop,onClose}){
+  const secs=Math.max(1,Math.round(((st.phase==="running"?Date.now():st.ended||Date.now())-(st.started||Date.now()))/1000));
+  const rate=st.rows&&secs?Math.round(st.rows/secs):0;
+  const box=(color)=>({margin:12,padding:"14px 16px",borderRadius:8,border:`1px solid ${color}55`,background:color+"10",fontSize:13,lineHeight:1.6,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"});
+  if(st.phase==="running") return <div style={box(C.cy)}><Spin s={14}/><span style={{flex:1,color:C.txm}}>Streaming to <b>{st.name}</b> — <b>{(st.rows||0).toLocaleString()}</b> rows written · page {st.pages||0}{rate?` · ~${rate.toLocaleString()} rows/s`:""}</span><button onClick={onStop} style={bt(C.rd,{fontSize:12})}>Stop</button></div>;
+  if(st.phase==="done") return <div style={box(C.gn)}><span style={{flex:1,color:C.txm}}>✓ <b>{(st.rows||0).toLocaleString()}</b> rows written to <b>{st.name}</b>{st.format==="xlsx"&&st.sheets>1?` — ${st.sheets} sheets (Excel holds 1,048,576 rows per sheet)`:""}{st.truncated?` — ${st.truncated.toLocaleString()} cell${st.truncated>1?"s":""} longer than Excel's 32,767 characters were cut (the CSV keeps them whole)`:""}.</span><button onClick={onClose} style={bt(null,{fontSize:12})}>Close</button></div>;
+  if(st.phase==="stopped") return <div style={box(C.yw)}><span style={{flex:1,color:C.txm}}>Stopped — the file wasn't written (a partial file would look complete).</span><button onClick={onClose} style={bt(null,{fontSize:12})}>Close</button></div>;
+  return <div style={box(C.rd)}><span style={{flex:1,color:C.rd}}>Streaming failed — the file wasn't written: {st.error}</span><button onClick={onClose} style={bt(null,{fontSize:12})}>Close</button></div>;
+}
 
 export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const isLive = orgInfo?.isExtension;
@@ -59,6 +71,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[runNote,setRunNote]=useState("");   // info under the toolbar (e.g. a pasted URL from another environment)
   const[pasteQ,setPasteQ]=useState("");     // "paste an OData query" box shown before any table is picked
   const[pasteErr,setPasteErr]=useState("");
+  // Results bigger than the browser can hold: nothing is shown (never a partial list) and the
+  // query can be streamed to a file instead — every row, straight to disk, nothing kept in memory.
+  const[tooBig,setTooBig]=useState(null);      // { rows } read when memory ran short
+  const[streamState,setStreamState]=useState(null); // { phase: running|done|stopped|error, name, format, rows, pages, started, error, sheets, truncated }
+  const[showStreamMenu,setShowStreamMenu]=useState(false);
+  const streamRef=useRef(null);                 // the stream run() writes to instead of the grid
   const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
   const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
   const[bookmarks,setBookmarks]=useState([]);
@@ -271,6 +289,71 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       setSf(["name","accountnumber","emailaddress1","address1_city","statecode"]);
     }
   };
+
+  // The browser's heap is nearly full (Chrome reports it): the grid stops, shows nothing, and offers
+  // the streamed export — a partial list presented as the result would be wrong.
+  const memTight=()=>{try{const m=performance.memory;return !!(m&&m.jsHeapSizeLimit&&m.usedJSHeapSize>0.7*m.jsHeapSizeLimit);}catch{return false;}};
+
+  // ── Streamed export: run() writes each page to the file, then forgets it ──
+  const streamBegin=async(st,declared,complete,firstRows,sheetBase)=>{
+    // Columns the query names = exactly the grid's columns; otherwise the first page tells.
+    st.cols=complete&&declared.length?declared.map(c=>({name:c.name,keys:[...c.keys]})):streamColumns(declared,firstRows);
+    st.complete=complete;
+    st.sink=await createSink(st.out,st.format,{headers:st.cols.map(c=>c.name),sheetBase});
+  };
+  const streamAdd=async(st,rows)=>{
+    // Columns the query didn't declare are discovered from the first page; one that shows up
+    // later can't join a file whose header is written — stop rather than write an incomplete file.
+    if(!st.complete) for(const r of rows){const k=uncoveredKey(st.cols,r);if(k) throw new Error(`Column "${k}" first appears after the first page (its earlier rows are empty), so the file's header can't include it. Name the columns in the query ($select / <attribute>) and stream again.`);}
+    await st.sink.add(rows.map(r=>st.cols.map(c=>cellValue(r,c.keys,st.format))));
+    st.pages++;
+    setStreamState(x=>x&&x.phase==="running"?{...x,rows:st.sink.rows,pages:st.pages}:x);
+  };
+  const streamEnd=async(st)=>{
+    if(streamRef.current===st) streamRef.current=null;
+    if(fetchAbort.current){ await st.sink?.abort?.(); if(!st.sink) await st.out.abort?.(); setStreamState(x=>({...x,phase:"stopped"})); return; }
+    await st.sink.close();
+    setStreamState(x=>({...x,phase:"done",rows:st.sink.rows,pages:st.pages,sheets:st.sink.sheets,truncated:st.sink.truncatedCells}));
+  };
+  const streamFail=async(st,msg)=>{
+    if(streamRef.current===st) streamRef.current=null;
+    try{ if(st.sink) await st.sink.abort(); else await st.out.abort?.(); }catch{ /* already closed */ }
+    setStreamState(x=>({...x,phase:"error",error:msg}));
+  };
+  // A paged source (nextLink, FetchXML pages) → the file. getPage(cursor) → { rows, next }.
+  const streamRun=async(st,{declared,complete,first,sheetBase,next,getPage,mapRows})=>{
+    const map=mapRows||(x=>x);
+    try{
+      const firstRows=map(first||[]);
+      await streamBegin(st,declared,complete,firstRows,sheetBase);
+      await streamAdd(st,firstRows);
+      let cur=next;
+      while(cur&&!fetchAbort.current){
+        const pg=await getPage(cur);
+        const rows=map(pg.rows||[]);
+        if(!rows.length) break;
+        await streamAdd(st,rows);
+        cur=pg.next;
+      }
+      await streamEnd(st);
+    }catch(e){ await streamFail(st,e.message||String(e)); }
+  };
+  // Click → save dialog (needs the click's user gesture: nothing awaited before it) → run().
+  const startStream=async(format)=>{
+    setShowStreamMenu(false);
+    const base=(qm==="builder"?ent?.l:null)||ent?.l||"query";
+    let out;
+    try{ out=await openOutput(expName(base,format==="xlsx"?"xlsx":"csv"),format); }
+    catch(e){ setError(`Couldn't open the file: ${e.message}`); return; }
+    if(!out) return; // dialog cancelled
+    setTooBig(null);setRes(null);
+    const st={format,out,sink:null,cols:null,complete:false,pages:0};
+    streamRef.current=st;
+    setStreamState({phase:"running",name:out.name,format,rows:0,pages:0,started:Date.now()});
+    await run();
+    if(streamRef.current===st){ await streamFail(st,"The query didn't run — check it in the grid first."); }
+  };
+  const stopStream=()=>{ fetchAbort.current=true; };
 
   // Run cb once the selected table's fields are loaded. Live: after the async metadata fetch
   // (onFieldsReady). Demo: selEnt fills the fields synchronously and never fires the callback — so
@@ -655,6 +738,18 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const run=async()=>{
     setError("");
     fetchAbort.current = false;
+    const stream=streamRef.current; // a streamed export: pages go to the file, not to the grid
+    if(!stream){ setTooBig(null); setStreamState(null); }
+    // Grid: a page is appended IN PLACE (the old [...all, ...page] copied the whole set on every
+    // page — quadratic on big results) and repaints are signalled with dataVersion.
+    let ver=0;
+    const addRows=(arr,page)=>{for(let i=0;i<page.length;i++)arr.push(page[i]);};
+    const overMemory=(arr)=>{
+      if(!memTight()) return false;
+      const n=arr.length; arr.length=0; fetchAbort.current=true;
+      setRes(null); setTooBig({rows:n}); setLoading(false);
+      return true;
+    };
     const runGen=selGen.current; // capture to detect entity change mid-run
     // stale() guards every setRes AFTER an await: switching entity mid-run used to paint the OLD
     // entity's rows under the NEW entity's header (fetchAbort only stopped pages 2+ — audit finding).
@@ -692,6 +787,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     addHistory(q,qm);
 
     if(!isLive){
+      if(stream){
+        const cols=(sf.length?sf:FLDS.map(f=>f.l)).map(f=>({name:f,keys:[f]}));
+        await streamRun(stream,{declared:cols,complete:true,first:ROWS,sheetBase:ent?.l||"demo",next:null});
+        return;
+      }
       setRes({entity:ent,fields:sf.length?sf:FLDS.map(f=>f.l),data:ROWS,count:ROWS.length,total:ROWS.length,query:q,elapsed:"mock",nextLink:null,fetching:false,...buildUpdateMeta()});
       addToHistory(ent,q,qm,(sf.length?sf:FLDS.map(f=>f.l)).length); // demo parity: history (and its builder-restore) works in demo too
       return;
@@ -718,7 +818,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       try{
         const first=await bridge.queryRaw(`${entitySet}?sql=${encodeURIComponent(sqlQ)}`);
         if(stale())return;
-        let allRecords=first?.records||[];
+        if(stream){
+          setLoading(false);addToHistory(sqlEnt,q,qm,0);
+          await streamRun(stream,{declared:[],complete:false,first:first?.records||[],sheetBase:sqlEnt.l,next:first?.nextLink||null,
+            getPage:async(nlk)=>{const pd=await bridge.query(nlk,{});return {rows:pd?.records||[],next:pd?.nextLink||null};}});
+          return;
+        }
+        let allRecords=[...(first?.records||[])];
         // Column discovery must UNION across rows — with a LEFT JOIN, row 1 can miss the
         // joined columns entirely (they're absent, not null, in the OData payload).
         const fieldSet=new Set();
@@ -735,14 +841,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const pd=await bridge.query(nl,{}); // absolute nextLink rides the generic query action (http passthrough + org-host guard)
             if(stale())return;
             if(!pd?.records?.length)break;
-            allRecords=[...allRecords,...pd.records];
+            addRows(allRecords,pd.records);
+            if(overMemory(allRecords))return;
             collect(pd.records,50);
             nl=pd.nextLink;
             const paint=!nl||page%5===0;
-            setRes(prev=>({...prev,...(paint?{data:allRecords,fields:[...fieldSet]}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver,fields:[...fieldSet]}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e2){setError(`Page ${page}: ${e2.message}`);break;}
         }
-        if(!stale())setRes(prev=>({...prev,data:allRecords,fields:[...fieldSet],fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale())setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fields:[...fieldSet],fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         return;
       }catch(e){
         if(stale())return;
@@ -773,6 +880,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         const data=await bridge.executeFetchXml(serverFxml);
         const t1=((Date.now()-t0)/1000).toFixed(1);
         if(!data?.records){setError("No results");setLoading(false);return;}
+        // Page N+1: with the server's paging cookie (every page as cheap as the first); a query the
+        // cookie doesn't fit ("Paging Cookie And Query Do Not Match") goes on by page number.
+        let useCookie=true;
+        const fetchPage=async(pg,cookie)=>{
+          try{ return await bridge.executeFetchXml(pagedFetchXml(serverFxml,pg,useCookie?cookie:null)); }
+          catch(e){ if(useCookie&&cookie&&isCookieMismatch(e.message)){ useCookie=false; return await bridge.executeFetchXml(pagedFetchXml(serverFxml,pg,null)); } throw e; }
+        };
         const firstRec=data.records[0]||{};
         const headerFields=Object.keys(firstRec).filter(k=>!k.startsWith("@")&&!k.includes("@")&&k!=="__error");
         const odataFieldMap={};
@@ -793,6 +907,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           }
           return out;
         };
+        if(stream){
+          const fxName=(activeFxml.match(/<entity\s+name\s*=\s*"([^"]*)"/i)||[])[1]||"query";
+          const decl=fetchXmlColumns(serverFxml);
+          setLoading(false);
+          await streamRun(stream,{declared:decl.cols,complete:decl.complete,first:data.records,sheetBase:fxName,mapRows:applyHaving,
+            next:data.moreRecords?{page:2,cookie:cookieFrom(data.pagingCookie)}:null,
+            getPage:async(cur)=>{const pd=await fetchPage(cur.page,cur.cookie);return {rows:pd?.records||[],next:pd?.moreRecords?{page:cur.page+1,cookie:cookieFrom(pd.pagingCookie)}:null};}});
+          return;
+        }
         let allRecords=applyHaving([...data.records]);
 
         // Resolve the entity from the FetchXML/SQL <entity name="…">, not the stale Builder selection,
@@ -810,26 +933,30 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         // "Paging Cookie And Query Do Not Match. The counts are not equal." Paging by number is
         // the reliable approach — the cookie's PRESENCE in each response still tells us when to
         // stop (Dataverse returns it only while more records remain).
-        let hasMore=!!data.pagingCookie;
+        // (pages go to serverFxml: the HAVING block is client-side — page 2+ used to send it to the server)
+        let hasMore=!!data.moreRecords;
+        let cookie=cookieFrom(data.pagingCookie);
         while(hasMore&&!fetchAbort.current&&!stale()){
           page++;
-          const pagedXml=activeFxml.replace(/<fetch/,`<fetch page="${page}"`);
           try{
-            const pageData=await bridge.executeFetchXml(pagedXml);
+            const pageData=await fetchPage(page,cookie);
             if(stale())return;
             if(!pageData?.records?.length)break;
-            allRecords=[...allRecords,...applyHaving(pageData.records)];
-            hasMore=!!pageData.pagingCookie;
+            addRows(allRecords,applyHaving(pageData.records));
+            if(overMemory(allRecords))return;
+            hasMore=!!pageData.moreRecords;
+            cookie=cookieFrom(pageData.pagingCookie);
             // Throttle the data re-render (every 5 pages) so the Results memos don't recompute over the
             // whole accumulating set on every page; count/progress still update each page.
             const paint=!hasMore||page%5===0;
-            setRes(prev=>({...prev,...(paint?{data:allRecords}:{}),count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e){
             setError(`Page ${page}: ${e.message}`);break;
           }
         }
-        if(!stale()) setRes(prev=>({...prev,data:allRecords,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
+        if(stream){ await streamFail(stream,e.message||String(e)); setLoading(false); return; }
         // ── Client-side aggregation fallback (50k limit) ──
         if(e.message&&(e.message.includes("50000")||e.message.includes("having")||e.message.includes("Having"))&&activeFxml.includes("aggregate")){
           try{
@@ -1002,6 +1129,18 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         const data=await bridge.queryRaw(raw);
         if(!data?.records){setError("No results");setLoading(false);return;}
         const t1=((Date.now()-t0)/1000).toFixed(1);
+        if(stream){
+          // $select names the columns (a lookup lands in _x_value); without it, or with $expand,
+          // the columns come from the rows.
+          const sel=((raw.match(/[?&]\$select=([^&]*)/i)||[])[1]||"");
+          const declared=decodeURIComponent(sel).split(",").map(x=>x.trim()).filter(Boolean).map(n=>({name:n,keys:[n,`_${n}_value`]}));
+          const complete=declared.length>0&&!/[?&]\$(expand|apply)=/i.test(raw);
+          const set0=raw.split(/[?(/]/)[0];
+          setLoading(false);
+          await streamRun(stream,{declared,complete,first:data.records,sheetBase:(entities.find(e=>e.p===set0)||{l:set0}).l,mapRows:cleanAndFlatten,next:data.nextLink||null,
+            getPage:async(nlk)=>{const pd=await bridge.query(nlk,{});return {rows:pd?.records||[],next:pd?.nextLink||null};}});
+          return;
+        }
         const firstClean=cleanAndFlatten(data.records);
         // Derive columns from ALL returned rows (not just first — first row may lack expand data)
         const colSet=new Set();
@@ -1029,19 +1168,20 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const pageData=await bridge.query(nextLink,{});
             if(!pageData?.records?.length)break;
             const pageClean=cleanAndFlatten(pageData.records);
-            allRecords=[...allRecords,...pageClean];
+            addRows(allRecords,pageClean);
+            if(overMemory(allRecords))return;
             // Discover new columns from this page (expand data may appear in later pages)
             let newCols=false;
             for(const row of pageClean)for(const k of Object.keys(row)){if(!colSet.has(k)){colSet.add(k);newCols=true;}}
             if(newCols){const updatedFields=[...colSet].filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity"));headerFields.length=0;headerFields.push(...updatedFields);updatedFields.forEach(f=>{odataFieldMap[f]=f;});}
             nextLink=pageData.nextLink||null;
             const paint=!nextLink||pageNum%5===0||newCols; // throttle data re-render; force a paint when columns change
-            setRes(prev=>({...prev,fields:headerFields,odataFieldMap,...(paint?{data:allRecords}:{}),count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            setRes(prev=>({...prev,fields:headerFields,odataFieldMap,...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(pageErr){
             setError(`Page ${pageNum}: ${pageErr.message}`);break;
           }
         }
-        if(!stale()) setRes(prev=>({...prev,data:allRecords,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
         setError(e.message);setLoading(false);
       }
@@ -1063,6 +1203,14 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(stale())return;
       if(!data?.records){setError("No results returned");setLoading(false);return;} // used to leave the button stuck on "Querying…" forever (audit finding)
       const t1 = ((Date.now()-t0)/1000).toFixed(1);
+      if(stream){
+        const explicit=validSf.length>0&&!allSelected;
+        const declared=explicit?[...validSf.map(f=>({name:f,keys:[getOdataName(f)]})),...expands.flatMap(ex=>ex.fields.map(f=>({name:`${ex.targetEntity}.${f}`,keys:[`${ex.targetEntity}.${f}`]})))]:[];
+        setLoading(false);addToHistory(ent,q,qm,declared.length);
+        await streamRun(stream,{declared,complete:explicit,first:data.records,sheetBase:ent.l,mapRows:recs=>recs.map(cleanRecord),next:data.nextLink||null,
+          getPage:async(nlk)=>{const pd=await bridge.query(nlk,{});return {rows:pd?.records||[],next:pd?.nextLink||null};}});
+        return;
+      }
 
       const firstClean = data.records.map(cleanRecord);
       // When falling back to record keys (allSelected), scan ALL records not just the first
@@ -1089,7 +1237,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           const pageData = await bridge.query(nextLink, {});
           if (!pageData?.records?.length) break;
           const pageClean = pageData.records.map(cleanRecord);
-          allRecords = [...allRecords, ...pageClean];
+          addRows(allRecords, pageClean);
+          if (overMemory(allRecords)) return;
           // Discover new columns when using auto-detect (allSelected fallback path)
           let newCols = false;
           if (!(validSf.length > 0 && !allSelected)) {
@@ -1105,7 +1254,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           }
           nextLink = pageData.nextLink || null;
           const paint = !nextLink || pageNum%5===0 || newCols; // throttle data re-render; force a paint when columns change
-          setRes(prev => ({...prev, fields: headerFields, odataFieldMap, ...(paint?{data:allRecords}:{}), count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+          setRes(prev => ({...prev, fields: headerFields, odataFieldMap, ...(paint?{data:allRecords,dataVersion:++ver}:{}), count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         } catch (pageErr) {
           if (isSessionExpired(pageErr.message)) {
             setError(SESSION_EXPIRED_MSG);
@@ -1117,7 +1266,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if (hasExpand && ent.c && allRecords.length < ent.c * 0.9) {
         setError(`⚠ ${allRecords.length} records retrieved out of ${ent.c} — D365 limits results with $expand. Remove expand to get all records, then enrich in a second query.`);
       }
-      if(!stale()) setRes(prev => ({...prev, data: allRecords, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+      if(!stale()) setRes(prev => ({...prev, data: allRecords, dataVersion: ++ver, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
     } catch(e) {
       if(isSessionExpired(e.message)) {
         setError(SESSION_EXPIRED_MSG);
@@ -1476,7 +1625,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               {qm==="fetchxml"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fxml.replace(/\n/g," ").substring(0,100)}{fxml.length>100?"…":""}</code>}
               {qm==="sql"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sqlQ.replace(/\n/g," ").substring(0,100)}{sqlQ.length>100?"…":""}</code>}
               <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                <button onClick={run} disabled={loading||loadingFields} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> Execute <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
+                <button onClick={run} disabled={loading||loadingFields||streamState?.phase==="running"} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> Execute <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>setShowStreamMenu(v=>!v)} disabled={loading||loadingFields||streamState?.phase==="running"} title="Run this query and write EVERY row straight to a file — nothing kept in the browser, any size" style={{padding:"4px 8px",background:showStreamMenu?C.cy+"22":"transparent",border:`1px solid ${C.cy}55`,borderRadius:4,color:C.cy,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>⬇ To file</button>
+                  {showStreamMenu&&<div style={{position:"absolute",top:"100%",left:0,zIndex:30,marginTop:4,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,minWidth:250,boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
+                    <div style={{padding:"7px 10px",fontSize:11,color:C.txd,borderBottom:`1px solid ${C.bd}`,lineHeight:1.5}}>Runs the query and streams every row to the file you pick — page after page, nothing kept in the browser.</div>
+                    <button onClick={()=>startStream("csv")} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",background:"transparent",color:C.tx,cursor:"pointer",fontSize:12.5}}>CSV <span style={{color:C.txd,fontSize:11}}>— any number of rows</span></button>
+                    <button onClick={()=>startStream("xlsx")} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",borderTop:`1px solid ${C.bd}`,background:"transparent",color:C.tx,cursor:"pointer",fontSize:12.5}}>Excel <span style={{color:C.txd,fontSize:11}}>— a new sheet every 1,048,576 rows</span></button>
+                  </div>}
+                </div>
                 <button onClick={saveCurrentQuery} disabled={!ent} title={activeSaved?"Save as… (a new name, or overwrite one)":"Save this query"} style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
                 {activeSaved&&<span title={`Loaded from the saved query “${activeSaved}”`} style={{display:"flex",alignItems:"center",gap:4,fontSize:11.5,color:C.txm,border:`1px solid ${C.yw}44`,borderRadius:4,padding:"1px 2px 1px 8px",maxWidth:260}}>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📂 {activeSaved}</span>
@@ -1569,6 +1726,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               </div>
             </div>
           </div>
+          {streamState&&<StreamCard st={streamState} onStop={stopStream} onClose={()=>setStreamState(null)}/>}
+          {!streamState&&tooBig&&<div style={{margin:12,padding:"14px 16px",borderRadius:8,border:`1px solid ${C.yw}55`,background:C.yw+"10",fontSize:13,lineHeight:1.6}}>
+            <div style={{fontWeight:700,color:C.yw,marginBottom:4}}>This result doesn't fit in the browser's memory</div>
+            <div style={{color:C.txm}}>{tooBig.rows.toLocaleString()} rows were read when memory ran short, and there are more. Colvio shows nothing rather than an incomplete list. Stream it to a file instead — every row, straight to disk:</div>
+            <div style={{display:"flex",gap:8,marginTop:10}}>
+              <button onClick={()=>startStream("csv")} style={bt(C.cy,{fontSize:12})}>⬇ Stream to CSV</button>
+              <button onClick={()=>startStream("xlsx")} style={bt(C.cy,{fontSize:12})}>⬇ Stream to Excel</button>
+            </div>
+          </div>}
           <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>!ids.has(recordId(r,prev.entity?.l,prev.entity?.pk)))}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} onUpdateRecords={(updates)=>setRes(prev=>({...prev,data:prev.data.map(r=>updates.get(r)||r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
         </>:null}
       </div>
