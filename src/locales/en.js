@@ -428,7 +428,7 @@ export default {
   "sql_error": "SQL syntax error",
   "view_fetchxml": "View FetchXML",
   "help.sql_mode": "SQL mode: write SQL SELECT statements that are automatically translated to FetchXML and executed against D365.",
-  "help.query_modes": "Builder: visual query builder with fields and filters.\nOData: write raw OData query strings.\nFetchXML: write XML queries (like XrmToolBox).\nSQL: write SQL SELECT statements (auto-translated to FetchXML).",
+  "help.query_modes": "Builder: visual query builder with fields and filters.\nOData: write raw OData query strings.\nFetchXML: write XML queries (like XrmToolBox).\nSQL: write SQL SELECT statements (run natively by Dataverse, or translated to FetchXML) — and UPDATE / DELETE on one table: Execute becomes a preview of every row the statement touches, Apply writes exactly those rows.",
   "help.bulk_update": "Select records in the results table, then update a column value for all selected records at once.",
   "help.optionset_export": "Download all OptionSet/Picklist values for this entity as a single CSV file.",
   "help.fields_export": "Export all fields of this entity as a CSV: logical name, display label, OData column name, type, required flag, custom flag. Useful for documentation, data dictionaries, or building $select clauses.",

@@ -28,7 +28,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     if(qKey!==prevQuery.current){
       prevQuery.current=qKey;
       setSortField(null);setSortDir("asc");setSelected(new Set());setBulkUpdate(null);setSearch("");
-      setDupPanel(false);setDupKeys(new Set());setDupResult(null);
+      setDupPanel(false);setDupKeys(new Set());setDupResult(null);setPlanRun(null);
     }
   },[res?.query]);
   // Escape closes the confirm modal / bulk-update popover (destructive actions shouldn't be mouse-only).
@@ -165,6 +165,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const[deleting,setDeleting]=useState(false);
   const[delProg,setDelProg]=useState(null); // {done,total} while the batched delete runs
   const[updProg,setUpdProg]=useState(null); // {done,total} while the bulk update runs
+  const[planRun,setPlanRun]=useState(null);  // SQL UPDATE / DELETE apply: { phase, done, total, ok, failed, aborted, topErr }
   const abortRef=useRef(false);             // one cancel flag serving BOTH bulk operations
 
   // Canonical id resolver (shared with the parent's post-delete row removal so they can't disagree).
@@ -220,6 +221,32 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     }catch{
       setConfirmModal({msg:`${prodLine}Delete ${count} record(s) from ${entityName}? This action is irreversible.`,onOk:()=>{setConfirmModal(null);executeDelete();}});
     }
+  };
+
+  // ── SQL UPDATE / DELETE: apply the previewed statement to exactly the rows of the preview ──
+  const plan=res.writePlan||null;
+  const applyPlan=()=>{
+    const ids=res.data.map(getRecordId).filter(Boolean);
+    if(!plan||!ids.length) return;
+    const verb=plan.kind==="delete"?"Delete":"Update";
+    setConfirmModal({msg:`${prodLine}${verb} ${ids.length.toLocaleString()} ${plan.displayName} record(s)?\n\n${plan.statement}\n\n${plan.kind==="delete"?"Deleting is irreversible (only tables with the recycle bin turned on keep them).":`Each record gets: ${plan.setsText}`}`,onOk:()=>{
+      setConfirmModal(null);
+      if(!confirmProd(orgInfo?.isProduction,`${verb} ${ids.length.toLocaleString()} ${plan.displayName} record(s) — ${plan.statement}`)) return;
+      executePlan(ids);
+    }});
+  };
+  const executePlan=async(ids)=>{
+    abortRef.current=false;
+    setPlanRun({phase:"running",done:0,total:ids.length});
+    const prog=p=>setPlanRun(x=>x&&x.phase==="running"?{...x,done:p.done,total:p.total}:x);
+    try{
+      const r=plan.kind==="delete"
+        ?await bridge.batchDeleteKeyed(plan.entitySet,plan.pk,ids.map(id=>({keyValue:id})),true,prog,()=>abortRef.current,{chunk:100,concurrency:4})
+        :await bridge.batchUpsert(plan.entitySet,plan.pk,ids.map(id=>({keyValue:id,record:{...plan.body}})),true,prog,()=>abortRef.current,{chunk:100,concurrency:4,updateOnly:true});
+      const ok=plan.kind==="delete"?(r.deleted||0):(r.updated||0)+(r.created||0);
+      const errs=r.errors||[];
+      setPlanRun({phase:"done",ok,failed:errs.length,aborted:!!r.aborted,total:ids.length,topErr:errs[0]?.msg||""});
+    }catch(e){ setPlanRun({phase:"done",ok:0,failed:ids.length,aborted:false,total:ids.length,topErr:e.message||String(e)}); }
   };
 
   const dk = (f) => res.odataFieldMap?.[f] || f;
@@ -369,6 +396,26 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
 
   return (
     <div>
+      {plan&&(()=>{
+        const del=plan.kind==="delete", tone=del?C.rd:C.yw, n=res.data.length;
+        const verbed=del?"deleted":"updated";
+        return (
+          <div style={{margin:"8px 12px",padding:"10px 14px",borderRadius:8,border:`1px solid ${tone}55`,background:tone+"10",fontSize:13,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",lineHeight:1.5}}>
+            <b style={{color:tone}}>{del?"DELETE preview":"UPDATE preview"}</b>
+            <span style={{flex:1,minWidth:240,color:C.txm}}>
+              {res.fetching?"Reading every row the statement touches…"
+                :planRun?.phase==="done"?<>
+                  <span style={{color:planRun.failed?C.rd:C.gn,fontWeight:600}}>✓ {planRun.ok.toLocaleString()} {verbed}</span>
+                  {planRun.failed?<span style={{color:C.rd}}> · {planRun.failed.toLocaleString()} failed — {String(planRun.topErr).slice(0,200)}</span>:null}
+                  {planRun.aborted?<span style={{color:C.yw}}> · cancelled: the rows not yet sent were left untouched</span>:null}
+                  <span> — run the preview again to see where things stand.</span></>
+                :<>{n.toLocaleString()} {plan.displayName} row{n===1?"":"s"} match the WHERE{del?"":<> — each gets <code style={{...mono,fontSize:12}}>{plan.setsText}</code></>}. Nothing is written until you apply; the search box below doesn't narrow it.</>}
+            </span>
+            {!res.fetching&&!planRun&&n>0&&<button onClick={applyPlan} style={bt(tone,{fontSize:12})}>{del?"Delete":"Apply to"} {n.toLocaleString()} row{n===1?"":"s"}</button>}
+            {planRun?.phase==="running"&&<><span style={{...mono,fontSize:12,color:C.txm}}>{planRun.done.toLocaleString()}/{planRun.total.toLocaleString()}</span><button onClick={()=>{abortRef.current=true;}} style={bt(null,{fontSize:12})}>Cancel</button></>}
+          </div>
+        );
+      })()}
       <div style={{borderBottom:`1px solid ${C.bd}`,background:C.sf,padding:"6px 12px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}>
           <div style={{display:"flex",alignItems:"center",gap:6}}>

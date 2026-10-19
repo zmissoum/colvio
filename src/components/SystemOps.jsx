@@ -212,7 +212,9 @@ function SystemJobs({ bp, isAdmin, theme, orgInfo }) {
   const [nextLink, setNextLink] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
+  // Last 7 days by default: the system job table is often the largest of an org (millions of rows) —
+  // an unbounded first read could time out. Clearing the date reads everything, page by page.
+  const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
   const [dateTo, setDateTo] = useState("");
 
   const JOB_SELECT = "asyncoperationid,name,operationtype,statecode,statuscode,startedon,completedon,createdon,retrycount,friendlymessage";

@@ -415,7 +415,7 @@ export default {
   "sql_error": "Erreur de syntaxe SQL",
   "view_fetchxml": "Voir FetchXML",
   "help.sql_mode": "Mode SQL : \u00e9crivez des requ\u00eates SELECT SQL automatiquement traduites en FetchXML et ex\u00e9cut\u00e9es sur D365.",
-  "help.query_modes": "Builder : constructeur visuel avec champs et filtres.\nOData : requ\u00eates OData brutes.\nFetchXML : requ\u00eates XML (comme XrmToolBox).\nSQL : requ\u00eates SQL SELECT (traduction automatique en FetchXML).",
+  "help.query_modes": "Builder : constructeur visuel avec champs et filtres.\nOData : requ\u00eates OData brutes.\nFetchXML : requ\u00eates XML (comme XrmToolBox).\nSQL : requ\u00eates SQL SELECT (ex\u00e9cut\u00e9es nativement par Dataverse, ou traduites en FetchXML) \u2014 et UPDATE / DELETE sur une table : Execute devient un aper\u00e7u de toutes les lignes touch\u00e9es, Apply \u00e9crit exactement ces lignes.",
   "help.bulk_update": "S\u00e9lectionnez des records dans le tableau puis mettez \u00e0 jour une colonne pour tous les records s\u00e9lectionn\u00e9s.",
   "help.optionset_export": "T\u00e9l\u00e9chargez toutes les valeurs OptionSet/Picklist de cette entit\u00e9 dans un seul fichier CSV.",
   "help.fields_export": "Exporte tous les champs de cette entit\u00e9 en CSV : nom logique, libell\u00e9 d'affichage, nom OData, type, requis, custom. Utile pour la documentation, les dictionnaires de donn\u00e9es, ou construire des clauses $select.",

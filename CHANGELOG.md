@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.11.185] — 2026-10-19
+### Added — Explorer SQL: UPDATE and DELETE, always previewed (the SQL 4 CDS gesture)
+- `UPDATE <table> SET col = value[, …] WHERE …` and `DELETE FROM <table> WHERE …` in SQL mode. **Execute becomes "Preview UPDATE / DELETE"**: the values are typed first (same shared code as inline edit and bulk update — an option set needs its number, a lookup a GUID bound through its navigation property, a wrong value is refused with the reason before anything runs), then the WHERE runs as a SELECT (key, name, and the current value of every column being set) through the same engine as any query — native `?sql=` or transpiled — and the grid shows EVERY row it touches.
+- **Apply** writes exactly the preview's rows: update-only PATCH (`If-Match: *` — a vanished row fails instead of being re-created) in $batch chunks of 100 × 4, or the batched DELETE; confirmation with the statement, a second one on production, progress, Cancel (rows not yet sent stay untouched, said so), the server's reason for failures. CanBeDeleted is checked before a DELETE preview.
+- Refused with the reason: no WHERE (touch every row on purpose with `WHERE <primary key> IS NOT NULL`), UPDATE … FROM / JOIN, expressions or other columns as values, a column set twice, columns that aren't on the table. "To file" doesn't stream a write statement.
+- Pure `sqlWrite.js` (parser with quote-aware scanning, preview SELECT, value typing bridge, shared `updateMetaFor` — the Explorer's own update metadata now uses it too) + 9 tests (555). Demo smoke: preview, apply, delete, refusal, back to SELECT.
+
+### Changed
+- System Ops › System jobs opens on the last 7 days (like flow runs): the system job table is often an org's largest, and an unbounded first read could time out. Clearing the date reads everything, page by page.
+
 ## [1.11.184] — 2026-10-19
 ### Added — Explorer: every row, whatever the size ("all or nothing")
 - **⬇ To file** next to Execute: runs the query and streams every row to the CSV or Excel file you pick — page after page, written and forgotten, nothing held in the browser. CSV has no limit; Excel gets a new sheet every 1,048,576 rows (its own limit) and cells over its 32,767 characters are cut and counted. Works in every mode (Builder, OData, FetchXML, SQL native or transpiled), with progress, rate and Stop. Stop or an error leaves NO file — a partial file would look complete. The header is exactly the query's columns when it names them ($select, <attribute>, Builder columns); otherwise the first page tells, and a column that only appears later stops the stream with the reason instead of writing an incomplete file.

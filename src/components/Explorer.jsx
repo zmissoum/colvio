@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { normalizeODataInput, entityForSet, displayODataPath, looksLikeOData } from "../odataPaste.js";
 import { createSink, cellValue, openOutput } from "../streamExport.js";
 import { cookieFrom, pagedFetchXml, isCookieMismatch, fetchXmlColumns, streamColumns, uncoveredKey } from "../fetchPaging.js";
+import { parseSqlWrite, previewSelect, describeSets, rawForPrepare, updateMetaFor } from "../sqlWrite.js";
+import { prepareUpdate as prepareTypedUpdate } from "../updateUtils.js";
 import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
@@ -354,6 +356,39 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     if(streamRef.current===st){ await streamFail(st,"The query didn't run — check it in the grid first."); }
   };
   const stopStream=()=>{ fetchAbort.current=true; };
+  const sqlWritePeek=qm==="sql"?parseSqlWrite(sqlQ):null; // the Execute button says what it will do
+
+  // ── SQL UPDATE / DELETE: preview first ──
+  // The statement's values are typed (and refused) before anything runs, then its WHERE runs as a
+  // SELECT through the same SQL engine; the grid shows every row it would touch, and Results'
+  // "Apply" writes exactly those rows (update-only PATCH / batched DELETE).
+  const previewSqlWrite=async(w)=>{
+    setLoading(true);setRes(null);
+    try{
+      const meta=isLive?await bridge.getEntityMetadata(w.table,w.kind==="delete")
+        :{primaryId:`${w.table}id`,primaryName:"name",entitySet:entities.find(e=>e.l===w.table)?.p||`${w.table}s`,displayName:w.table,canBeDeleted:true};
+      if(w.kind==="delete"&&meta.canBeDeleted===false) throw new Error(`"${meta.displayName}" doesn't allow deletion (CanBeDeleted = false).`);
+      let body=null;
+      if(w.kind==="update"){
+        let um;
+        if(isLive){
+          const [fl,lk]=await Promise.all([bridge.getFields(w.table),bridge.getLookups(w.table).catch(()=>[])]);
+          um=updateMetaFor((fl||[]).map(f=>({l:f.logical,odata:f.odataName||f.logical,t:f.type||"String"})),lk,entities);
+        } else um=updateMetaFor(FLDS,[],entities);
+        body={};
+        for(const st of w.sets){
+          if(isLive&&um.fieldTypes[st.col]===undefined) throw new Error(`"${st.col}" isn't a column of ${w.table}.`);
+          const prep=prepareTypedUpdate({...um,odataFieldMap:{}},st.col,rawForPrepare(st));
+          if(!prep.ok) throw new Error(prep.reason);
+          Object.assign(body,prep.body);
+        }
+      }
+      const plan={kind:w.kind,table:w.table,entitySet:meta.entitySet,pk:meta.primaryId,displayName:meta.displayName,setsText:w.kind==="update"?describeSets(w.sets):"",body,statement:sqlQ.trim()};
+      setLoading(false);
+      await run({sql:previewSelect(w,meta.primaryId,meta.primaryName)});
+      setRes(prev=>prev?{...prev,writePlan:plan,entity:{...prev.entity,pk:meta.primaryId,p:meta.entitySet}}:prev);
+    }catch(e){ setError(e.message||String(e)); setLoading(false); }
+  };
 
   // Run cb once the selected table's fields are loaded. Live: after the async metadata fetch
   // (onFieldsReady). Demo: selEnt fills the fields synchronously and never fires the callback — so
@@ -527,22 +562,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   // 400s raw strings on numeric/GUID fields with a cryptic message, and a lookup can't be written
   // through its _value column at all (it needs nav@odata.bind with the target's entity set).
   // Keyed by BOTH logical and odata names so builder columns and raw-mode columns both resolve.
-  const buildUpdateMeta = () => {
-    const fieldTypes = {}, lookupBinds = {};
-    for (const f of fields) {
-      fieldTypes[f.l] = f.t; if (f.odata) fieldTypes[f.odata] = f.t;
-      if (f.t === "Lookup" || f.t === "Owner" || f.t === "Customer") {
-        let navs = lookups.filter(lk => lk.type !== "collection" && lk.lookupField === f.l)
-          .map(n => ({ nav: n.navProperty, target: n.targetEntity, set: entities.find(e2 => e2.l === n.targetEntity)?.p || null }));
-        if (!navs.length && f.target) { // demo fields carry a plain target instead of relationship rows
-          const base = f.l.replace(/^_/, "").replace(/_value$/, "");
-          navs = [{ nav: base, target: f.target, set: entities.find(e2 => e2.l === f.target)?.p || f.target + "s" }];
-        }
-        if (navs.length) { lookupBinds[f.l] = navs; if (f.odata) lookupBinds[f.odata] = navs; }
-      }
-    }
-    return { fieldTypes, lookupBinds };
-  };
+  const buildUpdateMeta = () => updateMetaFor(fields, lookups, entities); // shared with SQL UPDATE (sqlWrite.js)
 
   // Extracted to filterUtils.js (pure, tested) — the type-driven quoting is the injection
   // defense, so its guarantees are pinned by tests instead of living inline here.
@@ -735,10 +755,23 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     return flat;
   };
 
-  const run=async()=>{
+  const run=async(runOpts)=>{
     setError("");
     fetchAbort.current = false;
     const stream=streamRef.current; // a streamed export: pages go to the file, not to the grid
+    // run({ sql }) = run THIS SQL instead of the editor's (the preview of an UPDATE / DELETE).
+    // (A click passes an event — only a plain { sql } object counts.)
+    const ro=runOpts&&typeof runOpts==="object"&&typeof runOpts.sql==="string"?runOpts:null;
+    const sqlText=ro?ro.sql:sqlQ;
+    if(!ro&&qm==="sql"){
+      const w=parseSqlWrite(sqlQ);
+      if(w){
+        if(w.error){setError(w.error);return;}
+        if(stream){await streamFail(stream,"UPDATE and DELETE aren't streamed to a file — run the preview, then apply it.");return;}
+        await previewSqlWrite(w);
+        return;
+      }
+    }
     if(!stream){ setTooBig(null); setStreamState(null); }
     // Grid: a page is appended IN PLACE (the old [...all, ...page] copied the whole set on every
     // page — quadratic on big results) and repaints are signalled with dataVersion.
@@ -775,9 +808,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     let sqlGenFxml="";
     const useNativeSql=qm==="sql"&&sqlEngine==="native"&&!nativeSqlDown;
     if(qm==="sql"){
-      if(!sqlQ.trim()){setError("SQL query is empty");return;}
+      if(!sqlText.trim()){setError("SQL query is empty");return;}
       if(!useNativeSql){
-        const r=sqlToFetchXml(sqlQ);
+        const r=sqlToFetchXml(sqlText);
         if(r.error){setError(r.error);return;}
         sqlGenFxml=r.fetchXml;
         setSqlFx(sqlGenFxml);
@@ -803,7 +836,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // that means "this org doesn't have the option yet", we flip to the transpiler for
     // the session; every other server error is shown verbatim — it is the diagnosis.
     if(qm==="sql"&&useNativeSql){
-      const base=extractBaseTable(sqlQ);
+      const base=extractBaseTable(sqlText);
       if(!base){setError("Couldn't find the base table after FROM — check the query.");return;}
       const baseEnt=entities.find(x=>x.l===base);
       setLoading(true);
@@ -816,7 +849,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       const t0=Date.now();
       let fellBack=false;
       try{
-        const first=await bridge.queryRaw(`${entitySet}?sql=${encodeURIComponent(sqlQ)}`);
+        const first=await bridge.queryRaw(`${entitySet}?sql=${encodeURIComponent(sqlText)}`);
         if(stale())return;
         if(stream){
           setLoading(false);addToHistory(sqlEnt,q,qm,0);
@@ -862,7 +895,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         }
       }
       if(fellBack){
-        const r=sqlToFetchXml(sqlQ);
+        const r=sqlToFetchXml(sqlText);
         if(r.error){setLoading(false);setError(`Native SQL isn't available on this environment, and the FetchXML fallback couldn't parse the query: ${r.error}`);return;}
         sqlGenFxml=r.fetchXml;setSqlFx(sqlGenFxml);
       }
@@ -1625,7 +1658,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               {qm==="fetchxml"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fxml.replace(/\n/g," ").substring(0,100)}{fxml.length>100?"…":""}</code>}
               {qm==="sql"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sqlQ.replace(/\n/g," ").substring(0,100)}{sqlQ.length>100?"…":""}</code>}
               <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                <button onClick={run} disabled={loading||loadingFields||streamState?.phase==="running"} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> Execute <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
+                <button onClick={run} disabled={loading||loadingFields||streamState?.phase==="running"} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> {sqlWritePeek&&!sqlWritePeek.error?`Preview ${sqlWritePeek.kind.toUpperCase()}`:"Execute"} <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>setShowStreamMenu(v=>!v)} disabled={loading||loadingFields||streamState?.phase==="running"} title="Run this query and write EVERY row straight to a file — nothing kept in the browser, any size" style={{padding:"4px 8px",background:showStreamMenu?C.cy+"22":"transparent",border:`1px solid ${C.cy}55`,borderRadius:4,color:C.cy,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>⬇ To file</button>
                   {showStreamMenu&&<div style={{position:"absolute",top:"100%",left:0,zIndex:30,marginTop:4,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,minWidth:250,boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>

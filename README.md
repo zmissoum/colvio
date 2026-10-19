@@ -239,7 +239,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Keyboard shortcuts panel (Ctrl+/)
 - Contextual tooltips on key features
 
-### SQL Query Mode — two engines
+### SQL Query Mode — two engines, and UPDATE / DELETE with a preview
+- **UPDATE / DELETE on one table** (`UPDATE account SET telephone1 = '0102', revenue = 2000000 WHERE statecode = 0`, `DELETE FROM contact WHERE emailaddress1 IS NULL`): Execute becomes **Preview** — the statement's WHERE runs as a SELECT through the same engine and the grid shows every row it would touch with its current values; **Apply** writes exactly those rows (update-only PATCH in $batch, or batched DELETE), with a confirmation (two on production), progress, Cancel and the server's reason per failure. Values are constants (text in quotes, numbers, NULL, TRUE/FALSE, a GUID for a lookup), typed and refused BEFORE anything runs by the same code as inline edit. A WHERE is mandatory (to touch every row on purpose: `WHERE <primary key> IS NOT NULL`); UPDATE … FROM/JOIN and expressions are refused with the reason
 - **⚡ Native (default)**: your SELECT is sent straight to Dataverse via the Web API `?sql=` option — the **server** parses and executes it. Multi-table `INNER`/`LEFT JOIN` with table & column aliases, self-joins, `DISTINCT`, server-side `GROUP BY` + `COUNT/SUM/AVG/MIN/MAX`, `DATEADD`/`GETUTCDATE` relative dates. Auto-paginated via `@odata.nextLink`
 - **⇄ Transpiled**: Colvio's own SQL→FetchXML converter — still the only engine with `HAVING` and `TOP`, and the automatic fallback on environments without `?sql=` (detected on first run)
 - Server limits stated honestly (native): no `SELECT *`, subqueries, `HAVING`, `TOP`, `UNION`; aggregates capped at 50k; not available on virtual tables
