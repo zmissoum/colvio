@@ -69,6 +69,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **📊 Fill rate** — how many rows have a value in every column of a table, exact: FetchXML aggregates (`countcolumn`, 40 columns per query); a table past the 50,000-row aggregate limit is counted in created-on date slices (bisection, rows without a date included) — never row by row. Columns never filled and under 5 % are summed up; the fields export gains Filled rows / Filled %
 - **📚 Data dictionary** — every column of the custom tables, the tables shown, or all tables (type, required level, custom, primary key / name, create / update, descriptions), one row per column, tables read 20 at a time and streamed to a CSV or Excel file
 - **🧨 Dependencies** of a column or a table — *what blocks deleting it* (Dataverse's `RetrieveDependenciesForDelete`) or *everything that uses it* (`RetrieveDependentComponents`): forms, views, charts, business rules, flows and workflows, plug-in step filters and images, mappings, keys, field security, apps, site maps… named, grouped, each with how to remove the dependency; the table's own parts are set apart; CSV / Excel export. Read-only, one read + one read per component type to name them
+- **➕ Columns from file** — describe columns in a CSV / Excel sheet (display name, type, required level, max length, precision, min / max, options, lookup target, format, description; schema name optional, derived with the solution's prefix), pick the unmanaged solution, and every row is checked against the table and the org before anything is sent (unknown type, duplicate or existing name, missing options, unknown target, ranges…); the valid rows are created one by one with Dataverse's own metadata bodies (text, multiline, whole number, big integer, decimal, float, currency, yes/no, date, date and time, choice, multi-select, lookup = a one-to-many relationship), the table published once, the columns reloaded; per-row result, Stop, template CSV, results export
 - **📑 Solution layers** of a column or a table (`msdyn_componentlayers`, the maker portal's "See solution layers"): every layer top first — solution, publisher, managed / unmanaged / system, time — with the properties each one changes (values set again higher up struck through); an unmanaged "Active" layer sitting on a managed solution is called out, with the properties it overrides (the classic "my deployed change doesn't show"). Read-only; CSV / Excel export
 - Entity record counts, field type badges, custom field indicators
 
@@ -286,9 +287,9 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 |--------|-------|
 | Modules | 23 |
 | Lines of code | ~27,100 |
-| API actions | 93 |
-| React components | 47 |
-| Unit tests | 619 |
+| API actions | 95 |
+| React components | 48 |
+| Unit tests | 627 |
 | Build size | ~996 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |

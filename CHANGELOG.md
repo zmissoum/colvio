@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.196] — 2026-10-20
+### Added — Metadata: create columns in bulk from a file
+- **➕ Columns from file** on the selected table: a CSV / Excel sheet describes the columns — Display name, Type (text, multiline, whole number, big integer, decimal, float, currency, yes/no, date, date and time, choice, multi-select, lookup — many spellings accepted), Required (optional / recommended / required), Max length, Precision, Min, Max, Options (“Low;Medium;High” or “1:A;2:B” — values otherwise follow the publisher's option value prefix), Target (lookup table), Format (email, url, phone, text area, rich text…), Description; the Schema name is optional and derived from the display name with the solution's prefix (“Annual revenue (EUR)” → `new_AnnualRevenueEUR`). A **template CSV** is one click away.
+- **Checked before anything is sent**, row by row: unknown type or required level, a schema name that doesn't carry the prefix or isn't valid, a column that already exists on the table, the same name twice in the file, a choice without options or with duplicate options, a lookup without a target or to a table the org doesn't have, text lengths, precisions and ranges out of Dataverse's bounds. Rows with errors are shown with the reason and skipped.
+- **Created one by one** with Dataverse's own metadata bodies (a lookup is a one-to-many relationship carrying the column, referential delete), in the **unmanaged solution you pick** (its publisher gives the prefix), with progress and Stop; then the table is **published once** and its columns reloaded. Per-row result (created / failed with the server's reason / skipped), results export. Confirmed with the list, a second time on production.
+- Content script: `getPublishingTargets` (unmanaged solutions with their publisher prefixes, the org's language) and `createColumn` (only Dataverse's own column types pass, schema names checked, `MSCRM.SolutionUniqueName` header). Pure `columnSpec.js` + 8 tests (627).
+
 ## [1.11.195] — 2026-10-20
 ### Added — 📜 Web Resources (new module, Develop)
 - **The list**: every web resource of the org (scripts, styles, HTML, XML, SVG, images, RESX…), paged, with kind, managed flag, last modification; Microsoft's and hidden ones behind a toggle; filter by name and kind.

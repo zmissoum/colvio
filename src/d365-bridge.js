@@ -1067,6 +1067,16 @@ export const bridge = {
     return callD365("updateAttributeLabel", { entityName, attributeName, localizedLabels });
   },
 
+  // ── Metadata › Columns from file ──
+  async getPublishingTargets() {
+    if (!isExtension) return { languageCode: 1033, solutions: [{ uniqueName: "Default", name: "Default Solution", prefix: "new", valuePrefix: 10000, publisher: "Default Publisher" }, { uniqueName: "ContosoSales", name: "Contoso Sales", prefix: "contoso", valuePrefix: 12345, publisher: "Contoso" }] };
+    return callD365("getPublishingTargets");
+  },
+  async createColumn({ entity, kind, body, solution }) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 180)); if (/Fail/i.test(body?.SchemaName || body?.Lookup?.SchemaName || "")) throw new Error("Demo: this one fails on purpose."); return { ok: true }; }
+    return callD365("createColumn", { entity, kind, body, solution });
+  },
+
   // ── Web Resources module ──
   async getWebResources() {
     if (!isExtension) { await new Promise(r => setTimeout(r, 200)); return demoWebResources(); }

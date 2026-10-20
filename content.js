@@ -2041,6 +2041,45 @@
             result = { ok: true };
             break;
           }
+          case "getPublishingTargets": {
+            // The unmanaged solutions a new column can go in, each with its publisher's prefixes,
+            // and the org's base language (labels are written in it).
+            const dPt = await dvRequest("GET", "solutions?$select=uniquename,friendlyname&$filter=ismanaged eq false and isvisible eq true&$expand=publisherid($select=customizationprefix,customizationoptionvalueprefix,friendlyname)&$orderby=friendlyname asc", null, NO_ANN);
+            let langPt = 1033;
+            try { const o = await dvRequest("GET", "organizations?$select=languagecode&$top=1", null, NO_ANN); langPt = o.value?.[0]?.languagecode || 1033; } catch { /* default English */ }
+            result = {
+              languageCode: langPt,
+              solutions: (dPt.value || []).map(s => ({ uniqueName: s.uniquename, name: s.friendlyname || s.uniquename, prefix: s.publisherid?.customizationprefix || "", valuePrefix: s.publisherid?.customizationoptionvalueprefix ?? 10000, publisher: s.publisherid?.friendlyname || "" })).filter(s => s.prefix),
+            };
+            break;
+          }
+
+          case "createColumn": {
+            // ONE new column (or the one-to-many relationship that carries a lookup) from a body the
+            // panel's pure columnSpec.js built — only Dataverse's own metadata types pass, the schema
+            // name is checked, and the column lands in the chosen unmanaged solution.
+            validateName(params.entity, "entity");
+            const bodyC = params.body || {};
+            const OK_TYPES = new Set(["String", "Memo", "Integer", "BigInt", "Decimal", "Double", "Money", "Boolean", "DateTime", "Picklist", "MultiSelectPicklist"].map(t => `Microsoft.Dynamics.CRM.${t}AttributeMetadata`));
+            let pathC;
+            if (params.kind === "attribute") {
+              if (!OK_TYPES.has(bodyC["@odata.type"])) throw new Error("Unexpected column type.");
+              if (!/^[a-z][a-z0-9]*_[A-Za-z0-9_]{1,48}$/.test(String(bodyC.SchemaName || ""))) throw new Error("Invalid schema name.");
+              pathC = `EntityDefinitions(LogicalName='${params.entity}')/Attributes`;
+            } else if (params.kind === "relationship") {
+              if (bodyC["@odata.type"] !== "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata") throw new Error("Unexpected relationship type.");
+              validateName(bodyC.ReferencedEntity, "ReferencedEntity");
+              if (bodyC.ReferencingEntity !== params.entity) throw new Error("The relationship doesn't point at this table.");
+              if (!/^[a-z][a-z0-9]*_[A-Za-z0-9_]{1,48}$/.test(String(bodyC.Lookup?.SchemaName || ""))) throw new Error("Invalid lookup schema name.");
+              pathC = "RelationshipDefinitions";
+            } else throw new Error("Unknown kind.");
+            const hC = {};
+            if (params.solution && params.solution !== "Default") { validateName(params.solution, "solution"); hC["MSCRM.SolutionUniqueName"] = params.solution; }
+            await dvRequest("POST", pathC, bodyC, hC);
+            result = { ok: true };
+            break;
+          }
+
           case "getWebResources": {
             // Every web resource of the org (name, kind, managed, hidden, when) — paged, no content.
             const rowsW = [];

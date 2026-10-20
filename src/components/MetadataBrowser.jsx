@@ -11,6 +11,7 @@ import { ROWS } from "../shared.jsx";
 import { impactRows, groupRows, IMPACT_HEADERS, impactExportRows } from "../deleteImpact.js";
 import LayersModal from "./LayersModal.jsx";
 import OptionSetEditor from "./OptionSetEditor.jsx";
+import ColumnsFromFile from "./ColumnsFromFile.jsx";
 
 export default function MetadataBrowser({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
@@ -34,6 +35,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const impactGen=useRef(0);
   // Solution layers window: { componentName: Entity|Attribute, id, logical, label }
   const[layers,setLayers]=useState(null);
+  const[colsFile,setColsFile]=useState(false); // ➕ Columns from file window
 
   // Export ALL field metadata for the selected entity as a single CSV.
   // Includes logical/display names, OData column name (for $select), type, required/custom flags.
@@ -99,11 +101,9 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const doRefresh=async()=>{try{await bridge.clearCache();}catch{}setTick(t2=>t2+1);};
 
   const selGen=useRef(0); // guards a slow getFields from a previous entity overwriting the current one
-  const handleSelectEntity=(e)=>{
+  // (Re)load the columns of a table — on selection, and after columns were created from a file.
+  const loadFields=(e)=>{
     const gen=++selGen.current;
-    setSelEnt(e);setFields([]);setShowPicklist(null);setOptionSetData({});setFieldSearch("");
-    impactGen.current++;setImpact(null);setLayers(null);
-    fillStop.current=true;setFill(null);
     if(isLive){
       setLoadingFields(true);
       bridge.getFields(e.l).then(data=>{
@@ -115,6 +115,12 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     } else {
       setFields(FLDS);
     }
+  };
+  const handleSelectEntity=(e)=>{
+    setSelEnt(e);setFields([]);setShowPicklist(null);setOptionSetData({});setFieldSearch("");
+    impactGen.current++;setImpact(null);setLayers(null);setColsFile(false);
+    fillStop.current=true;setFill(null);
+    loadFields(e);
   };
 
   const cats=[...new Set(entities.map(e=>e.cat))];
@@ -257,6 +263,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
               {!loadingFields&&fields.length>0&&<><button onClick={()=>exportAllFields("csv")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Export All Fields</button><button onClick={()=>exportAllFields("xlsx")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Excel</button><Tooltip text={t("help.fields_export")}/></>}
               {!loadingFields&&fields.length>0&&<button onClick={runFill} disabled={fill?.phase==="running"} title="How many rows have a value in each column — exact counts (aggregates; a big table is counted in date slices, never row by row)" style={{...bt(C.vi,{fontSize:12,padding:"4px 12px",opacity:fill?.phase==="running"?.6:1})}}>📊 Fill rate</button>}
               <button onClick={()=>runImpact("table",selEnt)} title="What would block deleting this table, or everything that uses it — Dataverse's own dependency check, read-only (nothing is deleted)" style={{...bt(C.or,{fontSize:12,padding:"4px 12px"})}}>🧨 Dependencies</button>
+              <button onClick={()=>setColsFile(true)} title="Create several columns at once from a CSV / Excel sheet (display name, type, required, options…) — checked before anything is sent, published at the end" style={{...bt(C.gn,{fontSize:12,padding:"4px 12px"})}}>➕ Columns from file</button>
               <button onClick={()=>setLayers({componentName:"Entity",id:selEnt.mid,name:selEnt.l,logical:selEnt.l,label:selEnt.d})} title="The solution layers of this table — which solutions change it, in which order, and whether an unmanaged layer hides a managed one (read-only)" style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}>📑 Layers</button>
               {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={()=>exportAllOptionSets("csv")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><button onClick={()=>exportAllOptionSets("xlsx")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Excel</>}</button><Tooltip text={t("help.optionset_export")}/></>}
             </div>
@@ -410,6 +417,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
         </div>;
       })()}
       {layers&&<LayersModal target={layers} onClose={()=>setLayers(null)}/>}
+      {colsFile&&selEnt&&<ColumnsFromFile entity={selEnt} fields={fields} entities={entities} isProduction={orgInfo?.isProduction} onClose={()=>setColsFile(false)} onDone={()=>loadFields(selEnt)}/>}
       {dict&&<div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.55)"}} onClick={()=>dict.phase!=="running"&&setDict(null)}>
         <div style={{width:460,maxWidth:"92vw",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:18,boxShadow:"0 16px 48px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
           <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>📚 Data dictionary</div>
