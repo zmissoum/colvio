@@ -1881,7 +1881,7 @@
             // property CanBeDeleted is NOT $select-able on every org/API version ("Could not find
             // a property named 'CanBeDeleted'"), so it must never be in the core query.
             const meta = await dvRequest("GET",
-              `EntityDefinitions(LogicalName='${params.logicalName}')?$select=DisplayName,PrimaryNameAttribute,PrimaryIdAttribute,EntitySetName`
+              `EntityDefinitions(LogicalName='${params.logicalName}')?$select=DisplayName,PrimaryNameAttribute,PrimaryIdAttribute,EntitySetName,ObjectTypeCode`
             );
             let canBeDeleted = true;
             if (params.withCanDelete) {
@@ -1898,8 +1898,23 @@
               primaryName: meta?.PrimaryNameAttribute || "name",
               primaryId: meta?.PrimaryIdAttribute || params.logicalName + "id",
               entitySet: meta?.EntitySetName || params.logicalName + "s",
+              objectTypeCode: meta?.ObjectTypeCode ?? null,
             };
             break;
+          }
+
+          case "createUserQuery": {
+            // A personal view (userquery) of one table: only its owner sees it, in the app's view
+            // selector — Dynamics 365 can share it from there.
+            validateName(params.entity, "entity");
+            const vName = String(params.name || "").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 200);
+            if (!vName) throw new Error("The view needs a name.");
+            if (!/^\s*<fetch\b/i.test(params.fetchxml || "") || !/^\s*<grid\b/i.test(params.layoutxml || "")) throw new Error("Invalid view definition.");
+            const created = await dvRequest("POST", "userqueries", {
+              name: vName, returnedtypecode: params.entity, fetchxml: params.fetchxml, layoutxml: params.layoutxml,
+              querytype: 0, description: String(params.description || "Saved from Colvio").slice(0, 2000),
+            }, { Prefer: "return=representation" });
+            result = { id: created?.userqueryid || null };
           }
 
           // ── User & License Monitor ──

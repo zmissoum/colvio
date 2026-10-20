@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.186] — 2026-10-20
+### Added — Explorer: save a query as a personal view
+- **👁 Save as view** next to ⭐: the query becomes a personal view (`userquery`) of its table — its columns, filters and sort — in the app's view selector under My views; only its owner sees it and Dynamics 365 can share it. From FetchXML mode as written; from SQL through the transpiler; from the **Builder** through a new Builder → FetchXML conversion (groups and their and/or, text operators as like / not-like, null checks, comparisons, booleans as 1/0, sort).
+- The view's FetchXML is cleaned of what a view can't hold (page, count, top, paging cookie, total count) and always carries the table's key; its layout lists the query's columns (link-entity ones as alias.attribute) with the table's ObjectTypeCode and name column (`getEntityMetadata` now returns ObjectTypeCode).
+- Refused with the reason, before anything is created: OData queries, UPDATE / DELETE, aggregates, `<all-attributes/>`, Builder queries with expanded lookups or relational filters (build those in FetchXML mode), conditions a view can't express.
+- Pure `viewSave.js` + 7 tests (562). Demo smoke: Builder and SQL views created, OData refused.
+
 ## [1.11.185] — 2026-10-19
 ### Added — Explorer SQL: UPDATE and DELETE, always previewed (the SQL 4 CDS gesture)
 - `UPDATE <table> SET col = value[, …] WHERE …` and `DELETE FROM <table> WHERE …` in SQL mode. **Execute becomes "Preview UPDATE / DELETE"**: the values are typed first (same shared code as inline edit and bulk update — an option set needs its number, a lookup a GUID bound through its navigation property, a wrong value is refused with the reason before anything runs), then the WHERE runs as a SELECT (key, name, and the current value of every column being set) through the same engine as any query — native `?sql=` or transpiled — and the grid shows EVERY row it touches.

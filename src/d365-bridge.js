@@ -476,6 +476,12 @@ export const bridge = {
 
   // withCanDelete: also fetch the CanBeDeleted managed property (best-effort; only the bulk-delete
   // pre-check needs it). Left off elsewhere so a non-selectable CanBeDeleted can't 400 the call.
+  // A personal view (userquery) from an Explorer query.
+  async createUserQuery(view) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 300)); return { id: "00000000-0000-4000-8000-00000000c0de" }; }
+    return callD365("createUserQuery", view);
+  },
+
   async getEntityMetadata(logicalName, withCanDelete = false) {
     if (!isExtension) return { canBeDeleted: true, displayName: logicalName, ...demoBinMeta(logicalName) };
     return callD365("getEntityMetadata", { logicalName, withCanDelete });

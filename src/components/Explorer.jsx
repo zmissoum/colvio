@@ -4,6 +4,7 @@ import { createSink, cellValue, openOutput } from "../streamExport.js";
 import { cookieFrom, pagedFetchXml, isCookieMismatch, fetchXmlColumns, streamColumns, uncoveredKey } from "../fetchPaging.js";
 import { parseSqlWrite, previewSelect, describeSets, rawForPrepare, updateMetaFor } from "../sqlWrite.js";
 import { prepareUpdate as prepareTypedUpdate } from "../updateUtils.js";
+import { builderToFetchXml, viewFetchXml, layoutColumns, layoutXml } from "../viewSave.js";
 import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
@@ -79,6 +80,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[streamState,setStreamState]=useState(null); // { phase: running|done|stopped|error, name, format, rows, pages, started, error, sheets, truncated }
   const[showStreamMenu,setShowStreamMenu]=useState(false);
   const streamRef=useRef(null);                 // the stream run() writes to instead of the grid
+  const[viewModal,setViewModal]=useState(null);  // "Save as view": { name, saving, error, done }
   const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
   const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
   const[bookmarks,setBookmarks]=useState([]);
@@ -357,6 +359,37 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
   const stopStream=()=>{ fetchAbort.current=true; };
   const sqlWritePeek=qm==="sql"?parseSqlWrite(sqlQ):null; // the Execute button says what it will do
+
+  // ── Save as view: the query becomes a personal view (userquery) of its table ──
+  const viewDefinition=()=>{
+    if(qm==="odata") return {error:"An OData query can't become a view — save it from the Builder, FetchXML or SQL mode."};
+    if(qm==="fetchxml") return fxml.trim()?{fetchxml:fxml}:{error:"The FetchXML is empty."};
+    if(qm==="sql"){
+      if(parseSqlWrite(sqlQ)) return {error:"An UPDATE / DELETE can't be a view."};
+      const r=sqlToFetchXml(sqlQ);
+      return r.error?{error:`This SQL can't be written as FetchXML for a view: ${r.error}`}:{fetchxml:r.fetchXml};
+    }
+    const ft={};fields.forEach(f=>{ft[f.l]=f.t;});
+    return builderToFetchXml({entity:ent?.l,attrs:sf,groups:filterGroups,groupLogic,orderBy,fieldTypes:ft,hasExpands:expands.some(ex=>ex.fields.length>0),hasRelFilters:relFilters.length>0});
+  };
+  const openSaveView=()=>{const def=viewDefinition();setViewModal({name:activeSaved||`${ent?.d||ent?.l||"Query"} (Colvio)`,error:def.error||"",saving:false,done:null});};
+  const saveView=async()=>{
+    const def=viewDefinition();
+    if(def.error){setViewModal(v=>({...v,error:def.error}));return;}
+    const name=(viewModal?.name||"").trim();
+    if(!name){setViewModal(v=>({...v,error:"Give the view a name."}));return;}
+    setViewModal(v=>({...v,saving:true,error:""}));
+    try{
+      const entityName=(def.fetchxml.match(/<entity\b[^>]*name\s*=\s*"([^"]+)"/i)||[])[1];
+      const meta=await bridge.getEntityMetadata(entityName);
+      const vf=viewFetchXml(def.fetchxml,meta.primaryId);
+      if(vf.error) throw new Error(vf.error);
+      const cols=layoutColumns(vf.fetchxml,meta.primaryId);
+      const layout=layoutXml({objectTypeCode:meta.objectTypeCode,primaryId:meta.primaryId,primaryName:meta.primaryName,columns:cols.length?cols:[meta.primaryName]});
+      const r=await bridge.createUserQuery({entity:vf.entity,name,fetchxml:vf.fetchxml,layoutxml:layout});
+      setViewModal(v=>({...v,saving:false,done:{id:r?.id,name,table:meta.displayName||vf.entity,columns:cols}}));
+    }catch(e){ setViewModal(v=>({...v,saving:false,error:e.message||String(e)})); }
+  };
 
   // ── SQL UPDATE / DELETE: preview first ──
   // The statement's values are typed (and refused) before anything runs, then its WHERE runs as a
@@ -1667,6 +1700,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                     <button onClick={()=>startStream("xlsx")} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",borderTop:`1px solid ${C.bd}`,background:"transparent",color:C.tx,cursor:"pointer",fontSize:12.5}}>Excel <span style={{color:C.txd,fontSize:11}}>— a new sheet every 1,048,576 rows</span></button>
                   </div>}
                 </div>
+                <button onClick={openSaveView} disabled={!ent} title="Save as a personal view of this table — it appears in the app's view selector (Builder, FetchXML or SQL)" style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.vi}55`,borderRadius:4,color:C.vi,cursor:ent?"pointer":"default",fontSize:12,whiteSpace:"nowrap"}}>👁 Save as view</button>
                 <button onClick={saveCurrentQuery} disabled={!ent} title={activeSaved?"Save as… (a new name, or overwrite one)":"Save this query"} style={{padding:"4px 8px",background:"transparent",border:`1px solid ${C.yw}44`,borderRadius:4,color:C.yw,cursor:ent?"pointer":"default",fontSize:12}}>⭐</button>
                 {activeSaved&&<span title={`Loaded from the saved query “${activeSaved}”`} style={{display:"flex",alignItems:"center",gap:4,fontSize:11.5,color:C.txm,border:`1px solid ${C.yw}44`,borderRadius:4,padding:"1px 2px 1px 8px",maxWidth:260}}>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📂 {activeSaved}</span>
@@ -1771,6 +1805,24 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           <div>{res?<Results res={res} bp={bp} orgInfo={orgInfo} onStop={stopFetch} onDeleteDone={(ids)=>setRes(prev=>({...prev,data:prev.data.filter(r=>!ids.has(recordId(r,prev.entity?.l,prev.entity?.pk)))}))} onUpdateRecord={(updated,old)=>setRes(prev=>({...prev,data:prev.data.map(r=>r===old?updated:r)}))} onUpdateRecords={(updates)=>setRes(prev=>({...prev,data:prev.data.map(r=>updates.get(r)||r)}))} />:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.txd,fontSize:14}}>{t("explorer.ctrl_enter")}</div>}</div>
         </>:null}
       </div>
+      {viewModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>!viewModal.saving&&setViewModal(null)}>
+        <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,width:440,maxWidth:"92vw",boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:15,fontWeight:700,marginBottom:6,color:C.tx}}>👁 Save as a personal view</div>
+          {viewModal.done?(<>
+            <div style={{fontSize:13,color:C.gn,marginBottom:8}}>✓ “{viewModal.done.name}” is a personal view of {viewModal.done.table}{viewModal.done.columns?.length?` with ${viewModal.done.columns.length} column${viewModal.done.columns.length>1?"s":""}`:""}.</div>
+            <div style={{fontSize:12,color:C.txm,lineHeight:1.6,marginBottom:12}}>Refresh the Dynamics 365 tab: it's in the view selector of {viewModal.done.table}, under My views. Only you see it — share it from there if others need it.</div>
+            <div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={()=>setViewModal(null)} style={bt(null,{fontSize:12})}>Close</button></div>
+          </>):(<>
+            <div style={{fontSize:12,color:C.txd,lineHeight:1.6,marginBottom:10}}>The query's columns, filters and sort become a view of its table that only you see. Paging and row limits don't apply to views.</div>
+            <input value={viewModal.name} onChange={e=>setViewModal(v=>({...v,name:e.target.value,error:""}))} autoFocus onKeyDown={e=>{if(e.key==="Enter")saveView();if(e.key==="Escape"&&!viewModal.saving)setViewModal(null);}} placeholder="View name" style={inp({fontSize:13,marginBottom:10,width:"100%",boxSizing:"border-box"})}/>
+            {viewModal.error&&<div style={{fontSize:12,color:C.rd,marginBottom:10,lineHeight:1.5}}>{viewModal.error}</div>}
+            <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+              <button onClick={()=>setViewModal(null)} disabled={viewModal.saving} style={bt(null,{fontSize:12})}>{t("common.cancel")}</button>
+              <button onClick={saveView} disabled={viewModal.saving||!viewModal.name.trim()} style={bt(C.vi,{fontSize:12,opacity:viewModal.saving||!viewModal.name.trim()?.5:1})}>{viewModal.saving?<><Spin s={11}/> Saving…</>:"Save view"}</button>
+            </div>
+          </>)}
+        </div>
+      </div>}
       {saveModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setSaveModal(false)}>
         <div style={{background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:20,minWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
           <div style={{fontSize:15,fontWeight:700,marginBottom:12,color:C.tx}}>{t("explorer.query_name")}</div>
