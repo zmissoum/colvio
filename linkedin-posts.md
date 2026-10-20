@@ -744,6 +744,43 @@ What's the first SQL query you'll throw at Dataverse? 👇
 
 Moved to [`linkedin-plan-videos.md`](linkedin-plan-videos.md): the video-only plan (rules, calendar with a "published" checklist, and the 17 texts in EN + FR).
 
+## Post 47 — "Why can't she see this record?" now has a screen (1.11.181 → 1.11.198)
+
+> Release post (Colvio page voice, ENGLISH ONLY), covers the 1.11.182 → 1.11.198 arc. Hero = Record access (the admin question every consultant gets on a Monday morning). Second = Health check (new module). Third = the writes that used to need XrmToolBox (plug-in steps, choice values, columns from a sheet, web resources) — with the "every write confirmed, twice on production" line. Fourth = data-model tools + SQL UPDATE/DELETE + To file. HONESTY thread kept (Posts 22–25): the review-pass confession about our own API meter. NOTE FOR ZAKARIA: Tue/Thu cadence, link in FIRST COMMENT, not in the body. Separate from the video plan (Posts 26–46) — this one has no video.
+
+"Why can't she see this record?"
+
+Every Dynamics 365 admin gets that message. The answer lives in five places at once: the user's roles, the roles of her teams, the business unit of the record, its owner, and whatever someone shared with her last year.
+
+Colvio now answers it on one screen. Open the record, pick the user, and you get Dataverse's own yes / no for each right — read, write, append, delete, assign, share — plus the why: which role or team role grants it, at which depth, or which share. And for every no, what would fix it: the depth the record needs, a share, an assignment. 🔐
+
+🩺 New module: Health check. One report on what silently hurts an environment — jobs failing or suspended, cloud flows owned by people who left, plug-in steps firing on every update, connection references with no connection, environment variables with nothing in them, users without a role, unmanaged solutions in production, log tables quietly eating storage. Each finding says what to do. Copy it into a ticket.
+
+🛠 And the things you used to open XrmToolBox for:
+→ switch plug-in steps on / off, one or a whole assembly, and set their filtering attributes
+→ add, rename, reorder, delete the values of a choice column
+→ create 40 columns from an Excel sheet — every row checked against the table before anything is sent
+→ edit and publish web resources, and search a column name inside every script (the one place Dataverse's dependency tracking never looks)
+
+Every write is confirmed. Twice on production.
+
+📊 For the data model: per column, its fill rate (exact, even on millions of rows), what blocks deleting it, its solution layers — an unmanaged layer hiding a managed solution is the classic "my deployment changed nothing", and it's now flagged. SQL got UPDATE and DELETE, always previewed. Exports stream every row to a file, whatever the size.
+
+🔍 One confession, because this page keeps choosing tools that don't lie: a full review of these releases found that our own API meter — the thing that slows Colvio down before Dataverse's quota — was turning its own pauses into fake "timeout" errors. Under exactly the load it was built for. Found, fixed, shipped, and written in the changelog.
+
+23 modules, 640 automated tests, free and open source, running in your browser on your own session.
+
+Which of these would you have opened XrmToolBox for last week? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #PowerApps #D365
+
+**First comment:**
+Chrome Web Store: https://chromewebstore.google.com/detail/edieednbdaclheikneelkjfbckibhdgl
+Source and changelog: https://github.com/zmissoum/colvio
+Coming from XrmToolBox? The module-by-module map: https://github.com/zmissoum/colvio/blob/main/XRMTOOLBOX.md
+
+---
+
 ## Posting Strategy
 
 Recommended order after Chrome approval:
