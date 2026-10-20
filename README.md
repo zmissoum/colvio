@@ -10,6 +10,8 @@ Colvio is a **free and open-source** Chrome extension that lets consultants, adm
 
 **No API keys. No app registration. No subscription.** Just click the icon on any D365 page and start working.
 
+> **Coming from XrmToolBox?** See [XRMTOOLBOX.md](XRMTOOLBOX.md) — which Colvio module replaces which tool, and what stays with XrmToolBox by design.
+
 ## Why Colvio?
 
 D365 has always lacked a free, fast, in-browser tool for data exploration and debugging. **Now it has one.**
