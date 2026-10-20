@@ -1949,6 +1949,7 @@
               querytype: 0, description: String(params.description || "Saved from Colvio").slice(0, 2000),
             }, { Prefer: "return=representation" });
             result = { id: created?.userqueryid || null };
+            break;
           }
 
           // ── User & License Monitor ──

@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.11.188] — 2026-10-20
+### Fixed
+- **Explorer › Save as view** (1.11.186): the view-creation action in the content script had no `break`, so after creating the view it also ran the next action — a full read of every user of the org. The view was created, but the answer was the user list, the extra paging cost API requests on big orgs, and past 30 seconds the save reported a timeout although the view existed (a retry would create it twice). The action now stops after the create.
+- Lint: `no-fallthrough` is now an error, so an action without `break` can't ship again (the sweep found no other one).
+
 ## [1.11.187] — 2026-10-20
 ### Added — Metadata: fill rate and data dictionary
 - **📊 Fill rate** of the selected table: for every column, how many rows hold a value — exact, from FetchXML aggregates (row count + `countcolumn`, 40 columns per query). A table past Dataverse's 50,000-row aggregate limit is first cut into created-on date slices (bisection; rows without a date get their own slice), then every chunk of columns is counted on every slice and summed — a few dozen requests on a table of millions of rows, never one per row or per column. A column the server refuses to aggregate is isolated (the chunk is split down to it) and marked, the others still counted; images, files, virtual and multi-select columns are listed as not countable. The fields table gains a Filled column (bar + %), the header sums up columns never filled and under 5 %, the fields export gains Filled rows / Filled %. Stop shows nothing (a partial count would mislead). Pure `fillRate.js` + 8 tests.

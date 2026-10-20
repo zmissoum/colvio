@@ -27,6 +27,8 @@ export default [
       "valid-typeof": "error",
       "no-dupe-args": "error",
       "no-constant-binary-expression": "error",
+      // a content.js action without `break` ran the NEXT action too (createUserQuery fell into getAllUsers)
+      "no-fallthrough": "error",
     },
   },
   {
