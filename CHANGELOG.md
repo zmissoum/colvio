@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.11.195] — 2026-10-20
+### Added — 📜 Web Resources (new module, Develop)
+- **The list**: every web resource of the org (scripts, styles, HTML, XML, SVG, images, RESX…), paged, with kind, managed flag, last modification; Microsoft's and hidden ones behind a toggle; filter by name and kind.
+- **Editor** for text kinds (a plain code area, monospace, no wrapping): **Save**, **Save & publish** (Ctrl+S), **Revert**; each write confirmed with the new size and what it means (published = every form and page that loads it gets this version at once, for every user; saved only = users keep the published version), a second time on production; a resource from a managed solution warns that its next import may overwrite the change. The UTF-8 BOM is kept as it was. Images show a preview; any kind downloads as its file; **Open ↗** shows the published version in Dynamics 365. Update-only PATCH of the content, publish through `PublishXml` of that resource alone.
+- **🔎 Search in contents**: reads the text resources (as filtered) 25 per request with progress and Stop, keeps them in memory for the session, and lists every line holding what you type — a column's logical name before you delete or rename it, a URL, a function — case and whole-word options; a hit opens the editor on its line. This is what Metadata › Dependencies can't see: Dataverse never tracks a name typed inside a script.
+- Content script: `getWebResources`, `getWebResourceContents` (packets by id), `updateWebResource`, `publishWebResources`. Pure `webResources.js` (types, base64 ⇄ UTF-8 with BOM, search, line offsets) + demo org + 8 tests (619). Help entry EN / FR; the tour now says 23 modules.
+
+### Fixed
+- Metadata › Values: a React key warning in demo mode (option rows keyed on a missing value).
+
 ## [1.11.194] — 2026-10-20
 ### Added — Metadata: edit the values of a choice column
 - **✏️ Edit values** in a choice column's Values window: **add** an option (label, value optional — Dataverse then picks one with your publisher's prefix), **rename** one (labels in other languages kept), **reorder** them (↑ ↓, then Save order) and **delete** one — through Dataverse's own actions (`InsertOptionValue`, `UpdateOptionValue`, `OrderOption`, `DeleteOptionValue`), then published at once (the table, or the global choice). The list re-reads after each change.

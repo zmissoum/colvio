@@ -33,6 +33,7 @@ import SecurityAudit from "./components/SecurityAudit.jsx";
 import Teams from "./components/Teams.jsx";
 import Storage from "./components/Storage.jsx";
 import HealthCheck from "./components/HealthCheck.jsx";
+import WebResources from "./components/WebResources.jsx";
 import SchemaViewer from "./components/SchemaViewer.jsx";
 
 // Environment-type detection lives in envDetect.js (pure, tested) — built on Microsoft's REAL
@@ -206,6 +207,7 @@ export default function App(){
     {id:"schema",section:"develop",label:t("nav.schema"),desc:t("nav.schema.desc"),icon:<I.Grid/>},
     {id:"solutions",section:"develop",label:t("nav.solutions"),desc:t("nav.solutions.desc"),icon:<I.Database/>,requires:"canReadSolutions"},
     {id:"envvars",section:"develop",label:t("nav.envvars"),desc:t("nav.envvars.desc"),icon:<I.Zap/>,requires:"canReadSolutions"},
+    {id:"webres",section:"develop",label:t("nav.webres"),desc:t("nav.webres.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
     {id:"translations",section:"develop",label:t("nav.translations"),desc:t("nav.translations.desc"),icon:<I.Clipboard/>,requires:"canReadSolutions"},
     {id:"licenses",section:"admin",label:t("nav.licenses"),desc:t("nav.licenses.desc"),icon:<I.Users/>,requires:"canReadAllUsers"},
     {id:"bu",section:"admin",label:t("nav.bu"),desc:t("nav.bu.desc"),icon:<I.Link/>,requires:"canReadAllUsers"},
@@ -357,6 +359,7 @@ export default function App(){
           {tab==="teams"&&<ErrorBoundary><Teams bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="storage"&&<ErrorBoundary><Storage bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="health"&&<ErrorBoundary><HealthCheck bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
+          {tab==="webres"&&<ErrorBoundary><WebResources bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{if(loaderBusy&&!window.confirm("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?"))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>

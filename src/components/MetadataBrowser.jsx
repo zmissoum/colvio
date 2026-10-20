@@ -343,7 +343,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                             {opts.some(o=>o.color)&&<th style={{...ths(),width:50,textAlign:"center"}}>Color</th>}
                           </tr></thead>
                           <tbody>{opts.map((o,oi)=>(
-                            <tr key={o.value} style={{borderBottom:`1px solid ${C.bd}`}} onMouseEnter={e=>e.currentTarget.style.background=C.sfh} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            <tr key={o.value??o.v??oi} style={{borderBottom:`1px solid ${C.bd}`}} onMouseEnter={e=>e.currentTarget.style.background=C.sfh} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                               <td style={{...tds,textAlign:"center"}}><span style={{color:C.vi,fontWeight:700,...mono,fontSize:15}}>{o.value}</span></td>
                               <td style={{...tds,fontSize:14}}>{o.label}{o.isDefault&&<span style={{fontSize:11,color:C.yw,marginLeft:8,padding:"1px 5px",background:C.yw+"22",borderRadius:3}}>★ default</span>}</td>
                               {opts.some(oo=>oo.description)&&<td style={{...tds,color:C.txm,fontSize:13}}>{o.description||"—"}</td>}

@@ -2041,6 +2041,56 @@
             result = { ok: true };
             break;
           }
+          case "getWebResources": {
+            // Every web resource of the org (name, kind, managed, hidden, when) — paged, no content.
+            const rowsW = [];
+            const selW = "webresourceid,name,displayname,webresourcetype,ismanaged,modifiedon,_modifiedby_value";
+            let urlW = `webresourceset?$select=${selW},ishidden,iscustomizable&$orderby=name asc`;
+            let withMp = true;
+            while (urlW) {
+              let dW;
+              try { dW = await dvRequest("GET", urlW, null, { Prefer: "odata.maxpagesize=5000" }); }
+              catch (e) { if (withMp) { withMp = false; urlW = `webresourceset?$select=${selW}&$orderby=name asc`; continue; } throw e; }
+              for (const r of dW.value || []) rowsW.push({
+                id: r.webresourceid, name: r.name || "", displayName: r.displayname || "", type: r.webresourcetype, managed: !!r.ismanaged,
+                hidden: r.ishidden?.Value ?? r.ishidden ?? false, customizable: r.iscustomizable?.Value ?? r.iscustomizable ?? true,
+                modifiedOn: r.modifiedon || "", modifiedBy: r["_modifiedby_value@OData.Community.Display.V1.FormattedValue"] || "",
+              });
+              const nlW = dW["@odata.nextLink"]; urlW = nlW ? nlW.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = rowsW;
+            break;
+          }
+
+          case "getWebResourceContents": {
+            // The content (base64) of a packet of web resources, in one read — the editor opens one,
+            // the content search reads text resources 25 at a time with progress.
+            const idsW = [...new Set((params.ids || []).map(String))];
+            idsW.forEach(validateGuid);
+            if (!idsW.length) { result = []; break; }
+            const dC = await dvRequest("GET", `webresourceset?$select=webresourceid,name,webresourcetype,content,description,modifiedon,ismanaged&$filter=${idsW.map(id => `webresourceid eq ${id}`).join(" or ")}`, null, NO_ANN);
+            result = (dC.value || []).map(r => ({ id: r.webresourceid, name: r.name || "", type: r.webresourcetype, content: r.content || "", description: r.description || "", modifiedOn: r.modifiedon || "", managed: !!r.ismanaged }));
+            break;
+          }
+
+          case "updateWebResource": {
+            // New content (base64) for one web resource — update only (If-Match: *), nothing else changes.
+            validateGuid(params.id);
+            const cW = String(params.content ?? "");
+            if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cW)) throw new Error("Invalid content encoding.");
+            await dvRequest("PATCH", `webresourceset(${params.id})`, { content: cW }, { "If-Match": "*" });
+            result = { ok: true };
+            break;
+          }
+
+          case "publishWebResources": {
+            const idsP = [...new Set((params.ids || []).map(String))];
+            idsP.forEach(validateGuid);
+            if (!idsP.length) throw new Error("Nothing to publish.");
+            result = await dvRequest("POST", "PublishXml", { ParameterXml: `<importexportxml><webresources>${idsP.map(id => `<webresource>{${id}}</webresource>`).join("")}</webresources></importexportxml>` });
+            break;
+          }
+
           case "getOptionSetInfo": {
             // A choice column's option set, for editing: local or global (and its name), managed /
             // customizable, its options, and the org's base language (new labels are written in it).

@@ -96,6 +96,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Secrets handled honestly** — the value is a Key Vault *reference*, never the secret itself, and the UI says so; overriding a managed definition is flagged as the normal per-environment pattern
 - Filters (No value / Overridden / Secrets), search, CSV/Excel export with each variable's effective source
 
+### Web Resources
+- **Every web resource of the org** (scripts, styles, HTML, XML, images, RESX…), Microsoft's and hidden ones behind a toggle, filtered by name and kind
+- **Editor for text kinds** — Save, or Save & publish (Ctrl+S), Revert, each write confirmed (a second time on production), a resource from a managed solution warns that its next import may overwrite the change; UTF-8 BOM preserved; images previewed; anything downloads as its file; Open ↗ shows the published version in Dynamics 365
+- **🔎 Search in contents** — reads the text resources 25 per request (progress, Stop) and lists every line holding what you type (a column's logical name before deleting or renaming it, a URL, a function), case / whole-word options, a hit opens the editor on its line. The complement to Metadata › Dependencies: Dataverse's dependency tracking never sees inside a script
+
 ### Data Loader
 - 5-step wizard: Source > Mapping > Lookups > Preview > Run
 - CSV / TSV / TXT drag-drop, **Excel (XLSX/XLS)** support, or paste from clipboard
@@ -279,11 +284,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Modules | 22 |
+| Modules | 23 |
 | Lines of code | ~27,100 |
-| API actions | 86 |
-| React components | 45 |
-| Unit tests | 600 |
+| API actions | 93 |
+| React components | 47 |
+| Unit tests | 619 |
 | Build size | ~996 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |

@@ -18,6 +18,7 @@ import { demoComponentDependencies } from "./deleteImpactDemo.js";
 import { demoAccessContext } from "./accessDemo.js";
 import { demoComponentLayers } from "./solutionLayersDemo.js";
 import { demoOptionSetInfo, demoOptionSetChange } from "./optionSetEditDemo.js";
+import { demoWebResources, demoWebResourceContents, demoUpdateWebResource } from "./webResourcesDemo.js";
 
 // ── Demo constants shared by several mocks ──
 // Views: the account ones the Apps demo exposes, plus the contact view the Account form's
@@ -158,7 +159,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -1064,6 +1065,24 @@ export const bridge = {
   async updateAttributeLabel(entityName, attributeName, localizedLabels) {
     if (!isExtension) return { ok: true };
     return callD365("updateAttributeLabel", { entityName, attributeName, localizedLabels });
+  },
+
+  // ── Web Resources module ──
+  async getWebResources() {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 200)); return demoWebResources(); }
+    return callD365("getWebResources");
+  },
+  async getWebResourceContents(ids) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 150)); return demoWebResourceContents(ids); }
+    return callD365("getWebResourceContents", { ids });
+  },
+  async updateWebResource(id, content) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 250)); return demoUpdateWebResource(id, content); }
+    return callD365("updateWebResource", { id, content });
+  },
+  async publishWebResources(ids) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 300)); return { ok: true }; }
+    return callD365("publishWebResources", { ids });
   },
 
   // Metadata › choice values editor (optionSetEdit.js builds the bodies).
