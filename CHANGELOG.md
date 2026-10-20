@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.198] - 2026-10-20
+### Changed
+- What's New card rewritten for the arc since the store's 1.11.181: Record access, Health check, Web Resources, the writes (plug-in steps, choice values, columns from file), the data-model tools, SQL UPDATE / DELETE, the Explorer's To file / Save as view / OData paste, big-org reads and the review pass - 8 items EN / FR. Record activity and the privacy line (already in 1.11.181) are out.
+
 ## [1.11.197] — 2026-10-20
 ### Review pass over 1.11.177 → 1.11.196 (five parallel reviews, every finding checked in the code)
 #### Fixed — reads and writes
