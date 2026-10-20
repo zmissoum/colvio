@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.193] — 2026-10-20
+### Added — Automation: plug-in step writes
+- **Enable / disable** a plug-in step from its row, or a whole **selection** (tick rows, or "select every step shown" — e.g. filter on an assembly and switch all its steps off before a data migration). One step is one update; a selection goes in $batch chunks of 50 (update-only, two at a time) with progress and Stop. The confirmation lists the steps and says what it means (they stop at once, for every user, with whatever they enforce), how many come from managed solutions (their next import may set the state back) and which are already in that state (left as is). A second confirmation on production. The rows take the written state; a failed row keeps its own and the first server reason is shown.
+- **Filtering attributes** of an Update step: a new Filtering column shows how many columns a step filters on, or "⚠ all" when it has none (it runs on every update of any column). Click to tick columns from the table's own metadata (updatable columns, plus any it filters on today that the metadata no longer lists); the footer counts what's added / removed; Save confirms with the diff, a second time on production. Clearing them all says the step will then run on every update.
+- Pure `stepAdmin.js` (state patches, plans, confirmation texts, local truth after a partial batch — batch errors number their rows from 1) + 5 tests (605). Demo smoke: filtering edited, a selection of 3 with one already disabled.
+
 ## [1.11.192] — 2026-10-20
 ### Added — 🩺 Health check (new module, Admin)
 - **One report on what silently hurts the environment**, 12 checks run one after the other: the plug-in trace log setting ("All" flagged in production), auditing and its retention, **system jobs failed in the last 7 days** grouped by job name, **suspended system jobs**, **active cloud flows owned by disabled users**, **synchronous Update plug-in steps without filtering attributes** (custom steps), real-time classic workflows, **connection references without a connection**, **environment variables with neither a value nor a default**, enabled interactive users without a security role of their own, **unmanaged solutions in production**, and the size of the log tables (system jobs, workflow logs, plug-in traces — Dataverse's own row-count snapshot).
