@@ -64,7 +64,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 ### Metadata Browser
 - Browse entities, fields, OptionSets by category — plus **Virtual / Elastic table-type filter chips** (find every virtual table at a glance)
-- OptionSet modal viewer with Value, Label, Description, Color
+- OptionSet modal viewer with Value, Label, Description, Color — and **✏️ Edit values** on a choice column: add (value optional — Dataverse applies your publisher's prefix), rename, reorder (↑ ↓, Save order) and delete options through Dataverse's own actions (`InsertOptionValue`, `UpdateOptionValue`, `OrderOption`, `DeleteOptionValue`), published right after; global choices say every column using them changes; a delete first counts the rows of the column holding the value; every write confirmed, a second time on production
 - **Export All OptionSets** — bulk CSV/Excel export of all Picklist/State/Status values for an entity (four reads, one per choice type — not one per column)
 - **📊 Fill rate** — how many rows have a value in every column of a table, exact: FetchXML aggregates (`countcolumn`, 40 columns per query); a table past the 50,000-row aggregate limit is counted in created-on date slices (bisection, rows without a date included) — never row by row. Columns never filled and under 5 % are summed up; the fields export gains Filled rows / Filled %
 - **📚 Data dictionary** — every column of the custom tables, the tables shown, or all tables (type, required level, custom, primary key / name, create / update, descriptions), one row per column, tables read 20 at a time and streamed to a CSV or Excel file

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.194] — 2026-10-20
+### Added — Metadata: edit the values of a choice column
+- **✏️ Edit values** in a choice column's Values window: **add** an option (label, value optional — Dataverse then picks one with your publisher's prefix), **rename** one (labels in other languages kept), **reorder** them (↑ ↓, then Save order) and **delete** one — through Dataverse's own actions (`InsertOptionValue`, `UpdateOptionValue`, `OrderOption`, `DeleteOptionValue`), then published at once (the table, or the global choice). The list re-reads after each change.
+- Says what it touches: a **global choice** changes for every column that uses it; a choice from a managed solution may be overwritten by its next import (or is refused when not customizable). Before a **delete**, one aggregate counts the rows of the column that hold the value ("past 50,000" when the server can't count) — they keep the number but lose the label, which the confirmation spells out. Duplicate labels and values, empty labels and out-of-range values are refused before anything is sent. Every write confirmed, a second time on production.
+- Content script: `getOptionSetInfo`, `optionSetChange` (only the known parameters pass), `publishOptionSet`. Pure `optionSetEdit.js` + demo store + 6 tests (611).
+
+### Changed
+- What's New rewritten to 9 tighter items for the whole arc since the store's 1.11.176.
+
 ## [1.11.193] — 2026-10-20
 ### Added — Automation: plug-in step writes
 - **Enable / disable** a plug-in step from its row, or a whole **selection** (tick rows, or "select every step shown" — e.g. filter on an assembly and switch all its steps off before a data migration). One step is one update; a selection goes in $batch chunks of 50 (update-only, two at a time) with progress and Stop. The confirmation lists the steps and says what it means (they stop at once, for every user, with whatever they enforce), how many come from managed solutions (their next import may set the state back) and which are already in that state (left as is). A second confirmation on production. The rows take the written state; a failed row keeps its own and the first server reason is shown.

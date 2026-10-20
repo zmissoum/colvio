@@ -17,6 +17,7 @@ import { normalizeDeps, itemsToResolve } from "./deleteImpact.js";
 import { demoComponentDependencies } from "./deleteImpactDemo.js";
 import { demoAccessContext } from "./accessDemo.js";
 import { demoComponentLayers } from "./solutionLayersDemo.js";
+import { demoOptionSetInfo, demoOptionSetChange } from "./optionSetEditDemo.js";
 
 // ── Demo constants shared by several mocks ──
 // Views: the account ones the Apps demo exposes, plus the contact view the Account form's
@@ -1063,6 +1064,20 @@ export const bridge = {
   async updateAttributeLabel(entityName, attributeName, localizedLabels) {
     if (!isExtension) return { ok: true };
     return callD365("updateAttributeLabel", { entityName, attributeName, localizedLabels });
+  },
+
+  // Metadata › choice values editor (optionSetEdit.js builds the bodies).
+  async getOptionSetInfo(entityName, fieldName) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 200)); return demoOptionSetInfo(entityName, fieldName); }
+    return callD365("getOptionSetInfo", { entityName, fieldName });
+  },
+  async optionSetChange(op, body) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 250)); return demoOptionSetChange(op, body); }
+    return callD365("optionSetChange", { op, body });
+  },
+  async publishOptionSet(name) {
+    if (!isExtension) return { ok: true };
+    return callD365("publishOptionSet", { name });
   },
 
   async publishEntity(logicalName) {

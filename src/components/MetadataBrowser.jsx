@@ -10,6 +10,7 @@ import { createSink, openOutput } from "../streamExport.js";
 import { ROWS } from "../shared.jsx";
 import { impactRows, groupRows, IMPACT_HEADERS, impactExportRows } from "../deleteImpact.js";
 import LayersModal from "./LayersModal.jsx";
+import OptionSetEditor from "./OptionSetEditor.jsx";
 
 export default function MetadataBrowser({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
@@ -18,6 +19,8 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const[catFilter,setCatFilter]=useState("all");
   const[fieldSearch,setFieldSearch]=useState("");
   const[showPicklist,setShowPicklist]=useState(null);
+  const[osEdit,setOsEdit]=useState(false); // the Values window in edit mode (choice columns)
+  useEffect(()=>{setOsEdit(false);},[showPicklist]);
   const[optionSetData,setOptionSetData]=useState({});
   const[exportingOS,setExportingOS]=useState(false);
   // Fill rate of the selected table: { entity, phase: running|done|error|stopped, requests, slices, result, error }
@@ -312,13 +315,14 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                         {opts.length>0&&<span style={{fontSize:12,color:C.txm}}>{opts.length} values</span>}
                       </div>
                       <div style={{display:"flex",gap:6}}>
+                        {field.t==="Picklist"&&<button onClick={()=>setOsEdit(e=>!e)} title="Add, rename, reorder or delete options — Dataverse's own actions, confirmed, then published" style={bt(osEdit?C.vi:null,{fontSize:12})}>{osEdit?"✓ Done":"✏️ Edit values"}</button>}
                         {opts.length>0&&<button onClick={()=>{exportTable(["Value","Label","Description"],opts.map(o=>[o.value,o.label,o.description]),`${field.l}_optionset`,"csv","OptionSet");cp("","opts");}} style={bt(null,{fontSize:12})}><I.Download/> {copied==="opts"?"✓ Downloaded":"Export CSV"}</button>}
                         {opts.length>0&&<button onClick={()=>{exportTable(["Value","Label","Description"],opts.map(o=>[o.value,o.label,o.description]),`${field.l}_optionset`,"xlsx","OptionSet");cp("","opts");}} style={bt(null,{fontSize:12})}><I.Download/> {copied==="opts"?"✓ Downloaded":"Excel"}</button>}
                         <button onClick={()=>setShowPicklist(null)} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:4,fontSize:16}}>✕</button>
                       </div>
                     </div>
                     <div style={{flex:1,overflow:"auto",padding:0}}>
-                      {opts.length===0?(
+                      {osEdit?<OptionSetEditor entity={selEnt.l} field={field} isProduction={orgInfo?.isProduction} onChanged={o2=>setOptionSetData(prev=>({...prev,[field.l]:o2}))}/>:opts.length===0?(
                         // A fetch failure used to cache [] and render THIS spinner forever with no
                         // retry (audit finding) — an empty-but-loaded set now says so, with a Retry
                         // that drops the cached [] so the effect refetches.

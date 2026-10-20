@@ -2041,6 +2041,46 @@
             result = { ok: true };
             break;
           }
+          case "getOptionSetInfo": {
+            // A choice column's option set, for editing: local or global (and its name), managed /
+            // customizable, its options, and the org's base language (new labels are written in it).
+            validateName(params.entityName, "entityName");
+            validateName(params.fieldName, "fieldName");
+            const dO = await dvRequest("GET", `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.fieldName}')/Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=OptionSet($select=Name,IsGlobal,IsManaged,IsCustomizable,Options),GlobalOptionSet($select=Name,IsGlobal,IsManaged,IsCustomizable,Options)`);
+            // OptionSet carries the options (local or global); GlobalOptionSet when only it does
+            const srcO = (dO.OptionSet && (dO.OptionSet.Options || []).length) ? dO.OptionSet : (dO.GlobalOptionSet || dO.OptionSet || {});
+            let langO = 1033;
+            try { const o = await dvRequest("GET", "organizations?$select=languagecode&$top=1", null, NO_ANN); langO = o.value?.[0]?.languagecode || 1033; } catch { /* default English */ }
+            result = {
+              isGlobal: !!srcO.IsGlobal, name: srcO.Name || "", managed: !!srcO.IsManaged,
+              customizable: srcO.IsCustomizable?.Value !== false, languageCode: langO,
+              options: (srcO.Options || []).map(o => ({ value: o.Value, label: o.Label?.UserLocalizedLabel?.Label || o.Label?.LocalizedLabels?.[0]?.Label || `Value ${o.Value}`, color: o.Color || null })),
+            };
+            break;
+          }
+
+          case "optionSetChange": {
+            // ONE change to a choice's options through Dataverse's own actions — the body is built
+            // by the panel's pure optionSetEdit.js and only its known parameters pass.
+            const fnO = { insert: "InsertOptionValue", update: "UpdateOptionValue", delete: "DeleteOptionValue", order: "OrderOption" }[params.op];
+            if (!fnO) throw new Error("Unknown option change.");
+            const bO = params.body || {};
+            const okKeys = new Set(["OptionSetName", "EntityLogicalName", "AttributeLogicalName", "Value", "Label", "MergeLabels", "Values", "SolutionUniqueName"]);
+            for (const k of Object.keys(bO)) if (!okKeys.has(k)) throw new Error(`Unexpected parameter ${k}.`);
+            for (const k of ["OptionSetName", "EntityLogicalName", "AttributeLogicalName"]) if (bO[k] != null) validateName(bO[k], k);
+            if (!bO.OptionSetName && !(bO.EntityLogicalName && bO.AttributeLogicalName)) throw new Error("No choice targeted.");
+            result = (await dvRequest("POST", fnO, bO)) || { ok: true };
+            break;
+          }
+
+          case "publishOptionSet": {
+            validateName(params.name, "name");
+            result = await dvRequest("POST", "PublishXml", {
+              ParameterXml: `<importexportxml><optionsets><optionset>${params.name}</optionset></optionsets></importexportxml>`
+            });
+            break;
+          }
+
           case "publishEntity": {
             validateName(params.logicalName, 'logicalName');
             result = await dvRequest("POST", "PublishXml", {
