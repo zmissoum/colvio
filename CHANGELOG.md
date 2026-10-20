@@ -20,7 +20,7 @@
 - Metadata: Export All OptionSets failures shown; Escape closes the data dictionary window; the batch checkboxes of Automation are disabled during a write.
 #### Docs and store text
 - Store descriptions (EN / FR) rewritten for the current arc: 23 modules, Web Resources and Health check listed, WHAT'S NEW = this arc; STORE_LISTING, README (permissions incl. `webRequest` / `alarms`, build size, no more "200k-edge cap", 15–60 min trace switch), PRIVACY (three host wildcards), XRMTOOLBOX.md, in-app Help (Metadata, Explorer, SQL, Show All Data › Record access, Apps) brought in line with the code.
-- 14 new tests (641).
+- 13 new test cases (640).
 
 ## [1.11.196] — 2026-10-20
 ### Added — Metadata: create columns in bulk from a file
