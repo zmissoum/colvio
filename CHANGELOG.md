@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.191] — 2026-10-20
+### Added — Metadata: solution layers
+- **📑 Layers** of the selected table (header) or of a column (📑 on its row): Dataverse's component layers (`msdyn_componentlayers` — what the maker portal shows under "See solution layers"), top layer first: order, solution, publisher, managed / unmanaged ("Active") / system, overwrite time, and the properties each layer changes — a value that a higher layer sets again is struck through (it doesn't win). One read; each layer's full component JSON isn't downloaded.
+- The verdict on top: **an unmanaged "Active" layer on a managed solution** is flagged with the properties it overrides — what the next import of that solution changes there stays hidden until the Active layer is removed (the classic "my deployed change doesn't show"). Unmanaged-on-system (a component made in this environment), several managed solutions (the top one wins), managed only, system only are told apart.
+- Read-only: removing an unmanaged layer stays a maker-portal action ("Remove active customizations" can't be undone, and its API isn't documented). CSV / Excel export (one row per layer and property). Pure `solutionLayers.js` + demo + 3 tests (595).
+
 ## [1.11.190] — 2026-10-20
 ### Added — Show All Data: why can (can't) a user see or edit this record?
 - **🔐 Record access** panel: search a user by name or email (or click **Me**), and get, for each right on the record — Read, Write, Append, Append to, Delete, Assign, Share — **Dataverse's own yes / no** (`RetrievePrincipalAccess`) and **why**: the role or the team role that grants it and at which depth (User, Business Unit, Parent: Child BU, Organization) measured against the record's owner and business unit, or a share to the user or to one of their teams. Dataverse's own sentence (`RetrieveAccessOrigin`) when the org has it.

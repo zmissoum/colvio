@@ -1488,6 +1488,21 @@
             break;
           }
 
+          case "getComponentLayers": {
+            // The solution layers of ONE component (msdyn_componentlayers — the maker portal's "See
+            // solution layers"), one read: order, solution, publisher, time and what each layer
+            // changes. Each layer's full component JSON is left out.
+            if (!/^[A-Za-z]+$/.test(String(params.componentName || ""))) throw new Error("Invalid component name.");
+            if (!params.componentId) throw new Error("Missing component id.");
+            validateGuid(params.componentId);
+            const fL = `msdyn_componentid eq '${params.componentId}' and msdyn_solutioncomponentname eq '${params.componentName}'`;
+            let dL;
+            try { dL = await dvRequest("GET", `msdyn_componentlayers?$select=msdyn_name,msdyn_order,msdyn_solutionname,msdyn_publishername,msdyn_overwritetime,msdyn_changes&$filter=${fL}`); }
+            catch { dL = await dvRequest("GET", `msdyn_componentlayers?$filter=${fL}`); }
+            result = (dL.value || []).map(r => ({ msdyn_order: r.msdyn_order, msdyn_solutionname: r.msdyn_solutionname, msdyn_publishername: r.msdyn_publishername, msdyn_overwritetime: r.msdyn_overwritetime, msdyn_changes: r.msdyn_changes }));
+            break;
+          }
+
           case "getComponentDependencies": {
             // Dataverse's own dependency check of one component — a column (2), a table (1), a
             // global choice (9) — one read: mode "delete" = what would BLOCK deleting it
