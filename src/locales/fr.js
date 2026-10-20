@@ -397,7 +397,7 @@ export default {
   "tour.step3_title": "Exportez vos donn\u00e9es",
   "tour.step3_body": "Copiez dans le presse-papier ou t\u00e9l\u00e9chargez en CSV, XLSX ou JSON. Mettez \u00e0 jour ou supprimez en masse.",
   "tour.step4_title": "D\u00e9couvrez plus",
-  "tour.step4_body": "La barre lat\u00e9rale regroupe 21 modules : DATA (Chargement, Show All Data, Corbeille\u2026), DEVELOP (M\u00e9tadonn\u00e9es, Solutions, Apps, Automation, API Tester\u2026) et ADMIN (S\u00e9curit\u00e9, Business Units, Licences, Adoption\u2026). Ctrl+K ouvre la palette de commandes.",
+  "tour.step4_body": "La barre lat\u00e9rale regroupe 22 modules : DATA (Chargement, Show All Data, Corbeille\u2026), DEVELOP (M\u00e9tadonn\u00e9es, Solutions, Apps, Automation, API Tester\u2026) et ADMIN (S\u00e9curit\u00e9, Business Units, Licences, Bilan de sant\u00e9\u2026). Ctrl+K ouvre la palette de commandes.",
   "tour.next": "Suivant",
   "tour.skip": "Passer",
   "tour.done": "C'est parti !",
