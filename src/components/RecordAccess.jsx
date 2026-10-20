@@ -95,6 +95,7 @@ export default function RecordAccess({ record, orgInfo }) {
           {diag.facts.map((f, i) => <div key={i} style={{ fontSize: 12.5, color: f.level === "error" ? C.rd : f.level === "warn" ? C.yw : C.txd, marginBottom: 3 }}>{f.level === "info" ? "ℹ" : "⚠"} {f.text}</div>)}
           <div style={{ fontSize: 12.5, color: C.txm, marginBottom: 4 }}>📍 {diag.position}</div>
           {ctx.origin && <div style={{ fontSize: 12.5, color: C.txm, marginBottom: 8 }}>Dataverse: <i>“{ctx.origin}”</i></div>}
+          {!ctx.origin && ctx.originError && <div style={{ fontSize: 12, color: C.txd, marginBottom: 8 }}>Dataverse's own sentence (RetrieveAccessOrigin) isn't available here: {ctx.originError}</div>}
           {ctx.effectiveError && <div style={{ fontSize: 12, color: C.yw, marginBottom: 8 }}>Dataverse's own answer couldn't be read ({ctx.effectiveError}) — the rights below are Colvio's reading of roles, teams and shares only.</div>}
 
           <div style={{ border: `1px solid ${C.bd}`, borderRadius: 6, overflow: "hidden" }}>

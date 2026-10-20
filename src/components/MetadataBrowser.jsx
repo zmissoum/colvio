@@ -5,7 +5,7 @@ import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import SchemaDiff from "./SchemaDiff.jsx";
 import { scanFillRate, percent, fillSummary, localAggregateRunner } from "../fillRate.js";
-import { dictRows, chunks as dictChunks, DICT_HEADERS } from "../dataDictionary.js";
+import { dictRows, chunks as dictChunks, DICT_HEADERS, DICT_CHUNK } from "../dataDictionary.js";
 import { createSink, openOutput } from "../streamExport.js";
 import { ROWS } from "../shared.jsx";
 import { impactRows, groupRows, IMPACT_HEADERS, impactExportRows } from "../deleteImpact.js";
@@ -24,6 +24,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   useEffect(()=>{setOsEdit(false);},[showPicklist]);
   const[optionSetData,setOptionSetData]=useState({});
   const[exportingOS,setExportingOS]=useState(false);
+  const[osErr,setOsErr]=useState("");
   // Fill rate of the selected table: { entity, phase: running|done|error|stopped, requests, slices, result, error }
   const[fill,setFill]=useState(null);
   const fillStop=useRef(false);
@@ -51,7 +52,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   // Export ALL OptionSet values for the selected entity as a single CSV
   const exportAllOptionSets=async(format="csv")=>{
     if(!selEnt||!fields.length||exportingOS)return;
-    setExportingOS(true);
+    setExportingOS(true);setOsErr("");
     try{
       const osFields=fields.filter(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status");
       if(!osFields.length){setExportingOS(false);return;}
@@ -64,9 +65,12 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
         for(const o of all[f.l]||[]) rows.push([f.l,f.d,displayType(f.t),o.value,o.label,o.description]);
       }
       if(rows.length) exportTable(headers,rows,`${selEnt.l}_all_optionsets`,format,"OptionSets");
-    }catch{}finally{setExportingOS(false);}
+      else setOsErr("No choice value came back — nothing exported.");
+    }catch(e){ setOsErr(`Export failed: ${e.message||String(e)}`); }finally{setExportingOS(false);}
   };
   useEffect(()=>{if(!showPicklist)return;const h=e=>{if(e.key==="Escape")setShowPicklist(null);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[showPicklist]);
+  const dictOpen=!!dict&&dict.phase!=="running";
+  useEffect(()=>{if(!dictOpen)return;const h=e=>{if(e.key==="Escape")setDict(null);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[dictOpen]);
   const impactOpen=!!impact;
   useEffect(()=>{if(!impactOpen)return;const h=e=>{if(e.key==="Escape"){impactGen.current++;setImpact(null);}};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[impactOpen]);
   useEffect(()=>{
@@ -268,6 +272,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
               {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={()=>exportAllOptionSets("csv")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><button onClick={()=>exportAllOptionSets("xlsx")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Excel</>}</button><Tooltip text={t("help.optionset_export")}/></>}
             </div>
 
+            {osErr&&<div style={{...crd({padding:"8px 12px",borderColor:C.rd+"55"}),marginBottom:10,fontSize:12.5,color:C.rd,display:"flex",gap:10,alignItems:"center"}}><span style={{flex:1}}>{osErr}</span><button onClick={()=>setOsErr("")} style={bt(null,{fontSize:11,padding:"2px 9px"})}>Close</button></div>}
             {fill&&fill.entity===selEnt.l&&(()=>{
               const box=(color)=>({...crd({padding:"8px 12px",borderColor:color+"55"}),marginBottom:10,fontSize:12.5,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",color:C.txm});
               if(fill.phase==="running") return <div style={box(C.vi)}><Spin s={11}/><span style={{flex:1}}>Counting values in every column{fill.slices>1?` — ${fill.slices} date slices (the table is past the 50,000-row aggregate limit)`:""} · {fill.requests} request{fill.requests===1?"":"s"}</span><button onClick={()=>{fillStop.current=true;}} style={bt(null,{fontSize:11,padding:"2px 9px"})}>Stop</button></div>;
@@ -421,7 +426,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
       {dict&&<div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.55)"}} onClick={()=>dict.phase!=="running"&&setDict(null)}>
         <div style={{width:460,maxWidth:"92vw",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:18,boxShadow:"0 16px 48px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
           <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>📚 Data dictionary</div>
-          <div style={{fontSize:12,color:C.txd,lineHeight:1.6,marginBottom:12}}>Every column of the tables you choose — type, required level, custom or not, primary key / name, create / update, descriptions — one row per column, streamed to the file (tables are read {20} at a time). Choice values are in each table's "Export All OptionSets".</div>
+          <div style={{fontSize:12,color:C.txd,lineHeight:1.6,marginBottom:12}}>Every column of the tables you choose — type, required level, custom or not, primary key / name, create / update, descriptions — one row per column, streamed to the file (tables are read {DICT_CHUNK} at a time). Choice values are in each table's "Export All OptionSets".</div>
           {dict.phase==="pick"&&<>
             {[["custom","Custom tables"],["shown","Tables shown in the list"],["all","All tables"]].map(([k,l])=>(
               <div key={k} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:`1px solid ${C.bd}55`}}>

@@ -70,6 +70,20 @@ describe("startSave / finishSave", () => {
     expect(startSave({ ...base, tabId: -1 })).toBeNull();
     expect(startSave({ ...base, method: "POST", url: `${ORG}/api/data/v9.0/$batch`, requestBody: { raw: bytes(`GET accounts(${ID}) HTTP/1.1\r\n\r\n`) } })).toBeNull();
   });
+  it("keeps at most 50 ops of a big $batch but remembers how many there were", () => {
+    const parts = Array.from({ length: 120 }, (_, i) => `--changeset_1
+Content-Type: application/http
+
+PATCH ${ORG}/api/data/v9.0/accounts(${ID}) HTTP/1.1
+Content-Type: application/json
+
+{"telephone1":"${i}"}
+`).join("");
+    const s = startSave({ ...base, method: "POST", url: `${ORG}/api/data/v9.0/$batch`, requestBody: { raw: bytes(parts + "--changeset_1--") } });
+    expect(s.batch).toBe(true);
+    expect(s.ops).toHaveLength(50);
+    expect(s.opCount).toBe(120);
+  });
   it("closes it with the outcome, the request ids and the server clock", () => {
     const s = finishSave(startSave(base), { timeStamp: 1412, statusCode: 204, responseHeaders: [
       { name: "Date", value: "Wed, 14 Oct 2026 10:00:05 GMT" }, { name: "x-ms-service-request-id", value: "AAAAAAAA-0000-4000-8000-000000000001" }, { name: "REQ_ID", value: "not-a-guid" },

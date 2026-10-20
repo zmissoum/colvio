@@ -55,7 +55,7 @@ Colvio accesses your Dynamics 365 environment using your existing browser sessio
 | `declarativeContent` | Show/hide the extension icon based on URL |
 | `webRequest` | **Observe** (read-only) the Web API writes your Dynamics 365 tab sends, so Record activity can list each save and find what it triggered — requests are never blocked, modified or sent anywhere |
 | `alarms` | Set the plug-in trace log back to its previous value at the time you chose |
-| `host_permissions: *.dynamics.com` | Execute API calls to Dynamics 365 servers |
+| `host_permissions: *.dynamics.com, *.microsoftdynamics.us, *.dynamics.cn` | Execute API calls to Dynamics 365 servers |
 
 ## Data Deletion
 

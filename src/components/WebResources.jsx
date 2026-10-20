@@ -43,11 +43,11 @@ export default function WebResources({ bp, orgInfo }) {
       const [c] = await bridge.getWebResourceContents([r.id]);
       if (openGen.current !== my) return;
       if (!c) throw new Error("The web resource couldn't be read.");
-      const { text, bom } = isTextType(r.type) ? decodeContent(c.content) : { text: "", bom: false };
+      const { text, bom, encoding } = isTextType(r.type) ? decodeContent(c.content) : { text: "", bom: false, encoding: "utf-8" };
       cache.current.set(r.id, text);
-      setOpen({ ...r, loading: false, b64: c.content, text, saved: text, bom, busy: "", msg: null, description: c.description });
+      setOpen({ ...r, loading: false, b64: c.content, text, saved: text, bom, readOnly: encoding !== "utf-8", busy: "", msg: null, description: c.description });
       if (line) setTimeout(() => goToLine(text, line), 50);
-    } catch (e) { if (openGen.current === my) setOpen(o => (o ? { ...o, loading: false, msg: { ok: false, text: e.message || String(e) } } : o)); }
+    } catch (e) { if (openGen.current === my) setOpen(o => (o ? { ...o, loading: false, failed: true, msg: { ok: false, text: e.message || String(e) } } : o)); }
   };
   const goToLine = (text, line) => {
     const el = ta.current; if (!el) return;
@@ -74,13 +74,17 @@ export default function WebResources({ bp, orgInfo }) {
       cache.current.set(open.id, open.text);
       const now = new Date().toISOString();
       setList(l => (l || []).map(r => (r.id === open.id && dirty ? { ...r, modifiedOn: now, modifiedBy: "you" } : r)));
-      setOpen(o => ({ ...o, b64: dirty ? b64 : o.b64, saved: o.text, ...(dirty ? { modifiedOn: now, modifiedBy: "you" } : {}), busy: "", msg: { ok: true, text: `✓ ${dirty ? "Saved" : ""}${dirty && publish ? " and " : ""}${publish ? "published" : ""}.` } }));
+      // what was WRITTEN is what's saved — not whatever was typed while the request ran
+      setOpen(o => ({ ...o, b64: dirty ? b64 : o.b64, saved: open.text, ...(dirty ? { modifiedOn: now, modifiedBy: "you" } : {}), busy: "", msg: { ok: true, text: `✓ ${dirty ? "Saved" : ""}${dirty && publish ? " and " : ""}${publish ? "published" : ""}.` } }));
     } catch (e) { setOpen(o => ({ ...o, busy: "", msg: { ok: false, text: `${what} failed: ${e.message || String(e)}` } })); }
   };
+  // Ctrl+S: one listener, reading the latest save() through a ref (no re-registration per keystroke)
+  const saveRef = useRef(null);
+  saveRef.current = () => { if (open && !open.loading && !open.failed && !open.readOnly && isTextType(open.type)) save(true); };
   useEffect(() => {
-    const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && open && !open.loading) { e.preventDefault(); save(true); } };
+    const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveRef.current?.(); } };
     window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
-  });
+  }, []);
 
   const download = () => {
     if (!open) return;
@@ -108,7 +112,7 @@ export default function WebResources({ bp, orgInfo }) {
       const items = targets.filter(r => cache.current.has(r.id)).map(r => ({ id: r.id, name: r.name, text: cache.current.get(r.id) }));
       const hits = searchContents(items, q, { caseSensitive: cs.caseSensitive, wholeWord: cs.wholeWord });
       setCs(x => ({ ...x, phase: "done", hits, stopped: stop.current, scanned: items.length }));
-    } catch (e) { setCs(x => ({ ...x, phase: "done", hits: [], error: e.message || String(e) })); }
+    } catch (e) { setCs(x => ({ ...x, phase: "done", hits: [], scanned: 0, error: e.message || String(e) })); }
   };
   const byId = useMemo(() => new Map((list || []).map(r => [r.id, r])), [list]);
   const dirty = !!open && open.text !== open.saved;
@@ -145,7 +149,7 @@ export default function WebResources({ bp, orgInfo }) {
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "0 6px 6px" }}>
           {cs.phase === "done" && cs.hits && <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 11.5, color: C.txd, padding: "4px 4px 2px", display: "flex", gap: 6 }}><span style={{ flex: 1 }}>{cs.hits.length} line{cs.hits.length === 1 ? "" : "s"} in {new Set(cs.hits.map(h => h.id)).size} resource{new Set(cs.hits.map(h => h.id)).size === 1 ? "" : "s"} · {cs.scanned} text resources read{cs.stopped ? " (stopped)" : ""}{cs.error ? ` · ${cs.error}` : ""}</span><button onClick={() => setCs(x => ({ ...x, phase: "idle", hits: null }))} style={{ background: "none", border: "none", color: C.txd, cursor: "pointer" }}>✕</button></div>
+            <div style={{ fontSize: 11.5, color: C.txd, padding: "4px 4px 2px", display: "flex", gap: 6 }}><span style={{ flex: 1 }}>{cs.hits.length} line{cs.hits.length === 1 ? "" : "s"} in {new Set(cs.hits.map(h => h.id)).size} resource{new Set(cs.hits.map(h => h.id)).size === 1 ? "" : "s"} · {cs.scanned} text resources read{cs.total - cs.scanned > 0 ? ` · ${cs.total - cs.scanned} couldn't be read` : ""}{cs.stopped ? " (stopped)" : ""}{cs.error ? ` · ${cs.error}` : ""}</span><button onClick={() => setCs(x => ({ ...x, phase: "idle", hits: null }))} style={{ background: "none", border: "none", color: C.txd, cursor: "pointer" }}>✕</button></div>
             {cs.hits.slice(0, 500).map((h, i) => (
               <div key={i} onClick={() => byId.get(h.id) && openRes(byId.get(h.id), h.line)} style={{ padding: "4px 8px", cursor: "pointer", borderRadius: 4, fontSize: 12 }} onMouseEnter={e => e.currentTarget.style.background = C.sfh} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <div style={{ color: C.cy, ...mono, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name}<span style={{ color: C.txd }}> :{h.line}</span></div>
@@ -181,14 +185,16 @@ export default function WebResources({ bp, orgInfo }) {
               {isTextType(open.type) && <>
                 <button onClick={() => setOpen(o => ({ ...o, text: o.saved }))} disabled={!dirty || !!open.busy} style={bt(null, { fontSize: 11.5, opacity: dirty ? 1 : .5 })}>Revert</button>
                 <button onClick={() => save(false)} disabled={!dirty || !!open.busy} style={bt(null, { fontSize: 11.5, opacity: dirty ? 1 : .5 })}>Save</button>
-                <button onClick={() => save(true)} disabled={!!open.busy || open.loading} title="Ctrl+S" style={bt(C.vi, { fontSize: 11.5 })}>{open.busy ? <><Spin s={10} /> {open.busy}</> : "Save & publish"}</button>
+                <button onClick={() => save(true)} disabled={!!open.busy || open.loading || open.failed || open.readOnly} title="Ctrl+S" style={bt(C.vi, { fontSize: 11.5 })}>{open.busy ? <><Spin s={10} /> {open.busy}</> : "Save & publish"}</button>
               </>}
             </div>
             {open.msg && <div style={{ padding: "6px 14px", fontSize: 12.5, color: open.msg.ok ? C.gn : C.rd, borderBottom: `1px solid ${C.bd}` }}>{open.msg.text}</div>}
             {open.managed && isTextType(open.type) && <div style={{ padding: "5px 14px", fontSize: 12, color: C.yw, borderBottom: `1px solid ${C.bd}` }}>From a managed solution — a change here is an unmanaged layer that the solution's next import may overwrite.</div>}
+            {open.readOnly && <div style={{ padding: "5px 14px", fontSize: 12, color: C.yw, borderBottom: `1px solid ${C.bd}` }}>UTF-16 content — shown read-only: Colvio edits UTF-8 web resources only (download it to change it elsewhere).</div>}
             <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
               {open.loading ? <div style={{ padding: 20, color: C.txd, fontSize: 13 }}><Spin s={12} /> Reading…</div>
-                : isTextType(open.type) ? <textarea ref={ta} value={open.text} onChange={e => setOpen(o => ({ ...o, text: e.target.value }))} spellCheck={false} wrap="off" style={{ flex: 1, width: "100%", resize: "none", border: "none", outline: "none", padding: "10px 14px", background: C.bg, color: C.tx, ...mono, fontSize: 12.5, lineHeight: "18px", tabSize: 2 }} />
+                : open.failed ? <div style={{ padding: 20, color: C.rd, fontSize: 13 }}>Couldn't read {open.name}: {open.msg?.text} <button onClick={() => openRes(open)} style={{ ...bt(null, { fontSize: 12 }), marginLeft: 8 }}>↻ Retry</button></div>
+                : isTextType(open.type) ? <textarea ref={ta} value={open.text} onChange={e => setOpen(o => ({ ...o, text: e.target.value }))} disabled={!!open.busy || open.readOnly} spellCheck={false} wrap="off" style={{ flex: 1, width: "100%", resize: "none", border: "none", outline: "none", padding: "10px 14px", background: C.bg, color: C.tx, ...mono, fontSize: 12.5, lineHeight: "18px", tabSize: 2 }} />
                 : isImageType(open.type) ? <div style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "center", flex: 1, background: `repeating-conic-gradient(${C.bd} 0 25%, transparent 0 50%) 0 0 / 20px 20px` }}><img alt={open.name} src={`data:${WR_TYPES[open.type]?.mime};base64,${open.b64}`} style={{ maxWidth: "100%", maxHeight: "80vh" }} /></div>
                 : <div style={{ padding: 20, color: C.txd, fontSize: 13 }}>Binary content — download it to look inside.</div>}
             </div>

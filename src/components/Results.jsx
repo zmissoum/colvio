@@ -411,7 +411,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
                   <span> — run the preview again to see where things stand.</span></>
                 :<>{n.toLocaleString()} {plan.displayName} row{n===1?"":"s"} match the WHERE{del?"":<> — each gets <code style={{...mono,fontSize:12}}>{plan.setsText}</code></>}. Nothing is written until you apply; the search box below doesn't narrow it.</>}
             </span>
-            {!res.fetching&&!planRun&&n>0&&<button onClick={applyPlan} style={bt(tone,{fontSize:12})}>{del?"Delete":"Apply to"} {n.toLocaleString()} row{n===1?"":"s"}</button>}
+            {res.partial&&!res.fetching&&<span style={{color:C.rd}}>Preview incomplete — a page couldn't be read, nothing can be applied. Run it again.</span>}
+            {!res.fetching&&!planRun&&!res.partial&&n>0&&<button onClick={applyPlan} style={bt(tone,{fontSize:12})}>{del?"Delete":"Apply to"} {n.toLocaleString()} row{n===1?"":"s"}</button>}
             {planRun?.phase==="running"&&<><span style={{...mono,fontSize:12,color:C.txm}}>{planRun.done.toLocaleString()}/{planRun.total.toLocaleString()}</span><button onClick={()=>{abortRef.current=true;}} style={bt(null,{fontSize:12})}>Cancel</button></>}
           </div>
         );

@@ -60,14 +60,18 @@ export function viewFetchXml(fx, primaryId) {
   const head = s.match(/<fetch\b([^>]*)>/i);
   if (!head) return { error: "That isn't a FetchXML query." };
   if (/\baggregate\s*=\s*"true"/i.test(head[1])) return { error: "An aggregate query (GROUP BY / COUNT…) can't be a view." };
-  const cleaned = head[1].replace(/\s+(page|count|top|paging-cookie|returntotalrecordcount)\s*=\s*"[^"]*"/gi, "");
+  const cleaned = head[1].replace(/\s+(page|count|top|paging-cookie|returntotalrecordcount)\s*=\s*(?:"[^"]*"|'[^']*')/gi, "");
   s = s.replace(head[0], `<fetch${cleaned}>`);
   const root = s.match(/<entity\b[^>]*name\s*=\s*"([^"]+)"[^>]*>/i);
   if (!root) return { error: "The FetchXML has no <entity>." };
   if (/<all-attributes\s*\/?>/i.test(s)) return { error: "A view needs named columns — replace <all-attributes/> with the <attribute> you want to see." };
   if (primaryId && NAME_RE.test(primaryId)) {
-    const body = s.slice(s.indexOf(root[0]) + root[0].length).replace(/<link-entity\b[\s\S]*?<\/link-entity>/gi, "");
-    if (!new RegExp(`<attribute\\s+name\\s*=\\s*"${primaryId}"`, "i").test(body)) s = s.replace(root[0], `${root[0]}<attribute name="${primaryId}"/>`);
+    // root attributes only: link-entities are removed innermost first (nested ones don't fool it)
+    let body = s.slice(s.indexOf(root[0]) + root[0].length);
+    const linkRe = /<link-entity\b[^>]*?(?:\/>|>(?:(?!<link-entity\b)[\s\S])*?<\/link-entity>)/i;
+    let lm;
+    while ((lm = body.match(linkRe))) body = body.replace(lm[0], "");
+    if (!new RegExp(`<attribute\\b[^>]*\\bname\\s*=\\s*"${primaryId}"`, "i").test(body)) s = s.replace(root[0], `${root[0]}<attribute name="${primaryId}"/>`);
   }
   return { fetchxml: s, entity: root[1] };
 }

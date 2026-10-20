@@ -9,7 +9,7 @@ import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge, persistList } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge, persistList, confirmProd } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import { extractBaseTable, isSqlOptionUnsupported } from "../sqlNative.js";
 import { buildFilterClause } from "../filterUtils.js";
@@ -79,7 +79,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[tooBig,setTooBig]=useState(null);      // { rows } read when memory ran short
   const[streamState,setStreamState]=useState(null); // { phase: running|done|stopped|error, name, format, rows, pages, started, error, sheets, truncated }
   const[showStreamMenu,setShowStreamMenu]=useState(false);
-  const streamRef=useRef(null);                 // the stream run() writes to instead of the grid
+  const streamRef=useRef(null);
+  const partialRef=useRef(false); // a paging loop broke on a page error — the result shown is incomplete                 // the stream run() writes to instead of the grid
   const[viewModal,setViewModal]=useState(null);  // "Save as view": { name, saving, error, done }
   const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
   const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
@@ -386,6 +387,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(vf.error) throw new Error(vf.error);
       const cols=layoutColumns(vf.fetchxml,meta.primaryId);
       const layout=layoutXml({objectTypeCode:meta.objectTypeCode,primaryId:meta.primaryId,primaryName:meta.primaryName,columns:cols.length?cols:[meta.primaryName]});
+      if(!confirmProd(orgInfo?.isProduction,`Create the personal view "${name}" on ${vf.entity}`)){ setViewModal(v=>({...v,saving:false})); return; }
       const r=await bridge.createUserQuery({entity:vf.entity,name,fetchxml:vf.fetchxml,layoutxml:layout});
       setViewModal(v=>({...v,saving:false,done:{id:r?.id,name,table:meta.displayName||vf.entity,columns:cols}}));
     }catch(e){ setViewModal(v=>({...v,saving:false,error:e.message||String(e)})); }
@@ -418,7 +420,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       }
       const plan={kind:w.kind,table:w.table,entitySet:meta.entitySet,pk:meta.primaryId,displayName:meta.displayName,setsText:w.kind==="update"?describeSets(w.sets):"",body,statement:sqlQ.trim()};
       setLoading(false);
+      partialRef.current=false;
       await run({sql:previewSelect(w,meta.primaryId,meta.primaryName)});
+      // a preview cut short by a page error must not get an Apply button: the rows shown aren't the WHERE
+      if(partialRef.current){ setError("Preview incomplete — not every row of the WHERE could be read, nothing can be applied. Run it again."); return; }
       setRes(prev=>prev?{...prev,writePlan:plan,entity:{...prev.entity,pk:meta.primaryId,p:meta.entitySet}}:prev);
     }catch(e){ setError(e.message||String(e)); setLoading(false); }
   };
@@ -913,7 +918,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             nl=pd.nextLink;
             const paint=!nl||page%5===0;
             setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver,fields:[...fieldSet]}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
-          }catch(e2){setError(`Page ${page}: ${e2.message}`);break;}
+          }catch(e2){setError(`Page ${page}: ${e2.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;}
         }
         if(!stale())setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fields:[...fieldSet],fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         return;
@@ -1017,7 +1022,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const paint=!hasMore||page%5===0;
             setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e){
-            setError(`Page ${page}: ${e.message}`);break;
+            setError(`Page ${page}: ${e.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;
           }
         }
         if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
@@ -1244,7 +1249,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const paint=!nextLink||pageNum%5===0||newCols; // throttle data re-render; force a paint when columns change
             setRes(prev=>({...prev,fields:headerFields,odataFieldMap,...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(pageErr){
-            setError(`Page ${pageNum}: ${pageErr.message}`);break;
+            setError(`Page ${pageNum}: ${pageErr.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;
           }
         }
         if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));

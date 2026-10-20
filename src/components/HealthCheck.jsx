@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, Spin, bt, crd, exportTable, copyText } from "../shared.jsx";
 import { CHECKS, runChecks, tally, sortedChecks, fetchAllPages, reportRows, reportText, REPORT_HEADERS, LEVEL_LABEL } from "../healthCheck.js";
@@ -22,6 +22,8 @@ export default function HealthCheck({ bp, orgInfo }) {
   const [at, setAt] = useState(null);
   const [copied, setCopied] = useState(false);
   const stop = useRef(false);
+  // leaving the module stops the run — no reads against the quota for a screen that's gone
+  useEffect(() => () => { stop.current = true; }, []);
 
   const buildApi = async (count) => {
     if (!live) return demoHealthApi();

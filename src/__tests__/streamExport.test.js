@@ -115,3 +115,20 @@ describe("FetchXML paging and columns", () => {
     expect(uncoveredKey(cols, { fullname: "b", phone: "1" })).toBe("phone");
   });
 });
+
+describe("review pass", () => {
+  it("replaces single-quoted page attributes too", () => {
+    const out = pagedFetchXml("<fetch page='1' count='10'><entity name='account'/></fetch>", 2, null);
+    expect(out).toBe('<fetch count=\'10\' page="2"><entity name=\'account\'/></fetch>');
+  });
+});
+
+describe("review pass", () => {
+  it("never quotes a typed number as a formula, and XLSX keeps labels when they aren't the number", () => {
+    expect(csvCell(-5)).toBe("-5");
+    expect(cellValue({ statecode: 0, statecode__display: "Active" }, ["statecode"], "xlsx")).toBe("Active");
+    expect(cellValue({ revenue: 1380.08, revenue__display: "$1,380.08" }, ["revenue"], "xlsx")).toBe(1380.08);
+    expect(cellValue({ donotemail: true, donotemail__display: "Do Not Allow" }, ["donotemail"], "xlsx")).toBe("Do Not Allow");
+    expect(cellValue({ n: 3 }, ["n"], "xlsx")).toBe(3);
+  });
+});

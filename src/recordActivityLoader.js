@@ -42,11 +42,11 @@ export function createActivityLoader(query) {
           regs = recs(await query("callbackregistrations", { select: REG_SELECT, filter: `entityname eq '${entity}'` }))
             .filter(r => !(Number(r.softdeletestatus) > 0) && flowIdOf(r));
         } catch (e) { return { regs: [], names: {}, error: errText(e) }; }
-        const ids = [...new Set(regs.map(flowIdOf))].slice(0, 40);
+        const ids = [...new Set(regs.map(flowIdOf))];
         const names = {};
-        if (ids.length) {
+        for (let i = 0; i < ids.length; i += 40) { // 40 ids per "or" filter — every flow named, not the first 40
           try {
-            const d = await query("workflows", { select: "workflowid,name,statecode", filter: ids.map(id => `workflowid eq ${id}`).join(" or ") });
+            const d = await query("workflows", { select: "workflowid,name,statecode", filter: ids.slice(i, i + 40).map(id => `workflowid eq ${id}`).join(" or ") });
             for (const w of recs(d)) names[String(w.workflowid).toLowerCase()] = { name: w.name, on: w.statecode === 1 };
           } catch { /* names unknown — the flow id is shown instead */ }
         }
@@ -58,12 +58,12 @@ export function createActivityLoader(query) {
 
   async function runsIn(fromIso, toIso) {
     try {
-      return { runs: recs(await query("flowruns", { filter: `starttime ge ${fromIso} and starttime le ${toIso}`, orderby: "starttime asc", top: "100" })), error: null, missing: false };
+      const runs = recs(await query("flowruns", { filter: `starttime ge ${fromIso} and starttime le ${toIso}`, orderby: "starttime asc", top: "100" }));
+      return { runs, error: null, missing: false, truncated: runs.length >= 100 };
     } catch (e1) {
       const m = errText(e1);
       if (/does not exist|Resource not found|404/i.test(m)) return { runs: [], error: null, missing: true };
-      try { return { runs: recs(await query("flowruns", { top: "200" })), error: null, missing: false, clientFiltered: true }; }
-      catch (e2) { return { runs: [], error: errText(e2), missing: false }; }
+      return { runs: [], error: m, missing: false }; // no blind fallback: an unfiltered read would show arbitrary runs
     }
   }
 
@@ -93,7 +93,7 @@ export function createActivityLoader(query) {
 
     // Plug-in chains: the correlation ids of this save, then every trace of those chains (cascades
     // on other tables and asynchronous steps included).
-    const pick = pickCorrelations({ windowRows, jobs: out.jobs, requestIds: save.requestIds, messageNames: messageNamesFor(save) });
+    const pick = pickCorrelations({ windowRows, jobs: out.jobs, requestIds: save.requestIds, messageNames: messageNamesFor(save), syncToMs: w.syncToMs });
     out.exact = pick.exact;
     let rows = windowRows.filter(r => pick.ids.includes(String(r.correlationid || "").toLowerCase()));
     const asyncJobs = out.jobs.filter(j => j.operationtype === 1);
@@ -132,6 +132,7 @@ export function createActivityLoader(query) {
       const r = await runsIn(w.from, recUpTo);
       if (r.error) out.errors.runs = r.error;
       out.runsMissing = r.missing;
+      out.runsTruncated = !!r.truncated;
       for (const f of out.flows) if (f.verdict !== "no") f.run = matchRun(r.runs, f.id, w.fromMs, recUpToMs);
     }
     const order = { yes: 0, maybe: 1, no: 2 };

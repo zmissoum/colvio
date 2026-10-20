@@ -110,3 +110,15 @@ describe("diagnosis", () => {
     expect(rows[0][1]).toBe("Yes");
   });
 });
+
+describe("review pass: owner teams", () => {
+  it("a record owned by an owner team the user belongs to counts as theirs at the User depth", () => {
+    const ctx = demoAccessContext(ALEX, { id: "rec", entity: "account" });
+    ctx.record.ownerId = ctx.teams[0].id; ctx.record.ownerType = "team"; ctx.record.ownerName = ctx.teams[0].name;
+    ctx.effective = null;
+    const r = byRight(diagnoseAccess(ctx));
+    expect(r.Write.model).toBe(true);
+    expect(r.Write.why).toMatchObject({ kind: "role", depth: 1 });
+    expect(r.Write.need).toBe(1);
+  });
+});

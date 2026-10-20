@@ -67,3 +67,11 @@ describe("preview and typing", () => {
     expect(prepareUpdate(meta, "revenue", rawForPrepare(parseSqlWrite("UPDATE account SET revenue = NULL WHERE x = 1").sets[0])).body).toEqual({ revenue: null });
   });
 });
+
+describe("review pass", () => {
+  it("refuses DELETE with a JOIN whatever the join spelling, and keeps comments out of the WHERE", () => {
+    expect(parseSqlWrite("DELETE FROM account JOIN contact ON account.accountid = contact.parentcustomerid WHERE contact.x = 1").error).toMatch(/DELETE with a JOIN/);
+    expect(parseSqlWrite("UPDATE account SET name = 'x' WHERE name = 'y'; -- note")).toMatchObject({ kind: "update", where: "name = 'y'" });
+    expect(parseSqlWrite("UPDATE account SET name = 'a\n--b' WHERE accountid IS NOT NULL")).toMatchObject({ kind: "update", sets: [{ col: "name", value: "a\n--b" }] });
+  });
+});

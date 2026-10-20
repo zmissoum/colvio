@@ -27,7 +27,13 @@ export function fillFetch(entity, pk, cols, slice) {
   const attrs = cols.map((c, i) => `<attribute name="${c}" alias="c${i}" aggregate="countcolumn"/>`).join("");
   let filter = "";
   if (slice?.isNull) filter = `<filter><condition attribute="createdon" operator="null"/></filter>`;
-  else if (slice) filter = `<filter><condition attribute="createdon" operator="ge" value="${new Date(slice.fromMs).toISOString()}"/><condition attribute="createdon" operator="lt" value="${new Date(slice.toMs).toISOString()}"/></filter>`;
+  else if (slice) {
+    // an open-ended slice (no fromMs / no toMs) catches rows outside the probed created-on range
+    const c = [];
+    if (slice.fromMs != null) c.push(`<condition attribute="createdon" operator="ge" value="${new Date(slice.fromMs).toISOString()}"/>`);
+    if (slice.toMs != null) c.push(`<condition attribute="createdon" operator="lt" value="${new Date(slice.toMs).toISOString()}"/>`);
+    filter = c.length ? `<filter>${c.join("")}</filter>` : "";
+  }
   return `<fetch aggregate="true"><entity name="${entity}"><attribute name="${pk}" alias="n__" aggregate="count"/>${attrs}${filter}</entity></fetch>`;
 }
 
@@ -63,6 +69,11 @@ export async function scanFillRate({ entity, pk, fields, oldestMs, nowMs = Date.
         const mid = s.fromMs + Math.floor((s.toMs - s.fromMs) / 2);
         stack.push({ fromMs: mid, toMs: s.toMs }, { fromMs: s.fromMs, toMs: mid });
       }
+    }
+    // rows dated before the oldest-row probe or after "now" (overridden created-on, clock skew): two open-ended slices
+    for (const edge of [{ toMs: from }, { fromMs: nowMs + 86400000 }]) {
+      try { await count(edge); slices.push(edge); }
+      catch (e4) { if (isLimitError(e4.message)) throw new Error("More than 50,000 rows lie outside the table's created-on range — the fill rate can't be counted exactly."); throw e4; }
     }
     try { await count({ isNull: true }); slices.push({ isNull: true }); }
     catch (e3) { if (isLimitError(e3.message)) throw new Error("More than 50,000 rows have no created-on date — they can't be sliced."); throw e3; }

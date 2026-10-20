@@ -179,12 +179,15 @@
     // Restore action gets 9.5 min: Dataverse re-creates cascade-deleted children synchronously,
     // which routinely blows past 25s on parent records (user hit "timeout after ~30s" on real
     // restores) — the bridge caps this call at 10 min.
-    const isRestore = path === "Restore";
+    // PublishXml and metadata creates (columns, relationships) are synchronous server-side jobs
+    // that take minutes on big orgs — same 9.5 min budget as Restore.
+    const isRestore = path === "Restore" || path === "PublishXml" || path === "RelationshipDefinitions" || /^EntityDefinitions\([^)]*\)\/Attributes$/.test(path);
+    // Pacing waits BEFORE the timer is armed — a paced request must never read as "D365 did not respond".
+    await apiPace();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), isRestore ? 570000 : isWrite ? 25000 : 60000);
 
     try {
-      await apiPace();
       let resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
       clearTimeout(timeout);
 
@@ -573,11 +576,11 @@
             if (hasBody && !finalHeaders["Content-Type"] && !finalHeaders["content-type"]) {
               finalHeaders["Content-Type"] = "application/json";
             }
+            await apiPace(); // before the timer, like dvRequest
             const t0 = Date.now();
             const ctrl = new AbortController();
             const tmo = setTimeout(() => ctrl.abort(), 60000);
             try {
-              await apiPace();
               const resp = await fetch(url, {
                 method,
                 headers: finalHeaders,
@@ -1162,7 +1165,12 @@
               try {
                 const d = await dvRequest("GET", `${base}/Microsoft.Dynamics.CRM.${type}?$select=LogicalName&$expand=OptionSet($select=Options)${global ? ",GlobalOptionSet($select=Options)" : ""}`);
                 rows.push(...(d.value || []));
-              } catch { /* a type the table doesn't have, or the org doesn't expose */ }
+              } catch (e) {
+                // a cast the org doesn't expose answers 404 — anything else (429, timeout, 403) must
+                // surface: a partial set exported as complete would hide columns
+                if (/404|not found|could not find|does not exist/i.test(e.message || "")) continue;
+                throw e;
+              }
             }
             result = rows;
             break;
@@ -1180,7 +1188,10 @@
               result = d.value || [];
             } catch {
               const out = [];
-              for (const n of names) { try { out.push(await dvRequest("GET", `EntityDefinitions(LogicalName='${n}')?${sel}`)); } catch { /* table not readable */ } }
+              for (const n of names) {
+                try { out.push(await dvRequest("GET", `EntityDefinitions(LogicalName='${n}')?${sel}`)); }
+                catch (e2) { if (!/404|not found|could not find|does not exist/i.test(e2.message || "")) throw e2; /* a table that isn't there is skipped; a failure stops the dictionary */ }
+              }
               result = out;
             }
             break;
@@ -2089,7 +2100,7 @@
             while (urlW) {
               let dW;
               try { dW = await dvRequest("GET", urlW, null, { Prefer: "odata.maxpagesize=5000" }); }
-              catch (e) { if (withMp) { withMp = false; urlW = `webresourceset?$select=${selW}&$orderby=name asc`; continue; } throw e; }
+              catch (e) { if (withMp && !rowsW.length && /ishidden|iscustomizable/i.test(e.message || "")) { withMp = false; urlW = `webresourceset?$select=${selW}&$orderby=name asc`; continue; } throw e; }
               for (const r of dW.value || []) rowsW.push({
                 id: r.webresourceid, name: r.name || "", displayName: r.displayname || "", type: r.webresourcetype, managed: !!r.ismanaged,
                 hidden: r.ishidden?.Value ?? r.ishidden ?? false, customizable: r.iscustomizable?.Value ?? r.iscustomizable ?? true,
@@ -2158,7 +2169,8 @@
             for (const k of Object.keys(bO)) if (!okKeys.has(k)) throw new Error(`Unexpected parameter ${k}.`);
             for (const k of ["OptionSetName", "EntityLogicalName", "AttributeLogicalName"]) if (bO[k] != null) validateName(bO[k], k);
             if (!bO.OptionSetName && !(bO.EntityLogicalName && bO.AttributeLogicalName)) throw new Error("No choice targeted.");
-            result = (await dvRequest("POST", fnO, bO)) || { ok: true };
+            const rO = (await dvRequest("POST", fnO, bO)) || {};
+            result = { ...rO, ok: true, NewOptionValue: rO.NewOptionValue ?? rO.NewOption ?? null }; // InsertOptionValueResponse names it NewOption
             break;
           }
 
@@ -2470,7 +2482,7 @@
                 truncated = !!d["@Microsoft.Dynamics.CRM.fetchxmlpagingcookie"] || !!d["@odata.nextLink"] || d["@Microsoft.Dynamics.CRM.morerecords"] === true || vals.length >= 500;
                 if (!truncated) { for (const v of vals) keep(v.uid, v.last); return; }
               } catch (e) {
-                if (!/AggregateQueryRecordLimit|50000|aggregate/i.test(e.message || "")) throw e;
+                if (!/AggregateQueryRecordLimit|maximum record limit|50,?000/i.test(e.message || "")) throw e; // only the 50k limit bisects — any other error surfaces
                 truncated = true;
               }
               if (tMs - fMs > 3600000) { const mid = fMs + Math.floor((tMs - fMs) / 2); await walk(mid, tMs); await walk(fMs, mid); return; }

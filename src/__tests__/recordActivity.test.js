@@ -58,6 +58,14 @@ describe("pickCorrelations", () => {
   it("falls back to the table's traces in the window, for the save's messages only", () => {
     expect(pickCorrelations({ windowRows: rows, jobs: [], requestIds: [], messageNames: ["Update"] })).toEqual({ ids: [G(1), G(2)], exact: false });
   });
+  it("ignores a job created after the save's synchronous window unless its request id matches — someone else's save", () => {
+    const syncToMs = Date.parse("2026-10-14T10:00:05Z");
+    const later = { correlationid: G(7), requestid: G(8), createdon: "2026-10-14T10:02:00Z" };
+    const inside = { correlationid: G(6), requestid: null, createdon: "2026-10-14T10:00:02Z" };
+    expect(pickCorrelations({ windowRows: rows, jobs: [later], requestIds: [], messageNames: ["Update"], syncToMs })).toEqual({ ids: [G(1), G(2)], exact: false });
+    expect(pickCorrelations({ windowRows: rows, jobs: [later], requestIds: [G(8)], messageNames: ["Update"], syncToMs })).toEqual({ ids: [G(7)], exact: true });
+    expect(pickCorrelations({ windowRows: rows, jobs: [inside], requestIds: [], messageNames: ["Update"], syncToMs })).toEqual({ ids: [G(6)], exact: true });
+  });
 });
 
 describe("traces → chains", () => {

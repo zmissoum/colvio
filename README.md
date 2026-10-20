@@ -61,7 +61,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Filter columns, toggle empty/custom-only, clickable lookup links, copy a single field or full JSON
 - **Inline field editing** — a ✎ pencil on every writable field lets you PATCH a value straight through the API, even when the form marks it read-only (text, numbers, yes/no, dates, option sets); field-level security and privileges still enforced server-side, confirmation on production
 - **🔐 Record access** — pick a user (or "Me"): Dataverse's own answer for each right on the record (`RetrievePrincipalAccess`: read, write, append, append to, delete, assign, share) and why — which role or team role, at which depth (User / Business Unit / Parent: Child BU / Organization) against the record's owner and business unit, or a share (`RetrieveSharedPrincipalsAndAccess`, a share without the privilege behind it is called out) — plus Dataverse's own sentence (`RetrieveAccessOrigin`) and, for every no, what would grant it (the depth needed, a share, an assignment). The user's roles and teams, who the record is shared with, CSV / Excel export. A fixed number of reads per check (none per role, team or privilege); a gap between Dataverse's answer and the explanation is flagged (hierarchy security, inherited access)
-- **Record activity** — save the record in its D365 tab and see what each save triggered: plug-in execution chains (stage, class, duration, cascades, exceptions, full trace on click), the record's system jobs, and the cloud flows whose Dataverse trigger watches the table — triggered / may trigger / won't trigger with the reason, and their runs. Saves are observed read-only by the service worker (column names only, never values, session memory), traces matched by the response's request id when possible; auto-refresh only while something is still running; a "log every plug-in for 30 min" switch that reverts by itself. Click a system job for its full message, the plug-in step behind it (stage, trigger columns, run-as user, whether it has a secure/unsecure configuration — never its content) and its last 20 runs ("failing every time since …"), with a hint on what a 401 / timeout usually means; flows show their trigger in words, their error, and Open run ↗ in Power Automate
+- **Record activity** — save the record in its D365 tab and see what each save triggered: plug-in execution chains (stage, class, duration, cascades, exceptions, full trace on click), the record's system jobs, and the cloud flows whose Dataverse trigger watches the table — triggered / may trigger / won't trigger with the reason, and their runs. Saves are observed read-only by the service worker (column names only, never values, session memory), traces matched by the response's request id when possible; auto-refresh only while something is still running; a "log every plug-in for 15–60 min" switch that reverts by itself. Click a system job for its full message, the plug-in step behind it (stage, trigger columns, run-as user, whether it has a secure/unsecure configuration — never its content) and its last 20 runs ("failing every time since …"), with a hint on what a 401 / timeout usually means; flows show their trigger in words, their error, and Open run ↗ in Power Automate
 - **Business Process Flow manager** (System Administrators) — lists every BPF instance on the record, including finished ones the form has locked: reopen, move to any stage, finish or abort (Colvio resolves the flow's real underlying table for the write)
 
 ### Metadata Browser
@@ -88,7 +88,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - Per-table accordion with **EXPLICIT** (hand-picked in the designer) vs **IMPLICIT** (auto-surfaced) badges on every form and view
 - **Modern command-bar buttons** classified by their three scopes: app-specific, entity-global (every app exposing that table), or table-generic templates (every app)
 - **Reverse search** — type a form/view/button name and see *which apps expose it*: the impact map before editing a shared component
-- On-demand **dependency analysis**: which attributes and option sets an app's forms/views actually drag in (200k-edge cap with an honest truncation banner)
+- On-demand **dependency analysis**: which attributes and option sets an app's forms/views actually drag in (every required edge read page by page — no cap)
 - **View inspector** — click any view to see its **filters decoded to plain language** (field, operator, value, AND/OR groups, linked-table joins) and its **columns**: the answer to "why doesn't my record show in that list?" (usual culprit: the `statecode = 0` filter hiding inactive rows)
 - **Form subgrids** — the ⊞ button on a form lists its child grids: which view each renders, through which relationship, and whether the view picker lets users switch views; **Open in Explorer** loads the view's FetchXML so you add your parent's filter and test exactly why a row matches or not
 - CSV/Excel export of the flat inventory (selected app or all apps); apps with blank display names (internal placeholders) hidden
@@ -292,7 +292,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | API actions | 95 |
 | React components | 48 |
 | Unit tests | 627 |
-| Build size | ~996 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
+| Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
 
@@ -324,7 +324,7 @@ Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 
 
 ### Access Control
 - **Role-based tab visibility** — sensitive modules auto-hidden for non-admin users (zero flash)
-- **Manifest V3** — minimal permissions (`scripting`, `storage`, `declarativeContent`; 3 host wildcards, dynamics.com / microsoftdynamics.us / dynamics.cn only)
+- **Manifest V3** — minimal permissions (`scripting`, `storage`, `declarativeContent`, `webRequest` — observe only, to list your own saves — and `alarms` — to revert the trace-log switch; 3 host wildcards, dynamics.com / microsoftdynamics.us / dynamics.cn only)
 - **3 runtime dependencies** — React, React-DOM, xlsx (export-only)
 
 See [PRIVACY.md](PRIVACY.md) for the full privacy policy.

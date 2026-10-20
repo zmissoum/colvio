@@ -48,9 +48,21 @@ export function parseValue(text) {
 const NO_WHERE = (kind, table) => `Add a WHERE: ${kind} without one would touch every row of ${table}. To do that on purpose, write WHERE <primary key> IS NOT NULL.`;
 
 // → null (not a write statement) | { error } | { kind: "update", table, alias, sets: [{ col, value, sql }], where } | { kind: "delete", table, alias, where }
+// "-- …" to the end of the line, outside string literals only (a '--' inside quotes is data).
+function stripLineComments(t) {
+  let out = "", q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { out += c; if (c === "'") { if (t[i + 1] === "'") { out += "'"; i++; } else q = false; } continue; }
+    if (c === "'") { q = true; out += c; continue; }
+    if (c === "-" && t[i + 1] === "-") { while (i < t.length && t[i] !== "\n") i++; out += "\n"; continue; }
+    out += c;
+  }
+  return out;
+}
+
 export function parseSqlWrite(sql) {
-  let s = String(sql || "").trim().replace(/;\s*$/, "").trim();
-  s = s.replace(/^--.*$/gm, "").trim(); // line comments
+  let s = stripLineComments(String(sql || "")).trim().replace(/;\s*$/, "").trim();
   if (!/^(update|delete)\b/i.test(s)) return null;
   if (/^update\b/i.test(s)) {
     const m = s.match(new RegExp(`^UPDATE\\s+(${NAME})(?:\\s+(?:AS\\s+)?(?!SET\\b)(${NAME}))?\\s+SET\\s+([\\s\\S]+)$`, "i"));
@@ -73,7 +85,7 @@ export function parseSqlWrite(sql) {
     if (!sets.length) return { error: "Nothing to SET." };
     return { kind: "update", table, alias: alias || null, sets, where };
   }
-  const m = s.match(new RegExp(`^DELETE\\s+(?:FROM\\s+)?(${NAME})(?:\\s+(?:AS\\s+)?(?!WHERE\\b)(${NAME}))?(?:\\s+([\\s\\S]*))?$`, "i"));
+  const m = s.match(new RegExp(`^DELETE\\s+(?:FROM\\s+)?(${NAME})(?:\\s+(?:AS\\s+)?(?!WHERE\\b|JOIN\\b|INNER\\b|LEFT\\b|RIGHT\\b|FULL\\b|CROSS\\b)(${NAME}))?(?:\\s+([\\s\\S]*))?$`, "i"));
   if (!m) return { error: "Expected DELETE FROM <table> WHERE <condition>." };
   const [, table, alias, rest = ""] = m;
   if (/^top\b/i.test(table)) return { error: "DELETE TOP isn't supported — narrow the WHERE instead." };

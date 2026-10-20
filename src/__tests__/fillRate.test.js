@@ -9,7 +9,7 @@ function fakeOrg(rows, { limit = 50000, broken = [] } = {}) {
     calls.push(xml);
     const ge = xml.match(/operator="ge" value="([^"]+)"/), lt = xml.match(/operator="lt" value="([^"]+)"/);
     const isNull = /operator="null"/.test(xml);
-    const inSlice = rows.filter(r => isNull ? r.createdon == null : ge ? (r.createdon != null && Date.parse(r.createdon) >= Date.parse(ge[1]) && Date.parse(r.createdon) < Date.parse(lt[1])) : true);
+    const inSlice = rows.filter(r => isNull ? r.createdon == null : (ge || lt) ? (r.createdon != null && (!ge || Date.parse(r.createdon) >= Date.parse(ge[1])) && (!lt || Date.parse(r.createdon) < Date.parse(lt[1]))) : true);
     if (inSlice.length > limit) throw new Error("The maximum record limit is exceeded. Reduce the number of records. (AggregateQueryRecordLimit)");
     const cols = [...xml.matchAll(/<attribute name="(\w+)" alias="c(\d+)" aggregate="countcolumn"\/>/g)];
     if (cols.some(m => broken.includes(m[1]))) throw new Error(`Aggregate isn't supported on ${cols.find(m => broken.includes(m[1]))[1]}`);
@@ -79,5 +79,18 @@ describe("scanFillRate", () => {
 
   it("summarises empty and rare columns", () => {
     expect(fillSummary({ total: 100, filled: { a: 0, b: 3, c: 50 } })).toEqual({ empty: ["a"], under5: ["b"] });
+  });
+});
+
+describe("review pass: rows outside the probed range", () => {
+  const fields = [{ l: "name", t: "String" }];
+  it("counts rows dated before the oldest-row probe and after now", async () => {
+    const rows = [];
+    for (let i = 0; i < 12; i++) rows.push({ name: "x", createdon: new Date(Date.parse("2026-01-01T00:00:00Z") + i * 86400000).toISOString() });
+    rows.push({ name: "old", createdon: "1999-06-01T00:00:00Z" }, { name: "future", createdon: "2030-01-01T00:00:00Z" });
+    const org = fakeOrg(rows, { limit: 5 });
+    const r = await scanFillRate({ entity: "account", pk: "accountid", fields, oldestMs: Date.parse("2026-01-01T00:00:00Z"), nowMs: Date.parse("2026-02-01T00:00:00Z"), run: org.run });
+    expect(r.total).toBe(14);
+    expect(r.filled.name).toBe(14);
   });
 });

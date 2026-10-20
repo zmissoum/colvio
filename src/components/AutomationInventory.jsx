@@ -239,11 +239,11 @@ export default function AutomationInventory({ bp, orgInfo }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 700 }}>
               {isStep ? (
                 <>
-                  <thead><tr><th style={{ ...ths(), width: 28 }}><input type="checkbox" title="Select every step shown" checked={rows.length > 0 && rows.every(r => sel.has(r.id))} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} style={{ accentColor: C.vi }} /></th><th style={ths()}>Plug-in type</th><th style={ths()}>Assembly</th><th style={ths()}>Message</th><th style={ths()}>Entity</th><th style={ths()}>Stage</th><th style={ths()}>Mode</th><th style={ths()}>State</th><th style={ths()}>Filtering</th><th style={ths()}>Source</th><th style={ths()}></th></tr></thead>
+                  <thead><tr><th style={{ ...ths(), width: 28 }}><input type="checkbox" title="Select every step shown" disabled={!!busy} checked={rows.length > 0 && rows.every(r => sel.has(r.id))} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} style={{ accentColor: C.vi }} /></th><th style={ths()}>Plug-in type</th><th style={ths()}>Assembly</th><th style={ths()}>Message</th><th style={ths()}>Entity</th><th style={ths()}>Stage</th><th style={ths()}>Mode</th><th style={ths()}>State</th><th style={ths()}>Filtering</th><th style={ths()}>Source</th><th style={ths()}></th></tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.id} title={r.filteringAttributes ? `Filtering attributes: ${r.filteringAttributes}` : r.name} style={{ borderBottom: `1px solid ${C.bd}22`, background: sel.has(r.id) ? C.vi + "11" : "transparent" }}>
-                        <td style={tds}><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)} style={{ accentColor: C.vi }} /></td>
+                        <td style={tds}><input type="checkbox" checked={sel.has(r.id)} disabled={!!busy} onChange={() => toggleSel(r.id)} style={{ accentColor: C.vi }} /></td>
                         <td style={{ ...tds, maxWidth: 320 }}>{r.pluginType || r.name}</td>
                         <td style={{ ...tds, color: C.txm, maxWidth: 180 }}>{r.assembly}</td>
                         <td style={{ ...tds, ...mono, fontSize: 12, color: C.cy }}>{r.message}</td>

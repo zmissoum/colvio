@@ -72,14 +72,21 @@ export function stepsFilter(stepIds) {
 // Which execution chains belong to this save. Exact when the response's request id is found on a
 // trace, or through the record's own system jobs; otherwise by time on the table (another save of
 // the same table in the same seconds would then show up too — the UI says so).
-export function pickCorrelations({ windowRows, jobs, requestIds, messageNames }) {
+export function pickCorrelations({ windowRows, jobs, requestIds, messageNames, syncToMs }) {
   const req = new Set((requestIds || []).map(s => String(s).toLowerCase()));
   const ids = new Set();
   let exact = false;
   for (const r of windowRows || []) {
     if (r.requestid && req.has(String(r.requestid).toLowerCase()) && r.correlationid) { ids.add(String(r.correlationid).toLowerCase()); exact = true; }
   }
-  for (const j of jobs || []) if (j.correlationid) { ids.add(String(j.correlationid).toLowerCase()); exact = true; }
+  // A job seeds a chain only when it is this save's: its request id matches, or it was created
+  // inside the save's own synchronous window — a job from someone else's later save of the same
+  // record must not be credited here as "exact".
+  for (const j of jobs || []) {
+    if (!j.correlationid) continue;
+    const mine = (j.requestid && req.has(String(j.requestid).toLowerCase())) || syncToMs == null || !(Date.parse(j.createdon) > syncToMs);
+    if (mine) { ids.add(String(j.correlationid).toLowerCase()); exact = true; }
+  }
   if (!exact) {
     const names = new Set((messageNames || []).map(s => s.toLowerCase()));
     for (const r of windowRows || []) {

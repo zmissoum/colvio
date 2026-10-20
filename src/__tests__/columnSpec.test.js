@@ -24,7 +24,7 @@ describe("reading the sheet", () => {
     expect(deriveSchemaName("Annual revenue (EUR)", "new")).toBe("new_AnnualRevenueEUR");
     expect(deriveSchemaName("Chiffre d'affaires été", "cr1a2_")).toBe("cr1a2_ChiffreDAffairesEte");
     expect(parseOptions("Low;Medium;High", 10000)).toEqual([{ value: 100000000, label: "Low" }, { value: 100000001, label: "Medium" }, { value: 100000002, label: "High" }]);
-    expect(parseOptions("1:A | 2 = B")).toEqual([{ value: 1, label: "A" }, { value: 2, label: "B" }]);
+    expect(parseOptions("1:A | 2 = B")).toEqual([{ value: 1, label: "A", explicit: true }, { value: 2, label: "B", explicit: true }]);
   });
 });
 
@@ -88,5 +88,36 @@ describe("bodies", () => {
   });
   it("summarises", () => {
     expect(summarizeResults([{ ok: true }, { ok: false }, {}])).toEqual({ ok: 1, failed: 1, skipped: 1 });
+  });
+});
+
+describe("review pass", () => {
+  const sheet = (rows) => parseSpecSheet([TEMPLATE_HEADERS, ...rows]).specs;
+  it("a bare Name header is the display name, or the schema name when a display name is there", () => {
+    const a = parseSpecSheet([["Name", "Display Name", "Type"], ["new_foo", "Foo", "Text"]]);
+    expect(a.columns).toMatchObject({ schema: 0, label: 1, type: 2 });
+    expect(a.unknownHeaders).toEqual([]);
+    expect(validateSpecs(a.specs, ctx)[0]).toMatchObject({ schema: "new_foo", label: "Foo", errors: [] });
+    const b = parseSpecSheet([["Name", "Type"], ["Foo", "Text"]]);
+    expect(b.columns).toMatchObject({ label: 0, type: 1 });
+  });
+  it("explicit yes/no values decide the labels, whatever their order", () => {
+    const s = validateSpecs(sheet([["Audited", "", "Yes/No", "", "", "", "", "", "1:Oui;0:Non", "", "", ""]]), ctx)[0];
+    expect(s.errors).toEqual([]);
+    const b = buildCreateBody(s, { entity: "account" }).body;
+    expect(b.OptionSet.TrueOption.Label.LocalizedLabels[0].Label).toBe("Oui");
+    expect(b.OptionSet.FalseOption.Label.LocalizedLabels[0].Label).toBe("Non");
+    expect(validateSpecs(sheet([["Audited", "", "Yes/No", "", "", "", "", "", "2:A;3:B", "", "", ""]]), ctx)[0].errors[0]).toMatch(/0 \(no\) and 1 \(yes\)/);
+  });
+  it("reads thousands separators and decimal commas as people write them", () => {
+    expect(validateSpecs(sheet([["Notes", "", "Multiline", "", "4,000", "", "", "", "", "", "", ""]]), ctx)[0].maxLength).toBe(4000);
+    expect(validateSpecs(sheet([["Rate", "", "Decimal", "", "", "", "0,5", "", "", "", "", ""]]), ctx)[0].min).toBe(0.5);
+  });
+  it("Choices is the multi-select kind; a float's precision stops at 5", () => {
+    expect(kindOf("Choices")).toBe("multiselect");
+    expect(kindOf("Choices (multi-select)")).toBe("multiselect");
+    expect(kindOf("Choice")).toBe("picklist");
+    expect(validateSpecs(sheet([["Ratio", "", "Float", "", "", "8", "", "", "", "", "", ""]]), ctx)[0].errors[0]).toMatch(/0 to 5/);
+    expect(buildCreateBody(validateSpecs(sheet([["Body", "", "Multiline", "", "", "", "", "", "", "", "richtext", ""]]), ctx)[0], { entity: "account" }).body).toMatchObject({ Format: "TextArea", FormatName: { Value: "RichText" } });
   });
 });

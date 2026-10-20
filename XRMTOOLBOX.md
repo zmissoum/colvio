@@ -21,7 +21,7 @@ Everything below is read-only unless marked **(writes)**; every write is confirm
 
 | In XrmToolBox you use… | In Colvio |
 | --- | --- |
-| Metadata Browser | **Metadata** — tables, columns, choices, Virtual / Elastic chips; **fill rate** of every column (exact, even on millions of rows) |
+| Metadata Browser | **Metadata** — tables, columns, choices, Virtual / Elastic chips; **fill rate** of every countable column (exact, even on millions of rows) |
 | Metadata Document Generator | **Metadata › Data dictionary** — every column of chosen tables streamed to CSV / Excel |
 | Attribute Editor / Excel-to-columns tools | **Metadata › Columns from file** — a CSV / Excel sheet describes the columns, every row checked before anything is sent, created in the unmanaged solution you pick, table published once **(writes)** |
 | Option Set editors | **Metadata › Values › Edit values** — add, rename, reorder, delete options, published at once; a delete first counts the rows holding the value **(writes)** |
@@ -35,12 +35,12 @@ Everything below is read-only unless marked **(writes)**; every write is confirm
 | In XrmToolBox you use… | In Colvio |
 | --- | --- |
 | Plugin Registration Tool (steps) | **Automation** — every plug-in step and process; enable / disable one or a selection, edit an Update step's filtering attributes **(writes)**. Registering a new assembly or step stays with the Plugin Registration Tool |
-| Plugin Trace Viewer | **Show All Data › Record activity** — save a record and see the plug-ins it ran (order, duration, cascades, exception, full trace), its system jobs and the flows that fired; "Log every plug-in" for 15–60 minutes, reverted by itself |
+| Plugin Trace Viewer | **System Ops › Plugin traces** (time windows, exceptions first), and **Show All Data › Record activity** — save a record and see the plug-ins it ran (order, duration, cascades, exception, full trace), its system jobs and the flows that fired; "Log every plug-in" for 15–60 minutes, reverted by itself |
 | Async job / system job viewers | **System Ops** — system jobs and flow runs, failures first |
-| Web Resources Manager | **Web Resources** — edit and publish scripts, styles and pages; **search a column name inside every script** (what dependency tracking can't see) **(writes)** |
+| Web Resources Manager | **Web Resources** — edit and publish scripts, styles and pages; **search a column name inside every script shown** (what dependency tracking can't see) **(writes)** |
 | Environment Variables Manager | **Env Variables** — definitions, overrides, missing values **(writes)** |
 | Easy Translator | **Translation Manager** — export / import labels **(writes)** |
-| Solution component viewers | **Solutions** — components, compare two solutions of the same org |
+| Solution component viewers | **Solutions** — components, compare two solutions of the same org, or the same solution across two orgs through an exported compare file |
 | App module component tools | **Apps** — model-driven app inventory, forms, views, the components an app really depends on |
 
 ## Users, security and governance
@@ -58,7 +58,7 @@ Everything below is read-only unless marked **(writes)**; every write is confirm
 
 ## What stays with XrmToolBox (by design)
 
-- Anything across **several environments**: solution transport, data migration between orgs, environment comparisons.
+- Anything across **several environments**: solution transport, data migration between orgs, live environment comparisons (Colvio's cross-org solution compare goes through an exported file).
 - **Solution packaging** (export / import / pack / unpack), ribbon editing, form XML editing, custom API and N:N designers, early-bound code generation.
 - Registering **new plug-in assemblies and steps** (Colvio switches existing steps on and off and edits their filtering attributes).
 

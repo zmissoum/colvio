@@ -171,7 +171,12 @@ const storeSave = (save) => {
   saveQueue = saveQueue.then(async () => {
     const key = `saves|${save.origin}`;
     const cur = (await chrome.storage.session.get(key))[key] || [];
-    await chrome.storage.session.set({ [key]: addSave(cur, save) });
+    let list = addSave(cur, save);
+    try { await chrome.storage.session.set({ [key]: list }); }
+    catch { // session quota — keep the newest half rather than dropping every later save
+      list = list.slice(0, Math.max(1, Math.floor(list.length / 2)));
+      await chrome.storage.session.set({ [key]: list });
+    }
   }).catch(() => { /* storage unavailable — the panel just won't list this save */ });
 };
 chrome.webRequest.onBeforeRequest.addListener((d) => {
@@ -204,3 +209,12 @@ async function revertTraceSetting(orgUrl) {
   chrome.alarms.create(TRACE_REVERT + orgUrl, { delayInMinutes: 5 });
 }
 chrome.alarms.onAlarm.addListener((a) => { if (a.name.startsWith(TRACE_REVERT)) revertTraceSetting(a.name.slice(TRACE_REVERT.length)); });
+// Alarms don't survive a browser restart or an extension update: on every service-worker start the
+// pending reverts in storage are re-armed (an overdue one fires right away).
+chrome.storage.local.get(null).then((all) => {
+  for (const [key, job] of Object.entries(all || {})) {
+    if (!key.startsWith("traceRevert|") || !job || !job.at) continue;
+    const orgUrl = key.slice("traceRevert|".length);
+    chrome.alarms.get(TRACE_REVERT + orgUrl, (a) => { if (!a) chrome.alarms.create(TRACE_REVERT + orgUrl, { when: Math.max(Number(job.at) || 0, Date.now() + 1000) }); });
+  }
+}).catch(() => { /* storage unavailable */ });

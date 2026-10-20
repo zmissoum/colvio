@@ -12,14 +12,19 @@ const FLUSH_XML = 1 << 18;     // feed the compressor every ~256 KB of XML
 
 // ── values ───────────────────────────────────────────────────
 // One cell value from a cleaned record: header column → the first of its candidate keys present.
-// CSV writes what the grid shows (the formatted label when there is one); XLSX keeps raw numbers
-// and booleans typed (a "$1,380.08" text cell would make SUM() = 0) and labels for the rest.
+// CSV writes what the grid shows (the formatted label when there is one); XLSX keeps a number typed
+// when its label is that same number formatted ("$1,380.08" → 1380.08, so SUM() works) and writes
+// the label otherwise (a choice's "Active", a yes/no's "Do Not Allow"); booleans without a label stay typed.
 export function cellValue(record, keys, format) {
   for (const k of keys || []) {
     if (!(k in record) && !((k + "__display") in record)) continue;
     const raw = record[k];
     const disp = record[k + "__display"];
-    if (format === "xlsx" && (typeof raw === "number" || typeof raw === "boolean")) return raw;
+    if (format === "xlsx" && (typeof raw === "number" || typeof raw === "boolean")) {
+      if (disp === undefined || disp === null || disp === "") return raw;
+      if (typeof raw === "number") { const n = Number(String(disp).replace(/[^0-9.eE+-]/g, "")); if (Number.isFinite(n) && n === raw) return raw; }
+      return disp;
+    }
     const v = disp !== undefined && disp !== null ? disp : raw;
     if (v === undefined || v === null) return "";
     return typeof v === "object" ? JSON.stringify(v) : v;
@@ -30,6 +35,7 @@ export function cellValue(record, keys, format) {
 // ── CSV ──────────────────────────────────────────────────────
 // Formula-triggering first characters get a leading apostrophe (CSV injection), as in every export.
 export function csvCell(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v); // a typed number is never a formula
   let s = v === undefined || v === null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

@@ -60,10 +60,17 @@ export function reaches(depth, scopeBu, rec, ownsIt, tree) {
 }
 
 // The narrowest depth that reaches the record from the user's own BU (what a role would need).
+// The record counts as the user's own (Basic depth) when they own it or an owner team they belong to does.
+export function ownsRecord(ctx) {
+  const owner = lc(ctx.record?.ownerId), u = ctx.user || {};
+  if (!owner) return false;
+  return owner === lc(u.id) || (ctx.teams || []).some(t => OWNER_TEAM_TYPES.has(Number(t.type)) && lc(t.id) === owner);
+}
+
 export function depthNeeded(ctx, tree) {
   const rec = ctx.record || {}, u = ctx.user || {};
   if (ctx.entity?.ownership === "OrganizationOwned") return 8;
-  if (lc(rec.ownerId) === lc(u.id)) return 1;
+  if (ownsRecord(ctx)) return 1;
   if (rec.buId && lc(rec.buId) === lc(u.buId)) return 2;
   if (tree.within(rec.buId, u.buId)) return 4;
   return 8;
@@ -101,7 +108,7 @@ export function diagnoseAccess(ctx) {
   const truth = ctx.effective == null ? null : parseAccessRights(ctx.effective);
   const sysadmin = (u.roles || []).find(isSysAdmin);
   const teamIds = new Set((ctx.teams || []).map(t => lc(t.id)));
-  const ownsUser = lc(rec.ownerId) === lc(u.id);
+  const ownsUser = ownsRecord(ctx);
   const need = depthNeeded(ctx, tree);
   const rows = [];
 

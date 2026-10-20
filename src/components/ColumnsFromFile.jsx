@@ -23,7 +23,7 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
       .catch(e => { if (alive) setTargets({ error: e.message || String(e), solutions: [] }); });
     return () => { alive = false; };
   }, []);
-  useEffect(() => { const h = e => { if (e.key === "Escape" && run?.phase !== "running") onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose, run]);
+  useEffect(() => { const h = e => { if (e.key === "Escape" && !["running", "publishing"].includes(run?.phase)) onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose, run]);
 
   const sol = useMemo(() => (targets?.solutions || []).find(s => s.uniqueName === solution) || null, [targets, solution]);
   const parsed = useMemo(() => (file?.aoa ? parseSpecSheet(file.aoa) : null), [file]);
@@ -61,9 +61,9 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
     stop.current = false;
     const results = checked.map(s => ({ row: s.row, schema: s.schema, kind: s.kind, ok: s.errors.length ? null : undefined, msg: s.errors.length ? "skipped: " + s.errors[0] : "" }));
     setRun({ phase: "running", results: [...results], done: 0, total: valid.length });
-    let n = 0;
+    let n = 0, stopped = false;
     for (const s of valid) {
-      if (stop.current) { for (const r of results) if (r.ok === undefined) { r.ok = null; r.msg = "not sent (stopped)"; } break; }
+      if (stop.current) { stopped = true; for (const r of results) if (r.ok === undefined) { r.ok = null; r.msg = "not sent (stopped)"; } break; }
       const r = results.find(x => x.row === s.row);
       try { const { kind, body } = buildCreateBody(s, { entity: entity.l, languageCode: targets?.languageCode || 1033 }); await bridge.createColumn({ entity: entity.l, kind, body, solution: sol.uniqueName }); r.ok = true; r.msg = "created"; }
       catch (e) { r.ok = false; r.msg = e.message || String(e); }
@@ -78,13 +78,13 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
       try { await bridge.clearCache(); } catch { /* cache */ }
       onDone?.();
     }
-    setRun(x => ({ ...x, phase: "done", results: [...results], error }));
+    setRun(x => ({ ...x, phase: "done", results: [...results], error, stopped, notSent: results.filter(r => r.msg === "not sent (stopped)").length }));
   };
-  const exportResults = () => dl("﻿" + [["Row", "Schema name", "Kind", "Result", "Detail"], ...run.results.map(r => [r.row, r.schema, KIND_LABEL[r.kind] || r.kind || "", r.ok ? "Created" : r.ok === false ? "Failed" : "Skipped", r.msg])].map(r => r.map(csvCell).join(",")).join("\n"), "text/csv;charset=utf-8", `columns_created_${entity.l}.csv`);
+  const exportResults = () => dl("﻿" + [["Row", "Schema name", "Kind", "Result", "Detail"], ...run.results.map(r => [r.row, r.schema, KIND_LABEL[r.kind] || r.kind || "", r.ok ? "Created" : r.ok === false ? "Failed" : r.msg === "not sent (stopped)" ? "Not sent" : "Skipped", r.msg])].map(r => r.map(csvCell).join(",")).join("\n"), "text/csv;charset=utf-8", `columns_created_${entity.l}.csv`);
 
   const sum = run ? summarizeResults(run.results) : null;
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.55)" }} onClick={() => run?.phase !== "running" && onClose()}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.55)" }} onClick={() => !["running", "publishing"].includes(run?.phase) && onClose()}>
       <div style={{ width: 860, maxWidth: "95vw", maxHeight: "88vh", display: "flex", flexDirection: "column", background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 10, boxShadow: "0 16px 48px rgba(0,0,0,.5)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: "14px 18px 10px", borderBottom: `1px solid ${C.bd}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -143,7 +143,7 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
         <div style={{ padding: "10px 18px", borderTop: `1px solid ${C.bd}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12.5 }}>
           {run?.phase === "running" && <><Spin s={11} /><span style={{ flex: 1, color: C.txm }}>Creating {run.done} / {run.total}…</span><button onClick={() => { stop.current = true; }} style={bt(C.rd, { fontSize: 12 })}>Stop</button></>}
           {run?.phase === "publishing" && <><Spin s={11} /><span style={{ flex: 1, color: C.txm }}>Publishing {entity.l}…</span></>}
-          {run?.phase === "done" && <><span style={{ flex: 1, color: sum.failed ? C.yw : C.gn }}>{sum.ok} created{sum.failed ? `, ${sum.failed} failed` : ""}{sum.skipped ? `, ${sum.skipped} skipped` : ""}{sum.ok ? " — table published, columns reloaded." : "."}{run.error ? ` ${run.error}` : ""}</span><button onClick={exportResults} style={bt(null, { fontSize: 12 })}>Export results</button><button onClick={onClose} style={bt(null, { fontSize: 12 })}>Close</button></>}
+          {run?.phase === "done" && <><span style={{ flex: 1, color: run.stopped || sum.failed ? C.yw : C.gn }}>{run.stopped ? "Stopped — " : ""}{sum.ok} created{sum.failed ? `, ${sum.failed} failed` : ""}{run.notSent ? `, ${run.notSent} not sent` : ""}{sum.skipped - (run.notSent || 0) ? `, ${sum.skipped - (run.notSent || 0)} skipped` : ""}{sum.ok ? " — table published, columns reloaded." : "."}{run.error ? ` ${run.error}` : ""}</span><button onClick={exportResults} style={bt(null, { fontSize: 12 })}>Export results</button><button onClick={onClose} style={bt(null, { fontSize: 12 })}>Close</button></>}
           {!run && <><span style={{ flex: 1, color: C.txd }}>{valid.length ? `${valid.length} column${valid.length === 1 ? "" : "s"} will be created in ${sol?.name || "…"}; every write is confirmed.` : "Nothing to create yet."}</span><button onClick={onClose} style={bt(null, { fontSize: 12 })}>{t("common.cancel")}</button><button onClick={create} disabled={!valid.length || !sol} style={bt(C.gn, { fontSize: 12, opacity: valid.length && sol ? 1 : .5 })}>Create {valid.length || ""} column{valid.length === 1 ? "" : "s"}</button></>}
         </div>
       </div>

@@ -54,3 +54,12 @@ describe("layout", () => {
     expect(xmlEsc('a"<')).toBe("a&quot;&lt;");
   });
 });
+
+describe("review pass", () => {
+  it("finds the key among root attributes even after nested link-entities and alias-first attributes", () => {
+    const fx = '<fetch><entity name="account"><link-entity name="contact" from="contactid" to="primarycontactid" alias="c"><link-entity name="systemuser" from="systemuserid" to="ownerid" alias="o"><attribute name="fullname"/></link-entity><attribute name="accountid"/></link-entity><attribute alias="k" name="accountid"/></entity></fetch>';
+    const r = viewFetchXml(fx, "accountid");
+    expect((r.fetchxml.match(/name="accountid"/g) || []).length).toBe(2); // the link's and the root's — none added
+    expect(viewFetchXml("<fetch page='2' count='50'><entity name=\"account\"><attribute name=\"name\"/></entity></fetch>", "accountid").fetchxml).toMatch(/^<fetch><entity/);
+  });
+});

@@ -9,6 +9,7 @@ const GUID_RE = new RegExp(`^${GUID}$`, "i");
 const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 export const MAX_SAVES = 200;      // per org, newest kept
 const MAX_COLUMNS = 200;
+const MAX_OPS = 50;                // ops kept per save (a Loader $batch carries hundreds) — the count is kept
 const MAX_BODY_BYTES = 512 * 1024; // bigger bodies (file uploads…) are not decoded
 
 export const isWriteMethod = (m) => WRITE_METHODS.has(String(m || "").toUpperCase());
@@ -124,7 +125,7 @@ export function startSave(details) {
     const cols = kind === "update" && parsed.sub && !/\$ref$/i.test(parsed.sub) ? [parsed.sub] : columnsFromBody(text);
     ops = [opOf(kind, parsed, cols)];
   }
-  return { key: String(details.requestId), origin, tabId: details.tabId, t0: Math.round(details.timeStamp || Date.now()), batch: !!parsed.batch, ops };
+  return { key: String(details.requestId), origin, tabId: details.tabId, t0: Math.round(details.timeStamp || Date.now()), batch: !!parsed.batch, ops: ops.slice(0, MAX_OPS), opCount: ops.length };
 }
 
 export const headerValue = (headers, name) => {
@@ -182,7 +183,7 @@ export function savesForRecord(saves, entitySet, recordId) {
       kind,
       action: mine.find(o => o.action)?.action || null,
       columns: [...new Set(mine.flatMap(o => o.columns || []))],
-      opCount: (s.ops || []).length,
+      opCount: s.opCount ?? (s.ops || []).length,
     });
   }
   return out.sort((a, b) => b.t0 - a.t0);

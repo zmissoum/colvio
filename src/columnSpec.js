@@ -4,7 +4,7 @@
 
 // Recognised headers (case-insensitive, spaces and underscores ignored) → spec keys.
 const HEADER_ALIASES = {
-  label: ["displayname", "display", "label", "name", "columnname", "title"],
+  label: ["displayname", "display", "label", "columnname", "title"],
   schema: ["schemaname", "schema", "logicalname", "logical", "internalname"],
   type: ["type", "datatype", "kind"],
   required: ["required", "requiredlevel", "requirement", "mandatory"],
@@ -31,14 +31,16 @@ const TYPE_WORDS = {
   boolean: ["boolean", "bool", "twooptions", "twooption", "yesno", "yes/no", "bit", "flag", "checkbox"],
   datetime: ["datetime", "dateandtime", "timestamp"],
   date: ["date", "dateonly"],
-  picklist: ["picklist", "choice", "optionset", "option", "choices", "dropdown", "select", "enum"],
-  multiselect: ["multiselect", "multiselectpicklist", "multichoice", "multiselectchoice", "choicesmulti", "multiselectoptionset"],
+  picklist: ["picklist", "choice", "optionset", "option", "dropdown", "select", "enum", "singlechoice"],
+  multiselect: ["multiselect", "multiselectpicklist", "multichoice", "multiselectchoice", "choicesmulti", "multiselectoptionset", "choices", "choicesmultiselect", "multiselectchoices"],
   lookup: ["lookup", "reference", "relation", "relationship", "foreignkey", "fk"],
 };
 export const KIND_LABEL = { string: "Text", memo: "Multiline text", integer: "Whole number", bigint: "Big integer", decimal: "Decimal", double: "Float", money: "Currency", boolean: "Yes/No", datetime: "Date and time", date: "Date only", picklist: "Choice", multiselect: "Choices (multi-select)", lookup: "Lookup" };
 export const KINDS = Object.keys(KIND_LABEL);
+// "Choices (multi-select)" → "choicesmultiselect"; "Yes/No" keeps its slash.
+const normType = (w) => String(w || "").toLowerCase().replace(/[^a-z0-9/]/g, "");
 export function kindOf(word) {
-  const w = normHeader(word);
+  const w = normType(word);
   for (const [k, list] of Object.entries(TYPE_WORDS)) if (list.includes(w)) return k;
   return null;
 }
@@ -59,10 +61,16 @@ export function parseSpecSheet(aoa) {
   const rows = [all[h0]];
   const headers = rows[0].map(normHeader);
   const columns = {}, unknownHeaders = [];
+  const claim = (key, i) => { if (columns[key] == null) { columns[key] = i; return true; } return false; };
+  const bareName = [];
   headers.forEach((h, i) => {
+    if (!h) return;
+    if (h === "name") { bareName.push(i); return; }
     const key = Object.keys(HEADER_ALIASES).find(k => HEADER_ALIASES[k].map(normHeader).includes(h));
-    if (key && columns[key] == null) columns[key] = i; else if (h) unknownHeaders.push(rows[0][i]);
+    if (!key || !claim(key, i)) unknownHeaders.push(rows[0][i]);
   });
+  // a bare "Name" header is the display name — unless the sheet has one already, then it's the schema name
+  for (const i of bareName) if (!claim("label", i) && !claim("schema", i)) unknownHeaders.push(rows[0][i]);
   if (columns.label == null && columns.schema == null) return { columns, specs: [], unknownHeaders, error: "No “Display name” (or “Schema name”) column in the header row." };
   if (columns.type == null) return { columns, specs: [], unknownHeaders, error: "No “Type” column in the header row." };
   const get = (r, k) => (columns[k] == null ? "" : String(r[columns[k]] ?? "").trim());
@@ -90,12 +98,19 @@ export function parseOptions(text, valuePrefix = 10000) {
   const out = [];
   parts.forEach((p, i) => {
     const m = p.match(/^(-?\d+)\s*[:=]\s*(.+)$/);
-    out.push(m ? { value: Number(m[1]), label: m[2].trim() } : { value: valuePrefix * 10000 + i, label: p });
+    out.push(m ? { value: Number(m[1]), label: m[2].trim(), explicit: true } : { value: valuePrefix * 10000 + i, label: p });
   });
   return out;
 }
 
-const num = (s) => (s === "" ? null : Number(String(s).replace(",", ".")));
+// "4,000" is four thousand and "4,5" four and a half: a comma followed by exactly three digits groups,
+// any other comma is a decimal point.
+const num = (s) => {
+  if (s === "") return null;
+  let t = String(s).trim().replace(/\s/g, "");
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) t = t.replace(/,/g, ""); else if (!t.includes(".")) t = t.replace(",", ".");
+  return Number(t);
+};
 const INT_MIN = -2147483648, INT_MAX = 2147483647;
 
 // Every spec checked against the prefix, the table's columns and the org's tables. Returns specs
@@ -137,6 +152,7 @@ export function validateSpecs(specs, { prefix, existingFields = [], entities = [
     if (kind === "boolean" && s.options) {
       options = parseOptions(s.options, valuePrefix);
       if (options.length !== 2) errors.push("A yes/no column takes exactly two options (“No;Yes”).");
+      else if (options.every(o => o.explicit) && !(options.some(o => o.value === 0) && options.some(o => o.value === 1))) errors.push("A yes/no column's values are 0 (no) and 1 (yes) — “0:No;1:Yes”.");
     }
     if (kind === "lookup") {
       if (!s.target) errors.push("A lookup needs its target table (Target column).");
@@ -145,7 +161,8 @@ export function validateSpecs(specs, { prefix, existingFields = [], entities = [
     const maxLength = num(s.maxLength), precision = num(s.precision), min = num(s.min), max = num(s.max);
     if (kind === "string" && maxLength != null && (!Number.isInteger(maxLength) || maxLength < 1 || maxLength > 4000)) errors.push("Max length of a text column: 1 to 4000.");
     if (kind === "memo" && maxLength != null && (!Number.isInteger(maxLength) || maxLength < 1 || maxLength > 1048576)) errors.push("Max length of a multiline column: 1 to 1,048,576.");
-    if ((kind === "decimal" || kind === "double") && precision != null && (!Number.isInteger(precision) || precision < 0 || precision > 10)) errors.push("Precision: 0 to 10.");
+    if (kind === "decimal" && precision != null && (!Number.isInteger(precision) || precision < 0 || precision > 10)) errors.push("Precision: 0 to 10.");
+    if (kind === "double" && precision != null && (!Number.isInteger(precision) || precision < 0 || precision > 5)) errors.push("Precision of a float: 0 to 5.");
     if (kind === "money" && precision != null && (!Number.isInteger(precision) || precision < 0 || precision > 4)) errors.push("Currency precision: 0 to 4.");
     if (kind === "integer") { for (const [n, v] of [["Min", min], ["Max", max]]) if (v != null && (!Number.isInteger(v) || v < INT_MIN || v > INT_MAX)) errors.push(`${n} must be a whole number in the int32 range.`); }
     if (min != null && max != null && min > max) errors.push("Min is above max.");
@@ -174,14 +191,19 @@ export function buildCreateBody(spec, { entity, languageCode = 1033 } = {}) {
   let body;
   switch (spec.kind) {
     case "string": body = { ...T("String"), ...base, MaxLength: spec.maxLength ?? 100, FormatName: { Value: stringFormat(spec.format) || "Text" } }; break;
-    case "memo": body = { ...T("Memo"), ...base, MaxLength: spec.maxLength ?? 2000, Format: normHeader(spec.format) === "richtext" ? "RichText" : "TextArea" }; break;
+    case "memo": body = { ...T("Memo"), ...base, MaxLength: spec.maxLength ?? 2000, Format: "TextArea", FormatName: { Value: normHeader(spec.format) === "richtext" ? "RichText" : "TextArea" } }; break;
     case "integer": body = { ...T("Integer"), ...base, Format: "None", MinValue: spec.min ?? INT_MIN, MaxValue: spec.max ?? INT_MAX }; break;
     case "bigint": body = { ...T("BigInt"), ...base }; break;
     case "decimal": body = { ...T("Decimal"), ...base, Precision: spec.precision ?? 2, MinValue: spec.min ?? -100000000000, MaxValue: spec.max ?? 100000000000 }; break;
     case "double": body = { ...T("Double"), ...base, Precision: spec.precision ?? 2, MinValue: spec.min ?? -100000000000, MaxValue: spec.max ?? 100000000000 }; break;
     case "money": body = { ...T("Money"), ...base, PrecisionSource: spec.precision != null ? 0 : 2, ...(spec.precision != null ? { Precision: spec.precision } : {}), MinValue: spec.min ?? -922337203685477, MaxValue: spec.max ?? 922337203685477 }; break;
     case "boolean": {
-      const [no, yes] = spec.options?.length === 2 ? spec.options.map(o => o.label) : ["No", "Yes"];
+      let no = "No", yes = "Yes";
+      if (spec.options?.length === 2) {
+        const [a, b] = spec.options;
+        // "1:Yes;0:No" — explicit values decide which label is which; without values the order is No;Yes
+        if (a.explicit && b.explicit) { yes = (a.value === 1 ? a : b).label; no = (a.value === 1 ? b : a).label; } else { no = a.label; yes = b.label; }
+      }
       body = { ...T("Boolean"), ...base, DefaultValue: false, OptionSet: { TrueOption: { Value: 1, Label: L(yes, lang) }, FalseOption: { Value: 0, Label: L(no, lang) }, OptionSetType: "Boolean" } };
       break;
     }

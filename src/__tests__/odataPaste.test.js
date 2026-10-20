@@ -49,3 +49,9 @@ describe("helpers", () => {
     expect(looksLikeOData("hello")).toBe(false);
   });
 });
+
+describe("review pass", () => {
+  it("drops the indentation of a wrapped query with its line breaks", () => {
+    expect(normalizeODataInput("accounts?$select=name\n   &$top=5\n", "https://org.crm.dynamics.com").path).toBe("accounts?$select=name&$top=5");
+  });
+});

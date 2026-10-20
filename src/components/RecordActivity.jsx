@@ -215,6 +215,7 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
             {traceSetting === 1 && <div style={{ fontSize: 12, color: C.yw }}>⚠ Trace log = exceptions only — plug-ins that succeeded aren't recorded.</div>}
             {data.errors.traces && <div style={{ fontSize: 12, color: C.rd }}>Couldn't read the plug-in traces: {data.errors.traces}</div>}
             {!data.errors.traces && plugins > 0 && !data.exact && <div style={{ fontSize: 11.5, color: C.txd }}>Matched by time on the {entity} table — another {entity} saved at the same second would show here too.</div>}
+            {data.flows.some(f => f.run) && <div style={{ fontSize: 11.5, color: C.txd }}>Flow runs are matched by flow and time only (a run isn't tied to a record) — another save of the table in the same window could have produced the one shown.{data.runsTruncated ? " More runs started in this window than were read: this save's own run may be missing." : ""}</div>}
             {!data.errors.traces && plugins === 0 && traceSetting !== 0 && <div style={{ fontSize: 12, color: C.txd }}>{data.jobs.some(j => j.operationtype === 1)
               ? "No synchronous plug-in ran. The asynchronous ones ran as system jobs (below) — click one for its message, its step and its history."
               : traceSetting === 2 ? "No plug-in ran for this save." : "No plug-in exception for this save."}</div>}

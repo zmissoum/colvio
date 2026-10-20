@@ -36,15 +36,19 @@ export default function OptionSetEditor({ entity, field, isProduction, onChanged
     if (confirmText && !window.confirm(confirmText)) return;
     if (!confirmProd(isProduction, `${label} (${where})`)) return;
     setBusy(label); setNote(""); setErr("");
-    try {
-      const r = await bridge.optionSetChange(op, body);
-      setBusy("Publishing…");
-      if (info.isGlobal) await bridge.publishOptionSet(info.name); else await bridge.publishEntity(entity);
-      await load();
-      setNote(`✓ ${label}${op === "insert" && r?.NewOptionValue != null ? ` (value ${r.NewOptionValue})` : ""} — published.`);
-      if (op === "insert") setAdd({ label: "", value: "" });
-    } catch (e) { setErr(`${label} failed: ${e.message || String(e)}`); }
-    finally { setBusy(""); }
+    let r;
+    try { r = await bridge.optionSetChange(op, body); }
+    catch (e) { setErr(`${label} failed: ${e.message || String(e)}`); setBusy(""); return; }
+    // the change is in: a publish failure must not read as "the change failed" (a retry would double it)
+    let pubErr = "";
+    setBusy("Publishing…");
+    try { if (info.isGlobal) await bridge.publishOptionSet(info.name); else await bridge.publishEntity(entity); }
+    catch (e) { pubErr = e.message || String(e); }
+    try { await load(); } catch { /* load() reports its own error */ }
+    if (pubErr) setErr(`${label} done but NOT published (${pubErr}) — publish ${info.isGlobal ? "the choice" : "the table"} from the maker portal.`);
+    else setNote(`✓ ${label}${op === "insert" && r?.NewOptionValue != null ? ` (value ${r.NewOptionValue})` : ""} — published.`);
+    if (op === "insert") setAdd({ label: "", value: "" });
+    setBusy("");
   };
 
   const doAdd = () => {

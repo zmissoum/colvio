@@ -5,11 +5,13 @@ describe("content round trip", () => {
   it("decodes and re-encodes UTF-8 text, keeping a BOM", () => {
     const src = "// été — 漢字\nvar x = 1;";
     const b64 = encodeContent(src);
-    expect(decodeContent(b64)).toEqual({ text: src, bom: false });
+    expect(decodeContent(b64)).toEqual({ text: src, bom: false, encoding: "utf-8" });
     const withBom = encodeContent(src, true);
-    expect(decodeContent(withBom)).toEqual({ text: src, bom: true });
+    expect(decodeContent(withBom)).toEqual({ text: src, bom: true, encoding: "utf-8" });
     expect(atob(withBom).charCodeAt(0)).toBe(0xef);
-    expect(decodeContent("")).toEqual({ text: "", bom: false });
+    expect(decodeContent("")).toEqual({ text: "", bom: false, encoding: "utf-8" });
+    const u16 = btoa(String.fromCharCode(0xff, 0xfe, 0x68, 0x00, 0x69, 0x00));
+    expect(decodeContent(u16)).toMatchObject({ text: "﻿hi", encoding: "utf-16le" });
     expect(byteSize(encodeContent("abcd"))).toBe(4);
     expect(byteSize(encodeContent("abcde"))).toBe(5);
   });

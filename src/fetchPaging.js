@@ -19,7 +19,7 @@ export function pagedFetchXml(xml, page, cookie) {
   const s = String(xml || "");
   const m = s.match(/<fetch\b([^>]*)>/i);
   if (!m) return s;
-  let attrs = m[1].replace(/\s+page\s*=\s*"[^"]*"/i, "").replace(/\s+paging-cookie\s*=\s*"[^"]*"/i, "");
+  let attrs = m[1].replace(/\s+page\s*=\s*(?:"[^"]*"|'[^']*')/i, "").replace(/\s+paging-cookie\s*=\s*(?:"[^"]*"|'[^']*')/i, "");
   const selfClose = /\/\s*$/.test(attrs);
   if (selfClose) attrs = attrs.replace(/\/\s*$/, "");
   attrs += ` page="${page}"` + (cookie ? ` paging-cookie="${xmlAttr(cookie)}"` : "");
