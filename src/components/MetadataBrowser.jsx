@@ -8,6 +8,7 @@ import { scanFillRate, percent, fillSummary, localAggregateRunner } from "../fil
 import { dictRows, chunks as dictChunks, DICT_HEADERS } from "../dataDictionary.js";
 import { createSink, openOutput } from "../streamExport.js";
 import { ROWS } from "../shared.jsx";
+import { impactRows, groupRows, IMPACT_HEADERS, impactExportRows } from "../deleteImpact.js";
 
 export default function MetadataBrowser({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
@@ -24,6 +25,9 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   // Data dictionary export: { scope, format, phase, done, total, rows, name, error }
   const[dict,setDict]=useState(null);
   const dictStop=useRef(false);
+  // Dependency check of a column or the table: { target: column|table, mode: delete|used, item, phase, rows, error }
+  const[impact,setImpact]=useState(null);
+  const impactGen=useRef(0);
 
   // Export ALL field metadata for the selected entity as a single CSV.
   // Includes logical/display names, OData column name (for $select), type, required/custom flags.
@@ -55,6 +59,8 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     }catch{}finally{setExportingOS(false);}
   };
   useEffect(()=>{if(!showPicklist)return;const h=e=>{if(e.key==="Escape")setShowPicklist(null);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[showPicklist]);
+  const impactOpen=!!impact;
+  useEffect(()=>{if(!impactOpen)return;const h=e=>{if(e.key==="Escape"){impactGen.current++;setImpact(null);}};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[impactOpen]);
   useEffect(()=>{
     if(!showPicklist||!selEnt||optionSetData[showPicklist]) return;
     const field=fields.find(f=>f.l===showPicklist);
@@ -80,7 +86,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     if(!isLive)return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",tt:e.tableType||"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",tt:e.tableType||"Standard",mid:e.metadataId||null,cust:!!e.isCustom})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive,tick]);
@@ -90,13 +96,14 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const handleSelectEntity=(e)=>{
     const gen=++selGen.current;
     setSelEnt(e);setFields([]);setShowPicklist(null);setOptionSetData({});setFieldSearch("");
+    impactGen.current++;setImpact(null);
     fillStop.current=true;setFill(null);
     if(isLive){
       setLoadingFields(true);
       bridge.getFields(e.l).then(data=>{
         if(selGen.current!==gen)return; // user switched entity while this was loading
         if(data&&Array.isArray(data)){
-          setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,o:f.odataName||f.logical,t:f.type||"String",req:f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false})).sort((a,b)=>a.l.localeCompare(b.l)));
+          setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,o:f.odataName||f.logical,t:f.type||"String",req:f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false,mid:f.metadataId||null})).sort((a,b)=>a.l.localeCompare(b.l)));
         }
       }).catch(()=>{}).finally(()=>{if(selGen.current===gen)setLoadingFields(false);});
     } else {
@@ -139,6 +146,23 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
       setFill(x=>x&&x.entity===ent.l?(e.message==="stopped"?{...x,phase:"stopped"}:{...x,phase:"error",error:e.message||String(e)}):x);
     }
   };
+
+  // ── Dependency check: what blocks deleting a column / the table, or everything that uses it ──
+  // Dataverse's own answer (RetrieveDependenciesForDelete / RetrieveDependentComponents), one read +
+  // grouped name reads. Read-only: nothing is deleted.
+  const runImpact=async(target,item,mode)=>{
+    if(!selEnt||!item) return;
+    const gen=++impactGen.current;
+    const m=mode||(target==="table"?(selEnt.cust||!isLive?"delete":"used"):(item.cust?"delete":"used"));
+    const base={target,mode:m,item,table:selEnt.l};
+    setImpact({...base,phase:"loading"});
+    try{
+      const r=await bridge.getComponentDependencies({componentType:target==="table"?1:2,objectId:item.mid,mode:m,logicalName:item.l});
+      if(impactGen.current!==gen) return;
+      setImpact({...base,phase:"done",rows:impactRows(r.deps,r.names,target,r.targetId)});
+    }catch(e){ if(impactGen.current===gen) setImpact({...base,phase:"error",error:e.message||String(e)}); }
+  };
+  const closeImpact=()=>{impactGen.current++;setImpact(null);};
 
   // ── Data dictionary: every column of the chosen tables, streamed to a file ──
   const dictScopes={custom:entities.filter(e=>e.cat==="Custom"),shown:filtered,all:entities};
@@ -226,6 +250,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
               {loadingFields?<Spin s={12}/>:<span style={{fontSize:13,color:C.txm}}>{fields.length} columns</span>}
               {!loadingFields&&fields.length>0&&<><button onClick={()=>exportAllFields("csv")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Export All Fields</button><button onClick={()=>exportAllFields("xlsx")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Excel</button><Tooltip text={t("help.fields_export")}/></>}
               {!loadingFields&&fields.length>0&&<button onClick={runFill} disabled={fill?.phase==="running"} title="How many rows have a value in each column — exact counts (aggregates; a big table is counted in date slices, never row by row)" style={{...bt(C.vi,{fontSize:12,padding:"4px 12px",opacity:fill?.phase==="running"?.6:1})}}>📊 Fill rate</button>}
+              <button onClick={()=>runImpact("table",selEnt)} title="What would block deleting this table, or everything that uses it — Dataverse's own dependency check, read-only (nothing is deleted)" style={{...bt(C.or,{fontSize:12,padding:"4px 12px"})}}>🧨 Dependencies</button>
               {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={()=>exportAllOptionSets("csv")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><button onClick={()=>exportAllOptionSets("xlsx")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Excel</>}</button><Tooltip text={t("help.optionset_export")}/></>}
             </div>
 
@@ -259,7 +284,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                       const n=r.filled[f.l], ratio=r.total?n/r.total:0;
                       return <td style={tds} title={`${n.toLocaleString()} of ${r.total.toLocaleString()} rows have a value`}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:50,height:6,background:C.bd,borderRadius:3}}><div style={{width:`${Math.round(ratio*100)}%`,height:6,background:n===0?C.rd:ratio<0.05?C.yw:C.gn,borderRadius:3}}/></div><span style={{...mono,fontSize:12,color:n===0?C.rd:C.txm}}>{percent(n,r.total)}</span></div></td>;
                     })()}
-                    <td style={tds}>{(f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<button onClick={()=>setShowPicklist(showPicklist===f.l?null:f.l)} style={{...bt(showPicklist===f.l?C.vi:null,{fontSize:12,padding:"3px 10px"})}}>{showPicklist===f.l?"Close":"Values"}{optionSetData[f.l]?` (${optionSetData[f.l].length})`:""}</button>}</td>
+                    <td style={{...tds,whiteSpace:"nowrap"}}>{(f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<button onClick={()=>setShowPicklist(showPicklist===f.l?null:f.l)} style={{...bt(showPicklist===f.l?C.vi:null,{fontSize:12,padding:"3px 10px"}),marginRight:4}}>{showPicklist===f.l?"Close":"Values"}{optionSetData[f.l]?` (${optionSetData[f.l].length})`:""}</button>}<button onClick={()=>runImpact("column",f)} title={f.cust?"What would block deleting this column, or everything that uses it (read-only)":"Everything that uses this column — forms, views, processes, plug-in steps… (read-only)"} style={bt(null,{fontSize:12,padding:"3px 8px"})}>🧨</button></td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -331,6 +356,51 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
           </div>
         )}
       </div>
+      {impact&&(()=>{
+        const isTable=impact.target==="table", it=impact.item;
+        const groups=impact.phase==="done"?groupRows(impact.rows):[];
+        const ext=impact.phase==="done"?impact.rows.filter(r=>!r.internal):[], own=impact.phase==="done"?impact.rows.filter(r=>r.internal):[];
+        const what=isTable?"the table":"the column";
+        const fname=`${impact.mode==="delete"?"delete_impact":"used_by"}_${isTable?impact.table:`${impact.table}_${it.l}`}`;
+        const tab=(m,l)=><button onClick={()=>impact.mode!==m&&runImpact(impact.target,it,m)} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:impact.mode===m?C.or:"transparent",color:impact.mode===m?"white":C.txm,fontWeight:impact.mode===m?600:400}}>{l}</button>;
+        return <div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.55)"}} onClick={closeImpact}>
+          <div style={{width:760,maxWidth:"94vw",maxHeight:"86vh",display:"flex",flexDirection:"column",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,boxShadow:"0 16px 48px rgba(0,0,0,.5)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:"14px 18px 10px",borderBottom:`1px solid ${C.bd}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontWeight:700,fontSize:15,flex:1,minWidth:0}}>🧨 {it.d} <span style={{...mono,fontSize:12,color:C.txd,fontWeight:400}}>{isTable?it.l:`${impact.table}.${it.l}`}</span></span>
+                {impact.phase==="done"&&impact.rows.length>0&&<><button onClick={()=>exportTable(IMPACT_HEADERS,impactExportRows(impact.rows),fname,"csv","Dependencies")} style={bt(null,{fontSize:12})}><I.Download/> CSV</button><button onClick={()=>exportTable(IMPACT_HEADERS,impactExportRows(impact.rows),fname,"xlsx","Dependencies")} style={bt(null,{fontSize:12})}><I.Download/> Excel</button></>}
+                <button onClick={closeImpact} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:4,fontSize:16}}>✕</button>
+              </div>
+              <div style={{display:"flex",gap:4,marginTop:8}}>{tab("delete","What blocks deleting it")}{tab("used","Everything that uses it")}</div>
+            </div>
+            <div style={{flex:1,overflow:"auto",padding:"12px 18px"}}>
+              {impact.phase==="loading"&&<div style={{display:"flex",alignItems:"center",gap:8,color:C.txm,fontSize:13}}><Spin s={12}/> Asking Dataverse what depends on {what}…</div>}
+              {impact.phase==="error"&&<div style={{color:C.rd,fontSize:13}}>Couldn't read the dependencies: {impact.error} <button onClick={()=>runImpact(impact.target,it,impact.mode)} style={{...bt(null,{fontSize:12}),marginLeft:8}}>↻ Retry</button></div>}
+              {impact.phase==="done"&&impact.mode==="delete"&&!isTable&&!it.cust&&isLive&&<div style={{fontSize:12,color:C.yw,marginBottom:8}}>A standard column can't be deleted at all — "Everything that uses it" is the useful question here.</div>}
+              {impact.phase==="done"&&!ext.length&&<div style={{color:C.gn,fontSize:13.5,marginBottom:own.length?10:0}}>✓ {impact.mode==="delete"?`Nothing in Dataverse blocks deleting ${what}.`:`No other component uses ${what}.`}</div>}
+              {impact.phase==="done"&&ext.length>0&&<div style={{fontSize:13,marginBottom:10,color:C.txm}}>{impact.mode==="delete"?<><b style={{color:C.rd}}>{ext.length} component{ext.length===1?"":"s"}</b> must stop using {what} before Dataverse lets you delete it:</>:<><b style={{color:C.tx}}>{ext.length} component{ext.length===1?"":"s"}</b> use{ext.length===1?"s":""} {what}:</>}</div>}
+              {groups.map((g,gi)=>(
+                <div key={`${g.kind}-${g.internal}-${gi}`} style={{marginBottom:12}}>
+                  <div style={{fontSize:11.5,fontWeight:700,color:C.txd,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>{g.kind} · {g.rows.length}{g.internal?` · ${isTable?"its own part — deleted with it":"part of it"}`:""}</div>
+                  {g.rows.map(r=>(
+                    <div key={r.key} style={{padding:"6px 9px",borderLeft:`2px solid ${g.internal?C.bd:impact.mode==="delete"?C.or:C.cy}`,background:C.bg,borderRadius:4,marginBottom:4}}>
+                      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",fontSize:13}}>
+                        <b>{r.name||<span style={{...mono,color:C.txd,fontWeight:400}}>{r.id}</span>}</b>
+                        {r.table&&<span style={{fontSize:11,...mono,color:C.cy,background:C.cy+"18",padding:"1px 6px",borderRadius:3}}>{r.table}</span>}
+                        {r.detail&&<span style={{fontSize:11.5,color:C.txd}}>{r.detail}</span>}
+                        {r.unpublished&&<span title="The dependency comes from an unpublished customization" style={{fontSize:10.5,color:C.yw,background:C.yw+"22",padding:"1px 5px",borderRadius:3}}>unpublished</span>}
+                      </div>
+                      {r.through.length>0&&<div style={{fontSize:11.5,color:C.txm,marginTop:1}}>through {r.through.join(", ")}</div>}
+                      {!g.internal&&<div style={{fontSize:12,color:C.txd,marginTop:2}}>→ {r.hint}</div>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={{padding:"8px 18px",borderTop:`1px solid ${C.bd}`,fontSize:11.5,color:C.txd,lineHeight:1.5}}>Read-only — nothing is deleted. This is Dataverse's own dependency tracking: forms, views, charts, processes, plug-in step filters and images, mappings, keys, field security, apps, site maps… It does not see a name typed inside JavaScript, plug-in code, flow expressions or report queries — search those as well before deleting.</div>
+          </div>
+        </div>;
+      })()}
       {dict&&<div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.55)"}} onClick={()=>dict.phase!=="running"&&setDict(null)}>
         <div style={{width:460,maxWidth:"92vw",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:18,boxShadow:"0 16px 48px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
           <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>📚 Data dictionary</div>

@@ -361,7 +361,7 @@ export default function AppInventory({ bp, orgInfo }) {
               </div>
               {deps && (
                 <div style={{ marginTop: 8, fontSize: 12 }}>
-                  {deps.truncated && <div style={{ color: C.yw, marginBottom: 6 }}>⚠ Dependency graph truncated at 200k edges — counts below are a floor, not an exact total.</div>}
+
                   <div style={{ color: C.txm, marginBottom: 6 }}>{deps.attributes.length.toLocaleString()} attributes · {deps.optionSets.length.toLocaleString()} option sets · {deps.relationships.length.toLocaleString()} relationships</div>
                   <div style={{ maxHeight: 260, overflow: "auto" }}>
                     {deps.attributes.slice(0, 500).map(a => (

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.189] — 2026-10-20
+### Added — Metadata: what breaks if I delete this?
+- **🧨 Dependencies** of a column (🧨 on its row) or of the selected table (header button), two questions: **What blocks deleting it** — Dataverse's own `RetrieveDependenciesForDelete`, the components that must stop using it before the delete is allowed — and **Everything that uses it** (`RetrieveDependentComponents`, the useful one for a standard column, which can't be deleted at all). Custom columns and tables open on the first, standard ones on the second.
+- Every component is **named and grouped**: forms (main, quick create, quick view, card…), views, charts, processes told apart (business rule, cloud flow, classic workflow, custom action, business process flow), plug-in steps and step images, column and relationship mappings, alternate keys, duplicate detection rules, field security permissions, web resources, controls, apps, site maps, SLAs, canvas apps… with its table, its state (draft / disabled), *through* which part when a table's dependency goes through one of its columns, an "unpublished" flag, and **how to remove that dependency**. In "everything that uses it", the table's own forms, views and columns (deleted with it) are set apart. CSV / Excel export.
+- Read-only. One read for the dependencies, then one read per component type to name them (25 ids per read, columns and keys through their tables 10 at a time, four reads at a time) — never one request per component; a type that can't be read stays listed by kind and id. The footer says what Dataverse doesn't track: a name typed inside JavaScript, plug-in code, flow expressions or report queries.
+- Pure `deleteImpact.js` (kinds, hints, merging, own parts) + demo answers + 7 tests (581).
+
+### Fixed — no silent caps
+- **Solutions › components**: a solution was read with `$top=5000`, so a bigger one lost components silently; every component is now read, page by page.
+- **Apps › dependency analysis**: the form / view dependency graph stopped at 200,000 edges ("counts are a floor"). It now asks the server only for the edges it uses (attributes, choices and relationships required by forms and views) and reads all of them — no cap, no truncation warning.
+
 ## [1.11.188] — 2026-10-20
 ### Fixed
 - **Explorer › Save as view** (1.11.186): the view-creation action in the content script had no `break`, so after creating the view it also ran the next action — a full read of every user of the org. The view was created, but the answer was the user list, the extra paging cost API requests on big orgs, and past 30 seconds the save reported a timeout although the view existed (a retry would create it twice). The action now stops after the create.

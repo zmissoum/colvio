@@ -1472,21 +1472,151 @@
           }
 
           case "getFormViewDependencies": {
-            // The dependency graph edges whose DEPENDENT is a Form (60) or View (26) — how
-            // attributes (2) / option sets (9) / relationships (10) reach an app: never as App
-            // Module Components, only because a form/view references them. Can be very large on
-            // mature orgs → hard cap with an honest truncation flag.
-            const CAPD = 200000;
+            // The dependency graph edges whose DEPENDENT is a Form (60) or View (26) and whose
+            // REQUIRED side is an attribute (2) / option set (9) / relationship (10) — how those
+            // reach an app: never as App Module Components, only because a form/view references
+            // them. Only the edges the app inventory uses are read (the server filters), all of
+            // them, page by page — no cap (a truncated graph would show wrong counts).
             const rowsD = [];
-            let truncatedD = false;
-            let urlD = `dependencies?$filter=dependentcomponenttype eq 60 or dependentcomponenttype eq 26&$select=requiredcomponentobjectid,requiredcomponenttype,dependentcomponentobjectid,dependentcomponenttype`;
+            let urlD = `dependencies?$filter=(dependentcomponenttype eq 60 or dependentcomponenttype eq 26) and (requiredcomponenttype eq 2 or requiredcomponenttype eq 9 or requiredcomponenttype eq 10)&$select=requiredcomponentobjectid,requiredcomponenttype,dependentcomponentobjectid,dependentcomponenttype`;
             while (urlD) {
-              if (rowsD.length >= CAPD) { truncatedD = true; break; }
-              const dD = await dvRequest("GET", urlD, null, { Prefer: "odata.maxpagesize=5000" });
+              const dD = await dvRequest("GET", urlD, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
               (dD.value || []).forEach(e => rowsD.push({ requiredId: e.requiredcomponentobjectid, requiredType: e.requiredcomponenttype, dependentId: e.dependentcomponentobjectid, dependentType: e.dependentcomponenttype }));
               const nl = dD["@odata.nextLink"]; urlD = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
             }
-            result = { edges: rowsD.slice(0, CAPD), truncated: truncatedD };
+            result = { edges: rowsD, truncated: false };
+            break;
+          }
+
+          case "getComponentDependencies": {
+            // Dataverse's own dependency check of one component — a column (2), a table (1), a
+            // global choice (9) — one read: mode "delete" = what would BLOCK deleting it
+            // (RetrieveDependenciesForDelete), "used" = everything that uses it (RetrieveDependentComponents).
+            if (!params.objectId) throw new Error("Missing component id.");
+            validateGuid(params.objectId);
+            const ctD = Number(params.componentType);
+            if (!Number.isInteger(ctD) || ctD < 1 || ctD > 10000) throw new Error("Invalid component type.");
+            const fnD = params.mode === "used" ? "RetrieveDependentComponents" : "RetrieveDependenciesForDelete";
+            const dDel = await dvRequest("GET", `${fnD}(ObjectId=@o,ComponentType=@t)?@o=${params.objectId}&@t=${ctD}`);
+            result = dDel.value || [];
+            break;
+          }
+
+          case "resolveComponents": {
+            // Names of solution components, grouped by type: record-backed types in "or" packets of
+            // 25 ids, choices and relationships in one metadata read each, columns and keys per
+            // packet of 10 parent tables. Never one request per component; a type that can't be
+            // read stays unnamed (the UI shows its kind and id).
+            const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const itemsR = (params.items || []).filter(x => x && GUID_RE.test(String(x.id || "")) && Number.isInteger(Number(x.type)));
+            const names = {};
+            const keyOf = (t, id) => `${t}|${String(id).toLowerCase()}`;
+            const label = (l) => l?.UserLocalizedLabel?.Label || l?.LocalizedLabels?.[0]?.Label || "";
+            const fv = (e, f) => e[`${f}@OData.Community.Display.V1.FormattedValue`] || "";
+            const byTypeR = {};
+            for (const x of itemsR) (byTypeR[Number(x.type)] ||= []).push(x);
+            const packets = (list, n) => { const o = []; for (let i = 0; i < list.length; i += n) o.push(list.slice(i, i + n)); return o; };
+            // componenttype → [entity set, id, name, extra $select, extra(e) → { table, detail, … }]
+            const REC = {
+              20: ["roles", "roleid", "name"],
+              24: ["systemforms", "formid", "name", "objecttypecode,type", e => ({ table: e.objecttypecode || "", formType: e.type })],
+              26: ["savedqueries", "savedqueryid", "name", "returnedtypecode", e => ({ table: e.returnedtypecode || "" })],
+              29: ["workflows", "workflowid", "name", "category,primaryentity,statecode", e => ({ table: e.primaryentity && e.primaryentity !== "none" ? e.primaryentity : "", category: e.category, detail: e.statecode === 1 ? "active" : e.statecode === 0 ? "draft" : "" })],
+              31: ["reports", "reportid", "name"],
+              36: ["templates", "templateid", "title"],
+              44: ["duplicaterules", "duplicateruleid", "name", "baseentityname", e => ({ table: e.baseentityname || "" })],
+              45: ["duplicateruleconditions", "duplicateruleconditionid", "baseattributename", "_regardingobjectid_value", e => ({ detail: fv(e, "_regardingobjectid_value") ? `rule ${fv(e, "_regardingobjectid_value")}` : "" })],
+              46: ["entitymaps", "entitymapid", "sourceentityname", "targetentityname", e => ({ name: `${e.sourceentityname || "?"} → ${e.targetentityname || "?"}` })],
+              47: ["attributemaps", "attributemapid", "sourceattributename", "targetattributename", e => ({ name: `${e.sourceattributename || "?"} → ${e.targetattributename || "?"}` })],
+              59: ["savedqueryvisualizations", "savedqueryvisualizationid", "name", "primaryentitytypecode", e => ({ table: e.primaryentitytypecode || "" })],
+              61: ["webresourceset", "webresourceid", "name", "displayname", e => ({ detail: e.displayname || "" })],
+              62: ["sitemaps", "sitemapid", "sitemapname"],
+              63: ["connectionroles", "connectionroleid", "name"],
+              65: ["hierarchyrules", "hierarchyruleid", "name"],
+              66: ["customcontrols", "customcontrolid", "name"],
+              70: ["fieldsecurityprofiles", "fieldsecurityprofileid", "name"],
+              71: ["fieldpermissions", "fieldpermissionid", "attributelogicalname", "entityname,_fieldsecurityprofileid_value", e => ({ table: e.entityname || "", detail: fv(e, "_fieldsecurityprofileid_value") ? `profile ${fv(e, "_fieldsecurityprofileid_value")}` : "" })],
+              80: ["appmodules", "appmoduleid", "name"],
+              90: ["plugintypes", "plugintypeid", "name"],
+              91: ["pluginassemblies", "pluginassemblyid", "name"],
+              92: ["sdkmessageprocessingsteps", "sdkmessageprocessingstepid", "name", "statecode", e => ({ detail: e.statecode === 1 ? "disabled" : "" })],
+              93: ["sdkmessageprocessingstepimages", "sdkmessageprocessingstepimageid", "name", "_sdkmessageprocessingstepid_value", e => ({ detail: fv(e, "_sdkmessageprocessingstepid_value") ? `step ${fv(e, "_sdkmessageprocessingstepid_value")}` : "" })],
+              95: ["serviceendpoints", "serviceendpointid", "name"],
+              152: ["slas", "slaid", "name"],
+              153: ["slaitems", "slaitemid", "name", "_slaid_value", e => ({ detail: fv(e, "_slaid_value") ? `SLA ${fv(e, "_slaid_value")}` : "" })],
+              161: ["mobileofflineprofiles", "mobileofflineprofileid", "name"],
+              162: ["mobileofflineprofileitems", "mobileofflineprofileitemid", "name", "_regardingobjectid_value", e => ({ detail: fv(e, "_regardingobjectid_value") ? `profile ${fv(e, "_regardingobjectid_value")}` : "" })],
+              300: ["canvasapps", "canvasappid", "displayname", "name", e => ({ detail: e.name || "" })],
+              380: ["environmentvariabledefinitions", "environmentvariabledefinitionid", "displayname", "schemaname", e => ({ detail: e.schemaname || "" })],
+            };
+            REC[60] = REC[24];
+            const tasks = [];
+            for (const [tp, list] of Object.entries(byTypeR)) {
+              const t = Number(tp), def = REC[t];
+              if (!def) continue;
+              const [es, idF, nameF, extraSel, extra] = def;
+              for (const pk of packets(list, 25)) {
+                tasks.push(async () => {
+                  const filter = pk.map(x => `${idF} eq ${x.id}`).join(" or ");
+                  let d;
+                  try { d = await dvRequest("GET", `${es}?$select=${idF},${nameF}${extraSel ? "," + extraSel : ""}&$filter=${filter}`); }
+                  catch { try { d = await dvRequest("GET", `${es}?$select=${idF},${nameF}&$filter=${filter}`); } catch { return; } }
+                  for (const e of d.value || []) {
+                    const more = extraSel && extra ? extra(e) : {};
+                    names[keyOf(t, e[idF])] = { name: e[nameF] || "", ...more };
+                  }
+                });
+              }
+            }
+            // tables
+            if (byTypeR[1]) for (const pk of packets(byTypeR[1], 25)) tasks.push(async () => {
+              try {
+                const d = await dvRequest("GET", `EntityDefinitions?$select=MetadataId,LogicalName,DisplayName&$filter=${pk.map(x => `MetadataId eq ${x.id}`).join(" or ")}`);
+                for (const e of d.value || []) names[keyOf(1, e.MetadataId)] = { name: label(e.DisplayName) || e.LogicalName, detail: e.LogicalName, table: e.LogicalName };
+              } catch { /* unnamed */ }
+            });
+            // global choices and relationships: the metadata API can't "or" on MetadataId — one full read each
+            if (byTypeR[9]) tasks.push(async () => {
+              try {
+                const want = new Set(byTypeR[9].map(x => x.id.toLowerCase()));
+                const d = await dvRequest("GET", "GlobalOptionSetDefinitions?$select=MetadataId,Name");
+                for (const e of d.value || []) if (want.has(String(e.MetadataId).toLowerCase())) names[keyOf(9, e.MetadataId)] = { name: e.Name || "" };
+              } catch { /* unnamed */ }
+            });
+            const relItems = [...(byTypeR[10] || []), ...(byTypeR[3] || [])];
+            if (relItems.length) tasks.push(async () => {
+              try {
+                const want = new Map(relItems.map(x => [x.id.toLowerCase(), Number(x.type)]));
+                const d = await dvRequest("GET", "RelationshipDefinitions?$select=MetadataId,SchemaName");
+                for (const e of d.value || []) { const id = String(e.MetadataId).toLowerCase(); if (want.has(id)) names[keyOf(want.get(id), id)] = { name: e.SchemaName || "" }; }
+              } catch { /* unnamed */ }
+            });
+            // columns (2) and alternate keys (14): read through their parent tables, 10 tables per read
+            for (const [t, nav] of [[2, "Attributes"], [14, "Keys"]]) {
+              const list = byTypeR[t];
+              if (!list) continue;
+              const want = new Set(list.map(x => x.id.toLowerCase()));
+              const parents = [...new Set(list.map(x => String(x.parentId || "").toLowerCase()).filter(p => GUID_RE.test(p)))];
+              const take = (e) => {
+                for (const a of e[nav] || []) {
+                  const id = String(a.MetadataId).toLowerCase();
+                  if (want.has(id)) names[keyOf(t, id)] = { name: label(a.DisplayName) || a.LogicalName, detail: a.LogicalName, table: e.LogicalName };
+                }
+              };
+              const sel = `$select=MetadataId,LogicalName&$expand=${nav}($select=MetadataId,LogicalName,DisplayName)`;
+              for (const pk of packets(parents, 10)) tasks.push(async () => {
+                try {
+                  const d = await dvRequest("GET", `EntityDefinitions?${sel}&$filter=${pk.map(p => `MetadataId eq ${p}`).join(" or ")}`);
+                  (d.value || []).forEach(take);
+                } catch {
+                  for (const p of pk) { try { take(await dvRequest("GET", `EntityDefinitions(${p})?${sel}`)); } catch { /* unnamed */ } }
+                }
+              });
+            }
+            // four reads at a time — a big dependency list must not burst the org's request quota
+            let ti = 0;
+            await Promise.all(Array.from({ length: Math.min(4, tasks.length) }, async () => { while (ti < tasks.length) await tasks[ti++](); }));
+            result = names;
             break;
           }
 
@@ -1694,9 +1824,18 @@
           case "getSolutionComponents": {
             validateGuid(params.solutionId);
             const data = await dvRequest("GET",
-              `solutioncomponents?$select=solutioncomponentid,componenttype,objectid,rootcomponentbehavior&$filter=_solutionid_value eq ${params.solutionId}&$top=5000`
+              `solutioncomponents?$select=solutioncomponentid,componenttype,objectid,rootcomponentbehavior&$filter=_solutionid_value eq ${params.solutionId}`,
+              null, { Prefer: "odata.maxpagesize=5000" }
             );
-            const comps = (data.value || []).map(c => ({
+            // every component, page by page — `$top=5000` used to cut a big solution silently
+            const rawComps = [...(data.value || [])];
+            let urlSc = data["@odata.nextLink"] ? data["@odata.nextLink"].replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            while (urlSc) {
+              const dSc = await dvRequest("GET", urlSc, null, { Prefer: "odata.maxpagesize=5000" });
+              rawComps.push(...(dSc.value || []));
+              urlSc = dSc["@odata.nextLink"] ? dSc["@odata.nextLink"].replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            const comps = rawComps.map(c => ({
               id: c.solutioncomponentid,
               type: c.componenttype,
               objectId: c.objectid,

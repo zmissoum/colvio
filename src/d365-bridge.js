@@ -13,6 +13,8 @@ import { optionSetsFrom } from "./dataDictionary.js";
 import { FLDS } from "./shared.jsx";
 import { demoApiResponse } from "./apiDemo.js";
 import { demoFields } from "./schemaDemo.js";
+import { normalizeDeps, itemsToResolve } from "./deleteImpact.js";
+import { demoComponentDependencies } from "./deleteImpactDemo.js";
 
 // ── Demo constants shared by several mocks ──
 // Views: the account ones the Apps demo exposes, plus the contact view the Account form's
@@ -153,7 +155,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -478,6 +480,18 @@ export const bridge = {
   // withCanDelete: also fetch the CanBeDeleted managed property (best-effort; only the bulk-delete
   // pre-check needs it). Left off elsewhere so a non-selectable CanBeDeleted can't 400 the call.
   // A personal view (userquery) from an Explorer query.
+  // Dataverse's own dependency check of one component (2 = column, 1 = table): mode "delete" =
+  // what would block deleting it, "used" = everything that uses it. One read, then every
+  // component named by grouped reads (resolveComponents) — never one request per component.
+  async getComponentDependencies({ componentType, objectId, mode = "delete", logicalName }) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 350)); return demoComponentDependencies({ componentType, mode, logicalName }); }
+    if (!objectId) throw new Error("This component's metadata id isn't known — reload the table list (↻) and try again.");
+    const deps = normalizeDeps(await callD365("getComponentDependencies", { componentType, objectId, mode }));
+    const items = itemsToResolve(deps, objectId);
+    const names = items.length ? ((await callD365("resolveComponents", { items })) || {}) : {};
+    return { deps, names, targetId: String(objectId).toLowerCase() };
+  },
+
   async createUserQuery(view) {
     if (!isExtension) { await new Promise(r => setTimeout(r, 300)); return { id: "00000000-0000-4000-8000-00000000c0de" }; }
     return callD365("createUserQuery", view);

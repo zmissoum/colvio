@@ -67,6 +67,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Export All OptionSets** — bulk CSV/Excel export of all Picklist/State/Status values for an entity (four reads, one per choice type — not one per column)
 - **📊 Fill rate** — how many rows have a value in every column of a table, exact: FetchXML aggregates (`countcolumn`, 40 columns per query); a table past the 50,000-row aggregate limit is counted in created-on date slices (bisection, rows without a date included) — never row by row. Columns never filled and under 5 % are summed up; the fields export gains Filled rows / Filled %
 - **📚 Data dictionary** — every column of the custom tables, the tables shown, or all tables (type, required level, custom, primary key / name, create / update, descriptions), one row per column, tables read 20 at a time and streamed to a CSV or Excel file
+- **🧨 Dependencies** of a column or a table — *what blocks deleting it* (Dataverse's `RetrieveDependenciesForDelete`) or *everything that uses it* (`RetrieveDependentComponents`): forms, views, charts, business rules, flows and workflows, plug-in step filters and images, mappings, keys, field security, apps, site maps… named, grouped, each with how to remove the dependency; the table's own parts are set apart; CSV / Excel export. Read-only, one read + one read per component type to name them
 - Entity record counts, field type badges, custom field indicators
 
 ### Automation Inventory
