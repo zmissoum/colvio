@@ -11,7 +11,7 @@ describe("content round trip", () => {
     expect(atob(withBom).charCodeAt(0)).toBe(0xef);
     expect(decodeContent("")).toEqual({ text: "", bom: false, encoding: "utf-8" });
     const u16 = btoa(String.fromCharCode(0xff, 0xfe, 0x68, 0x00, 0x69, 0x00));
-    expect(decodeContent(u16)).toMatchObject({ text: "﻿hi", encoding: "utf-16le" });
+    expect(decodeContent(u16)).toMatchObject({ text: "hi", encoding: "utf-16le" });
     expect(byteSize(encodeContent("abcd"))).toBe(4);
     expect(byteSize(encodeContent("abcde"))).toBe(5);
   });
