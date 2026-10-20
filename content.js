@@ -1152,6 +1152,40 @@
             result = await dvRequest("PATCH", `${params.entitySet}(${params.id})`, params.data, { "If-Match": "*" });
             break;
 
+          case "getAllOptionSets": {
+            // Every choice column of a table in FOUR reads (one per choice type) — the export used
+            // to read them one column at a time.
+            validateName(params.logicalName, "logicalName");
+            const base = `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes`;
+            const rows = [];
+            for (const [type, global] of [["PicklistAttributeMetadata", true], ["MultiSelectPicklistAttributeMetadata", true], ["StateAttributeMetadata", false], ["StatusAttributeMetadata", false]]) {
+              try {
+                const d = await dvRequest("GET", `${base}/Microsoft.Dynamics.CRM.${type}?$select=LogicalName&$expand=OptionSet($select=Options)${global ? ",GlobalOptionSet($select=Options)" : ""}`);
+                rows.push(...(d.value || []));
+              } catch { /* a type the table doesn't have, or the org doesn't expose */ }
+            }
+            result = rows;
+            break;
+          }
+
+          case "getDictionaryChunk": {
+            // The columns of a packet of tables in ONE metadata read (an "or" filter on the names);
+            // an org that refuses the filter is read table by table for this packet only.
+            const names = [...new Set((params.logicalNames || []).map(String))];
+            names.forEach(n => validateName(n, "logicalName"));
+            if (!names.length) { result = []; break; }
+            const sel = "$select=LogicalName,DisplayName,Description,IsCustomEntity&$expand=Attributes($select=LogicalName,SchemaName,DisplayName,Description,AttributeType,AttributeTypeName,RequiredLevel,IsCustomAttribute,IsPrimaryId,IsPrimaryName,IsValidForCreate,IsValidForUpdate,AttributeOf)";
+            try {
+              const d = await dvRequest("GET", `EntityDefinitions?${sel}&$filter=${names.map(n => `LogicalName eq '${n}'`).join(" or ")}`);
+              result = d.value || [];
+            } catch {
+              const out = [];
+              for (const n of names) { try { out.push(await dvRequest("GET", `EntityDefinitions(LogicalName='${n}')?${sel}`)); } catch { /* table not readable */ } }
+              result = out;
+            }
+            break;
+          }
+
           case "getOptionSet": {
             // Fetch OptionSet values for a Picklist/State/Status field
             validateName(params.entityName, 'entityName');

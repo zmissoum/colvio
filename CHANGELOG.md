@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.187] — 2026-10-20
+### Added — Metadata: fill rate and data dictionary
+- **📊 Fill rate** of the selected table: for every column, how many rows hold a value — exact, from FetchXML aggregates (row count + `countcolumn`, 40 columns per query). A table past Dataverse's 50,000-row aggregate limit is first cut into created-on date slices (bisection; rows without a date get their own slice), then every chunk of columns is counted on every slice and summed — a few dozen requests on a table of millions of rows, never one per row or per column. A column the server refuses to aggregate is isolated (the chunk is split down to it) and marked, the others still counted; images, files, virtual and multi-select columns are listed as not countable. The fields table gains a Filled column (bar + %), the header sums up columns never filled and under 5 %, the fields export gains Filled rows / Filled %. Stop shows nothing (a partial count would mislead). Pure `fillRate.js` + 8 tests.
+- **📚 Data dictionary**: every column of the custom tables, the tables shown in the list, or all tables — type, required level, custom, primary key / name, valid for create / update, column and table descriptions — one row per column (helper columns like a lookup's name left out). Tables are read 20 per metadata query (an org that refuses the "or" filter is read table by table for that packet) and the rows are streamed to the CSV or Excel file; Stop or an error leaves no file. Pure `dataDictionary.js` + 4 tests.
+
+### Changed
+- **Export All OptionSets** reads every choice column of the table in four requests (one per choice type: choice, multi-select, state, status — local or global options) instead of one request per column.
+
 ## [1.11.186] — 2026-10-20
 ### Added — Explorer: save a query as a personal view
 - **👁 Save as view** next to ⭐: the query becomes a personal view (`userquery`) of its table — its columns, filters and sort — in the app's view selector under My views; only its owner sees it and Dynamics 365 can share it. From FetchXML mode as written; from SQL through the transpiler; from the **Builder** through a new Builder → FetchXML conversion (groups and their and/or, text operators as like / not-like, null checks, comparisons, booleans as 1/0, sort).

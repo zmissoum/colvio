@@ -9,6 +9,7 @@
  *      -> Mock data built into the app, no network calls
  */
 
+import { optionSetsFrom } from "./dataDictionary.js";
 import { FLDS } from "./shared.jsx";
 import { demoApiResponse } from "./apiDemo.js";
 import { demoFields } from "./schemaDemo.js";
@@ -152,7 +153,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -710,6 +711,29 @@ export const bridge = {
     const data = await callD365("getChildRelationships", { logicalName });
     if (data) await cacheSet(k, data, CACHE_TTL.lookups);
     return data;
+  },
+
+  // Every choice column of a table at once (four typed reads) → { column: options[] }.
+  async getAllOptionSets(logicalName) {
+    if (!isExtension) {
+      const out = {};
+      for (const f of FLDS) if (f.opts) out[f.l] = f.opts.map(o => ({ value: o.v, label: o.l, labels: [o.l], color: null, description: "", isDefault: false }));
+      return out;
+    }
+    return optionSetsFrom(await callD365("getAllOptionSets", { logicalName }));
+  },
+
+  // The columns of a packet of tables (data dictionary).
+  async getDictionaryChunk(logicalNames) {
+    if (!isExtension) {
+      const L = (s) => ({ UserLocalizedLabel: { Label: s } });
+      await new Promise(r => setTimeout(r, 80));
+      return logicalNames.map(n => ({ LogicalName: n, DisplayName: L(n), Attributes: (n === "account" ? FLDS : FLDS.slice(0, 4)).map(f => ({
+        LogicalName: f.l, SchemaName: f.l, DisplayName: L(f.d), AttributeTypeName: { Value: `${f.t}Type` }, RequiredLevel: { Value: f.req ? "ApplicationRequired" : "None" },
+        IsCustomAttribute: !!f.cust, IsPrimaryId: f.l === `${n}id`, IsPrimaryName: f.l === "name", IsValidForCreate: true, IsValidForUpdate: true,
+      })) }));
+    }
+    return callD365("getDictionaryChunk", { logicalNames });
   },
 
   async getOptionSet(entityName, fieldName, attrType) {
