@@ -2189,6 +2189,99 @@
             break;
           }
 
+          case "getAccessContext": {
+            // Everything needed to explain ONE user's access to ONE record, in a fixed number of
+            // reads — none per role, per team or per privilege: the user and their roles, their
+            // teams and those teams' roles, the table's privileges and ownership, the record's owner
+            // and business unit, the grants of those roles on those privileges, the BU tree, and
+            // Dataverse's own answers (RetrievePrincipalAccess, the record's shares, access origin).
+            validateName(params.entity, "entity");
+            validateName(params.entitySet, "entitySet");
+            if (!params.recordId || !params.userId) throw new Error("Missing record or user.");
+            validateGuid(params.recordId);
+            validateGuid(params.userId);
+            const uidA = params.userId, ridA = params.recordId;
+            const nl = (d) => d["@odata.nextLink"] || null; // absolute — dvRequest checks it targets this org
+            const pageAll = async (url) => { const out = []; while (url) { const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" }); out.push(...(d.value || [])); url = nl(d); } return out; };
+            const fvA = (e, f) => e[`${f}@OData.Community.Display.V1.FormattedValue`] || "";
+            const roleOf = (r) => ({ id: r.roleid, name: r.name || "", buId: r._businessunitid_value || "", templateId: r._roletemplateid_value || "", inherited: r.isinherited ?? null });
+
+            // 1. the user and their roles
+            const uA = await dvRequest("GET", `systemusers(${uidA})?$select=fullname,isdisabled,accessmode,_businessunitid_value&$expand=systemuserroles_association($select=roleid,name,_businessunitid_value,_roletemplateid_value)`);
+            // 2. their teams (owner, access, Entra group teams) with each team's roles
+            let teamsRaw;
+            const teamSel = (withInh) => `teams?$select=teamid,name,teamtype,_businessunitid_value&$filter=teammembership_association/any(m:m/systemuserid eq ${uidA})&$expand=teamroles_association($select=roleid,name,_businessunitid_value${withInh ? ",isinherited" : ""})`;
+            try { teamsRaw = await pageAll(teamSel(true)); } catch { teamsRaw = await pageAll(teamSel(false)); }
+            // 3. the table: ownership + its privileges
+            const metaA = await dvRequest("GET", `EntityDefinitions(LogicalName='${params.entity}')?$select=LogicalName,DisplayName,OwnershipType,PrimaryIdAttribute,PrimaryNameAttribute,Privileges`);
+            const ownership = String(metaA.OwnershipType || "");
+            // 4. the record: owner + business unit (user/team-owned tables only)
+            const pnA = metaA.PrimaryNameAttribute;
+            const recSel = [metaA.PrimaryIdAttribute, pnA, ...(ownership === "UserOwned" || ownership === "TeamOwned" ? ["_ownerid_value", "_owningbusinessunit_value"] : [])].filter(Boolean).join(",");
+            const recA = await dvRequest("GET", `${params.entitySet}(${ridA})?$select=${recSel}`);
+            // 5. the grants of every role involved on this table's privileges — one filtered read per 40 roles
+            const roleIds = [...new Set([...(uA.systemuserroles_association || []), ...teamsRaw.flatMap(t => t.teamroles_association || [])].map(r => String(r.roleid).toLowerCase()))];
+            const privIds = (metaA.Privileges || []).map(p => String(p.PrivilegeId).toLowerCase());
+            const grantsA = [];
+            if (roleIds.length && privIds.length) {
+              for (let i = 0; i < roleIds.length; i += 40) {
+                const pk = roleIds.slice(i, i + 40);
+                let url = `roleprivilegescollection?$select=roleid,privilegeid,privilegedepthmask&$filter=(${pk.map(id => `roleid eq ${id}`).join(" or ")}) and (${privIds.map(id => `privilegeid eq ${id}`).join(" or ")})`;
+                while (url) {
+                  const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
+                  for (const r of d.value || []) grantsA.push({ roleId: r.roleid, privilegeId: r.privilegeid, mask: r.privilegedepthmask });
+                  url = nl(d);
+                }
+              }
+            }
+            // 6. the business-unit tree
+            const busA = (await pageAll("businessunits?$select=businessunitid,name,_parentbusinessunitid_value")).map(b => ({ id: b.businessunitid, name: b.name || "", parentId: b._parentbusinessunitid_value || "" }));
+            // 7. Dataverse's own answers
+            const targetA = encodeURIComponent(JSON.stringify({ "@odata.id": `${params.entitySet}(${ridA})` }));
+            let effective = null, effectiveError = "", shares = null, sharesError = "", origin = "", originError = "";
+            try { effective = (await dvRequest("GET", `systemusers(${uidA})/Microsoft.Dynamics.CRM.RetrievePrincipalAccess(Target=@t)?@t=${targetA}`)).AccessRights ?? ""; }
+            catch (e) { effectiveError = e.message || String(e); }
+            try {
+              const dS = await dvRequest("GET", `RetrieveSharedPrincipalsAndAccess(Target=@t)?@t=${targetA}`);
+              shares = (dS.PrincipalAccesses || []).map(pa => {
+                const p = pa.Principal || {};
+                const type = /team/i.test(p["@odata.type"] || "") ? "team" : /organization/i.test(p["@odata.type"] || "") ? "organization" : "systemuser";
+                return { principalId: p.ownerid || p.systemuserid || p.teamid || p.principalid || "", principalType: type, mask: pa.AccessMask || "" };
+              });
+              // name the principals: users and teams in "or" packets of 25
+              for (const [type, es, idF, nameF] of [["systemuser", "systemusers", "systemuserid", "fullname"], ["team", "teams", "teamid", "name"]]) {
+                const ids = [...new Set(shares.filter(s => s.principalType === type && SAFE_GUID.test(s.principalId)).map(s => s.principalId))];
+                for (let i = 0; i < ids.length; i += 25) {
+                  try {
+                    const d = await dvRequest("GET", `${es}?$select=${idF},${nameF}&$filter=${ids.slice(i, i + 25).map(id => `${idF} eq ${id}`).join(" or ")}`);
+                    for (const e of d.value || []) for (const s of shares) if (String(s.principalId).toLowerCase() === String(e[idF]).toLowerCase()) s.name = e[nameF] || "";
+                  } catch { /* unnamed */ }
+                }
+              }
+            } catch (e) { sharesError = e.message || String(e); }
+            try { origin = (await dvRequest("GET", `RetrieveAccessOrigin(ObjectId=@o,LogicalName=@l,PrincipalId=@p)?@o=${ridA}&@l='${params.entity}'&@p=${uidA}`)).Response || ""; }
+            catch (e) { originError = e.message || String(e); }
+
+            result = {
+              user: {
+                id: uidA, name: uA.fullname || "", disabled: !!uA.isdisabled, accessMode: uA.accessmode ?? 0,
+                buId: uA._businessunitid_value || "", buName: fvA(uA, "_businessunitid_value"),
+                roles: (uA.systemuserroles_association || []).map(roleOf),
+              },
+              teams: teamsRaw.map(t => ({ id: t.teamid, name: t.name || "", type: t.teamtype ?? 0, buId: t._businessunitid_value || "", roles: (t.teamroles_association || []).map(roleOf) })),
+              entity: { logicalName: metaA.LogicalName, displayName: metaA.DisplayName?.UserLocalizedLabel?.Label || metaA.LogicalName, ownership, privileges: (metaA.Privileges || []).map(p => ({ PrivilegeId: p.PrivilegeId, Name: p.Name, PrivilegeType: p.PrivilegeType })) },
+              record: {
+                id: ridA, name: (pnA && recA[pnA]) || "",
+                ownerId: recA._ownerid_value || "", ownerName: fvA(recA, "_ownerid_value"),
+                ownerType: recA["_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname"] || "",
+                buId: recA._owningbusinessunit_value || "",
+              },
+              grants: grantsA, bus: busA,
+              effective, effectiveError, shares, sharesError, origin, originError,
+            };
+            break;
+          }
+
           case "getUserRoles": {
             validateGuid(params.userId);
             const data = await dvRequest("GET",

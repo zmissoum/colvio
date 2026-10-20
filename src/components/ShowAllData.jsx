@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import AuditHistory from "./AuditHistory.jsx";
 import RecordActivity from "./RecordActivity.jsx";
+import RecordAccess from "./RecordAccess.jsx";
 import BpfManager from "./BpfManager.jsx";
 import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom, confirmProd } from "../shared.jsx";
 import { coerceScalarForEdit, prepareUpdate } from "../updateUtils.js";
@@ -251,6 +252,9 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
           {/* What each save of this record triggered (plug-ins, jobs, flows) — keyed like the audit
               panel so a record switch starts clean. Demo mode answers it from a fake org. */}
           <RecordActivity key={`act-${record.id}`} record={record} orgInfo={orgInfo} orgFeatures={orgFeatures}/>
+
+          {/* Why a user can (can't) see / edit this record — keyed so a record switch starts clean. */}
+          <RecordAccess key={`acc-${record.id}`} record={record} orgInfo={orgInfo}/>
 
           {/* key: a record switch REMOUNTS the panel — otherwise record B displays record A's
               cached audit timeline until manually closed/reopened (audit finding). */}

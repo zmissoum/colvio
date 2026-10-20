@@ -15,6 +15,7 @@ import { demoApiResponse } from "./apiDemo.js";
 import { demoFields } from "./schemaDemo.js";
 import { normalizeDeps, itemsToResolve } from "./deleteImpact.js";
 import { demoComponentDependencies } from "./deleteImpactDemo.js";
+import { demoAccessContext } from "./accessDemo.js";
 
 // ── Demo constants shared by several mocks ──
 // Views: the account ones the Apps demo exposes, plus the contact view the Account form's
@@ -155,7 +156,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext";
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -774,6 +775,13 @@ export const bridge = {
   async clearCache() {
     await cacheClear();
     return true;
+  },
+
+  // Show All Data › Record access: one user's access to one record — the context the pure
+  // accessDiagnosis.js explains (roles, teams, grants, BU tree, owner, shares, Dataverse's answers).
+  async getAccessContext({ entity, entitySet, recordId, userId, record }) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 350)); return demoAccessContext(userId, { id: recordId, entity, name: record?.name }); }
+    return callD365("getAccessContext", { entity, entitySet, recordId, userId });
   },
 
   async searchUsers(search) {

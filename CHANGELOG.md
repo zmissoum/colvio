@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.190] — 2026-10-20
+### Added — Show All Data: why can (can't) a user see or edit this record?
+- **🔐 Record access** panel: search a user by name or email (or click **Me**), and get, for each right on the record — Read, Write, Append, Append to, Delete, Assign, Share — **Dataverse's own yes / no** (`RetrievePrincipalAccess`) and **why**: the role or the team role that grants it and at which depth (User, Business Unit, Parent: Child BU, Organization) measured against the record's owner and business unit, or a share to the user or to one of their teams. Dataverse's own sentence (`RetrieveAccessOrigin`) when the org has it.
+- For every **no**: their widest depth for that right versus the depth this record needs (from where it sits: owned by them, in their BU, below it, outside their branch), "or share it with them — they have the privilege, a share would work", or "a share alone won't do: no privilege to back it" (Dataverse ignores a share without at least User-level privilege), or assign the record to them / a team they belong to.
+- Also shown: where the record sits ("owned by …, in France — outside the user's business unit branch (Spain)"), the user's roles (and the ones assigned in another business unit), their teams by kind (owner, access, Entra group — with the note that Entra group membership appears only after a first sign-in), who the record is shared with (the user's own shares highlighted), disabled users, restricted access modes (read-only, administrative), organization-owned tables (a role gives all rows; nothing to assign or share). Every path per right on click; CSV / Excel export.
+- When the explanation and Dataverse disagree it says so — Dataverse's answer wins (hierarchy security, access inherited from a related record, and column-level security aren't modeled).
+- **A fixed number of reads per check**, none per role, team or privilege: the user with their roles, their teams with the teams' roles, the table's privileges, the record's owner, the grants of all those roles on those privileges (one filtered read per 40 roles), the business-unit tree, then the three Dataverse functions. Pure `accessDiagnosis.js` + demo org + 11 tests (592).
+
 ## [1.11.189] — 2026-10-20
 ### Added — Metadata: what breaks if I delete this?
 - **🧨 Dependencies** of a column (🧨 on its row) or of the selected table (header button), two questions: **What blocks deleting it** — Dataverse's own `RetrieveDependenciesForDelete`, the components that must stop using it before the delete is allowed — and **Everything that uses it** (`RetrieveDependentComponents`, the useful one for a standard column, which can't be deleted at all). Custom columns and tables open on the first, standard ones on the second.
