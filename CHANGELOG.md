@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.192] — 2026-10-20
+### Added — 🩺 Health check (new module, Admin)
+- **One report on what silently hurts the environment**, 12 checks run one after the other: the plug-in trace log setting ("All" flagged in production), auditing and its retention, **system jobs failed in the last 7 days** grouped by job name, **suspended system jobs**, **active cloud flows owned by disabled users**, **synchronous Update plug-in steps without filtering attributes** (custom steps), real-time classic workflows, **connection references without a connection**, **environment variables with neither a value nor a default**, enabled interactive users without a security role of their own, **unmanaged solutions in production**, and the size of the log tables (system jobs, workflow logs, plug-in traces — Dataverse's own row-count snapshot).
+- Each check is a few reads: FetchXML aggregates (past the 50,000-row aggregate limit the report says so instead of guessing), or full lists read page by page with the paging cookie — never capped, never one request per item. A check that can't run says why (e.g. a missing privilege) and the others still answer. Worst first; each finding says what to do, its items open in place.
+- **📋 Copy report** — a plain-text summary to paste in a ticket or a chat; CSV / Excel with one row per item. Stop keeps the checks done so far. Read-only. Request count shown.
+- Pure `healthCheck.js` (checks, paging, tally, exports) + demo org + 5 tests (600). Help entry EN / FR.
+
 ## [1.11.191] — 2026-10-20
 ### Added — Metadata: solution layers
 - **📑 Layers** of the selected table (header) or of a column (📑 on its row): Dataverse's component layers (`msdyn_componentlayers` — what the maker portal shows under "See solution layers"), top layer first: order, solution, publisher, managed / unmanaged ("Active") / system, overwrite time, and the properties each layer changes — a value that a higher layer sets again is struck through (it doesn't win). One read; each layer's full component JSON isn't downloaded.

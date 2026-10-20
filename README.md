@@ -223,6 +223,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **File storage by table, in real bytes** — sum of notes, file & image columns and email attachments, grouped by owning table. Runs in the background after the table list is on screen; over 50,000 files per source the platform refuses one aggregate, so Colvio bisects by period automatically (progress bar, Stop, partial results flagged)
 - **Honest about the limit**: the billed GB (Database / File / Log capacity) are only in the Power Platform admin center, behind an API that needs an app registration — the module links there and says so. Session cache: coming back to the tab is instant; ↻ reloads
 
+### Health check
+- **One report on what silently hurts the environment**, 12 checks run one after the other: plug-in trace log setting, auditing (and retention), system jobs failed in the last 7 days (grouped by job), suspended system jobs, active cloud flows owned by disabled users, synchronous Update plug-in steps without filtering attributes, real-time classic workflows, connection references without a connection, environment variables with neither a value nor a default, enabled users without a security role, unmanaged solutions in production, log table sizes
+- Each check is a few reads — FetchXML aggregates, or full lists read page by page (paging cookie) — never capped, never one request per item; one that can't run says why and the others still answer. Every finding says what to do; the items behind it open in place
+- **📋 Copy report** (plain text for a ticket), CSV / Excel with one row per item; Stop keeps what's done. Read-only
+
 ### Adoption
 - **Who's actually using the CRM?** Access events, distinct active users, **DAU/WAU/MAU + stickiness** — over 7/30/90 days or any custom window
 - **Honest by construction**: Dataverse logs access at most once per `UserAccessAuditingInterval` (default 4 h) — the KPI says "access events", an activity proxy, not literal logins; **service accounts** (non-interactive, S2S application users) are excluded from every number by default (toggle to include)
@@ -273,11 +278,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Modules | 21 |
-| Lines of code | ~21,200 |
-| API actions | 73 |
-| React components | 40 |
-| Unit tests | 458 |
+| Modules | 22 |
+| Lines of code | ~27,100 |
+| API actions | 86 |
+| React components | 45 |
+| Unit tests | 600 |
 | Build size | ~996 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
