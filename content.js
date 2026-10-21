@@ -283,6 +283,94 @@
     return map;
   }
 
+  // Raw same-org request (API Tester, Script Console): the response is RETURNED, never thrown —
+  // a 4xx/5xx is the caller's to read. Host-locked to the user's org; method allow-list.
+  async function rawRequest(params, timeoutMs) {
+    const method = (params.method || "GET").toUpperCase();
+    const ALLOWED = new Set(["GET","POST","PATCH","PUT","DELETE","HEAD","OPTIONS"]);
+    if (!ALLOWED.has(method)) throw new Error(`Method not allowed: ${method}`);
+    const path = params.path || "";
+    if (!path) throw new Error("Missing path");
+    // Only allow same-org URLs. Block anything pointing outside the user's Dataverse instance.
+    const ctxApi = d365Context || extractContext();
+    if (!ctxApi) throw new Error("D365 context not found");
+    const baseHost = new URL(ctxApi.clientUrl).hostname;
+    let url;
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      const u = new URL(path);
+      if (u.hostname !== baseHost) throw new Error(`URL not allowed: ${u.hostname} is not your D365 org host (${baseHost})`);
+      url = path;
+    } else {
+      const trimmed = path.startsWith("/") ? path : `/${path}`;
+      url = `${ctxApi.clientUrl}${trimmed}`;
+    }
+    // Defense-in-depth: re-parse the FINAL url and re-assert the host, so protocol-relative
+    // (//evil.com) or backslash-normalized paths can never drift off the org host.
+    try {
+      const finalHost = new URL(url, ctxApi.clientUrl).hostname;
+      if (finalHost !== baseHost) throw new Error(`URL not allowed: resolved host ${finalHost} is not your D365 org host (${baseHost})`);
+    } catch (e) { throw new Error(e.message || "Invalid URL"); }
+    const customHeaders = params.headers && typeof params.headers === "object" ? params.headers : {};
+    const finalHeaders = {
+      "Accept": "application/json",
+      "OData-MaxVersion": "4.0",
+      "OData-Version": "4.0",
+      ...customHeaders,
+    };
+    const hasBody = (method !== "GET" && method !== "HEAD" && params.body != null && params.body !== "");
+    if (hasBody && !finalHeaders["Content-Type"] && !finalHeaders["content-type"]) {
+      finalHeaders["Content-Type"] = "application/json";
+    }
+    // before the timer, like dvRequest; a $batch counts every operation it carries
+    await apiPace(hasBody && typeof params.body === "string" ? batchOps(params.body) : 1);
+    const t0 = Date.now();
+    const ctrl = new AbortController();
+    const tmo = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, {
+        method,
+        headers: finalHeaders,
+        body: hasBody ? (typeof params.body === "string" ? params.body : JSON.stringify(params.body)) : undefined,
+        credentials: "same-origin",
+        signal: ctrl.signal,
+      });
+      clearTimeout(tmo);
+      const elapsed = Date.now() - t0;
+      const respHeaders = {};
+      resp.headers.forEach((v, k) => { respHeaders[k] = v; });
+      const ct = resp.headers.get("content-type") || "";
+      let bodyText = "";
+      try { bodyText = await resp.text(); } catch {}
+      let bodyParsed = null;
+      if (ct.includes("application/json") && bodyText) {
+        try { bodyParsed = JSON.parse(bodyText); } catch {}
+      }
+      return {
+        ok: resp.ok,
+        status: resp.status,
+        statusText: resp.statusText,
+        headers: respHeaders,
+        body: bodyText,
+        bodyParsed,
+        elapsed,
+        url,
+      };
+    } catch (e) {
+      clearTimeout(tmo);
+      return {
+        ok: false,
+        status: 0,
+        statusText: e.name === "AbortError" ? `Timeout (${Math.round(timeoutMs / 1000)}s)` : "Network error",
+        headers: {},
+        body: e.message || String(e),
+        bodyParsed: null,
+        elapsed: Date.now() - t0,
+        url,
+        clientError: true,
+      };
+    }
+  }
+
   // ── Record URL detection ──────────────────────────────────
   function getCurrentRecord() {
     try {
@@ -541,88 +629,15 @@
             // Ad-hoc request runner for the API Tester module. Returns the raw
             // response (status, headers, body, elapsed) without throwing —
             // user wants to inspect 4xx/5xx responses, not have them swallowed.
-            const method = (params.method || "GET").toUpperCase();
-            const ALLOWED = new Set(["GET","POST","PATCH","PUT","DELETE","HEAD","OPTIONS"]);
-            if (!ALLOWED.has(method)) throw new Error(`Method not allowed: ${method}`);
-            const path = params.path || "";
-            if (!path) throw new Error("Missing path");
-            // Only allow same-org URLs. Block anything pointing outside the user's Dataverse instance.
-            const ctxApi = d365Context || extractContext();
-            if (!ctxApi) throw new Error("D365 context not found");
-            const baseHost = new URL(ctxApi.clientUrl).hostname;
-            let url;
-            if (path.startsWith("http://") || path.startsWith("https://")) {
-              const u = new URL(path);
-              if (u.hostname !== baseHost) throw new Error(`URL not allowed: ${u.hostname} is not your D365 org host (${baseHost})`);
-              url = path;
-            } else {
-              const trimmed = path.startsWith("/") ? path : `/${path}`;
-              url = `${ctxApi.clientUrl}${trimmed}`;
-            }
-            // Defense-in-depth: re-parse the FINAL url and re-assert the host, so protocol-relative
-            // (//evil.com) or backslash-normalized paths can never drift off the org host.
-            try {
-              const finalHost = new URL(url, ctxApi.clientUrl).hostname;
-              if (finalHost !== baseHost) throw new Error(`URL not allowed: resolved host ${finalHost} is not your D365 org host (${baseHost})`);
-            } catch (e) { throw new Error(e.message || "Invalid URL"); }
-            const customHeaders = params.headers && typeof params.headers === "object" ? params.headers : {};
-            const finalHeaders = {
-              "Accept": "application/json",
-              "OData-MaxVersion": "4.0",
-              "OData-Version": "4.0",
-              ...customHeaders,
-            };
-            const hasBody = (method !== "GET" && method !== "HEAD" && params.body != null && params.body !== "");
-            if (hasBody && !finalHeaders["Content-Type"] && !finalHeaders["content-type"]) {
-              finalHeaders["Content-Type"] = "application/json";
-            }
-            await apiPace(); // before the timer, like dvRequest
-            const t0 = Date.now();
-            const ctrl = new AbortController();
-            const tmo = setTimeout(() => ctrl.abort(), 60000);
-            try {
-              const resp = await fetch(url, {
-                method,
-                headers: finalHeaders,
-                body: hasBody ? (typeof params.body === "string" ? params.body : JSON.stringify(params.body)) : undefined,
-                credentials: "same-origin",
-                signal: ctrl.signal,
-              });
-              clearTimeout(tmo);
-              const elapsed = Date.now() - t0;
-              const respHeaders = {};
-              resp.headers.forEach((v, k) => { respHeaders[k] = v; });
-              const ct = resp.headers.get("content-type") || "";
-              let bodyText = "";
-              try { bodyText = await resp.text(); } catch {}
-              let bodyParsed = null;
-              if (ct.includes("application/json") && bodyText) {
-                try { bodyParsed = JSON.parse(bodyText); } catch {}
-              }
-              result = {
-                ok: resp.ok,
-                status: resp.status,
-                statusText: resp.statusText,
-                headers: respHeaders,
-                body: bodyText,
-                bodyParsed,
-                elapsed,
-                url,
-              };
-            } catch (e) {
-              clearTimeout(tmo);
-              result = {
-                ok: false,
-                status: 0,
-                statusText: e.name === "AbortError" ? "Timeout (60s)" : "Network error",
-                headers: {},
-                body: e.message || String(e),
-                bodyParsed: null,
-                elapsed: Date.now() - t0,
-                url,
-                clientError: true,
-              };
-            }
+            result = await rawRequest(params, 60000);
+            break;
+          }
+
+          case "scriptRequest": {
+            // Script Console: same host-locked raw request, with a 5-minute budget — a script's
+            // $batch of up to 1000 operations, or a long action, routinely outlives 60 s. 429
+            // retries, dry run and the rollback journal live in the panel (scriptRuntime.js).
+            result = await rawRequest(params, 300000);
             break;
           }
 

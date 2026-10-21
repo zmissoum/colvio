@@ -81,6 +81,8 @@ KEY FEATURES
   import with zero writes; Rollback undoes the records a run just created; Delta mode sends
   only the fields that changed. Parallel $batch engine, ~3-4k records/second, live per-row log.
 
+• Script Console — JavaScript on the Dataverse Web API with your session: dry run listing every write,
+  then a real run you can roll back; the script runs isolated, without network.
 • API Tester — a Postman-style client for the Dataverse Web API, authenticated by your
   session. Header autocomplete, JSON validation, templates, cURL export, request history
   with secrets redacted.

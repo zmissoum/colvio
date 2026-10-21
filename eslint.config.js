@@ -7,7 +7,7 @@ import globals from "globals";
 
 export default [
   {
-    files: ["src/**/*.{js,jsx}", "content.js", "background.js"],
+    files: ["src/**/*.{js,jsx}", "content.js", "background.js", "sandbox.js"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",

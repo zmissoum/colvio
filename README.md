@@ -55,6 +55,15 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - History of the last 50 requests (stored locally; secret-bearing headers like `Authorization` are redacted before saving)
 - **Copy as cURL**, Ctrl/Cmd+Enter to send, multiple tabs
 
+### Script Console
+- **Run JavaScript against the Dataverse Web API with your session** — for what no screen does: fill a lookup from another table, fix data by rules, chain reads and writes, call actions
+- `dv` is a complete Web API client: `get`, `getAll` (follows `@odata.nextLink`), `fetchXml` (paging cookie), `retrieve`, `create`, `update` (never creates), `upsert`, `delete`, `associate` / `disassociate`, `callAction` / `callFunction` (bound or unbound), `batch` (up to 1,000 requests, atomic changeset or continue-on-error), `entity` / `entitySet` metadata, and `request()` for anything else; GUID or alternate keys; `dv.withHeaders()` for impersonation and `MSCRM.*` bypass headers
+- **Dry run first** — reads run for real, every write (helpers, raw requests, $batch content, actions) is listed in a Plan and **not sent**; "Run for real" is confirmed with that plan, a second time on production
+- **Rollback journal** — each row is read just before it's written and its inverse kept: updates restored column by column (lookups through their navigation property), created rows deleted, deleted rows recreated with their id and state, N:N links and single-valued `$ref` restored; actions are marked not reversible. Survives a reload, exports / imports as JSON
+- `input` (rows of a CSV / Excel file), `log`, `table` (exportable to CSV / Excel), `progress`, `sleep`; errors point at the script line; 429 retried after `Retry-After`; Stop ends the script at once
+- Saved scripts (work on every org: test on DEV, run on PROD), `.js` open / download, 6 templates (lookup from a pivot table, update from a file, delete what a FetchXML returns, `$batch` with bypass headers, N:N links, read-only exploration)
+- **Isolated** — the script runs in a Web Worker inside the extension's sandbox page: no network (`default-src 'none'`), no access to the Dynamics 365 session, the panel or extension storage; it reaches the org only through `dv`, whose requests are host-locked to your org
+
 ### Show All Data
 - Auto-detect current record from D365 tab
 - Responsive **multi-column grid** that fills the screen (even 400+ field records stay readable): Logical Name, label, type, value
@@ -287,11 +296,11 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 
 | Metric | Value |
 |--------|-------|
-| Modules | 23 |
+| Modules | 24 |
 | Lines of code | ~27,100 |
-| API actions | 95 |
-| React components | 48 |
-| Unit tests | 640 |
+| API actions | 96 |
+| React components | 49 |
+| Unit tests | 663 |
 | Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
@@ -309,7 +318,8 @@ Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 
 ### Input Validation
 - **Entity/field name validation** — all names validated with regex in the content script
 - **OData injection protection** — numeric filter values validated, Lookup GUIDs format-checked, control characters stripped from batch key values (CRLF-injection proof)
-- **Same-org enforcement** — API Tester re-validates the final URL host after path assembly
+- **Same-org enforcement** — API Tester and Script Console re-validate the final URL host after path assembly
+- **Script Console sandbox** — user scripts run in a Web Worker of a manifest sandbox page (opaque origin, CSP `default-src 'none'`): no network, no cookies, no extension API; every Web API call is relayed to the panel and checked there
 - **Content Security Policy** — explicit CSP on panel.html
 
 ### Write Operation Safeguards

@@ -34,6 +34,7 @@ import Teams from "./components/Teams.jsx";
 import Storage from "./components/Storage.jsx";
 import HealthCheck from "./components/HealthCheck.jsx";
 import WebResources from "./components/WebResources.jsx";
+import ScriptConsole from "./components/ScriptConsole.jsx";
 import SchemaViewer from "./components/SchemaViewer.jsx";
 
 // Environment-type detection lives in envDetect.js (pure, tested) — built on Microsoft's REAL
@@ -200,6 +201,7 @@ export default function App(){
     {id:"recyclebin",section:"data",label:t("nav.recyclebin"),desc:t("nav.recyclebin.desc"),icon:<I.Trash/>,featureOff:!!(orgFeatures&&orgFeatures.recycleBin&&!orgFeatures.recycleBin.enabled&&!orgFeatures.recycleBin.unknown)},
     {id:"show",section:"data",label:t("nav.show"),desc:t("nav.show.desc"),icon:<I.Eye/>},
     {id:"apitester",section:"develop",label:t("nav.apitester"),desc:t("nav.apitester.desc"),icon:<I.Zap/>},
+    {id:"script",section:"develop",label:t("nav.script"),desc:t("nav.script.desc"),icon:<I.Play/>},
     {id:"metadata",section:"develop",label:t("nav.metadata"),desc:t("nav.metadata.desc"),icon:<I.Grid/>},
     {id:"automation",section:"develop",label:t("nav.automation"),desc:t("nav.automation.desc"),icon:<I.Zap/>,requires:"canReadSolutions"},
     {id:"apps",section:"develop",label:t("nav.apps"),desc:t("nav.apps.desc"),icon:<I.Grid/>},
@@ -360,6 +362,9 @@ export default function App(){
           {tab==="storage"&&<ErrorBoundary><Storage bp={bp} orgInfo={orgInfo} theme={theme}/></ErrorBoundary>}
           {tab==="health"&&<ErrorBoundary><HealthCheck bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
           {tab==="webres"&&<ErrorBoundary><WebResources bp={bp} orgInfo={orgInfo}/></ErrorBoundary>}
+          {/* Script Console stays MOUNTED (like Loader): leaving the tab mid-run must not kill the
+              script's sandbox, its streamed output or the journal it is building. */}
+          <div style={{display:tab==="script"?"block":"none",height:"100%"}}><ErrorBoundary><ScriptConsole bp={bp} orgInfo={orgInfo}/></ErrorBoundary></div>
           {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{if(loaderBusy&&!window.confirm("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?"))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>

@@ -20,6 +20,7 @@ const SECTIONS=[
   {cat:"query",  icon:<I.Database/>, titleKey:"help.explorer_title",        bodyKey:"help.explorer_body"},
   {cat:"query",  icon:<I.Search/>,   titleKey:"help.sql_title",             bodyKey:"help.sql_body"},
   {cat:"query",  icon:<I.Zap/>,      titleKey:"help.apitester_title",       bodyKey:"help.apitester_body"},
+  {cat:"query",  icon:<I.Play/>,     titleKey:"help.script_title",          bodyKey:"help.script_body"},
   {cat:"query",  icon:<I.Eye/>,      titleKey:"help.show_title",            bodyKey:"help.show_body"},
   {cat:"query",  icon:<I.Grid/>,     titleKey:"help.metadata_title",        bodyKey:"help.metadata_body"},
   {cat:"loader", icon:<I.Upload/>,   titleKey:"help.loader_title",          bodyKey:"help.loader_body"},

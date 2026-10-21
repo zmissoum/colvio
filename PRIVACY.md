@@ -1,6 +1,6 @@
 # Privacy Policy — Colvio for Dynamics 365
 
-**Last updated: October 14, 2026**
+**Last updated: October 21, 2026**
 
 ## Overview
 
@@ -32,6 +32,8 @@ Colvio stores the following data **locally in your browser only** (via `chrome.s
 | Saved queries | Persist user-created query configurations | Until manually deleted |
 | Query history | Last 20 executed queries for quick reload (filter values are stripped before saving) | Until manually cleared |
 | API Tester history | Last 50 ad-hoc requests for quick reload — secret-bearing headers (`Authorization`, `Cookie`, API keys) are **redacted before saving** | Until manually cleared |
+| Script Console scripts | Scripts you save (their code only) | Until manually deleted |
+| Script Console journal | For the last real run of a script: each write it made and the operations that undo it — including the previous values of the columns it changed (data from your environment) | Until the next real run replaces it |
 | Data Loader templates | Saved column-mapping configurations (no row data) | Until manually deleted |
 | Metadata cache | Speed up entity/field loading (org-scoped keys, no record data) | Auto-expires (entities: 2h, fields: 1h) |
 | Theme preference | Dark/Light mode setting | Until changed |

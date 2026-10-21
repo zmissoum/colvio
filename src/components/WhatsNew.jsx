@@ -6,9 +6,10 @@ import { t, getLocale } from "../i18n.js";
 // HIGHLIGHTS only needs the CURRENT arc's top items; the full detail lives in CHANGELOG.md.
 // Arc: the Chrome Web Store shows 1.11.181 (Record activity and its failure details were in it)
 // → the arc to now: Record access, Health check, Web Resources, step / choice / column writes,
-// data-model tools, SQL writes, Explorer streaming, big-org work, privacy. Keep it ≤ 10 items.
+// data-model tools, SQL writes, Explorer streaming, big-org work, privacy, Script Console. Keep it ≤ 10 items.
 const HIGHLIGHTS = {
   en: [
+    "⌨ NEW Script Console — run JavaScript on the Web API with your session, for what no screen does (fill a lookup from another table, fix data by rules, call actions): dry run lists every write without sending it, a real run keeps a journal and rolls back in one click. The script runs isolated, without network",
     "🔐 \"Why can't she see it?\" answered — Show All Data › Record access: pick a user, get Dataverse's own yes / no for each right on the record, why (which role or team, at which depth, or a share) and what would fix a no",
     "🩺 NEW Health check — one report on what silently hurts the environment: failing and suspended jobs, flows owned by disabled users, plug-ins firing on every update, unbound connection references, empty environment variables, users without a role, unmanaged solutions in production, growing log tables — each with what to do, copyable for a ticket",
     "📜 NEW Web Resources — edit and publish scripts, styles and pages, and search a column name inside every script shown: what Dataverse's dependency tracking never sees",
@@ -19,6 +20,7 @@ const HIGHLIGHTS = {
     "🏋️ Built for big orgs — no more one request per user or per role, lighter reads, a REAL API meter in the sidebar (Colvio slows down before Dataverse's limit instead of being refused), and a full review pass: a paced request never reads as a timeout, a failure never shrinks into a partial answer",
   ],
   fr: [
+    "⌨ NOUVEAU Script Console — exécutez du JavaScript sur la Web API avec votre session, pour ce qu'aucun écran ne fait (renseigner un lookup depuis une autre table, corriger des données par règles, appeler des actions) : le dry run liste chaque écriture sans l'envoyer, l'exécution réelle tient un journal et s'annule en un clic. Le script tourne isolé, sans réseau",
     "🔐 « Pourquoi elle ne le voit pas ? » a sa réponse — Show All Data › Record access : choisissez un utilisateur, obtenez le oui / non de Dataverse pour chaque droit sur l'enregistrement, le pourquoi (quel rôle ou quelle équipe, à quelle profondeur, ou un partage) et ce qui réglerait un non",
     "🩺 NOUVEAU Bilan de santé — un rapport sur ce qui abîme l'environnement en silence : tâches en échec ou suspendues, flux dont le propriétaire est désactivé, plug-ins déclenchés à chaque mise à jour, références de connexion sans connexion, variables d'environnement vides, utilisateurs sans rôle, solutions non gérées en production, tables de journaux qui grossissent — chacun avec quoi faire, copiable pour un ticket",
     "📜 NOUVEAU Web Resources — éditez et publiez scripts, styles et pages, et cherchez le nom d'une colonne dans tous les scripts affichés : ce que le suivi des dépendances de Dataverse ne voit jamais",
