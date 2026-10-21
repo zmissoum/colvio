@@ -300,7 +300,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~27,100 |
 | API actions | 96 |
 | React components | 49 |
-| Unit tests | 663 |
+| Unit tests | 669 |
 | Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
@@ -334,7 +334,7 @@ Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 
 
 ### Access Control
 - **Role-based tab visibility** — sensitive modules auto-hidden for non-admin users (zero flash)
-- **Manifest V3** — minimal permissions (`scripting`, `storage`, `declarativeContent`, `webRequest` — observe only, to list your own saves — and `alarms` — to revert the trace-log switch; 3 host wildcards, dynamics.com / microsoftdynamics.us / dynamics.cn only)
+- **Manifest V3** — minimal permissions (`scripting`, `storage`, `declarativeContent`, `webRequest` — observe only, to list your own saves — and `alarms` — to revert the trace-log switch —, `unlimitedStorage` — so a Script Console rollback journal is never cut by the 10 MB quota; 3 host wildcards, dynamics.com / microsoftdynamics.us / dynamics.cn only)
 - **3 runtime dependencies** — React, React-DOM, xlsx (export-only)
 
 See [PRIVACY.md](PRIVACY.md) for the full privacy policy.

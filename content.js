@@ -126,7 +126,7 @@
     for (let i = 0; i < n; i++) apiLog.push(now);
     apiTotal += n;
   }
-  const batchOps = (body) => Math.max(1, (String(body || "").match(/Content-Type: application\/http/g) || []).length);
+  const batchOps = (body) => Math.max(1, (String(body || "").match(/Content-Type:\s*application\/http/gi) || []).length);
 
   // Annotations: formatted values and lookup table names are what the UI shows; the paging cookie
   // and record-count annotations drive FetchXML paging. associatednavigationproperty — one more

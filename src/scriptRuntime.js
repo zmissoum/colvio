@@ -40,6 +40,7 @@ export class StopError extends Error {
 export function toPath(p) {
   const s = String(p ?? "").trim();
   if (!s) throw new ScriptError("Empty path");
+  if (/^\$\d+(\/|$)/.test(s)) return s; // a $batch Content-ID reference, resolved by the server
   if (/^https?:\/\//i.test(s)) { const u = new URL(s); return u.pathname + u.search; }
   if (s.startsWith("/")) return s;
   return API_PREFIX + s;
@@ -62,7 +63,9 @@ export function keySegment(key) {
     const parts = Object.entries(key).map(([k, v]) => {
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new ScriptError(`Invalid key column "${k}"`);
       if (v === null || v === undefined) throw new ScriptError(`Key column "${k}" has no value`);
-      return `${k}=${typeof v === "string" ? `'${v.replace(/'/g, "''")}'` : String(v)}`;
+      // the value is URL-encoded: a "#", "?" or "%41" in a key must reach Dataverse as typed
+      if (v instanceof Date) return `${k}=${v.toISOString()}`;
+      return `${k}=${typeof v === "string" ? `'${encodeURIComponent(v.replace(/'/g, "''"))}'` : String(v)}`;
     });
     if (!parts.length) throw new ScriptError("Empty key");
     return parts.join(",");
@@ -73,9 +76,12 @@ export function keySegment(key) {
   return g ? g[1].toLowerCase() : s;
 }
 
-// Function parameters go through aliases: Name(a=@a)?@a=<value> — strings quoted, objects as JSON.
+// Function parameters go through aliases: Name(a=@a)?@a=<value> — strings quoted, objects as JSON,
+// { $guid: "…" } unquoted (an Edm.Guid parameter), { $raw: "…" } exactly as given.
 export function encodeParam(v) {
   if (v === null || v === undefined) return "null";
+  if (v && typeof v === "object" && typeof v.$guid === "string") return keySegment(v.$guid);
+  if (v && typeof v === "object" && typeof v.$raw === "string") return v.$raw;
   if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (v instanceof Date) return v.toISOString();
@@ -107,6 +113,19 @@ export function parseSegments(resource) {
     if (i < 0 || !s.endsWith(")")) return { name: s, key: null };
     return { name: s.slice(0, i), key: s.slice(i + 1, -1) };
   });
+}
+
+// A GET that calls a function with a publisher prefix (a Custom API — its plug-in may write):
+// unbound new_Name(…) or bound …/Microsoft.Dynamics.CRM.new_Name(…). Built-in functions have no "_".
+export function customFunctionOf(path) {
+  const res = resourceOf(path);
+  if (res == null) return null;
+  const segs = parseSegments(res);
+  const last = segs[segs.length - 1];
+  if (!last || last.key == null) return null;
+  const name = last.name.startsWith(NS) ? last.name.slice(NS.length) : last.name;
+  if (segs.length > 1 && !last.name.startsWith(NS)) return null;
+  return name.includes("_") ? { name, bound: segs.length > 1 } : null;
 }
 
 // What a request does. `isEntitySet(name)` answers whether a bare first segment is a table (a POST
@@ -184,7 +203,7 @@ export function buildBatch(ops, { orgUrl = "", atomic = true, id = "colvio" } = 
   const part = (op, contentId) => {
     const lines = ["Content-Type: application/http", "Content-Transfer-Encoding: binary"];
     if (contentId != null) lines.push(`Content-ID: ${contentId}`);
-    lines.push("", `${op.method} ${orgUrl}${op.path} HTTP/1.1`, "Accept: application/json");
+    lines.push("", `${op.method} ${op.path.startsWith("$") ? op.path : orgUrl + op.path} HTTP/1.1`, "Accept: application/json");
     const hasBody = op.body !== undefined && op.body !== null;
     for (const [k, v] of Object.entries(op.headers || {})) lines.push(`${k}: ${v}`);
     if (hasBody && !Object.keys(op.headers || {}).some(k => k.toLowerCase() === "content-type")) lines.push("Content-Type: application/json");
@@ -200,7 +219,8 @@ export function buildBatch(ops, { orgUrl = "", atomic = true, id = "colvio" } = 
     if (atomic && isWrite) {
       if (csDone) return;
       csDone = true;
-      const inner = writes.map((wi, n) => `--${cs}\r\n${part(ops[wi], n + 1)}`).join("\r\n");
+      // Content-ID = the op's position in the list (1-based): "$3" in a later path is ops[2]'s result
+      const inner = writes.map((wi) => `--${cs}\r\n${part(ops[wi], wi + 1)}`).join("\r\n");
       out.push(`--${boundary}\r\nContent-Type: multipart/mixed; boundary=${cs}\r\n\r\n${inner}\r\n--${cs}--`);
       groups.push({ ops: writes, changeset: true });
     } else {
@@ -290,6 +310,9 @@ export function recreateOps({ set, info, attrs, rels, before, setOf }) {
     }
     if (["Virtual", "EntityName", "PartyList", "CalendarRules", "ManagedProperty", "Image", "File"].includes(t)) { if (before[ln] != null) skipped.push(ln); continue; }
     if (ln === "statecode") continue;
+    // an inactive row's status reason is refused on create (it doesn't match the default active
+    // state): the follow-up PATCH sets both
+    if (ln === "statuscode" && before.statecode != null && before.statecode !== 0) continue;
     if (Object.prototype.hasOwnProperty.call(before, ln) && before[ln] !== null) body[ln] = before[ln];
   }
   const pk = info?.PrimaryIdAttribute;
@@ -451,9 +474,13 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
     switch (cls.kind) {
       case "create": {
         let target = created?.resource;
-        if (!target && cap?.info) { const b = bodyOf(res); const id = b && b[cap.info.PrimaryIdAttribute]; if (id) target = `${cls.set}(${id})`; }
+        if (!target && cap?.info && !cls.deep) { const b = bodyOf(res); const id = b && b[cap.info.PrimaryIdAttribute]; if (id) target = `${cls.set}(${id})`; }
         if (target) e.inverse = [{ method: "DELETE", path: API_PREFIX + target }];
         else { e.reversible = "none"; e.note = "The new row's id wasn't returned"; }
+        const body = typeof op.body === "string" ? (() => { try { return JSON.parse(op.body); } catch { return {}; } })() : op.body || {};
+        if (target && Object.entries(body).some(([k, v]) => !k.includes("@") && v !== null && typeof v === "object")) {
+          e.reversible = "partial"; e.note = "Deep insert: rollback deletes the parent row only — related rows created with it are deleted only if the relationship cascades";
+        }
         break;
       }
       case "update": {
@@ -490,7 +517,8 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
       case "addRef": {
         const b = typeof op.body === "string" ? (() => { try { return JSON.parse(op.body); } catch { return {}; } })() : op.body || {};
         const url = b["@odata.id"];
-        if (url) e.inverse = [{ method: "DELETE", path: `${API_PREFIX}${cls.set}(${cls.key})/${cls.nav}/$ref?$id=${/^https?:/i.test(url) ? url : abs(String(url).replace(/^\//, ""))}` }];
+        const full = /^https?:/i.test(url) ? url : String(url).startsWith("/") ? `${orgUrl}${url}` : abs(String(url));
+        if (url) e.inverse = [{ method: "DELETE", path: `${API_PREFIX}${cls.set}(${cls.key})/${cls.nav}/$ref?$id=${full}` }];
         else { e.reversible = "none"; e.note = "No @odata.id in the body"; }
         break;
       }
@@ -505,7 +533,7 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
         else if (cls.kind === "setRef") e.inverse = [{ method: "DELETE", path: p }];
         break;
       }
-      case "action": e.reversible = "none"; e.note = `Action ${cls.action}: an operation can't be undone generically`; break;
+      case "action": case "function": e.reversible = "none"; e.note = `${cls.kind === "action" ? "Action" : "Custom API function"} ${cls.action}: an operation can't be undone generically`; break;
       case "batch": e.reversible = "none"; e.note = "Raw $batch sent with dv.request — use dv.batch() to journal each operation"; break;
       default: e.reversible = "none"; e.note = "Operation not recognised — not journaled";
     }
@@ -513,25 +541,47 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
   }
 
   const record = (cls, op) => {
-    const e = { seq: ++seq, method: op.method, path: resourceOf(op.path) ?? op.path, kind: cls.kind, table: cls.kind === "action" ? cls.action : (cls.table || cls.set), body: clip(op.body) };
+    const e = { seq: ++seq, method: op.method, path: resourceOf(op.path) ?? op.path, kind: cls.kind, table: cls.kind === "action" || cls.kind === "function" ? cls.action : (cls.table || cls.set), body: clip(op.body) };
     plan.push(e); onPlan?.(e);
     return e;
   };
   const synthetic = (cls) => {
     const headers = {};
     if (cls.kind === "create" || cls.kind === "update") headers["odata-entityid"] = abs(`${cls.kind === "create" && cls.deep ? cls.nav : cls.set}(${fakeId(++fakeN)})`);
-    return { ok: true, status: 204, statusText: "No Content (dry run)", headers, body: "", bodyParsed: null, dryRun: true };
+    return { ok: true, status: cls.kind === "function" ? 200 : 204, statusText: "No Content (dry run)", headers, body: "", bodyParsed: null, dryRun: true };
   };
 
   // Every request of a script goes through here.
   async function call(op0, { throwOnError = true } = {}) {
     const op = { method: String(op0.method || "GET").toUpperCase(), path: toPath(op0.path), headers: op0.headers || {}, body: op0.body };
-    const cls = await classifyOp(op);
+    if (resourceOf(op.path) == null) throw new ScriptError(`Only Web API paths (/api/data/…) are allowed: ${op.path}`);
+    let cls = await classifyOp(op);
+    if (cls.kind === "read" && dry && op.method === "GET") {
+      // a Custom API function runs a plug-in that may write: not sent in a dry run (unless it is a table)
+      const fn = customFunctionOf(op.path);
+      if (fn) {
+        const ents = fn.bound ? { ok: false } : await entities();
+        if (!(ents.ok && ents.bySet.has(fn.name.toLowerCase()))) cls = { kind: "function", table: fn.name, action: fn.name };
+      }
+    }
     const isWrite = cls.kind !== "read";
     if (isWrite && dry) { record(cls, op); return synthetic(cls); }
     let cap = null;
     if (isWrite && journal) { try { cap = await capture(cls, op); } catch (err) { if (err instanceof StopError) throw err; cap = { failed: err.message }; } }
-    const res = await raw(op);
+    let res;
+    try { res = await raw(op); }
+    catch (err) {
+      // No response (timeout, network): the server may have run the write. Journal what can be
+      // undone from the before-image, flagged — an inverse of a write that didn't happen is harmless
+      // for updates (same values) and fails readably for the rest.
+      if (isWrite && journal && !(err instanceof StopError) && !cap?.failed) {
+        const e = finalize(cls, op, cap, { headers: {} });
+        e.reversible = e.inverse.length ? "partial" : "none";
+        e.note = `No response (${err.message}) — the write may or may not have run${e.note ? "; " + e.note : ""}`;
+        entries.push(e); onJournal?.(e);
+      }
+      throw err;
+    }
     if (!res.ok) { if (throwOnError) throw errorFrom(res, op.path); return res; }
     if (isWrite && journal) {
       const e = cap?.failed ? { seq: ++seq, method: op.method, path: resourceOf(op.path) ?? op.path, kind: cls.kind, table: cls.table || cls.set, inverse: [], reversible: "none", note: `Before-image unreadable: ${cap.failed}` } : finalize(cls, op, cap, res);
@@ -626,16 +676,21 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
     async callFunction(d, name, params = {}, opts = {}) {
       const fn = functionPath(opts.bound ? `${NS}${name}` : name, params);
       const p = opts.bound ? `${opts.bound.set}(${keySegment(opts.bound.key)})/${fn}` : fn;
-      return bodyOf(await call({ method: "GET", path: p, headers: hdr(d, opts) }));
+      const res = await call({ method: "GET", path: p, headers: hdr(d, opts) });
+      return res.dryRun ? null : bodyOf(res);
     },
     async batch(d, ops, opts = {}) {
       if (!Array.isArray(ops) || !ops.length) return [];
       if (ops.length > MAX_BATCH) throw new ScriptError(`A $batch holds at most ${MAX_BATCH} requests (got ${ops.length}) — split it`);
       const norm = ops.map(o => ({ method: String(o.method || "GET").toUpperCase(), path: toPath(o.path), headers: { ...(d || {}), ...(o.headers || {}) }, body: o.body }));
       const out = (r) => ({ ok: r.ok, status: r.status, headers: r.headers || {}, body: bodyOf(r), dryRun: !!r.dryRun, notExecuted: !!r.notExecuted });
+      for (const op of norm) if (!op.path.startsWith("$") && resourceOf(op.path) == null) throw new ScriptError(`Only Web API paths (/api/data/…) are allowed: ${op.path}`);
       if (dry) {
         const results = [];
-        for (const op of norm) results.push(out(await call(op, { throwOnError: false })));
+        for (const op of norm) {
+          if (op.path.startsWith("$")) { if (READ.has(op.method)) results.push({ ok: true, status: 200, headers: {}, body: null, dryRun: true }); else { record({ kind: "other", table: op.path.split("/")[0] }, op); results.push(out(synthetic({ kind: "other" }))); } continue; }
+          results.push(out(await call(op, { throwOnError: false })));
+        }
         return results;
       }
       const clss = []; const caps = [];
@@ -649,7 +704,18 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
       const b = buildBatch(norm, { orgUrl, atomic, id: `${Date.now().toString(36)}${(++batchN).toString(36)}` });
       let h = { "Content-Type": b.contentType, ...(opts.headers || {}) };
       if (opts.continueOnError && !atomic) h = withPrefer(h, "odata.continue-on-error");
-      const res = await raw({ method: "POST", path: "$batch", headers: h, body: b.body });
+      let res;
+      try { res = await raw({ method: "POST", path: "$batch", headers: h, body: b.body }); }
+      catch (err) {
+        if (journal && !(err instanceof StopError)) clss.forEach((c, i) => {
+          if (c.kind === "read" || caps[i]?.failed) return;
+          const e = finalize(c, norm[i], caps[i], { headers: {} });
+          e.reversible = e.inverse.length ? "partial" : "none";
+          e.note = `No response to the $batch (${err.message}) — this write may or may not have run${e.note ? "; " + e.note : ""}`;
+          entries.push(e); onJournal?.(e);
+        });
+        throw err;
+      }
       if (!res.ok && !/multipart/i.test(header(res, "content-type") || "")) throw errorFrom(res, "$batch");
       const results = mapBatchResults(b.groups, parseBatchResponse(res.body || "", header(res, "content-type")), norm.length);
       results.forEach((r, i) => {
@@ -695,21 +761,27 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
 // Undo a journal: inverses of every entry, last write first. Each inverse goes through the same
 // send (429 retries), without journaling. Returns per-entry outcomes.
 export async function runRollback(entries, { send, sleep = defaultSleep, isStopped = () => false, onProgress } = {}) {
+  // Each entry keeps `undoneOps` (how many of its inverse operations already succeeded): running
+  // a rollback again after a failure or a Stop resumes where it stopped instead of replaying
+  // what was already undone. Returns the updated entries alongside the counts.
   const rt = createRuntime({ send, mode: "live", journal: false, sleep, isStopped });
-  const todo = [...(entries || [])].sort((a, b) => b.seq - a.seq);
-  const out = { undone: 0, failed: [], skipped: 0 };
+  const next = (entries || []).map(e => ({ ...e }));
+  const todo = [...next].sort((a, b) => b.seq - a.seq);
+  const out = { undone: 0, failed: [], skipped: 0, already: 0, entries: next };
   let i = 0;
   for (const e of todo) {
     i++;
-    if (!e.inverse?.length) { out.skipped++; onProgress?.(i, todo.length); continue; }
+    const n = e.inverse?.length || 0;
+    if (!n) { out.skipped++; onProgress?.(i, todo.length, next); continue; }
+    if ((e.undoneOps || 0) >= n) { out.already++; onProgress?.(i, todo.length, next); continue; }
     try {
-      for (const op of e.inverse) await rt.call(op);
+      for (let k = e.undoneOps || 0; k < n; k++) { await rt.call(e.inverse[k]); e.undoneOps = k + 1; }
       out.undone++;
     } catch (err) {
       if (err instanceof StopError) { out.stopped = true; break; }
       out.failed.push({ seq: e.seq, method: e.method, path: e.path, error: err.message });
     }
-    onProgress?.(i, todo.length);
+    onProgress?.(i, todo.length, next);
   }
   return out;
 }

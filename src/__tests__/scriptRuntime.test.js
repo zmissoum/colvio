@@ -212,6 +212,9 @@ describe("scriptRuntime — paths and keys", () => {
   it("formats GUID, alternate and raw keys; function parameters through aliases", () => {
     expect(keySegment("{ABCDEF01-0000-0000-0000-000000000001}")).toBe("abcdef01-0000-0000-0000-000000000001");
     expect(keySegment({ accountnumber: "O'Brien", region: 2 })).toBe("accountnumber='O''Brien',region=2");
+    expect(keySegment({ code: "A#1?%41" })).toBe("code='A%231%3F%2541'");
+    expect(keySegment({ day: new Date("2026-01-02T00:00:00Z") })).toBe("day=2026-01-02T00:00:00.000Z");
+    expect(functionPath("RetrieveAppComponents", { AppModuleId: { $guid: "{ABCDEF01-0000-0000-0000-000000000001}" } })).toBe("RetrieveAppComponents(AppModuleId=@AppModuleId)?@AppModuleId=abcdef01-0000-0000-0000-000000000001");
     expect(keySegment("accountnumber='A1'")).toBe("accountnumber='A1'");
     expect(() => keySegment({ "bad key": 1 })).toThrow();
     expect(functionPath("WhoAmI")).toBe("WhoAmI()");
@@ -257,6 +260,8 @@ describe("scriptRuntime — $batch wire format", () => {
     expect(b.groups).toEqual([{ ops: [0], changeset: false }, { ops: [1, 2], changeset: true }]);
     expect(b.body).toContain(`PATCH ${ORG}/api/data/v9.2/accounts(1) HTTP/1.1`);
     expect(b.body).toContain("Content-ID: 2");
+    expect(b.body).toContain("Content-ID: 3"); // = op index + 1, so "$3" names ops[2]
+    expect(buildBatch([{ method: "POST", path: "$1/contact_customer_accounts", body: {} }], { orgUrl: ORG, id: "r" }).body).toContain("POST $1/contact_customer_accounts HTTP/1.1");
     expect(b.body.endsWith("--batch_t--\r\n")).toBe(true);
     const resp = "--br\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"value\":[]}\r\n--br\r\nContent-Type: multipart/mixed; boundary=cs\r\n\r\n--cs\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 204 No Content\r\n\r\n\r\n--cs\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 204 No Content\r\n\r\n\r\n--cs--\r\n--br--";
     const items = parseBatchResponse(resp, "multipart/mixed; boundary=br");
@@ -297,6 +302,53 @@ describe("scriptRuntime — dry run", () => {
     expect(r[0].body.value).toHaveLength(2);
     expect(r[1].dryRun).toBe(true);
     expect(rt.plan).toHaveLength(1);
+    expect(org.t.accounts.size).toBe(2);
+  });
+});
+
+describe("scriptRuntime — review fixes", () => {
+  it("a dry run never calls a Custom API function; built-in functions run", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "dry", sleep: noSleep });
+    expect(await rt.invoke("callFunction", ["new_Recalculate", { Id: { $guid: g(31) } }])).toBe(null);
+    expect(await rt.invoke("whoAmI", [])).toEqual({ UserId: g(21) });
+    expect(org.log.some(l => l.includes("new_Recalculate"))).toBe(false);
+    expect(rt.plan.map(p => `${p.kind} ${p.table}`)).toEqual(["function new_Recalculate"]);
+  });
+  it("only Web API paths are accepted", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "dry", sleep: noSleep });
+    await expect(rt.invoke("request", ["GET", "/XRMServices/2011/Organization.svc/web"])).rejects.toThrow(/Only Web API paths/);
+    await expect(rt.invoke("batch", [[{ method: "GET", path: "/main.aspx" }]])).rejects.toThrow(/Only Web API paths/);
+  });
+  it("an association made with a root-relative @odata.id is undone", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await rt.invoke("request", ["POST", `accounts(${g(31)})/account_contacts/$ref`, { body: { "@odata.id": `/api/data/v9.2/contacts(${g(41)})` } }]);
+    expect(rt.entries[0].inverse[0].path).toBe(`/api/data/v9.2/accounts(${g(31)})/account_contacts/$ref?$id=${ORG}/api/data/v9.2/contacts(${g(41)})`);
+  });
+  it("a write left without response is journaled as 'may or may not have run'", async () => {
+    const org = fakeOrg();
+    const send = async (r) => (r.method === "PATCH" ? { ok: false, status: 0, statusText: "Timeout (300s)", headers: {}, body: "aborted", clientError: true } : org.send(r));
+    const rt = createRuntime({ send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await expect(rt.invoke("update", ["accounts", g(31), { name: "X" }])).rejects.toThrow(/Timeout/);
+    expect(rt.entries).toHaveLength(1);
+    expect(rt.entries[0]).toMatchObject({ reversible: "partial", note: expect.stringMatching(/may or may not have run/) });
+    expect(rt.entries[0].inverse[0].body).toEqual({ name: "Contoso" });
+  });
+  it("a rollback stopped half-way resumes without replaying what was undone", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await rt.invoke("create", ["accounts", { name: "A" }]);
+    await rt.invoke("create", ["accounts", { name: "B" }]);
+    let calls = 0;
+    const flaky = async (r) => (++calls === 1 ? org.send(r) : { ok: false, status: 500, statusText: "", headers: {}, body: "", bodyParsed: { error: { message: "boom" } } });
+    const r1 = await runRollback(rt.entries, { send: flaky, sleep: noSleep });
+    expect(r1).toMatchObject({ undone: 1, failed: [expect.objectContaining({ error: expect.stringMatching(/boom/) })] });
+    const log0 = org.log.length;
+    const r2 = await runRollback(r1.entries, { send: org.send, sleep: noSleep });
+    expect(r2).toMatchObject({ undone: 1, already: 1, failed: [] });
+    expect(org.log.length - log0).toBe(1); // only the remaining DELETE was sent
     expect(org.t.accounts.size).toBe(2);
   });
 });
@@ -359,6 +411,8 @@ describe("scriptRuntime — live run, journal and rollback", () => {
     const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
     await rt.invoke("delete", ["accounts", g(31)]);
     expect(rt.entries[0].inverse.map(o => o.method)).toEqual(["POST", "PATCH"]);
+    expect(rt.entries[0].inverse[0].body).not.toHaveProperty("statuscode"); // refused on create for an inactive row
+    expect(rt.entries[0].inverse[1].body).toEqual({ statecode: 1, statuscode: 2 });
     await runRollback(rt.entries, { send: org.send, sleep: noSleep });
     expect(org.t.accounts.get(g(31))).toMatchObject({ name: "Contoso", statecode: 1, statuscode: 2 });
   });

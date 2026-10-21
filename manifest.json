@@ -8,6 +8,7 @@
   "permissions": [
     "scripting",
     "storage",
+    "unlimitedStorage",
     "declarativeContent",
     "webRequest",
     "alarms"

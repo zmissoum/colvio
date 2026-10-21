@@ -7,7 +7,7 @@
  *
  * The user's code runs in a Web Worker created by this page (blob URL, same sandbox CSP): its own
  * thread, so even `while (true) {}` can't freeze the panel, and removing the iframe terminates it.
- * When a worker can't be created, the code runs in this page instead (same API, same isolation).
+ * The code never runs in this page itself (it could navigate the frame away).
  *
  * Every `dv.*` call is posted to the panel, which executes it through the Script Console runtime
  * (dry run, journal, 429 retries) and the content script's host-locked request. Neither this page
@@ -16,8 +16,8 @@
 (function () {
   "use strict";
 
-  // The runner: everything that executes user code. Stringified into the worker; also callable
-  // in-page. `send` posts a message out; returns the handler for messages coming in.
+  // The runner: everything that executes user code, stringified into the worker. `send` posts a
+  // message out; returns the handler for messages coming in.
   function runner(send) {
     var pending = new Map();
     var nextId = 0;
@@ -97,6 +97,8 @@
   var runId = null;
   function out(msg) { msg.__colvioScript = true; msg.runId = runId; host.postMessage(msg, "*"); }
 
+  // No in-page fallback: code running in this page could navigate the frame away and leak data.
+  // Without a worker the run fails, readably.
   var toRunner;
   try {
     var src = "var handle = (" + runner.toString() + ")(function (m) { self.postMessage(m); });\nself.onmessage = function (e) { handle(e.data); };";
@@ -105,7 +107,7 @@
     worker.onerror = function (e) { e.preventDefault(); out({ type: "done", ok: false, error: { message: e.message || "Script error", stack: "" } }); };
     toRunner = function (d) { worker.postMessage(d); };
   } catch (e) {
-    toRunner = runner(out);
+    toRunner = function (d) { if (d.type === "run") out({ type: "done", ok: false, error: { message: "The script runner couldn't start (Web Worker unavailable: " + e.message + ")", stack: "" } }); };
   }
 
   window.addEventListener("message", function (ev) {
