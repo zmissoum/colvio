@@ -78,6 +78,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 ### Automation Inventory
 - **The static inventory of everything registered to run in the org** — the design-time counterpart to System Ops' runtime jobs
 - **Plug-in steps**: which class runs on which message/entity, Pre-validation / Pre-operation / Post-operation, Sync/Async, Enabled/Disabled, rank, filtering attributes, assembly — internal stage-30 platform machinery hidden by default (like the Plugin Registration Tool)
+- **👤 Who runs it** — every identity that makes something run, and what kind it is: **App registration** (application user, with its Entra app id), **Microsoft app**, **Built-in** (SYSTEM / INTEGRATION), **Service account** (non-interactive access mode), **Service account?** (a guess from the name or address — svc, integration, noreply…), **Person**, **Team**, or **Not a Dataverse user** (a connection's account that matches nobody in the environment). For each: the cloud flows and processes it owns, the real-time workflows running as their owner, the plug-in steps running as it, the connection references it owns and the connections signed in with its account. A Connections view lists every connection reference with its connector, **the account it is signed in with** (from Dataverse's connection instances, when the environment stores them), its owner and the flows using it (read from each flow's definition, 25 per request). Flags: disabled identities behind active automation, people (not service accounts) behind active automation, integration identities that run nothing visible (they call the Web API from outside). CSV / Excel export. Read-only
 - **Plug-in step writes** — enable / disable one step or a whole selection (select all shown, e.g. every step of an assembly before a data migration; $batch chunks, Stop), and pick an Update step's **filtering attributes** from its table's columns (steps without any are flagged "⚠ all"); each write confirmed with what stops or changes, a second time on production
 - **Every process definition** from the workflow table, in category tabs with counts: classic Workflows (Background/Real-time + C/U/D triggers), Cloud flows (Power Automate), Business rules, Actions, BPFs, Dialogs, Desktop flows
 - **Honest three-way source classification** — Microsoft (publisher-prefix heuristic; Dataverse doesn't stamp authorship and registers its own steps unmanaged), Managed (ISV or your own solution), Custom (unmanaged) — plus state and free-text filters, CSV/Excel export of any view
@@ -289,9 +290,9 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 |--------|-------|
 | Modules | 23 |
 | Lines of code | ~27,100 |
-| API actions | 95 |
-| React components | 48 |
-| Unit tests | 640 |
+| API actions | 98 |
+| React components | 49 |
+| Unit tests | 648 |
 | Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |

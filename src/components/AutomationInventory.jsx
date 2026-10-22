@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
+import WhoRunsIt from "./WhoRunsIt.jsx";
 import { STEP_SET, STEP_PK, statePatch, statePlan, stateConfirmText, applyStateLocally, canEditFiltering, parseFiltering, formatFiltering, filteringDiff, filterableColumns } from "../stepAdmin.js";
 
 // Automation — the STATIC inventory of everything registered to run in the org: plug-in steps
@@ -19,6 +20,7 @@ const CATEGORIES = [
   { key: "4",        label: "BPFs" },
   { key: "1",        label: "Dialogs" },
   { key: "6",        label: "Desktop flows" },
+  { key: "who",      label: "👤 Who runs it" },
 ];
 const STAGE_LABEL = { 10: "Pre-validation", 20: "Pre-operation", 40: "Post-operation" };
 // The registration stages are 10/20/40 — anything else (30 = MainOperation, 5, 45…) is the
@@ -193,11 +195,12 @@ export default function AutomationInventory({ bp, orgInfo }) {
         <div style={{ display: "flex", gap: 3, marginBottom: 12, flexWrap: "wrap" }}>
           {CATEGORIES.map(c => (
             <button key={c.key} onClick={() => setCat(c.key)} style={{ padding: "5px 11px", fontSize: 12, border: `1px solid ${cat === c.key ? C.vi : C.bd}`, borderRadius: 5, cursor: "pointer", background: cat === c.key ? C.vi + "22" : "transparent", color: cat === c.key ? C.vi : (counts[c.key] ? C.txm : C.txd), fontWeight: cat === c.key ? 600 : 400 }}>
-              {c.label} <span style={{ ...mono, fontSize: 11 }}>({(counts[c.key] || 0).toLocaleString()})</span>
+              {c.label} {c.key !== "who" && <span style={{ ...mono, fontSize: 11 }}>({(counts[c.key] || 0).toLocaleString()})</span>}
             </button>
           ))}
         </div>
 
+        {cat === "who" ? <WhoRunsIt steps={steps} procs={procs} /> : <>
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Filter by name, entity, message, assembly…" style={inp({ fontSize: 12, maxWidth: 320, padding: "6px 10px" })} />
           <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
@@ -283,6 +286,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
             {rows.length === 0 && <div style={{ padding: 16, color: C.txd, fontSize: 13 }}>No {catLabel.toLowerCase()} match{search || stateFilter !== "all" || sourceFilter !== "all" ? " the current filters" : ""}.</div>}
           </div>
         </div>
+        </>}
       </>)}
 
       {filt && (() => {
