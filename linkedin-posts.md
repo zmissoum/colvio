@@ -754,23 +754,23 @@ Every Dynamics 365 admin gets that message. The answer lives in five places at o
 
 Colvio now answers it on one screen. Open the record, pick the user, and you get Dataverse's own yes / no for each right — read, write, append, delete, assign, share — plus the why: which role or team role grants it, at which depth, or which share. And for every no, what would fix it: the depth the record needs, a share, an assignment. 🔐
 
-🩺 New module: Health check. One report on what silently hurts an environment — jobs failing or suspended, cloud flows owned by people who left, plug-in steps firing on every update, connection references with no connection, environment variables with nothing in them, users without a role, unmanaged solutions in production, log tables quietly eating storage. Each finding says what to do. Copy it into a ticket.
+🩺 New module: Health check. One report on what silently hurts an environment — jobs failing or suspended, cloud flows owned by people who left, plug-in steps firing on every update, connection references with no connection, environment variables with nothing in them, users without a role, unmanaged solutions in production, log tables quietly eating storage. Each finding says what to do.
 
 🛠 And the things you used to open XrmToolBox for:
 → switch plug-in steps on / off, one or a whole assembly, and set their filtering attributes
 → add, rename, reorder, delete the values of a choice column
-→ create 40 columns from an Excel sheet — every row checked against the table before anything is sent
+→ create 40 columns from an Excel sheet — every row checked before anything is sent
 → edit and publish web resources, and search a column name inside every script (the one place Dataverse's dependency tracking never looks)
 
 Every write is confirmed. Twice on production.
 
-⌨ New module: Script Console. For what no screen does — fill a lookup from another table, fix data by rules — run JavaScript on the Web API with your own session. Dry run first: reads are real, writes are only listed. Then for real, with a rollback journal that keeps each row's previous values, so one click puts them back. The code runs in an isolated sandbox with no network of its own.
+⌨ New module: Script Console. For what no screen does — fill a lookup from another table, fix data by rules — run JavaScript on the Web API with your own session. Dry run first: reads are real, writes are only listed. Then for real, with a rollback journal that keeps each row's previous values, so one click puts them back. It runs isolated, with no network of its own.
 
 👤 "Who runs this?" For every cloud flow, workflow and plug-in step: the identity behind it — a person, a service account, an app registration — and the account each connection is signed in with. The automation that stops the day someone leaves is flagged first.
 
-📊 For the data model: per column, its fill rate (exact, even on millions of rows), what blocks deleting it, its solution layers — an unmanaged layer hiding a managed solution is the classic "my deployment changed nothing", and it's now flagged. SQL got UPDATE and DELETE, always previewed. Exports stream every row to a file, whatever the size.
+📊 For the data model: per column, its fill rate (exact, even on millions of rows), what blocks deleting it, its solution layers — an unmanaged layer hiding a managed solution is the classic "my deployment changed nothing", and it's now flagged. SQL got UPDATE and DELETE, always previewed. Exports stream every row, whatever the size.
 
-🔍 One confession, because this page keeps choosing tools that don't lie: a full review of these releases found that our own API meter — the thing that slows Colvio down before Dataverse's quota — was turning its own pauses into fake "timeout" errors. Under exactly the load it was built for. Found, fixed, shipped, and written in the changelog.
+🔍 One confession, in the spirit of tools that don't lie: a full review of these releases found that our own API meter — the thing that slows Colvio down before Dataverse's quota — was turning its own pauses into fake "timeout" errors. Under exactly the load it was built for. Found, fixed, shipped, and written in the changelog.
 
 24 modules, 692 automated tests, free and open source, running in your browser on your own session.
 
