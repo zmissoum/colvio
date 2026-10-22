@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
+import WhoRunsIt from "./WhoRunsIt.jsx";
+import { workflowRunAs } from "../identities.js";
 import { STEP_SET, STEP_PK, statePatch, statePlan, stateConfirmText, applyStateLocally, canEditFiltering, parseFiltering, formatFiltering, filteringDiff, filterableColumns } from "../stepAdmin.js";
 
 // Automation — the STATIC inventory of everything registered to run in the org: plug-in steps
@@ -19,6 +21,7 @@ const CATEGORIES = [
   { key: "4",        label: "BPFs" },
   { key: "1",        label: "Dialogs" },
   { key: "6",        label: "Desktop flows" },
+  { key: "who",      label: "👤 Who runs it" },
 ];
 const STAGE_LABEL = { 10: "Pre-validation", 20: "Pre-operation", 40: "Post-operation" };
 // The registration stages are 10/20/40 — anything else (30 = MainOperation, 5, 45…) is the
@@ -157,8 +160,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const exportRows = (format = "csv") => {
     if (isStep) {
       exportTable(
-        ["name", "assembly", "pluginType", "message", "entity", "stage", "mode", "state", "rank", "filteringAttributes", "source", "managedFlag", "modifiedOn"],
-        rows.map(r => [r.name, r.assembly, r.pluginType, r.message, r.entity, STAGE_LABEL[r.stage] || `Internal (${r.stage})`, r.mode === 1 ? "Async" : "Sync", r.state === 0 ? "Enabled" : "Disabled", r.rank, r.filteringAttributes, srcLabel(r, true), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
+        ["name", "assembly", "pluginType", "message", "entity", "stage", "mode", "state", "runsAs", "rank", "filteringAttributes", "source", "managedFlag", "modifiedOn"],
+        rows.map(r => [r.name, r.assembly, r.pluginType, r.message, r.entity, STAGE_LABEL[r.stage] || `Internal (${r.stage})`, r.mode === 1 ? "Async" : "Sync", r.state === 0 ? "Enabled" : "Disabled", r.runAsId ? (r.runAs || r.runAsId) : "Calling user", r.rank, r.filteringAttributes, srcLabel(r, true), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
         "automation_plugin_steps", format, "PluginSteps");
     } else {
       exportTable(
@@ -193,11 +196,12 @@ export default function AutomationInventory({ bp, orgInfo }) {
         <div style={{ display: "flex", gap: 3, marginBottom: 12, flexWrap: "wrap" }}>
           {CATEGORIES.map(c => (
             <button key={c.key} onClick={() => setCat(c.key)} style={{ padding: "5px 11px", fontSize: 12, border: `1px solid ${cat === c.key ? C.vi : C.bd}`, borderRadius: 5, cursor: "pointer", background: cat === c.key ? C.vi + "22" : "transparent", color: cat === c.key ? C.vi : (counts[c.key] ? C.txm : C.txd), fontWeight: cat === c.key ? 600 : 400 }}>
-              {c.label} <span style={{ ...mono, fontSize: 11 }}>({(counts[c.key] || 0).toLocaleString()})</span>
+              {c.label} {c.key !== "who" && <span style={{ ...mono, fontSize: 11 }}>({(counts[c.key] || 0).toLocaleString()})</span>}
             </button>
           ))}
         </div>
 
+        {cat === "who" ? <WhoRunsIt steps={steps} procs={procs} /> : <>
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Filter by name, entity, message, assembly…" style={inp({ fontSize: 12, maxWidth: 320, padding: "6px 10px" })} />
           <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
@@ -239,7 +243,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 700 }}>
               {isStep ? (
                 <>
-                  <thead><tr><th style={{ ...ths(), width: 28 }}><input type="checkbox" title="Select every step shown" disabled={!!busy} checked={rows.length > 0 && rows.every(r => sel.has(r.id))} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} style={{ accentColor: C.vi }} /></th><th style={ths()}>Plug-in type</th><th style={ths()}>Assembly</th><th style={ths()}>Message</th><th style={ths()}>Entity</th><th style={ths()}>Stage</th><th style={ths()}>Mode</th><th style={ths()}>State</th><th style={ths()}>Filtering</th><th style={ths()}>Source</th><th style={ths()}></th></tr></thead>
+                  <thead><tr><th style={{ ...ths(), width: 28 }}><input type="checkbox" title="Select every step shown" disabled={!!busy} checked={rows.length > 0 && rows.every(r => sel.has(r.id))} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} style={{ accentColor: C.vi }} /></th><th style={ths()}>Plug-in type</th><th style={ths()}>Assembly</th><th style={ths()}>Message</th><th style={ths()}>Entity</th><th style={ths()}>Stage</th><th style={ths()}>Mode</th><th style={ths()}>State</th><th style={ths()} title="Whose rights the step runs with: the user set on the step (Run in User's Context), or the calling user — the code can still switch to SYSTEM (CreateOrganizationService(null)), which no registration shows">Runs as</th><th style={ths()}>Filtering</th><th style={ths()}>Source</th><th style={ths()}></th></tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.id} title={r.filteringAttributes ? `Filtering attributes: ${r.filteringAttributes}` : r.name} style={{ borderBottom: `1px solid ${C.bd}22`, background: sel.has(r.id) ? C.vi + "11" : "transparent" }}>
@@ -251,6 +255,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                         <td style={tds}>{STAGE_LABEL[r.stage] || `Internal (${r.stage})`}</td>
                         <td style={tds}><Badge on={r.mode === 0} yes="Sync" no="Async" colorYes={C.or} colorNo={C.cy} /></td>
                         <td style={tds}><Badge on={r.state === 0} yes="Enabled" no="Disabled" colorYes={C.gn} colorNo={C.rd} /></td>
+                        <td style={{ ...tds, fontSize: 12, color: r.runAsId ? C.tx : C.txd, maxWidth: 180 }} title={r.runAsId ? "Runs with this user's rights, whoever triggers it" : "Runs with the rights of the user whose action triggered it"}>{r.runAsId ? (r.runAs || r.runAsId) : "Calling user"}</td>
                         <td style={{ ...tds, fontSize: 12 }}>{canEditFiltering(r)
                           ? <button onClick={() => openFiltering(r)} title={r.filteringAttributes ? `Runs when one of these changes: ${r.filteringAttributes}` : "No filtering attributes: runs on every update of any column — click to choose"} style={bt(null, { fontSize: 11, padding: "2px 8px", color: r.filteringAttributes ? C.txm : C.yw })}>{r.filteringAttributes ? `${parseFiltering(r.filteringAttributes).length} col.` : "⚠ all"}</button>
                           : <span style={{ color: C.txd }}>—</span>}</td>
@@ -262,7 +267,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                 </>
               ) : (
                 <>
-                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}<th style={ths()}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
+                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}{cat === "0" && <th style={ths()} title="Whose security context it runs in: real-time = its Execute as; background = the owner when an event starts it, the user who starts it on demand">Runs as</th>}<th style={ths()} title={cat === "5" ? "A cloud flow's owner is NOT who its actions run as — each action runs with the account of its connection (see Who runs it)" : "Who owns the process"}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.id} style={{ borderBottom: `1px solid ${C.bd}22` }}>
@@ -271,6 +276,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                         <td style={tds}><Badge on={r.state === 1} yes="Activated" no="Draft" colorYes={C.gn} colorNo={C.yw} /></td>
                         {cat === "0" && <td style={tds}><Badge on={r.mode === 1} yes="Real-time" no="Background" colorYes={C.or} colorNo={C.cy} /></td>}
                         {cat === "0" && <td style={{ ...tds, fontSize: 12, color: C.txm }}>{triggersOf(r) || "—"}</td>}
+                        {cat === "0" && <td style={{ ...tds, fontSize: 12, color: workflowRunAs(r).who === "owner" ? C.tx : C.txm, maxWidth: 200 }}>{workflowRunAs(r).label}</td>}
                         <td style={{ ...tds, color: C.txm, maxWidth: 160 }}>{r.owner}</td>
                         <td style={tds}><SrcBadge r={r} step={false} /></td>
                         <td style={{ ...tds, fontSize: 11, color: C.txd }}>{r.modifiedon ? new Date(r.modifiedon).toLocaleDateString() : ""}</td>
@@ -283,6 +289,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
             {rows.length === 0 && <div style={{ padding: 16, color: C.txd, fontSize: 13 }}>No {catLabel.toLowerCase()} match{search || stateFilter !== "all" || sourceFilter !== "all" ? " the current filters" : ""}.</div>}
           </div>
         </div>
+        </>}
       </>)}
 
       {filt && (() => {

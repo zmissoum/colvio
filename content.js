@@ -1777,7 +1777,7 @@
             // at which stage, sync or async) — the design-time view, not the runtime jobs that
             // System Ops shows. Paged; a heavy org has a few thousand steps at most.
             const rowsP = [];
-            let urlP = `sdkmessageprocessingsteps?$select=sdkmessageprocessingstepid,name,stage,mode,rank,statecode,ismanaged,filteringattributes,modifiedon&$expand=plugintypeid($select=typename,assemblyname),sdkmessageid($select=name),sdkmessagefilterid($select=primaryobjecttypecode)&$orderby=name`;
+            let urlP = `sdkmessageprocessingsteps?$select=sdkmessageprocessingstepid,name,stage,mode,rank,statecode,ismanaged,filteringattributes,modifiedon,_impersonatinguserid_value&$expand=plugintypeid($select=typename,assemblyname),sdkmessageid($select=name),sdkmessagefilterid($select=primaryobjecttypecode)&$orderby=name`;
             while (urlP) {
               const dP = await dvRequest("GET", urlP, null, { Prefer: "odata.maxpagesize=5000" });
               (dP.value || []).forEach(s => rowsP.push({
@@ -1789,6 +1789,9 @@
                 state: s.statecode,        // 0 Enabled / 1 Disabled
                 managed: !!s.ismanaged,
                 filteringAttributes: s.filteringattributes || "",
+                // the user the step runs as (null = the calling user) — Automation › Who runs it
+                runAsId: s._impersonatinguserid_value || null,
+                runAs: s["_impersonatinguserid_value@OData.Community.Display.V1.FormattedValue"] || "",
                 message: s.sdkmessageid?.name || "",
                 entity: s.sdkmessagefilterid?.primaryobjecttypecode || "",
                 pluginType: s.plugintypeid?.typename || "",
@@ -1808,7 +1811,7 @@
             // (Power Automate) cloud flow / 6 desktop flow. type eq 1 keeps definitions only
             // (2 = per-record activations, 3 = templates).
             const rowsW = [];
-            let urlW = `workflows?$select=workflowid,name,category,statecode,mode,primaryentity,ismanaged,triggeroncreate,triggerondelete,triggeronupdateattributelist,_ownerid_value,modifiedon&$filter=type eq 1&$orderby=name`;
+            let urlW = `workflows?$select=workflowid,name,category,statecode,mode,runas,ondemand,subprocess,primaryentity,ismanaged,triggeroncreate,triggerondelete,triggeronupdateattributelist,_ownerid_value,_createdby_value,modifiedon&$filter=type eq 1&$orderby=name`;
             while (urlW) {
               const dW = await dvRequest("GET", urlW, null, { Prefer: "odata.maxpagesize=5000" });
               (dW.value || []).forEach(w => rowsW.push({
@@ -1823,12 +1826,85 @@
                 triggerDelete: !!w.triggerondelete,
                 triggerUpdate: w.triggeronupdateattributelist || "",
                 owner: w["_ownerid_value@OData.Community.Display.V1.FormattedValue"] || "",
+                ownerId: w._ownerid_value || null,
+                ownerType: w["_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname"] || "systemuser",
+                createdById: w._createdby_value || null,
+                createdBy: w["_createdby_value@OData.Community.Display.V1.FormattedValue"] || "",
+                runAs: w.runas ?? null, // real-time workflows: 0 owner / 1 calling user
+                onDemand: !!w.ondemand, // a user can start it from Run Workflow (then it runs with THAT user's rights)
+                child: !!w.subprocess,
                 modifiedon: w.modifiedon || "",
               }));
               const nlW = dW["@odata.nextLink"];
               urlW = nlW ? nlW.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
             }
             result = rowsW;
+            break;
+          }
+
+          case "getWhoRunsData": {
+            // Automation › Who runs it: every connection reference, and every connection instance
+            // (the Dataverse copy of a connection, with the ACCOUNT it is signed in as) — paged, all
+            // of them. An org without the connectioninstance table says so instead of failing.
+            const pageAllW = async (url) => {
+              const out = [];
+              while (url) {
+                const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" });
+                out.push(...(d.value || []));
+                const nl = d["@odata.nextLink"]; url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              }
+              return out;
+            };
+            const fvW = (e, f) => e[`${f}@OData.Community.Display.V1.FormattedValue`] || "";
+            const refsW = (await pageAllW("connectionreferences?$select=connectionreferenceid,connectionreferencedisplayname,connectionreferencelogicalname,connectorid,connectionid,statecode,_ownerid_value,_createdby_value"))
+              .map(r => ({ id: r.connectionreferenceid, name: r.connectionreferencedisplayname || "", logicalName: r.connectionreferencelogicalname || "", connectorId: r.connectorid || "", connectionId: r.connectionid || "", state: r.statecode, ownerId: r._ownerid_value || null, ownerType: r["_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname"] || "systemuser", owner: fvW(r, "_ownerid_value"), createdBy: fvW(r, "_createdby_value") }));
+            let instancesW = [], instancesMissing = false;
+            try {
+              instancesW = (await pageAllW("connectioninstances?$select=connectioninstanceid,connectioninstancedisplayname,accountname,connectioninternalid,connectorinternalid,connectionstatus,statecode,_connectionreferenceid_value,_ownerid_value"))
+                .map(i => ({ id: i.connectioninstanceid, name: i.connectioninstancedisplayname || "", accountName: i.accountname || "", internalId: i.connectioninternalid || "", connectorInternalId: i.connectorinternalid || "", status: i.connectionstatus || "", state: i.statecode, refId: i._connectionreferenceid_value || null, ownerId: i._ownerid_value || null, owner: fvW(i, "_ownerid_value") }));
+            } catch (e) {
+              if (!/404|not found|could not find|does not exist/i.test(e.message || "")) throw e;
+              instancesMissing = true;
+            }
+            result = { refs: refsW, instances: instancesW, instancesMissing };
+            break;
+          }
+
+          case "getIdentityUsers": {
+            // The users behind the identities: by id (owners, run-as) and by account name (signed-in
+            // connections), 40 per filtered read — plus every application user and non-interactive
+            // user, the integration identities that may run things from outside.
+            const SEL = "systemuserid,fullname,internalemailaddress,domainname,applicationid,accessmode,isdisabled,_businessunitid_value";
+            const usersU = new Map();
+            const readU = async (filter) => {
+              let url = `systemusers?$select=${SEL}&$filter=${filter}`;
+              while (url) {
+                const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" });
+                for (const u of d.value || []) usersU.set(String(u.systemuserid).toLowerCase(), u);
+                const nl = d["@odata.nextLink"]; url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+              }
+            };
+            const idsU = [...new Set((params.ids || []).map(x => String(x || "").toLowerCase()).filter(x => SAFE_GUID.test(x)))];
+            for (let i = 0; i < idsU.length; i += 40) await readU(idsU.slice(i, i + 40).map(id => `systemuserid eq ${id}`).join(" or "));
+            const accU = [...new Set((params.accounts || []).map(a => String(a || "").trim().toLowerCase()).filter(a => a && a.length <= 320 && !/[\x00-\x1f]/.test(a)))];
+            const q = (s) => `'${s.replace(/'/g, "''")}'`;
+            for (let i = 0; i < accU.length; i += 20) await readU(accU.slice(i, i + 20).map(a => `domainname eq ${encodeURIComponent(q(a))} or internalemailaddress eq ${encodeURIComponent(q(a))}`).join(" or "));
+            await readU("applicationid ne null or accessmode eq 4");
+            result = [...usersU.values()];
+            break;
+          }
+
+          case "getFlowDefinitionsPage": {
+            // One page of cloud-flow definitions (clientdata) — 25 at a time, since a definition can be
+            // big; the panel reads them all, page by page, to see which connections each flow uses.
+            let urlF = "workflows?$select=workflowid,clientdata&$filter=category eq 5 and type eq 1";
+            if (params.next) {
+              const rel = String(params.next).replace(/^.*\/api\/data\/v[\d.]+\//, "");
+              if (!/^workflows\?/.test(rel)) throw new Error("Invalid page link.");
+              urlF = rel;
+            }
+            const dF = await dvRequest("GET", urlF, null, { Prefer: "odata.maxpagesize=25", ...NO_ANN });
+            result = { rows: (dF.value || []).map(w => ({ id: w.workflowid, clientdata: w.clientdata || "" })), next: dF["@odata.nextLink"] || null };
             break;
           }
 

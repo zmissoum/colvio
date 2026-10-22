@@ -23,6 +23,7 @@ import { scriptDemoOrg } from "./scriptDemo.js";
 // One Script Console demo org per page load: a demo run stays written until rollback or reload.
 let scriptDemo = null;
 const getScriptDemo = () => scriptDemo || (scriptDemo = scriptDemoOrg());
+import { DEMO_USERS, DEMO_REFS, DEMO_INSTANCES, DEMO_FLOW_DEFS, DEMO_IDENT } from "./identitiesDemo.js";
 
 // ── Demo constants shared by several mocks ──
 // Views: the account ones the Apps demo exposes, plus the contact view the Account form's
@@ -163,7 +164,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -991,17 +992,33 @@ export const bridge = {
     return [
       { id: "s1", name: "Contoso.Plugins.AccountPreCreate: Create of account", stage: 20, mode: 0, rank: 1, state: 0, managed: false, filteringAttributes: "", message: "Create", entity: "account", pluginType: "Contoso.Plugins.AccountPreCreate", assembly: "Contoso.Plugins", modifiedon: new Date(Date.now() - 40 * 86400000).toISOString() },
       { id: "s2", name: "Contoso.Plugins.ContactPostUpdate: Update of contact", stage: 40, mode: 1, rank: 10, state: 0, managed: false, filteringAttributes: "emailaddress1,telephone1", message: "Update", entity: "contact", pluginType: "Contoso.Plugins.ContactPostUpdate", assembly: "Contoso.Plugins", modifiedon: new Date(Date.now() - 12 * 86400000).toISOString() },
+      { id: "s4", name: "Contoso.Integration.SapSync: Update of account", stage: 40, mode: 1, rank: 1, state: 0, managed: false, filteringAttributes: "name,new_sapid", message: "Update", entity: "account", pluginType: "Contoso.Integration.SapSync", assembly: "Contoso.Integration", runAsId: DEMO_IDENT.sapApp, runAs: "SAP Connector (app)", modifiedon: new Date(Date.now() - 20 * 86400000).toISOString() },
       { id: "s3", name: "Microsoft.Dynamics.Sales.LeadQualify", stage: 40, mode: 0, rank: 1, state: 1, managed: true, filteringAttributes: "", message: "QualifyLead", entity: "lead", pluginType: "Microsoft.Dynamics.Sales.LeadQualify", assembly: "Microsoft.Dynamics.Sales", modifiedon: new Date(Date.now() - 200 * 86400000).toISOString() },
     ];
   },
   async getProcesses() {
     if (isExtension) return callD365("getProcesses");
     return [
-      { id: "w1", name: "Notify owner on big opportunity", category: 0, state: 1, mode: 0, entity: "opportunity", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "estimatedvalue", owner: "Zakaria Missoum", modifiedon: new Date(Date.now() - 30 * 86400000).toISOString() },
-      { id: "w2", name: "Validate account number", category: 2, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Zakaria Missoum", modifiedon: new Date(Date.now() - 90 * 86400000).toISOString() },
-      { id: "w3", name: "Case escalation flow", category: 5, state: 1, mode: 0, entity: "incident", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "", owner: "Marie Martin", modifiedon: new Date(Date.now() - 5 * 86400000).toISOString() },
-      { id: "w4", name: "Phone to Case Process", category: 4, state: 1, mode: 0, entity: "incident", managed: true, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "SYSTEM", modifiedon: new Date(Date.now() - 300 * 86400000).toISOString() },
+      { id: "w1", name: "Notify owner on big opportunity", category: 0, state: 1, mode: 1, runAs: 0, entity: "opportunity", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "estimatedvalue", owner: "Zakaria Missoum", ownerId: DEMO_IDENT.zakaria, ownerType: "systemuser", modifiedon: new Date(Date.now() - 30 * 86400000).toISOString() },
+      { id: "w2", name: "Validate account number", category: 2, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Zakaria Missoum", ownerId: DEMO_IDENT.zakaria, ownerType: "systemuser", modifiedon: new Date(Date.now() - 90 * 86400000).toISOString() },
+      { id: DEMO_IDENT.flowSap, name: "Push new accounts to SAP", category: 5, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "", owner: "Paul Durand", ownerId: DEMO_IDENT.paul, ownerType: "systemuser", modifiedon: new Date(Date.now() - 60 * 86400000).toISOString() },
+      { id: DEMO_IDENT.flowDigest, name: "Weekly account digest", category: 5, state: 1, mode: 0, entity: "", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Integration team", ownerId: DEMO_IDENT.team, ownerType: "team", modifiedon: new Date(Date.now() - 12 * 86400000).toISOString() },
+      { id: DEMO_IDENT.flowNotify, name: "Case escalation flow", category: 5, state: 1, mode: 0, entity: "incident", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "", owner: "Alex Baker", ownerId: DEMO_IDENT.alex, ownerType: "systemuser", modifiedon: new Date(Date.now() - 5 * 86400000).toISOString() },
+      { id: "w4", name: "Phone to Case Process", category: 4, state: 1, mode: 0, entity: "incident", managed: true, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "SYSTEM", ownerId: DEMO_IDENT.system, ownerType: "systemuser", modifiedon: new Date(Date.now() - 300 * 86400000).toISOString() },
     ];
+  },
+  // ── Automation › Who runs it ──
+  async getWhoRunsData() {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 200)); return { refs: DEMO_REFS, instances: DEMO_INSTANCES, instancesMissing: false }; }
+    return callD365("getWhoRunsData");
+  },
+  async getIdentityUsers(ids, accounts) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 150)); return DEMO_USERS; }
+    return callD365("getIdentityUsers", { ids, accounts });
+  },
+  async getFlowDefinitionsPage(next) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 150)); return { rows: DEMO_FLOW_DEFS, next: null }; }
+    return callD365("getFlowDefinitionsPage", { next });
   },
 
   // ── Solutions ──

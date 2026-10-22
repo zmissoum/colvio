@@ -23,7 +23,7 @@ DEVELOP
 • Script Console — run JavaScript on the Web API with your session: a complete client (paging, FetchXML, create / update / upsert / delete, links, actions, $batch), a dry run that lists every write without sending it, then a real run you can roll back. The script runs isolated, without network.
 • API Tester — a Postman for Dataverse with automatic authentication: GET / POST / PATCH / PUT / DELETE, header autocomplete, JSON editor with validation, templates, a history with secrets redacted, copy as cURL.
 • Metadata — tables, columns and choices, Virtual and Elastic table filters; per column: fill rate, dependencies (what blocks a delete, everything that uses it), solution layers; data dictionary export; edit choice values; create columns in bulk from a CSV / Excel sheet.
-• Automation — every plug-in step, classic workflow, cloud flow, business rule, action and business process flow registered in the org; enable / disable steps and set their filtering attributes.
+• Automation — every plug-in step, classic workflow, cloud flow, business rule, action and business process flow registered in the org; enable / disable steps and set their filtering attributes; who runs what — every identity behind the automation (person, service account, app registration, built-in user, team) and the account each connection is signed in with.
 • Web Resources — edit and publish scripts, styles and pages; search a column name inside the scripts shown.
 • Apps — what each model-driven app really exposes, including the "all forms / all views" state the maker portal never shows; view filters decoded to plain language.
 • Relationships & Schema — an interactive relationship graph, and an ERD canvas exportable as PNG, SVG or Mermaid.
