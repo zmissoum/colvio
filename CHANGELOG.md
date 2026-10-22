@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.201] - 2026-10-22
+### Added
+- Automation › Plug-in steps: a **Runs as** column - the user set on the step (Run in User's Context), or "Calling user" (the rights of whoever triggered it); also in the CSV / Excel export. Its tooltip says what no registration shows: the plug-in's code can still switch to the SYSTEM user (`CreateOrganizationService(null)`).
+
 ## [1.11.200] - 2026-10-22
 ### Fixed - who a classic workflow really runs as
 - Who runs it credited "runs as owner" only to real-time workflows set to Execute as: owner. Microsoft's rule is wider: a **background workflow started by an event runs in its owner's context** too, while one started **on demand** (Run Workflow) runs with the rights of the user who starts it, and a real-time one set to the calling user runs as whoever made the change. Background event-started workflows now count under their owner ("runs as · Background workflow").

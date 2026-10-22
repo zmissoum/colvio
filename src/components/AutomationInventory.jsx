@@ -160,8 +160,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const exportRows = (format = "csv") => {
     if (isStep) {
       exportTable(
-        ["name", "assembly", "pluginType", "message", "entity", "stage", "mode", "state", "rank", "filteringAttributes", "source", "managedFlag", "modifiedOn"],
-        rows.map(r => [r.name, r.assembly, r.pluginType, r.message, r.entity, STAGE_LABEL[r.stage] || `Internal (${r.stage})`, r.mode === 1 ? "Async" : "Sync", r.state === 0 ? "Enabled" : "Disabled", r.rank, r.filteringAttributes, srcLabel(r, true), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
+        ["name", "assembly", "pluginType", "message", "entity", "stage", "mode", "state", "runsAs", "rank", "filteringAttributes", "source", "managedFlag", "modifiedOn"],
+        rows.map(r => [r.name, r.assembly, r.pluginType, r.message, r.entity, STAGE_LABEL[r.stage] || `Internal (${r.stage})`, r.mode === 1 ? "Async" : "Sync", r.state === 0 ? "Enabled" : "Disabled", r.runAsId ? (r.runAs || r.runAsId) : "Calling user", r.rank, r.filteringAttributes, srcLabel(r, true), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
         "automation_plugin_steps", format, "PluginSteps");
     } else {
       exportTable(
@@ -243,7 +243,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 700 }}>
               {isStep ? (
                 <>
-                  <thead><tr><th style={{ ...ths(), width: 28 }}><input type="checkbox" title="Select every step shown" disabled={!!busy} checked={rows.length > 0 && rows.every(r => sel.has(r.id))} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} style={{ accentColor: C.vi }} /></th><th style={ths()}>Plug-in type</th><th style={ths()}>Assembly</th><th style={ths()}>Message</th><th style={ths()}>Entity</th><th style={ths()}>Stage</th><th style={ths()}>Mode</th><th style={ths()}>State</th><th style={ths()}>Filtering</th><th style={ths()}>Source</th><th style={ths()}></th></tr></thead>
+                  <thead><tr><th style={{ ...ths(), width: 28 }}><input type="checkbox" title="Select every step shown" disabled={!!busy} checked={rows.length > 0 && rows.every(r => sel.has(r.id))} onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} style={{ accentColor: C.vi }} /></th><th style={ths()}>Plug-in type</th><th style={ths()}>Assembly</th><th style={ths()}>Message</th><th style={ths()}>Entity</th><th style={ths()}>Stage</th><th style={ths()}>Mode</th><th style={ths()}>State</th><th style={ths()} title="Whose rights the step runs with: the user set on the step (Run in User's Context), or the calling user — the code can still switch to SYSTEM (CreateOrganizationService(null)), which no registration shows">Runs as</th><th style={ths()}>Filtering</th><th style={ths()}>Source</th><th style={ths()}></th></tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.id} title={r.filteringAttributes ? `Filtering attributes: ${r.filteringAttributes}` : r.name} style={{ borderBottom: `1px solid ${C.bd}22`, background: sel.has(r.id) ? C.vi + "11" : "transparent" }}>
@@ -255,6 +255,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                         <td style={tds}>{STAGE_LABEL[r.stage] || `Internal (${r.stage})`}</td>
                         <td style={tds}><Badge on={r.mode === 0} yes="Sync" no="Async" colorYes={C.or} colorNo={C.cy} /></td>
                         <td style={tds}><Badge on={r.state === 0} yes="Enabled" no="Disabled" colorYes={C.gn} colorNo={C.rd} /></td>
+                        <td style={{ ...tds, fontSize: 12, color: r.runAsId ? C.tx : C.txd, maxWidth: 180 }} title={r.runAsId ? "Runs with this user's rights, whoever triggers it" : "Runs with the rights of the user whose action triggered it"}>{r.runAsId ? (r.runAs || r.runAsId) : "Calling user"}</td>
                         <td style={{ ...tds, fontSize: 12 }}>{canEditFiltering(r)
                           ? <button onClick={() => openFiltering(r)} title={r.filteringAttributes ? `Runs when one of these changes: ${r.filteringAttributes}` : "No filtering attributes: runs on every update of any column — click to choose"} style={bt(null, { fontSize: 11, padding: "2px 8px", color: r.filteringAttributes ? C.txm : C.yw })}>{r.filteringAttributes ? `${parseFiltering(r.filteringAttributes).length} col.` : "⚠ all"}</button>
                           : <span style={{ color: C.txd }}>—</span>}</td>
