@@ -1,3 +1,5 @@
+import { decodeBytes } from "./textDecode.js";
+
 // Web resources — list, read, edit (text types), publish, and search a name inside every script
 // (what Dataverse's dependency tracking can't see). Pure: types, base64 <-> text, search.
 
@@ -25,13 +27,9 @@ export function decodeContent(b64) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  // UTF-16 (BOM FF FE / FE FF) is shown but not edited — re-encoding it as UTF-8 would corrupt it
-  if (bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff))) {
-    const enc = bytes[0] === 0xff ? "utf-16le" : "utf-16be";
-    return { text: new TextDecoder(enc).decode(bytes), bom: false, encoding: enc };
-  }
-  const bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
-  return { text: new TextDecoder("utf-8").decode(bom ? bytes.subarray(3) : bytes), bom, encoding: "utf-8" };
+  // UTF-16 (BOM FF FE / FE FF) is shown but not edited — re-encoding it as UTF-8 would corrupt it.
+  // No code-page guess here: what is saved back is UTF-8, so a web resource reads as UTF-8.
+  return decodeBytes(bytes, { legacy: false });
 }
 export function encodeContent(text, bom = false) {
   const body = new TextEncoder().encode(String(text ?? ""));

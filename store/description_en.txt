@@ -2,7 +2,7 @@ Colvio — the free, open-source toolkit for Microsoft Dynamics 365 / Dataverse,
 
 Query, load, inspect, test the Web API and audit your org from one side panel. Colvio uses the session you are already signed in with: no app registration, no API key, no account, no subscription. It talks only to your own Dynamics 365 host — no analytics, no telemetry, no external server.
 
-23 modules for consultants, admins and developers. Colvio adapts to your rights: admin-only modules stay hidden for standard users, and every write still goes through Dataverse's own security.
+24 modules for consultants, admins and developers. Colvio adapts to your rights: admin-only modules stay hidden for standard users, and every write still goes through Dataverse's own security.
 
 WHAT'S NEW
 • Record activity — save a record and see what the save set off: plug-ins in execution order (duration, cascades, exception, full trace), system jobs and cloud flows; click a failure for its error, the step behind it and its recent runs; "log every plug-in" for 15–60 minutes, reverted by itself.
@@ -20,6 +20,7 @@ DATA
 • Show All Data — every field of the record open in your tab, with logical names and types, editable in place (field security still enforced). Record activity: save the record and see what it triggered — plug-in chains, system jobs, and which cloud flows run or not, and why. Record access: pick a user and get Dataverse's own yes / no for each right on the record, why, and what would grant a no. Field-level change history, and a Business Process Flow manager for admins.
 
 DEVELOP
+• Script Console — run JavaScript on the Web API with your session: a complete client (paging, FetchXML, create / update / upsert / delete, links, actions, $batch), a dry run that lists every write without sending it, then a real run you can roll back. The script runs isolated, without network.
 • API Tester — a Postman for Dataverse with automatic authentication: GET / POST / PATCH / PUT / DELETE, header autocomplete, JSON editor with validation, templates, a history with secrets redacted, copy as cURL.
 • Metadata — tables, columns and choices, Virtual and Elastic table filters; per column: fill rate, dependencies (what blocks a delete, everything that uses it), solution layers; data dictionary export; edit choice values; create columns in bulk from a CSV / Excel sheet.
 • Automation — every plug-in step, classic workflow, cloud flow, business rule, action and business process flow registered in the org; enable / disable steps and set their filtering attributes; who runs what — every identity behind the automation (person, service account, app registration, built-in user, team) and the account each connection is signed in with.

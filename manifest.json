@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Colvio for Dynamics 365",
-  "version": "1.11.201",
+  "version": "1.11.202",
   "description": "Colvio \u2014 Data Explorer, Loader & Inspector for Microsoft Dynamics 365 / Dataverse.",
   "author": "zmissoum",
   "minimum_chrome_version": "110",
   "permissions": [
     "scripting",
     "storage",
+    "unlimitedStorage",
     "declarativeContent",
     "webRequest",
     "alarms"
@@ -17,6 +18,14 @@
     "https://*.microsoftdynamics.us/*",
     "https://*.dynamics.cn/*"
   ],
+  "sandbox": {
+    "pages": [
+      "sandbox.html"
+    ]
+  },
+  "content_security_policy": {
+    "sandbox": "sandbox allow-scripts; default-src 'none'; script-src 'self' 'unsafe-eval'; worker-src blob:"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"

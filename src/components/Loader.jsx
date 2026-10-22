@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES, valuesToVerifyOneByOne } from "../loaderUtils.js";
 import { createDemoLoaderIO } from "../loaderDemo.js";
+import { decodeBytes } from "../textDecode.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProd } from "../shared.jsx";
 
 const logStatusColor=(st)=>st==="CREATED"||st==="WOULD CREATE"?C.gn
@@ -184,9 +185,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           setCsvData({h:[],r:[]}); setCsvFile(null);
           setParseInfo({rawLines:0,maxNl:0,maxNlRow:0,badParse:true,parsedRecords:0,excelError:err?.message||String(err)});
         }
-      } else parseData(ev.target.result);
+      } else parseData(decodeBytes(ev.target.result).text); // UTF-8, UTF-16 (Excel "Unicode Text") or Windows-1252
     };
-    isExcel?reader.readAsArrayBuffer(f):reader.readAsText(f);
+    reader.readAsArrayBuffer(f);
   };
 
   const handlePaste=()=>{if(pasteText.trim()){setCsvFile({name:"clipboard_data.csv"});parseData(pasteText);}};

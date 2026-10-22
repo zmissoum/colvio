@@ -744,9 +744,9 @@ What's the first SQL query you'll throw at Dataverse? 👇
 
 Moved to [`linkedin-plan-videos.md`](linkedin-plan-videos.md): the video-only plan (rules, calendar with a "published" checklist, and the 17 texts in EN + FR).
 
-## Post 47 — "Why can't she see this record?" now has a screen (1.11.181 → 1.11.198)
+## Post 47 — "Why can't she see this record?" now has a screen (1.11.181 → 1.11.202)
 
-> Release post (Colvio page voice, ENGLISH ONLY), covers the 1.11.182 → 1.11.198 arc. Hero = Record access (the admin question every consultant gets on a Monday morning). Second = Health check (new module). Third = the writes that used to need XrmToolBox (plug-in steps, choice values, columns from a sheet, web resources) — with the "every write confirmed, twice on production" line. Fourth = data-model tools + SQL UPDATE/DELETE + To file. HONESTY thread kept (Posts 22–25): the review-pass confession about our own API meter. NOTE FOR ZAKARIA: Tue/Thu cadence, link in FIRST COMMENT, not in the body. Separate from the video plan (Posts 26–46) — this one has no video.
+> Release post (Colvio page voice, ENGLISH ONLY), covers the 1.11.182 → 1.11.202 arc (the store update after 1.11.181). Hero = Record access (the admin question every consultant gets on a Monday morning). Second = Health check (new module). Third = the writes that used to need XrmToolBox (plug-in steps, choice values, columns from a sheet, web resources) — with the "every write confirmed, twice on production" line. Then Script Console (new module, 1.11.202) and Who runs it (1.11.199–201). Then data-model tools + SQL UPDATE/DELETE + To file. HONESTY thread kept (Posts 22–25): the review-pass confession about our own API meter. NOTE FOR ZAKARIA: Tue/Thu cadence, link in FIRST COMMENT, not in the body. Separate from the video plan (Posts 26–46) — this one has no video.
 
 "Why can't she see this record?"
 
@@ -764,11 +764,15 @@ Colvio now answers it on one screen. Open the record, pick the user, and you get
 
 Every write is confirmed. Twice on production.
 
+⌨ New module: Script Console. For what no screen does — fill a lookup from another table, fix data by rules — run JavaScript on the Web API with your own session. Dry run first: reads are real, writes are only listed. Then for real, with a rollback journal that keeps each row's previous values, so one click puts them back. The code runs in an isolated sandbox with no network of its own.
+
+👤 "Who runs this?" For every cloud flow, workflow and plug-in step: the identity behind it — a person, a service account, an app registration — and the account each connection is signed in with. The automation that stops the day someone leaves is flagged first.
+
 📊 For the data model: per column, its fill rate (exact, even on millions of rows), what blocks deleting it, its solution layers — an unmanaged layer hiding a managed solution is the classic "my deployment changed nothing", and it's now flagged. SQL got UPDATE and DELETE, always previewed. Exports stream every row to a file, whatever the size.
 
 🔍 One confession, because this page keeps choosing tools that don't lie: a full review of these releases found that our own API meter — the thing that slows Colvio down before Dataverse's quota — was turning its own pauses into fake "timeout" errors. Under exactly the load it was built for. Found, fixed, shipped, and written in the changelog.
 
-23 modules, 640 automated tests, free and open source, running in your browser on your own session.
+24 modules, 692 automated tests, free and open source, running in your browser on your own session.
 
 Which of these would you have opened XrmToolBox for last week? 👇
 

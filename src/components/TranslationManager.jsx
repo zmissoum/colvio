@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
+import { decodeBytes } from "../textDecode.js";
 
 export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const isLive=orgInfo?.isExtension;
@@ -264,7 +265,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
                 {saveMsg&&<span style={{fontSize:12,color:C.gn}}>{saveMsg}</span>}
                 <button onClick={exportCSV} style={bt(null,{fontSize:12})}><I.Download/> Export CSV</button>
                 {!readOnly&&<>
-                  <input ref={fRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>handleImport(ev.target.result);r.readAsText(f);}}}/>
+                  <input ref={fRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>handleImport(decodeBytes(ev.target.result).text);r.readAsArrayBuffer(f);}e.target.value="";}}/>
                   <button onClick={()=>fRef.current?.click()} style={bt(null,{fontSize:12})}><I.Upload/> Import CSV</button>
                   <button onClick={handleSave} disabled={editCount===0||saving} style={bt(editCount>0?C.vi:C.sfh,{fontSize:12,opacity:editCount===0?.5:1})}>{saving?<Spin s={12}/>:null} Save {editCount>0?`(${editCount})`:""}</button>
                 </>}

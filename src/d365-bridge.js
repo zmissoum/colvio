@@ -19,6 +19,10 @@ import { demoAccessContext } from "./accessDemo.js";
 import { demoComponentLayers } from "./solutionLayersDemo.js";
 import { demoOptionSetInfo, demoOptionSetChange } from "./optionSetEditDemo.js";
 import { demoWebResources, demoWebResourceContents, demoUpdateWebResource } from "./webResourcesDemo.js";
+import { scriptDemoOrg } from "./scriptDemo.js";
+// One Script Console demo org per page load: a demo run stays written until rollback or reload.
+let scriptDemo = null;
+const getScriptDemo = () => scriptDemo || (scriptDemo = scriptDemoOrg());
 import { DEMO_USERS, DEMO_REFS, DEMO_INSTANCES, DEMO_FLOW_DEFS, DEMO_IDENT } from "./identitiesDemo.js";
 
 // ── Demo constants shared by several mocks ──
@@ -160,7 +164,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage";
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -473,6 +477,13 @@ export const bridge = {
       return r;
     }
     return callD365("customRequest", { method, path, headers, body });
+  },
+
+  // Script Console: one raw Web API request (host-locked in content.js, 5-minute budget; the
+  // response is returned, never thrown). Dry run, journal and 429 retries: scriptRuntime.js.
+  async scriptRequest({ method, path, headers, body }) {
+    if (!isExtension) return getScriptDemo().send({ method, path, headers, body });
+    return callD365("scriptRequest", { method, path, headers, body });
   },
 
   async executeFetchXml(fetchXml) {
