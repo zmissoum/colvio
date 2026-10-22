@@ -39,6 +39,29 @@ export function classifyIdentity(u) {
   return { kind: "person", ...KIND.person };
 }
 
+// Whose security context a process runs in (Microsoft's rules for classic workflows):
+// - real-time: its "Execute as" (runas) — the owner (0) or the user who made the change (1);
+// - background, started by an event: the owner; started on demand from Run Workflow: the user who
+//   starts it (limited to that user's privileges);
+// - cloud flows: each action runs with the account of its connection, not as the owner;
+// - business rules, custom actions, business process flows: the user.
+export function workflowRunAs(p) {
+  const cat = Number(p?.category);
+  if (cat === 0) {
+    if (Number(p.mode) === 1) return Number(p.runAs) === 0 ? { who: "owner", label: "Owner (Execute as)" } : { who: "caller", label: "User who made the change" };
+    const auto = !!(p.triggerCreate || p.triggerDelete || String(p.triggerUpdate || "").trim());
+    if (auto && p.onDemand) return { who: "owner", label: "Owner when automatic · the user who starts it on demand" };
+    if (auto) return { who: "owner", label: "Owner (started by an event)" };
+    if (p.onDemand) return { who: "starter", label: "User who starts it (on demand)" };
+    if (p.child) return { who: "parent", label: "As started by its parent process" };
+    return { who: "none", label: "Never starts (no trigger, not on demand, not a child)" };
+  }
+  if (cat === 5) return { who: "connections", label: "Each action: the account of its connection" };
+  if (cat === 6) return { who: "connections", label: "Its connection's account / machine" };
+  if (cat === 2 || cat === 3 || cat === 4 || cat === 1) return { who: "caller", label: "The user who triggers it" };
+  return { who: "unknown", label: "" };
+}
+
 // A cloud flow's clientdata → the connections it uses: [{ key, api, refLogicalName, connectionName, source }].
 // source "invoker" = the run-only user's own connection ("provided by the user who runs it").
 export function parseFlowConnections(clientdata) {
@@ -87,9 +110,10 @@ export function buildWhoRunsWhat({ procs = [], steps = [], refs = [], instances 
 
   for (const p of procs) {
     if (p.ownerId) ident(p.ownerId, p.ownerType, p.owner).uses.push({ what: "owns", kind: CAT[p.category] || "Process", name: p.name, id: p.id, active: isActiveProc(p) });
-    // a real-time classic workflow runs as its owner (runas 0) or as whoever triggers it (1)
-    if (Number(p.category) === 0 && Number(p.mode) === 1 && Number(p.runAs) === 0 && p.ownerId)
-      ident(p.ownerId, p.ownerType, p.owner).uses.push({ what: "runs as", kind: "Real-time workflow", name: p.name, id: p.id, active: isActiveProc(p) });
+    // classic workflows that run in their OWNER's context: real-time ones set to "Execute as: owner",
+    // background ones started by an event
+    if (p.ownerId && workflowRunAs(p).who === "owner")
+      ident(p.ownerId, p.ownerType, p.owner).uses.push({ what: "runs as", kind: Number(p.mode) === 1 ? "Real-time workflow" : "Background workflow", name: p.name, id: p.id, active: isActiveProc(p) });
   }
   for (const s of steps) {
     if (s.runAsId) ident(s.runAsId, "systemuser", s.runAs).uses.push({ what: "runs as", kind: "Plug-in step", name: s.name, id: s.id, active: Number(s.state) === 0 });

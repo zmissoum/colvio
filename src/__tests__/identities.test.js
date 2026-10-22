@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyIdentity, parseFlowConnections, connectorName, buildWhoRunsWhat, kindCounts, identityExportRows, connectionExportRows, IDENTITY_HEADERS, CONNECTION_HEADERS } from "../identities.js";
+import { workflowRunAs, classifyIdentity, parseFlowConnections, connectorName, buildWhoRunsWhat, kindCounts, identityExportRows, connectionExportRows, IDENTITY_HEADERS, CONNECTION_HEADERS } from "../identities.js";
 import { DEMO_USERS, DEMO_REFS, DEMO_INSTANCES, DEMO_FLOW_DEFS, DEMO_IDENT as I } from "../identitiesDemo.js";
 
 describe("classifyIdentity", () => {
@@ -16,6 +16,21 @@ describe("classifyIdentity", () => {
     expect(classifyIdentity({ fullname: "Jane Doe", domainname: "jane.doe@contoso.com", accessmode: 0 }).kind).toBe("person");
     expect(classifyIdentity({ fullname: "Sylvie Botella", domainname: "sylvie.botella@contoso.com" }).kind).toBe("person"); // "bot" inside a word isn't a service
     expect(classifyIdentity(null).kind).toBe("unknown");
+  });
+});
+
+describe("whose context a process runs in", () => {
+  it("follows Microsoft's rules", () => {
+    expect(workflowRunAs({ category: 0, mode: 1, runAs: 0 }).who).toBe("owner");
+    expect(workflowRunAs({ category: 0, mode: 1, runAs: 1 }).who).toBe("caller");
+    expect(workflowRunAs({ category: 0, mode: 0, triggerCreate: true }).who).toBe("owner");
+    expect(workflowRunAs({ category: 0, mode: 0, triggerUpdate: "statuscode" }).label).toBe("Owner (started by an event)");
+    expect(workflowRunAs({ category: 0, mode: 0, triggerCreate: true, onDemand: true }).label).toMatch(/on demand/);
+    expect(workflowRunAs({ category: 0, mode: 0, onDemand: true }).who).toBe("starter");
+    expect(workflowRunAs({ category: 0, mode: 0, child: true }).who).toBe("parent");
+    expect(workflowRunAs({ category: 0, mode: 0 }).who).toBe("none");
+    expect(workflowRunAs({ category: 5 }).who).toBe("connections");
+    expect(workflowRunAs({ category: 2 }).who).toBe("caller");
   });
 });
 
@@ -39,7 +54,8 @@ describe("who runs what", () => {
     { id: I.flowDigest, name: "Weekly account digest", category: 5, state: 1, ownerId: I.team, ownerType: "team", owner: "Integration team" },
     { id: I.flowNotify, name: "Notify me", category: 5, state: 0, ownerId: I.alex, ownerType: "systemuser", owner: "Alex Baker" },
     { id: "w1", name: "Set credit limit", category: 0, state: 1, mode: 1, runAs: 0, ownerId: I.zakaria, ownerType: "systemuser", owner: "Zakaria Missoum" },
-    { id: "w2", name: "Background thing", category: 0, state: 1, mode: 0, runAs: 0, ownerId: I.zakaria, ownerType: "systemuser", owner: "Zakaria Missoum" },
+    { id: "w2", name: "Background thing", category: 0, state: 1, mode: 0, runAs: 0, onDemand: true, ownerId: I.zakaria, ownerType: "systemuser", owner: "Zakaria Missoum" },
+    { id: "w3", name: "On create", category: 0, state: 1, mode: 0, triggerCreate: true, ownerId: I.svc, ownerType: "systemuser", owner: "svc-integration" },
   ];
   const steps = [{ id: "s1", name: "SapSync: Update of account", state: 0, runAsId: I.sapApp, runAs: "SAP Connector (app)" }, { id: "s2", name: "Calling user step", state: 0, runAsId: null }];
   const users = Object.fromEntries(DEMO_USERS.map(u => [u.systemuserid, u]));
@@ -52,6 +68,10 @@ describe("who runs what", () => {
     expect(r.identities[0].name).toBe("Paul Durand");
     expect(by["Paul Durand"].flags[0]).toMatchObject({ level: "error" });
     expect(by["Paul Durand"].flags[0].text).toMatch(/Disabled, yet 1 active item runs through it/);
+  });
+  it("a background workflow started by an event runs as its owner; on demand it runs as the starter", () => {
+    expect(by["svc-integration"].uses.map(u => `${u.what}:${u.kind}`)).toContain("runs as:Background workflow");
+    expect(by["Zakaria Missoum"].uses.filter(u => u.name === "Background thing").map(u => u.what)).toEqual(["owns"]);
   });
   it("credits owners, run-as identities and signed-in accounts", () => {
     expect(by["SAP Connector (app)"]).toMatchObject({ kind: "app", active: 1 });
@@ -77,7 +97,7 @@ describe("who runs what", () => {
     expect(r2.identities[0]).toMatchObject({ type: "account", kind: "external", name: "someone@partner.example" });
   });
   it("lists idle integration identities, with what that means", () => {
-    const r3 = buildWhoRunsWhat({ procs, steps, users, integrationUsers: DEMO_USERS });
+    const r3 = buildWhoRunsWhat({ users, integrationUsers: DEMO_USERS }); // nothing owned or run: every integration identity is idle
     const ms = r3.identities.find(i => i.name === "# Dynamics 365 Sales Insights");
     expect(ms).toMatchObject({ kind: "msapp", total: 0 });
     const svc = r3.identities.find(i => i.name === "svc-integration");

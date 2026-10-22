@@ -1796,7 +1796,7 @@
             // (Power Automate) cloud flow / 6 desktop flow. type eq 1 keeps definitions only
             // (2 = per-record activations, 3 = templates).
             const rowsW = [];
-            let urlW = `workflows?$select=workflowid,name,category,statecode,mode,runas,primaryentity,ismanaged,triggeroncreate,triggerondelete,triggeronupdateattributelist,_ownerid_value,_createdby_value,modifiedon&$filter=type eq 1&$orderby=name`;
+            let urlW = `workflows?$select=workflowid,name,category,statecode,mode,runas,ondemand,subprocess,primaryentity,ismanaged,triggeroncreate,triggerondelete,triggeronupdateattributelist,_ownerid_value,_createdby_value,modifiedon&$filter=type eq 1&$orderby=name`;
             while (urlW) {
               const dW = await dvRequest("GET", urlW, null, { Prefer: "odata.maxpagesize=5000" });
               (dW.value || []).forEach(w => rowsW.push({
@@ -1816,6 +1816,8 @@
                 createdById: w._createdby_value || null,
                 createdBy: w["_createdby_value@OData.Community.Display.V1.FormattedValue"] || "",
                 runAs: w.runas ?? null, // real-time workflows: 0 owner / 1 calling user
+                onDemand: !!w.ondemand, // a user can start it from Run Workflow (then it runs with THAT user's rights)
+                child: !!w.subprocess,
                 modifiedon: w.modifiedon || "",
               }));
               const nlW = dW["@odata.nextLink"];

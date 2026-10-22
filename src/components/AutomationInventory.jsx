@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
 import WhoRunsIt from "./WhoRunsIt.jsx";
+import { workflowRunAs } from "../identities.js";
 import { STEP_SET, STEP_PK, statePatch, statePlan, stateConfirmText, applyStateLocally, canEditFiltering, parseFiltering, formatFiltering, filteringDiff, filterableColumns } from "../stepAdmin.js";
 
 // Automation — the STATIC inventory of everything registered to run in the org: plug-in steps
@@ -265,7 +266,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                 </>
               ) : (
                 <>
-                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}<th style={ths()}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
+                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}{cat === "0" && <th style={ths()} title="Whose security context it runs in: real-time = its Execute as; background = the owner when an event starts it, the user who starts it on demand">Runs as</th>}<th style={ths()} title={cat === "5" ? "A cloud flow's owner is NOT who its actions run as — each action runs with the account of its connection (see Who runs it)" : "Who owns the process"}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.id} style={{ borderBottom: `1px solid ${C.bd}22` }}>
@@ -274,6 +275,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                         <td style={tds}><Badge on={r.state === 1} yes="Activated" no="Draft" colorYes={C.gn} colorNo={C.yw} /></td>
                         {cat === "0" && <td style={tds}><Badge on={r.mode === 1} yes="Real-time" no="Background" colorYes={C.or} colorNo={C.cy} /></td>}
                         {cat === "0" && <td style={{ ...tds, fontSize: 12, color: C.txm }}>{triggersOf(r) || "—"}</td>}
+                        {cat === "0" && <td style={{ ...tds, fontSize: 12, color: workflowRunAs(r).who === "owner" ? C.tx : C.txm, maxWidth: 200 }}>{workflowRunAs(r).label}</td>}
                         <td style={{ ...tds, color: C.txm, maxWidth: 160 }}>{r.owner}</td>
                         <td style={tds}><SrcBadge r={r} step={false} /></td>
                         <td style={{ ...tds, fontSize: 11, color: C.txd }}>{r.modifiedon ? new Date(r.modifiedon).toLocaleDateString() : ""}</td>

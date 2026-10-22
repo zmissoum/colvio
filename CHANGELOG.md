@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.200] - 2026-10-22
+### Fixed - who a classic workflow really runs as
+- Who runs it credited "runs as owner" only to real-time workflows set to Execute as: owner. Microsoft's rule is wider: a **background workflow started by an event runs in its owner's context** too, while one started **on demand** (Run Workflow) runs with the rights of the user who starts it, and a real-time one set to the calling user runs as whoever made the change. Background event-started workflows now count under their owner ("runs as · Background workflow").
+- Automation › Workflows has a **Runs as** column with that rule per workflow: Owner (Execute as) / User who made the change / Owner (started by an event) / Owner when automatic, the user who starts it on demand / User who starts it (on demand) / As started by its parent process / Never starts. The Owner column of Cloud flows says in its tooltip that a flow's owner is not who its actions run as - each action uses the account of its connection.
+- `getProcesses` now reads `ondemand` and `subprocess`. Pure `workflowRunAs` + 2 tests (650).
+
 ## [1.11.199] - 2026-10-22
 ### Added - Automation: who runs what
 - **👤 Who runs it** (new tab in Automation): every identity that makes something run in the org, classified from its user record - **App registration** (application user, Entra app id with an Entra link), **Microsoft app** (platform application users, "# …"), **Built-in** (SYSTEM / INTEGRATION), **Service account** (non-interactive access mode), **Service account?** (a guess from the name or address: svc, integration, noreply, bot…, labelled as a guess), **Person**, **Microsoft support** / **Delegated admin** access modes, **Team** (owner teams), and **Not a Dataverse user** for a connection's account that matches nobody in the environment.
