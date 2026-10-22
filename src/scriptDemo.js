@@ -34,7 +34,8 @@ export function createDemoOrg({ orgUrl = SCRIPT_DEMO_ORG, meta = [], rels = {}, 
       o[k] = v;
       const m = k.match(/^_(.+)_value$/);
       if (m && v != null) {
-        const rel = relsOf(set).find(r => r.ReferencingAttribute === m[1]);
+        // a polymorphic lookup (customer, regarding…): the relationship of the row's CURRENT target
+        const rel = relsOf(set).find(r => r.ReferencingAttribute === m[1] && r.ReferencedEntity === rec._t[m[1]]) || relsOf(set).find(r => r.ReferencingAttribute === m[1]);
         o[`${k}@OData.Community.Display.V1.FormattedValue`] = nameOf(rec._t[m[1]] || rel?.ReferencedEntity, v);
         o[`${k}@Microsoft.Dynamics.CRM.lookuplogicalname`] = rec._t[m[1]] || rel?.ReferencedEntity;
         if (rel) o[`${k}@Microsoft.Dynamics.CRM.associatednavigationproperty`] = rel.ReferencingEntityNavigationPropertyName;
@@ -107,17 +108,27 @@ export function createDemoOrg({ orgUrl = SCRIPT_DEMO_ORG, meta = [], rels = {}, 
       if (/^WhoAmI(\(\))?$/.test(res)) return ok(200, { UserId: userId, BusinessUnitId: "d0000000-0000-4000-8000-0000000000b1", OrganizationId: "d0000000-0000-4000-8000-0000000000c1" });
       const segs = parseSegments(res);
       const set = segs[0].name, tbl = t[set];
-      if (!tbl) return m === "POST" && segs.length === 1 ? err(404, `Resource not found for the segment '${set}'.`, "0x80060888") : err(404, `Resource not found for the segment '${set}'.`, "0x80060888");
+      if (!tbl) return err(404, `Resource not found for the segment '${set}'.`, "0x80060888");
       const e = ent(set);
       if (segs.length === 1 && segs[0].key == null) {
         if (m === "GET") {
           const fx = param(q, "fetchXml"); if (fx) return runFetch(set, fx);
           let rows = [...tbl.values()];
           const f = param(q, "$filter");
-          if (f) for (const c of f.split(/\s+and\s+/i)) {
-            const cm = c.trim().match(/^(\w+)\s+(eq|ne)\s+(null|'[^']*'|[\w-]+)$/i); if (!cm) return err(400, `Demo: unsupported $filter '${c}'`, "0x80060888");
-            const v = cm[3] === "null" ? null : cm[3].replace(/^'|'$/g, "");
-            rows = rows.filter(r => { const x = r[cm[1]] ?? null; return cm[2].toLowerCase() === "eq" ? (v === null ? x === null : String(x).toLowerCase() === v.toLowerCase()) : (v === null ? x !== null : String(x).toLowerCase() !== v.toLowerCase()); });
+          // "a eq x and b ne y or c eq z": OR of AND groups (no parentheses) — what scripts and the
+          // runtime's set reads (pk eq … or pk eq …) send
+          if (f) {
+            const groups = [];
+            for (const g of f.split(/\s+or\s+/i)) {
+              const conds = [];
+              for (const c of g.split(/\s+and\s+/i)) {
+                const cm = c.trim().match(/^(\w+)\s+(eq|ne)\s+(null|'[^']*'|[\w-]+)$/i); if (!cm) return err(400, `Demo: unsupported $filter '${c}'`, "0x80060888");
+                conds.push({ col: cm[1], eq: cm[2].toLowerCase() === "eq", v: cm[3] === "null" ? null : cm[3].replace(/^'|'$/g, "") });
+              }
+              groups.push(conds);
+            }
+            const test = (r, { col, eq, v }) => { const x = r[col] ?? null; const same = v === null ? x === null : x !== null && String(x).toLowerCase() === v.toLowerCase(); return eq ? same : !same; };
+            rows = rows.filter(r => groups.some(conds => conds.every(c => test(r, c))));
           }
           const sel = param(q, "$select"); const select = sel ? sel.split(",") : null;
           if (select) for (const s of select) if (!Object.keys(rows[0] || {}).includes(s) && !(attrs[e.LogicalName] || []).some(a => a.LogicalName === s || `_${a.LogicalName}_value` === s)) return err(400, `Could not find a property named '${s}' on type 'Microsoft.Dynamics.CRM.${e.LogicalName}'.`, "0x80060888");

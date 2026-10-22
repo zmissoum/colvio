@@ -2,9 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   toPath, resourceOf, keySegment, functionPath, parseSegments, classify, buildBatch, parseBatchResponse,
   mapBatchResults, summarize, rollbackStats, createRuntime, runRollback, scriptLine, StopError, fakeId,
+  hashRows, normalizeJournal, updateColumns,
 } from "../scriptRuntime.js";
+import { createDemoOrg } from "../scriptDemo.js";
 
-// ── A small in-memory Dataverse: metadata, rows, lookups, $ref, upsert, $batch, 429 ──────────────
+// ── Dataverse for the tests ───────────────────────────────────────────────────────────────────────
 const ORG = "https://org.crm4.dynamics.com";
 const META = [
   { LogicalName: "systemuser", EntitySetName: "systemusers", PrimaryIdAttribute: "systemuserid", PrimaryNameAttribute: "fullname" },
@@ -39,165 +41,37 @@ const ATTRS = {
 };
 const g = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 
+// The test org is the Script Console's own demo Dataverse (scriptDemo.js), on this dataset — one
+// mock to maintain. Only what the demo doesn't serve is stubbed here: an unbound action and a
+// bound one.
+const rowsOf = () => ({
+  fou_salesorganizations: [{ fou_salesorganizationid: g(1), fou_name: "SO-FR" }, { fou_salesorganizationid: g(2), fou_name: "SO-DE" }],
+  fou_spritcodes: [
+    { fou_spritcodeid: g(11), fou_name: "SP-FR", _fou_salesorganizationid_value: g(1), _t: { fou_salesorganizationid: "fou_salesorganization" } },
+    { fou_spritcodeid: g(12), fou_name: "SP-DE", _fou_salesorganizationid_value: g(2), _t: { fou_salesorganizationid: "fou_salesorganization" } },
+  ],
+  systemusers: [
+    { systemuserid: g(21), fullname: "Alice", _fou_salesorganizationid_value: g(1), _fou_spritcodeid_value: null, _t: { fou_salesorganizationid: "fou_salesorganization" } },
+    { systemuserid: g(22), fullname: "Bob", _fou_salesorganizationid_value: g(2), _fou_spritcodeid_value: g(11), _t: { fou_salesorganizationid: "fou_salesorganization", fou_spritcodeid: "fou_spritcode" } },
+    { systemuserid: g(23), fullname: "Carol", _fou_salesorganizationid_value: null, _fou_spritcodeid_value: null, _t: {} },
+  ],
+  accounts: [
+    { accountid: g(31), name: "Contoso", telephone1: "01", _parentaccountid_value: null, statecode: 1, statuscode: 2, modifiedon: "2026-01-01T00:00:00Z", _t: {} },
+    { accountid: g(32), name: "Fabrikam", telephone1: null, _parentaccountid_value: g(31), statecode: 0, statuscode: 1, _t: { parentaccountid: "account" } },
+  ],
+  contacts: [{ contactid: g(41), fullname: "Dan", _parentcustomerid_value: g(31), _t: { parentcustomerid: "account" } }, { contactid: g(42), fullname: "Eve", _t: {} }],
+});
+const json = (status, body) => ({ ok: status < 300, status, statusText: "", headers: { "content-type": "application/json" }, body: JSON.stringify(body), bodyParsed: body });
 function fakeOrg() {
-  const t = {
-    fou_salesorganizations: new Map([[g(1), { fou_salesorganizationid: g(1), fou_name: "SO-FR" }], [g(2), { fou_salesorganizationid: g(2), fou_name: "SO-DE" }]]),
-    fou_spritcodes: new Map([
-      [g(11), { fou_spritcodeid: g(11), fou_name: "SP-FR", _fou_salesorganizationid_value: g(1), _t: { fou_salesorganizationid: "fou_salesorganization" } }],
-      [g(12), { fou_spritcodeid: g(12), fou_name: "SP-DE", _fou_salesorganizationid_value: g(2), _t: { fou_salesorganizationid: "fou_salesorganization" } }],
-    ]),
-    systemusers: new Map([
-      [g(21), { systemuserid: g(21), fullname: "Alice", _fou_salesorganizationid_value: g(1), _fou_spritcodeid_value: null, _t: { fou_salesorganizationid: "fou_salesorganization" } }],
-      [g(22), { systemuserid: g(22), fullname: "Bob", _fou_salesorganizationid_value: g(2), _fou_spritcodeid_value: g(11), _t: { fou_salesorganizationid: "fou_salesorganization", fou_spritcodeid: "fou_spritcode" } }],
-      [g(23), { systemuserid: g(23), fullname: "Carol", _fou_salesorganizationid_value: null, _fou_spritcodeid_value: null, _t: {} }],
-    ]),
-    accounts: new Map([
-      [g(31), { accountid: g(31), name: "Contoso", telephone1: "01", _parentaccountid_value: null, statecode: 1, statuscode: 2, modifiedon: "2026-01-01T00:00:00Z", _t: {} }],
-      [g(32), { accountid: g(32), name: "Fabrikam", telephone1: null, _parentaccountid_value: g(31), statecode: 0, statuscode: 1, _t: { parentaccountid: "account" } }],
-    ]),
-    contacts: new Map([[g(41), { contactid: g(41), fullname: "Dan", _parentcustomerid_value: g(31), _t: { parentcustomerid: "account" } }], [g(42), { contactid: g(42), fullname: "Eve", _t: {} }]]),
+  const org = createDemoOrg({ orgUrl: ORG, meta: META, rels: RELS, attrs: ATTRS, tables: rowsOf(), userId: g(21) });
+  const send = async (r) => {
+    const res = resourceOf(r.path);
+    if (res === "DoThing") { org.log.push(`${r.method} ${r.path}`); return json(200, { done: true }); }
+    const bump = res && res.match(/^accounts\(([^)]+)\)\/Microsoft\.Dynamics\.CRM\.Bump$/);
+    if (bump) { org.log.push(`${r.method} ${r.path}`); return json(200, { bumped: bump[1] }); }
+    return org.send(r);
   };
-  const links = new Map(); // "accounts(id)/nav" → Set of absolute target urls (collection navs)
-  let nextId = 900, throttleNext = 0;
-  const log = [];
-  const meta = (set) => META.find(m => m.EntitySetName === set);
-  const out = (rec) => {
-    const o = {};
-    for (const [k, v] of Object.entries(rec)) {
-      if (k === "_t") continue;
-      o[k] = v;
-      const m = k.match(/^_(.+)_value$/);
-      if (m && v != null) {
-        const tl = rec._t[m[1]];
-        o[`${k}@Microsoft.Dynamics.CRM.lookuplogicalname`] = tl;
-        const ent = META.find(e => e.EntitySetName === [...Object.keys(t)].find(s => t[s] === tableOf(rec)));
-        const rel = (RELS[ent?.LogicalName] || []).find(r => r.ReferencingAttribute === m[1] && r.ReferencedEntity === tl) || (RELS[ent?.LogicalName] || []).find(r => r.ReferencingAttribute === m[1]);
-        if (rel) o[`${k}@Microsoft.Dynamics.CRM.associatednavigationproperty`] = rel.ReferencingEntityNavigationPropertyName;
-      }
-    }
-    return o;
-  };
-  const tableOf = (rec) => Object.values(t).find(m => [...m.values()].includes(rec));
-  const ok = (status, body, headers = {}) => ({ ok: status < 300, status, statusText: "", headers, body: body == null ? "" : JSON.stringify(body), bodyParsed: body ?? null });
-  const err = (status, message) => ok(status, { error: { code: "0x1", message } });
-  const applyBody = (set, rec, body) => {
-    const ent = meta(set);
-    for (const [k, v] of Object.entries(body || {})) {
-      if (k.endsWith("@odata.bind")) {
-        const nav = k.slice(0, -11);
-        const rel = (RELS[ent.LogicalName] || []).find(r => r.ReferencingEntityNavigationPropertyName === nav);
-        if (!rel) throw new Error(`no nav ${nav}`);
-        if (v == null) { rec[`_${rel.ReferencingAttribute}_value`] = null; continue; }
-        const mm = String(v).match(/\/?([a-z_]+)\(([0-9a-f-]{36})\)/);
-        rec[`_${rel.ReferencingAttribute}_value`] = mm[2]; rec._t[rel.ReferencingAttribute] = META.find(e => e.EntitySetName === mm[1]).LogicalName;
-      } else rec[k] = v;
-    }
-  };
-  function handle({ method, path, headers = {}, body }) {
-    log.push(`${method} ${path}`);
-    if (throttleNext > 0) { throttleNext--; return { ok: false, status: 429, statusText: "Too Many Requests", headers: { "retry-after": "1" }, body: "", bodyParsed: null }; }
-    const res = resourceOf(path); const q = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
-    const b = typeof body === "string" && method !== "POST" ? JSON.parse(body) : body;
-    if (res === "$batch") return batch(headers, body);
-    if (res === "EntityDefinitions") return ok(200, { value: META });
-    let m = res.match(/^EntityDefinitions\(LogicalName='([^']+)'\)\/ManyToOneRelationships$/);
-    if (m) return ok(200, { value: RELS[m[1]] || [] });
-    m = res.match(/^EntityDefinitions\(LogicalName='([^']+)'\)\/Attributes$/);
-    if (m) return ATTRS[m[1]] ? ok(200, { value: ATTRS[m[1]] }) : err(404, "no attrs");
-    if (res === "WhoAmI()") return ok(200, { UserId: g(21) });
-    if (res === "DoThing") return ok(200, { done: true });
-    const segs = parseSegments(res);
-    const set = segs[0].name, tbl = t[set];
-    if (!tbl) return err(404, `Resource not found for the segment '${set}'`);
-    if (segs.length === 1 && segs[0].key == null) {
-      if (method === "GET") {
-        let rows = [...tbl.values()].map(out);
-        const top = (q.match(/\$top=(\d+)/) || [])[1]; const max = (String(headers.Prefer || "").match(/maxpagesize=(\d+)/) || [])[1];
-        const skip = Number((q.match(/\$skiptoken=(\d+)/) || [])[1] || 0);
-        if (top) rows = rows.slice(0, Number(top));
-        if (max && rows.length > skip + Number(max)) return ok(200, { value: rows.slice(skip, skip + Number(max)), "@odata.nextLink": `${ORG}/api/data/v9.2/${set}?$skiptoken=${skip + Number(max)}` });
-        return ok(200, { value: rows.slice(skip) });
-      }
-      if (method === "POST") {
-        const ent = meta(set); const id = b[ent.PrimaryIdAttribute] || g(++nextId);
-        const rec = { [ent.PrimaryIdAttribute]: id, _t: {} }; applyBody(set, rec, b); tbl.set(id, rec);
-        return ok(204, null, { "odata-entityid": `${ORG}/api/data/v9.2/${set}(${id})` });
-      }
-    }
-    const key = segs[0].key; const rec = tbl.get(key);
-    if (segs.length === 1) {
-      if (method === "GET") return rec ? ok(200, out(rec)) : err(404, "Does Not Exist");
-      if (method === "PATCH") {
-        if (!rec) {
-          if (headers["If-Match"] === "*") return err(404, "Does Not Exist");
-          const ent = meta(set); const nr = { [ent.PrimaryIdAttribute]: key, _t: {} }; applyBody(set, nr, b); tbl.set(key, nr);
-          return ok(204, null, { "odata-entityid": `${ORG}/api/data/v9.2/${set}(${key})` });
-        }
-        applyBody(set, rec, b); return ok(204, null, { "odata-entityid": `${ORG}/api/data/v9.2/${set}(${key})` });
-      }
-      if (method === "DELETE") { if (!rec) return err(404, "Does Not Exist"); tbl.delete(key); return ok(204, null); }
-    }
-    if (!rec) return err(404, "Does Not Exist");
-    if (segs.length === 2 && segs[1].key == null && !segs[1].name.startsWith("Microsoft")) {
-      const prop = segs[1].name;
-      if (method === "GET") return rec[prop] == null ? ok(204, null) : ok(200, { value: rec[prop] });
-      if (method === "PUT") { rec[prop] = b.value; return ok(204, null); }
-      if (method === "DELETE") { rec[prop] = null; return ok(204, null); }
-    }
-    if (segs[segs.length - 1].name === "$ref") {
-      const nav = segs[1].name; const lk = `${set}(${key})/${nav}`;
-      const rel = (RELS[meta(set).LogicalName] || []).find(r => r.ReferencingEntityNavigationPropertyName === nav);
-      if (rel) { // single-valued
-        const attr = rel.ReferencingAttribute;
-        if (method === "GET") { const v = rec[`_${attr}_value`]; return v ? ok(200, { "@odata.id": `${ORG}/api/data/v9.2/${META.find(e => e.LogicalName === rel.ReferencedEntity).EntitySetName}(${v})` }) : ok(204, null); }
-        if (method === "PUT") { const mm = b["@odata.id"].match(/\(([0-9a-f-]{36})\)/); rec[`_${attr}_value`] = mm[1]; rec._t[attr] = rel.ReferencedEntity; return ok(204, null); }
-        if (method === "DELETE") { rec[`_${attr}_value`] = null; return ok(204, null); }
-      }
-      const s = links.get(lk) || new Set(); links.set(lk, s);
-      if (method === "POST") { s.add(b["@odata.id"]); return ok(204, null); }
-      if (method === "DELETE") {
-        const idq = (q.match(/\$id=(.+)$/) || [])[1];
-        const target = idq ? decodeURIComponent(idq) : [...s].find(u => u.includes(`(${segs[1].key})`));
-        s.delete(target); return ok(204, null);
-      }
-    }
-    if (segs.length === 2 && segs[1].key != null && method === "GET") {
-      const lk = `${set}(${key})/${segs[1].name}`; const s = links.get(lk) || new Set();
-      const url = [...s].find(u => u.includes(`(${segs[1].key})`));
-      if (!url) return err(404, "not linked");
-      return ok(200, { "@odata.context": `${ORG}/api/data/v9.2/$metadata#${url.match(/v9\.2\/([a-z_]+)\(/)[1]}/$entity`, id: segs[1].key });
-    }
-    if (segs[1]?.name === "Microsoft.Dynamics.CRM.Bump") return ok(200, { bumped: key });
-    return err(400, "unsupported");
-  }
-  function batch(headers, body) {
-    const ct = headers["Content-Type"]; const bnd = ct.match(/boundary=(\S+)/)[1];
-    const parts = body.split(`--${bnd}`).slice(1, -1);
-    const respParts = [];
-    for (const p of parts) {
-      const reqs = [];
-      const csm = p.match(/boundary=(changeset_\S+)/);
-      const pieces = csm ? p.split(`--${csm[1]}`).slice(1, -1) : [p];
-      for (const piece of pieces) {
-        const lines = piece.split("\r\n");
-        const i = lines.findIndex(l => /^(GET|POST|PATCH|PUT|DELETE) /.test(l));
-        const [, m, url] = lines[i].match(/^(\S+) (\S+) HTTP/);
-        const hs = {}; let j = i + 1;
-        for (; lines[j] !== ""; j++) { const k = lines[j].indexOf(":"); hs[lines[j].slice(0, k)] = lines[j].slice(k + 2); }
-        const bodyTxt = lines.slice(j + 1).join("\r\n").trim();
-        reqs.push({ method: m, path: url, headers: hs, body: bodyTxt ? JSON.parse(bodyTxt) : undefined });
-      }
-      const resps = reqs.map(r => handle(r));
-      const fmt = (r) => `Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n\r\nHTTP/1.1 ${r.status} X\r\n${Object.entries(r.headers).map(([k, v]) => `${k}: ${v}\r\n`).join("")}\r\n${r.body || ""}`;
-      if (csm) {
-        const bad = resps.find(r => !r.ok);
-        respParts.push(bad ? fmt(bad) : `Content-Type: multipart/mixed; boundary=cs_r\r\n\r\n${resps.map(r => `--cs_r\r\n${fmt(r)}`).join("\r\n")}\r\n--cs_r--`);
-      } else respParts.push(fmt(resps[0]));
-    }
-    const txt = respParts.map(r => `--br\r\n${r}`).join("\r\n") + "\r\n--br--\r\n";
-    return { ok: true, status: 200, statusText: "OK", headers: { "content-type": "multipart/mixed; boundary=br" }, body: txt, bodyParsed: null };
-  }
-  return { t, log, links, send: async (r) => handle(r), throttle: (n) => { throttleNext = n; } };
+  return { t: org.tables, log: org.log, links: org.links, throttle: org.throttle, send };
 }
 const noSleep = async () => {};
 
@@ -311,7 +185,7 @@ describe("scriptRuntime — review fixes", () => {
     const org = fakeOrg();
     const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "dry", sleep: noSleep });
     expect(await rt.invoke("callFunction", ["new_Recalculate", { Id: { $guid: g(31) } }])).toBe(null);
-    expect(await rt.invoke("whoAmI", [])).toEqual({ UserId: g(21) });
+    expect(await rt.invoke("whoAmI", [])).toMatchObject({ UserId: g(21) });
     expect(org.log.some(l => l.includes("new_Recalculate"))).toBe(false);
     expect(rt.plan.map(p => `${p.kind} ${p.table}`)).toEqual(["function new_Recalculate"]);
   });
@@ -435,7 +309,7 @@ describe("scriptRuntime — live run, journal and rollback", () => {
   it("actions are flagged irreversible; functions and bound actions run", async () => {
     const org = fakeOrg();
     const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
-    expect(await rt.invoke("whoAmI", [])).toEqual({ UserId: g(21) });
+    expect(await rt.invoke("whoAmI", [])).toMatchObject({ UserId: g(21) });
     expect(await rt.invoke("callAction", ["Bump", {}, { bound: { set: "accounts", key: g(31) } }])).toEqual({ bumped: g(31) });
     expect(rt.entries[0]).toMatchObject({ kind: "action", reversible: "none" });
   });
@@ -497,5 +371,88 @@ describe("scriptRuntime — live run, journal and rollback", () => {
     const rt = createRuntime({ send: org.send, orgUrl: ORG, sleep: noSleep });
     expect(await rt.invoke("getAll", ["systemusers", { pageSize: 2 }])).toHaveLength(3);
     expect(await rt.invoke("getAll", ["systemusers", { pageSize: 2, max: 2 }])).toHaveLength(2);
+  });
+});
+
+describe("scriptRuntime — PR review fixes", () => {
+  it("refuses a path that fetch() would resolve elsewhere (dot segments, %2e, backslash, control chars)", async () => {
+    for (const p of ["/api/data/v9.2/../../XRMServices/2011/Organization.svc/web", "/api/data/v9.2/%2e%2e/%2E%2e/main.aspx", "/api/data/v9.2/.%2e/x", "accounts/../../x", "/api/data/v9.2/accounts\\..\\..\\x", "/api/data/v9.2/.\t./x", "$1/../x"]) {
+      expect(() => toPath(p), p).toThrow(/segments|Backslashes/);
+    }
+    expect(resourceOf(`${ORG}/api/data/v9.2/%2e%2e/%2e%2e/XRMServices`)).toBe(null); // the URL parser resolved it first
+    expect(toPath("accounts(name='a.b')?$filter=name eq '..'")).toBe("/api/data/v9.2/accounts(name='a.b')?$filter=name eq '..'");
+    expect(toPath(`accounts(${keySegment({ code: "a/../b" })})`)).toBe("/api/data/v9.2/accounts(code='a%2F..%2Fb')");
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await expect(rt.invoke("request", ["POST", "/api/data/v9.2/../../XRMServices/2011/Organization.svc/web", { body: "<soap/>" }])).rejects.toThrow(/segments/);
+    await expect(rt.invoke("batch", [[{ method: "PATCH", path: "accounts(1)/../../../x", body: {} }]])).rejects.toThrow(/segments/);
+    expect(org.log).toEqual([]);
+  });
+  it("a failed metadata read isn't kept for the run: the next write reads it again", async () => {
+    const org = fakeOrg(); let fail = 1;
+    const send = async (r) => (fail && /EntityDefinitions\?/.test(r.path) ? (fail--, json(503, { error: { message: "busy" } })) : org.send(r));
+    const rt = createRuntime({ send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await rt.invoke("delete", ["accounts", g(32)]);
+    await rt.invoke("delete", ["accounts", g(31)]);
+    expect(rt.entries[0]).toMatchObject({ reversible: "none" }); // metadata unreadable for that one
+    expect(rt.entries[1]).toMatchObject({ reversible: "partial" });
+    expect(rt.entries[1].inverse[0].body).toMatchObject({ accountid: g(31), name: "Contoso" });
+    expect(org.log.filter(l => /EntityDefinitions\?/.test(l))).toHaveLength(1); // + the failed one
+  });
+  it("dv.create(…, { returnRecord: true }) returns a row in a dry run too", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "dry", sleep: noSleep });
+    const acc = await rt.invoke("create", ["accounts", { name: "N", "parentaccountid@odata.bind": `/accounts(${g(31)})` }, { returnRecord: true }]);
+    expect(acc).toEqual({ name: "N", accountid: fakeId(1), _parentaccountid_value: g(31) });
+    await rt.invoke("update", ["accounts", acc.accountid, { telephone1: "2" }]); // usable as a key
+    expect(rt.plan.map(p => p.kind)).toEqual(["create", "update"]);
+  });
+  it("a live $batch reads its before-images as sets, not one GET per write", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await rt.invoke("batch", [[
+      { method: "PATCH", path: `accounts(${g(31)})`, body: { name: "B1" }, headers: { "If-Match": "*" } },
+      { method: "PATCH", path: `accounts(${g(32)})`, body: { telephone1: "9" }, headers: { "If-Match": "*" } },
+      { method: "PATCH", path: `systemusers(${g(22)})`, body: { "fou_SpritcodeId@odata.bind": `/fou_spritcodes(${g(12)})` }, headers: { "If-Match": "*" } },
+      { method: "PUT", path: `accounts(${g(31)})/telephone1`, body: { value: "7" } },
+      { method: "PUT", path: `contacts(${g(41)})/fullname`, body: { value: "Daniel" } },
+    ]]);
+    const rowGets = org.log.filter(l => /^GET .*\/(accounts|systemusers)\([^)]*\)(\?|$)/.test(l));
+    expect(rowGets).toEqual([]); // no single-row read
+    const setReads = org.log.filter(l => l.startsWith("GET ") && l.includes("$filter="));
+    expect(setReads).toHaveLength(2); // accounts (2 rows), systemusers (1 row)
+    expect(setReads[0]).toContain("$select=accountid,name,telephone1");
+    expect(org.log.filter(l => l.startsWith("POST ") && l.includes("$batch"))).toHaveLength(2); // the 2 property reads, then the writes
+    expect(rt.entries.map(e => e.reversible)).toEqual(["full", "full", "full", "full", "full"]);
+    await runRollback(rt.entries, { send: org.send, sleep: noSleep });
+    expect(org.t.accounts.get(g(31))).toMatchObject({ name: "Contoso", telephone1: "01" });
+    expect(org.t.accounts.get(g(32)).telephone1).toBe(null);
+    expect(org.t.systemusers.get(g(22))._fou_spritcodeid_value).toBe(g(11));
+    expect(org.t.contacts.get(g(41)).fullname).toBe("Dan");
+  });
+  it("a single update reads back only the columns it changes", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await rt.invoke("update", ["accounts", g(31), { name: "X", "parentaccountid@odata.bind": `/accounts(${g(32)})` }]);
+    expect(org.log.some(l => l.includes(`accounts(${g(31)})?$select=accountid,name,_parentaccountid_value`))).toBe(true);
+    expect(rt.entries[0].inverse.map(o => o.method)).toEqual(["PATCH", "DELETE"]); // name back, lookup cleared
+    expect(updateColumns({ "new_unknown@odata.bind": "/x(1)" }, "accountid", [])).toBe(null); // can't map → whole row
+    expect(updateColumns({ name: "a", primarycontactid: { firstname: "x" } }, "accountid", [])).toEqual(["accountid", "name"]);
+  });
+  it("an input file's fingerprint changes with its content, not only its size", () => {
+    const a = [{ id: "1", v: "x" }, { id: "2", v: "y" }];
+    expect(hashRows(a)).toBe(hashRows(structuredClone(a)));
+    expect(hashRows(a)).not.toBe(hashRows([{ id: "1", v: "x" }, { id: "2", v: "z" }]));
+    expect(hashRows([{ a: "bc" }])).not.toBe(hashRows([{ ab: "c" }]));
+  });
+  it("a journal read back is validated and normalized", () => {
+    const ok = { at: "2026-10-22T00:00:00Z", orgUrl: ORG, script: "s", entries: [{ seq: 1, method: "PATCH", path: "accounts(1)", inverse: [{ method: "PATCH", path: "/api/data/v9.2/accounts(1)", body: {} }], reversible: "full" }], rollback: { at: "x", undone: 3 } };
+    const n = normalizeJournal(ok);
+    expect(n.rollback.failed).toEqual([]);
+    expect(n.entries[0]).toMatchObject({ seq: 1, reversible: "full" });
+    expect(normalizeJournal({ ...ok, entries: [{ ...ok.entries[0], inverse: [{ method: "POST", path: "/api/data/v9.2/../../XRMServices/2011/Organization.svc/web" }] }] })).toBe(null);
+    expect(normalizeJournal({ ...ok, entries: [{ ...ok.entries[0], inverse: [{ method: "GET", path: "/api/data/v9.2/accounts" }] }] })).toBe(null);
+    expect(normalizeJournal({ entries: "x" })).toBe(null);
+    expect(normalizeJournal({ ...ok, entries: [{ method: "DELETE", path: "p", inverse: [] }] }).entries[0]).toMatchObject({ seq: 1, reversible: "none" });
   });
 });

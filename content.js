@@ -285,7 +285,7 @@
 
   // Raw same-org request (API Tester, Script Console): the response is RETURNED, never thrown —
   // a 4xx/5xx is the caller's to read. Host-locked to the user's org; method allow-list.
-  async function rawRequest(params, timeoutMs) {
+  async function rawRequest(params, timeoutMs, { apiOnly = false } = {}) {
     const method = (params.method || "GET").toUpperCase();
     const ALLOWED = new Set(["GET","POST","PATCH","PUT","DELETE","HEAD","OPTIONS"]);
     if (!ALLOWED.has(method)) throw new Error(`Method not allowed: ${method}`);
@@ -307,8 +307,11 @@
     // Defense-in-depth: re-parse the FINAL url and re-assert the host, so protocol-relative
     // (//evil.com) or backslash-normalized paths can never drift off the org host.
     try {
-      const finalHost = new URL(url, ctxApi.clientUrl).hostname;
-      if (finalHost !== baseHost) throw new Error(`URL not allowed: resolved host ${finalHost} is not your D365 org host (${baseHost})`);
+      const finalUrl = new URL(url, ctxApi.clientUrl);
+      if (finalUrl.hostname !== baseHost) throw new Error(`URL not allowed: resolved host ${finalUrl.hostname} is not your D365 org host (${baseHost})`);
+      // Script Console: the Web API only — checked on the RESOLVED path, as fetch() will send it
+      // ("..", "%2e%2e" and "\" collapse before the request leaves)
+      if (apiOnly && !/^\/api\/data\/v\d+(\.\d+)?\//i.test(finalUrl.pathname)) throw new Error(`Only Web API paths (/api/data/…) are allowed: ${finalUrl.pathname}`);
     } catch (e) { throw new Error(e.message || "Invalid URL"); }
     const customHeaders = params.headers && typeof params.headers === "object" ? params.headers : {};
     const finalHeaders = {
@@ -637,7 +640,7 @@
             // Script Console: same host-locked raw request, with a 5-minute budget — a script's
             // $batch of up to 1000 operations, or a long action, routinely outlives 60 s. 429
             // retries, dry run and the rollback journal live in the panel (scriptRuntime.js).
-            result = await rawRequest(params, 300000);
+            result = await rawRequest(params, 300000, { apiOnly: true });
             break;
           }
 

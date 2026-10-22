@@ -2,22 +2,34 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, Spin, mono, inp, bt, crd, confirmProd, dl, expName, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
-import { createRuntime, runRollback, summarize, rollbackStats, scriptLine } from "../scriptRuntime.js";
+import { createRuntime, runRollback, summarize, rollbackStats, scriptLine, hashRows, normalizeJournal } from "../scriptRuntime.js";
+import { createJournalStore } from "../scriptJournalStore.js";
 import { SCRIPT_TEMPLATES } from "../scriptTemplates.js";
 import { parseDelimited, detectSep } from "../loaderUtils.js";
+import { readTextFile } from "../textDecode.js";
 
 const SCRIPTS_KEY = "colvio_scripts";
 const journalKey = (orgInfo) => `colvio_script_journal:${orgInfo?.orgUrl || "demo"}`;
 const hasChrome = () => typeof chrome !== "undefined" && !!chrome.storage?.local;
-const storeGet = (key) => new Promise(res => {
-  if (hasChrome()) chrome.storage.local.get([key], r => { void chrome.runtime.lastError; res(r?.[key] ?? null); });
-  else { try { res(JSON.parse(localStorage.getItem(key) || "null")); } catch { res(null); } }
+const storeGetMany = (keys) => new Promise(res => {
+  if (hasChrome()) chrome.storage.local.get(keys, r => { void chrome.runtime.lastError; res(r || {}); });
+  else {
+    const o = {};
+    for (const k of keys) { try { const v = localStorage.getItem(k); if (v != null) o[k] = JSON.parse(v); } catch { /* unreadable: absent */ } }
+    res(o);
+  }
 });
 // Resolves to null when saved, or the error message (quota…) — a journal that didn't persist must say so.
-const storeSet = (key, value) => new Promise(res => {
-  if (hasChrome()) chrome.storage.local.set({ [key]: value }, () => res(chrome.runtime.lastError?.message || null));
-  else { try { localStorage.setItem(key, JSON.stringify(value)); res(null); } catch (e) { res(e.message || "storage error"); } }
+const storeSetMany = (obj) => new Promise(res => {
+  if (hasChrome()) chrome.storage.local.set(obj, () => res(chrome.runtime.lastError?.message || null));
+  else { try { for (const [k, v] of Object.entries(obj)) localStorage.setItem(k, JSON.stringify(v)); res(null); } catch (e) { res(e.message || "storage error"); } }
 });
+const storeRemove = (keys) => new Promise(res => {
+  if (hasChrome()) chrome.storage.local.remove(keys, () => { void chrome.runtime.lastError; res(); });
+  else { for (const k of keys) { try { localStorage.removeItem(k); } catch { /* ignore */ } } res(); }
+});
+const storeGet = (key) => storeGetMany([key]).then(r => r[key] ?? null);
+const storeSet = (key, value) => storeSetMany({ [key]: value });
 const DEMO_ORG = "https://demo.crm4.dynamics.com";
 const SAVE_EVERY_MS = 2000; // journal saved while a live run writes (a closed panel keeps what was done)
 const newId = () => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -30,7 +42,7 @@ const TABLE_SHOWN = 500;
 export default function ScriptConsole({ bp, orgInfo }) {
   const [scripts, setScripts] = useState([]);
   const [cur, setCur] = useState(() => ({ id: null, name: t(`script.tpl.${SCRIPT_TEMPLATES[0].id}`), code: SCRIPT_TEMPLATES[0].code, saved: null }));
-  const [input, setInput] = useState(null); // { name, rows }
+  const [input, setInput] = useState(null); // { name, rows, hash }
   const [journalOn, setJournalOn] = useState(true);
   const [phase, setPhase] = useState("idle"); // idle | running | rollback
   const [mode, setMode] = useState("dry");
@@ -40,6 +52,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
   const [journal, setJournal] = useState(null); // { at, script, entries, rolledBack, rollback? }
   const [lastDry, setLastDry] = useState(null); // { sig, plan }
   const [saveError, setSaveError] = useState(null); // the journal couldn't be stored
+  const [draining, setDraining] = useState(0); // requests a stopped run had already sent, still running
   const [, setTick] = useState(0);
   const buf = useRef({ logs: [], tables: [], plan: [], entries: [], progress: null });
   const run = useRef(null);
@@ -50,10 +63,21 @@ export default function ScriptConsole({ bp, orgInfo }) {
   const scriptFileRef = useRef(null);
   const journalFileRef = useRef(null);
 
+  // The journal is stored in chunks (scriptJournalStore.js): a save writes only what changed.
+  const jstore = useMemo(() => createJournalStore({ key: journalKey(orgInfo), get: storeGetMany, set: storeSetMany, remove: storeRemove }), [orgInfo?.orgUrl]);
+  const jstoreRef = useRef(jstore);
+  jstoreRef.current = jstore;
   useEffect(() => {
     storeGet(SCRIPTS_KEY).then(l => setScripts(Array.isArray(l) ? l : []));
-    storeGet(journalKey(orgInfo)).then(j => { if (j && Array.isArray(j.entries)) setJournal(j); });
-  }, [orgInfo?.orgUrl]);
+    jstore.load().then(j => { const n = normalizeJournal(j); if (n) setJournal(n); }).catch(() => { /* unreadable: no journal */ });
+  }, [jstore]);
+  // Scripts saved from another Colvio panel show up here too.
+  useEffect(() => {
+    if (!hasChrome() || !chrome.storage.onChanged) return undefined;
+    const onChange = (ch, area) => { if (area === "local" && ch[SCRIPTS_KEY]) setScripts(Array.isArray(ch[SCRIPTS_KEY].newValue) ? ch[SCRIPTS_KEY].newValue : []); };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => chrome.storage.onChanged.removeListener(onChange);
+  }, []);
   // While running, the buffers fill from the sandbox: re-render 5 times a second, not per message.
   useEffect(() => {
     if (phase === "idle") return undefined;
@@ -67,21 +91,31 @@ export default function ScriptConsole({ bp, orgInfo }) {
     rn.stopped = true; rn.closing = true;
     if (rn.onMsg) window.removeEventListener("message", rn.onMsg);
     rn.frame?.remove();
-    if (rn.mode === "live" && rn.buf?.entries.length) storeSet(journalKey(orgInfo), journalOf(rn, true));
+    if (rn.mode === "live" && rn.buf?.entries.length) jstoreRef.current.save(journalOf(rn, true));
   }, []);
 
   const dirty = cur.saved !== cur.code;
-  const sig = `${cur.code}\u0000${input ? `${input.name}:${input.rows.length}` : ""}`;
+  // what a dry run vouches for: this code on this input's CONTENT (a re-exported file with the
+  // same name and row count but other values needs its own dry run)
+  const sig = `${cur.code}\u0000${input ? input.hash : ""}`;
   const lines = useMemo(() => cur.code.split("\n").length, [cur.code]);
   const b = buf.current;
 
   // ── Scripts ──
-  const persistScripts = (list) => { setScripts(list); storeSet(SCRIPTS_KEY, list); };
+  // Read-modify-write against what storage holds NOW: another Colvio panel may have saved a script
+  // since this one opened — writing this panel's list back would erase it.
+  const mutateScripts = async (mutate) => {
+    const now = await storeGet(SCRIPTS_KEY);
+    const next = mutate(Array.isArray(now) ? now : []);
+    setScripts(next);
+    const err = await storeSet(SCRIPTS_KEY, next);
+    if (err) window.alert(`${t("script.save_failed")}: ${err}`);
+  };
   const save = () => {
     const name = (cur.name || "").trim() || t("script.untitled");
     const id = cur.id || newId();
     const item = { id, name, code: cur.code, updated: new Date().toISOString() };
-    persistScripts([item, ...scripts.filter(s => s.id !== id)]);
+    mutateScripts(list => [item, ...list.filter(s => s.id !== id)]);
     setCur(c => ({ ...c, id, name, saved: c.code }));
   };
   const openScript = (s) => {
@@ -92,17 +126,18 @@ export default function ScriptConsole({ bp, orgInfo }) {
     const tpl = SCRIPT_TEMPLATES.find(x => x.id === id);
     if (!tpl || (dirty && !window.confirm(t("script.discard")))) return;
     setCur({ id: null, name: t(`script.tpl.${tpl.id}`), code: tpl.code, saved: null });
-    if (!orgInfo?.isExtension && tpl.sampleInput) setInput({ name: "sample.csv", rows: tpl.sampleInput });
+    if (!orgInfo?.isExtension && tpl.sampleInput) setInput({ name: "sample.csv", rows: tpl.sampleInput, hash: hashRows(tpl.sampleInput) });
   };
   const removeScript = () => {
     if (!cur.id || !window.confirm(t("script.delete_confirm").replace("{name}", cur.name))) return;
-    persistScripts(scripts.filter(s => s.id !== cur.id));
+    const id = cur.id;
+    mutateScripts(list => list.filter(s => s.id !== id));
     setCur(c => ({ ...c, id: null, saved: null }));
   };
   const loadScriptFile = (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f || (dirty && !window.confirm(t("script.discard")))) return;
-    f.text().then(code => setCur({ id: null, name: f.name.replace(/\.(js|txt)$/i, ""), code, saved: null }));
+    readTextFile(f).then(code => setCur({ id: null, name: f.name.replace(/\.(js|txt)$/i, ""), code, saved: null }));
   };
 
   // ── Input file ──
@@ -117,33 +152,38 @@ export default function ScriptConsole({ bp, orgInfo }) {
         rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: true })
           .map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v instanceof Date ? v.toISOString() : v])));
       } else {
-        const text = (await f.text()).replace(/^﻿/, "");
+        // UTF-8, UTF-16 (Excel "Unicode Text") or Windows-1252 (Excel "CSV (semicolon)")
+        const text = await readTextFile(f);
         const aoa = parseDelimited(text, detectSep(text)).filter(r => r.some(c => c !== ""));
         const h = aoa[0] || [];
         rows = aoa.slice(1).map(r => Object.fromEntries(h.map((k, i) => [k, r[i] ?? ""])));
       }
-      setInput({ name: f.name, rows });
+      setInput({ name: f.name, rows, hash: hashRows(rows) });
     } catch (err) { window.alert(`${t("script.input_error")}: ${err.message || err}`); }
   };
 
   // ── Run ──
   const orgUrl = orgInfo?.orgUrl || DEMO_ORG;
-  const journalOf = (rn, inProgress) => ({ at: new Date(rn.t0).toISOString(), script: rn.script, orgUrl, entries: [...rn.buf.entries], rolledBack: false, inProgress });
+  // The journal object saved: entries is the run's live array (the store writes only the chunks
+  // that changed — no copy of the whole journal per save).
+  const journalOf = (rn, inProgress) => ({ at: new Date(rn.t0).toISOString(), runId: rn.id, script: rn.script, orgUrl, entries: rn.buf.entries, rolledBack: false, inProgress });
   const saveJournal = async (j) => {
-    const err = await storeSet(journalKey(orgInfo), j);
+    const err = await jstoreRef.current.save(j);
     setSaveError(err);
   };
 
-  // End of a run (script returned, failed, or Stop). The run is over only when no dv call is still
-  // executing: a script that didn't await its calls (forEach(async …)) returns before its writes —
-  // they are let through to the end (and journaled) unless Stop was pressed.
+  // End of a run (script returned, failed, or Stop). A script that returned with dv calls still
+  // executing (not awaited — forEach(async …)) is over only when they are: they are let through
+  // and journaled. A Stop ends the run AT ONCE: requests already on the wire can't be recalled, so
+  // they finish in the background, their writes are added to the journal as they land, and Run for
+  // real / Rollback stay locked until the last one is back.
   const end = async (r, rn) => {
     if (rn.ending) return; rn.ending = true;
     if (r.stopped) { rn.stopped = true; rn.frame?.remove(); }
     else if (rn.inflight.size) rn.lateAfterDone = true; // the script returned with calls still running
     rn.finishing = true;
     let late = 0;
-    for (;;) {
+    if (!r.stopped) for (;;) {
       while (rn.inflight.size) await Promise.allSettled([...rn.inflight]);
       if (rn.stopped) break;
       const before = rn.calls;
@@ -159,15 +199,29 @@ export default function ScriptConsole({ bp, orgInfo }) {
     rn.frame?.remove();
     if (run.current === rn) run.current = null;
     if (late || rn.lateAfterDone) rn.buf.logs.push({ level: "warn", text: t("script.late_calls"), at: Date.now() - rn.t0 });
+    const pending = rn.inflight.size;
+    if (pending) rn.buf.logs.push({ level: "warn", text: t("script.stopped_pending").replace("{n}", pending), at: Date.now() - rn.t0 });
+    const keep = () => {
+      if (rn.mode !== "live" || !rn.buf.entries.length) return;
+      const j = journalOf(rn, rn.inflight.size > 0);
+      setJournal({ ...j, entries: [...j.entries] });
+      saveJournal(j);
+    };
     setResult({ ...r, mode: rn.mode, ms: Date.now() - rn.t0 });
-    if (rn.mode === "live" && rn.buf.entries.length) { const j = journalOf(rn, false); setJournal(j); saveJournal(j); }
+    keep();
     if (rn.mode === "dry" && r.ok) setLastDry({ sig: rn.sig, plan: summarize(rn.buf.plan), count: rn.buf.plan.length });
-    setTab(r.ok && rn.mode === "dry" && rn.buf.plan.length ? "writes" : "console");
+    setTab(r.ok && rn.mode === "dry" && rn.buf.plan.length ? "plan" : "console");
     setPhase("idle");
+    if (pending) {
+      setDraining(pending);
+      while (rn.inflight.size) { setDraining(rn.inflight.size); await Promise.allSettled([...rn.inflight]); }
+      setDraining(0);
+      keep();
+    }
   };
 
   const start = (m) => {
-    if (phase !== "idle" || !cur.code.trim()) return;
+    if (phase !== "idle" || !cur.code.trim() || (m === "live" && draining)) return;
     if (m === "live") {
       const dryOk = lastDry && lastDry.sig === sig;
       const msg = dryOk
@@ -239,7 +293,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
 
   // ── Rollback ──
   const doRollback = async () => {
-    if (!journal?.entries?.length || journal.rolledBack || phase !== "idle") return;
+    if (!journal?.entries?.length || journal.rolledBack || phase !== "idle" || draining) return;
     if (journal.orgUrl !== orgUrl) { window.alert(t("script.journal_other_org").replace("{org}", journal.orgUrl || "?")); return; }
     const s = rollbackStats(journal.entries);
     const msg = t("script.rollback_confirm").replace("{n}", journal.entries.length).replace("{full}", s.full).replace("{partial}", s.partial).replace("{none}", s.none).replace("{ops}", s.ops);
@@ -264,11 +318,13 @@ export default function ScriptConsole({ bp, orgInfo }) {
   const exportJournal = () => journal && dl(JSON.stringify(journal, null, 2), "application/json", expName("colvio_script_journal", "json", true));
   const importJournal = (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
-    if (!f) return;
-    f.text().then(txt => {
-      const j = JSON.parse(txt);
-      const okOp = (o) => o && ["POST", "PATCH", "PUT", "DELETE"].includes(o.method) && typeof o.path === "string" && /^\/api\/data\/v\d/.test(o.path);
-      if (!Array.isArray(j?.entries) || !j.entries.every(x => Array.isArray(x.inverse) && x.inverse.every(okOp))) throw new Error(t("script.journal_invalid"));
+    if (!f || draining) return;
+    readTextFile(f).then(txt => {
+      // every inverse a write on a Web API path, the rollback record well-formed (a hand-edited
+      // file can't break the view or send anything else)
+      let parsed = null; try { parsed = JSON.parse(txt); } catch { /* not JSON */ }
+      const j = normalizeJournal(parsed);
+      if (!j) throw new Error(t("script.journal_invalid"));
       // GUIDs are shared between a production org and its copies: a journal only undoes where it was written
       if (j.orgUrl !== orgUrl) throw new Error(t("script.journal_other_org").replace("{org}", j.orgUrl || "?"));
       setJournal(j); setTab("writes");
@@ -295,12 +351,16 @@ export default function ScriptConsole({ bp, orgInfo }) {
   };
 
   const busy = phase !== "idle";
+  const locked = busy || draining > 0; // Run for real, Rollback, journal import
   const prog = b.progress;
-  const writesList = mode === "dry" && (result || phase === "running") ? b.plan : null;
+  // The dry run's Plan and the journal of writes done have their own tabs: a dry run after a live
+  // run must not hide the journal (and its Rollback) of that live run.
+  const planList = mode === "dry" && (result || phase === "running") ? b.plan : null;
+  const view = tab === "plan" && !planList ? "writes" : tab;
   // during a live run the writes stream in; afterwards the saved journal (with its rollback)
   const liveJournal = phase === "running" && mode === "live" ? { script: run.current?.script || cur.name, at: new Date(run.current?.t0 || Date.now()).toISOString(), orgUrl, entries: b.entries } : journal;
   const jStats = liveJournal ? rollbackStats(liveJournal.entries) : null;
-  const tabBtn = (id, label, n) => <button onClick={() => setTab(id)} style={{ padding: "6px 12px", background: "none", border: "none", borderBottom: `2px solid ${tab === id ? C.vi : "transparent"}`, color: tab === id ? C.tx : C.txm, cursor: "pointer", fontSize: 13, fontWeight: tab === id ? 600 : 400 }}>{label}{n ? <span style={{ marginLeft: 5, fontSize: 11, color: C.txd, ...mono }}>{n.toLocaleString()}</span> : null}</button>;
+  const tabBtn = (id, label, n) => <button onClick={() => setTab(id)} style={{ padding: "6px 12px", background: "none", border: "none", borderBottom: `2px solid ${view === id ? C.vi : "transparent"}`, color: view === id ? C.tx : C.txm, cursor: "pointer", fontSize: 13, fontWeight: view === id ? 600 : 400 }}>{label}{n ? <span style={{ marginLeft: 5, fontSize: 11, color: C.txd, ...mono }}>{n.toLocaleString()}</span> : null}</button>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -347,7 +407,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
               ? <button onClick={phase === "running" ? stopRun : () => { if (run.current) run.current.stopped = true; }} style={bt(C.rd, { fontSize: 13 })}>■ {t("script.stop")}</button>
               : <>
                 <button onClick={() => start("dry")} title="Ctrl+Enter" style={bt(C.vi, { fontSize: 13 })}>▶ {t("script.dry_run")}</button>
-                <button onClick={() => start("live")} style={bt(orgInfo?.isProduction ? C.rd : C.or, { fontSize: 13 })}>⚡ {t("script.run_live")}</button>
+                <button onClick={() => start("live")} disabled={draining > 0} title={draining ? t("script.draining").replace("{n}", draining) : undefined} style={bt(orgInfo?.isProduction ? C.rd : C.or, { fontSize: 13, opacity: draining ? 0.55 : 1 })}>⚡ {t("script.run_live")}</button>
               </>}
           </div>
         </div>
@@ -363,20 +423,21 @@ export default function ScriptConsole({ bp, orgInfo }) {
               <div style={{ display: "flex", borderBottom: `1px solid ${C.bd}`, padding: "0 6px", alignItems: "center" }}>
                 {tabBtn("console", t("script.console"), b.logs.length)}
                 {tabBtn("tables", t("script.tables"), b.tables.length)}
-                {tabBtn("writes", writesList ? t("script.plan") : t("script.writes"), writesList ? writesList.length : liveJournal?.entries?.length || 0)}
+                {planList && tabBtn("plan", t("script.plan"), planList.length)}
+                {tabBtn("writes", t("script.writes"), liveJournal?.entries?.length || 0)}
                 <div style={{ flex: 1 }} />
                 {busy && <span style={{ fontSize: 12, color: C.txm, display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}><Spin s={11} />{phase === "rollback" ? t("script.rolling_back") : run.current?.finishing ? t("script.finishing") : mode === "dry" ? t("script.dry_running") : t("script.live_running")}</span>}
+                {!busy && draining > 0 && <span style={{ fontSize: 12, color: C.yw, display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}><Spin s={11} />{t("script.draining").replace("{n}", draining)}</span>}
               </div>
               {prog && busy && prog.total > 0 && <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.bd}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: C.txm, marginBottom: 3 }}><span>{prog.label}</span><span style={mono}>{prog.done.toLocaleString()} / {prog.total.toLocaleString()}</span></div>
                 <div style={{ height: 4, background: C.sfa, borderRadius: 2 }}><div style={{ height: 4, width: `${Math.min(100, (prog.done / prog.total) * 100)}%`, background: C.vi, borderRadius: 2, transition: "width .2s" }} /></div>
               </div>}
               <div style={{ flex: 1, overflow: "auto", padding: 10, minHeight: 0 }}>
-                {tab === "console" && <ConsoleView b={b} result={result} goLine={goLine} busy={busy} />}
-                {tab === "tables" && <TablesView tables={b.tables} />}
-                {tab === "writes" && (writesList
-                  ? <PlanView plan={writesList} result={result} />
-                  : <JournalView journal={liveJournal} stats={jStats} saveError={saveError} busy={busy} onRollback={doRollback} onExport={exportJournal} onImport={() => journalFileRef.current?.click()} />)}
+                {view === "console" && <ConsoleView b={b} result={result} goLine={goLine} busy={busy} />}
+                {view === "tables" && <TablesView tables={b.tables} />}
+                {view === "plan" && <PlanView plan={planList} result={result} />}
+                {view === "writes" && <JournalView journal={liveJournal} stats={jStats} saveError={saveError} busy={locked} running={busy} onRollback={doRollback} onExport={exportJournal} onImport={() => journalFileRef.current?.click()} />}
                 <input ref={journalFileRef} type="file" accept=".json" onChange={importJournal} style={{ display: "none" }} />
               </div>
             </>}
@@ -456,14 +517,15 @@ function PlanView({ plan, result }) {
   );
 }
 
-function JournalView({ journal, stats, saveError, busy, onRollback, onExport, onImport }) {
+function JournalView({ journal, stats, saveError, busy, running, onRollback, onExport, onImport }) {
   if (!journal?.entries?.length) return (
     <div style={{ color: C.txd, fontSize: 13, lineHeight: 1.6 }}>
       {t("script.no_journal")}
-      <div style={{ marginTop: 10 }}><button onClick={onImport} style={bt(null, { fontSize: 12, padding: "4px 10px" })}>{t("script.import_journal")}</button></div>
+      <div style={{ marginTop: 10 }}><button onClick={onImport} disabled={busy} style={bt(null, { fontSize: 12, padding: "4px 10px" })}>{t("script.import_journal")}</button></div>
     </div>
   );
   const rb = journal.rollback;
+  const failed = Array.isArray(rb?.failed) ? rb.failed : [];
   return (
     <div>
       <div style={{ ...crd({ padding: 10, marginBottom: 10 }) }}>
@@ -472,10 +534,10 @@ function JournalView({ journal, stats, saveError, busy, onRollback, onExport, on
           {journal.entries.length.toLocaleString()} {t("script.writes_done")} — <span style={{ color: C.gn }}>{stats.full} {t("script.rev_full")}</span> · <span style={{ color: C.yw }}>{stats.partial} {t("script.rev_partial")}</span> · <span style={{ color: C.rd }}>{stats.none} {t("script.rev_none")}</span>
         </div>
         {saveError && <div style={{ fontSize: 12.5, marginBottom: 8, color: C.rd }}>⚠ {t("script.journal_save_failed")} ({saveError})</div>}
-        {journal.inProgress && !busy && <div style={{ fontSize: 12.5, marginBottom: 8, color: C.yw }}>⚠ {t("script.journal_in_progress")}</div>}
-        {rb && <div style={{ fontSize: 12.5, marginBottom: 8, color: rb.failed.length || rb.stopped ? C.yw : C.gn }}>
-          {t("script.rollback_result").replace("{undone}", rb.undone).replace("{failed}", rb.failed.length).replace("{skipped}", rb.skipped)}{rb.already ? ` · ${t("script.rollback_already").replace("{n}", rb.already)}` : ""}{rb.stopped ? ` — ${t("script.stopped")}` : ""}
-          {rb.failed.slice(0, 20).map(f => <div key={f.seq} style={{ color: C.rd, ...mono, fontSize: 11.5 }}>#{f.seq} {f.method} {f.path}: {f.error}</div>)}
+        {journal.inProgress && !running && !busy && <div style={{ fontSize: 12.5, marginBottom: 8, color: C.yw }}>⚠ {t("script.journal_in_progress")}</div>}
+        {rb && <div style={{ fontSize: 12.5, marginBottom: 8, color: failed.length || rb.stopped ? C.yw : C.gn }}>
+          {t("script.rollback_result").replace("{undone}", rb.undone || 0).replace("{failed}", failed.length).replace("{skipped}", rb.skipped || 0)}{rb.already ? ` · ${t("script.rollback_already").replace("{n}", rb.already)}` : ""}{rb.stopped ? ` — ${t("script.stopped")}` : ""}
+          {failed.slice(0, 20).map((f, i) => <div key={`${f.seq}-${i}`} style={{ color: C.rd, ...mono, fontSize: 11.5 }}>#{f.seq} {f.method} {f.path}: {f.error}</div>)}
         </div>}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button onClick={onRollback} disabled={busy || journal.rolledBack || !stats.ops} style={bt(journal.rolledBack || !stats.ops ? null : C.or, { fontSize: 12, padding: "5px 11px", opacity: journal.rolledBack || !stats.ops ? 0.55 : 1 })}>↶ {journal.rolledBack ? t("script.rolled_back") : rb ? t("script.rollback_resume") : t("script.rollback")}</button>

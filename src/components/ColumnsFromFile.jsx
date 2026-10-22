@@ -3,6 +3,7 @@ import { bridge } from "../d365-bridge.js";
 import { C, Spin, mono, inp, bt, confirmProd, dl } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { parseDelimited, detectSep } from "../loaderUtils.js";
+import { decodeBytes } from "../textDecode.js";
 import { parseSpecSheet, validateSpecs, buildCreateBody, KIND_LABEL, TEMPLATE_HEADERS, TEMPLATE_ROWS, summarizeResults } from "../columnSpec.js";
 
 const csvCell = (v) => { const s = String(v ?? ""); return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -41,11 +42,11 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
           const m = await import("xlsx"); const XLSX = m.read ? m : (m.default || m);
           const wb = XLSX.read(ev.target.result, { type: "array" });
           aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", blankrows: false, raw: false });
-        } else { const text = String(ev.target.result || "").replace(/^﻿/, ""); aoa = parseDelimited(text, detectSep(text)); }
+        } else { const text = decodeBytes(ev.target.result).text; aoa = parseDelimited(text, detectSep(text)); }
         setFile({ name: f.name, aoa }); setRun(null);
       } catch (e) { setFile({ name: f.name, error: e.message || String(e) }); }
     };
-    isExcel ? reader.readAsArrayBuffer(f) : reader.readAsText(f);
+    reader.readAsArrayBuffer(f);
   };
   const template = () => dl("﻿" + [TEMPLATE_HEADERS, ...TEMPLATE_ROWS].map(r => r.map(csvCell).join(",")).join("\n"), "text/csv;charset=utf-8", `columns_template_${entity.l}.csv`);
 
