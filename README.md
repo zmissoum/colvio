@@ -10,6 +10,8 @@ Colvio is a **free and open-source** Chrome extension that lets consultants, adm
 
 **No API keys. No app registration. No subscription.** Just click the icon on any D365 page and start working.
 
+**One Colvio per environment.** Several environments open in the browser? Click the icon on each one: every environment gets its own Colvio tab (DEV and PROD side by side), bound to that environment's URL. Clicking the icon again, from any tab of that environment, brings its Colvio back as you left it — queries, results and scripts kept — and the other environments' tabs are left alone. Each tab's title names its environment.
+
 > **Coming from XrmToolBox?** See [XRMTOOLBOX.md](XRMTOOLBOX.md) — which Colvio module replaces which tool, and what stays with XrmToolBox by design.
 
 ## Why Colvio?
@@ -301,7 +303,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~27,100 |
 | API actions | 99 |
 | React components | 50 |
-| Unit tests | 692 |
+| Unit tests | 696 |
 | Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |

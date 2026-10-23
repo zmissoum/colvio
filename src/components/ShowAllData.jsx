@@ -27,12 +27,15 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const[optionsCache,setOptionsCache]=useState({}); // { fieldLogical: [{value,label}] }
 
   useEffect(()=>{
-    if(!isLive) return;
-    bridge.getCurrentRecord().then(rec=>{
-      if(rec && rec.entityType && rec.recordId){
-        setAutoDetected(rec);
-      }
+    if(!isLive) return undefined;
+    // the record open in the D365 tab: on open, and again when Colvio is opened from another tab of
+    // this environment (the panel then follows that tab)
+    const detect=()=>bridge.getCurrentRecord().then(rec=>{
+      setAutoDetected(rec && rec.entityType && rec.recordId ? rec : null);
     }).catch(()=>{});
+    detect();
+    window.addEventListener("colvio:rebound",detect);
+    return()=>window.removeEventListener("colvio:rebound",detect);
   },[isLive]);
 
   const loadDetected=()=>{

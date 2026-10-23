@@ -94,7 +94,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           // WHERE literals — re-redact once and write back (review finding, privacy class).
           const{list,changed}=scrubStoredHistory(r.d365_query_history);
           setQueryHistory(list);
-          if(changed)chrome.storage.local.set({d365_query_history:list},()=>{void chrome.runtime.lastError;});
+          if(changed)persistList("d365_query_history",cur=>scrubStoredHistory(cur).list); // against what storage holds now (another panel may have written)
         }
         if(r.d365_bookmarks) setBookmarks(r.d365_bookmarks);
       });
@@ -117,11 +117,16 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     persistList("d365_query_history",cur=>[entry,...cur.filter(h=>h.query!==entry.query)].slice(0,20));
   };
   useEffect(()=>{
-    if(typeof chrome!=="undefined"&&chrome.storage?.local){
-      chrome.storage.local.get(["d365_saved_queries"],r=>{
-        if(r.d365_saved_queries) setSavedQueries(r.d365_saved_queries);
-      });
-    }
+    if(typeof chrome==="undefined"||!chrome.storage?.local) return undefined;
+    chrome.storage.local.get(["d365_saved_queries"],r=>{
+      if(r.d365_saved_queries) setSavedQueries(r.d365_saved_queries);
+    });
+    // saved queries are shared by every Colvio panel (one per environment): one saved in another
+    // panel shows up here too
+    if(!chrome.storage.onChanged) return undefined;
+    const onChange=(ch,area)=>{ if(area==="local"&&ch.d365_saved_queries) setSavedQueries(Array.isArray(ch.d365_saved_queries.newValue)?ch.d365_saved_queries.newValue:[]); };
+    chrome.storage.onChanged.addListener(onChange);
+    return()=>chrome.storage.onChanged.removeListener(onChange);
   },[]);
 
   const saveCurrentQuery=()=>{
@@ -1778,7 +1783,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                       <div style={{display:"flex",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`}}>
                         <button onClick={()=>{dl(JSON.stringify({colvioQueries:1,queries:savedQueries},null,1),"application/json",expName("colvio_queries","json"));}} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬇ {t("explorer.export_queries")}</button>
                         <button onClick={()=>qImportRef.current?.click()} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬆ {t("explorer.import_queries")}</button>
-                        <input ref={qImportRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const qs=d.colvioQueries===1?d.queries:null;if(!Array.isArray(qs))throw 0;const merged=[...qs.filter(q=>q&&q.name),...savedQueries.filter(s2=>!qs.some(q=>q.name===s2.name))].slice(0,20);setSavedQueries(merged);setImportErr("");if(typeof chrome!=="undefined"&&chrome.storage?.local)chrome.storage.local.set({d365_saved_queries:merged},()=>{void chrome.runtime.lastError;});}catch{setImportErr(t("explorer.import_queries_bad"));}};r.readAsText(f);e.target.value="";}}/>
+                        <input ref={qImportRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const qs=d.colvioQueries===1?d.queries:null;if(!Array.isArray(qs))throw 0;const mergeIn=(list)=>[...qs.filter(q=>q&&q.name),...list.filter(s2=>!qs.some(q=>q.name===s2.name))].slice(0,20);setSavedQueries(mergeIn(savedQueries));setImportErr("");persistList("d365_saved_queries",mergeIn);}catch{setImportErr(t("explorer.import_queries_bad"));}};r.readAsText(f);e.target.value="";}}/>
                       </div>
                       {importErr&&<div style={{padding:"6px 10px",fontSize:11,color:C.rd,borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",gap:6}}>⚠ {importErr}<button onClick={()=>setImportErr("")} style={{marginLeft:"auto",background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:11}}>✕</button></div>}
                       {savedQueries.map(q=>(

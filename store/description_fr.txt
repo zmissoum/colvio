@@ -5,6 +5,7 @@ Interrogez, chargez, inspectez, testez la Web API et auditez votre org depuis un
 24 modules pour consultants, administrateurs et développeurs. Colvio s'adapte à vos droits : les modules réservés aux administrateurs restent masqués pour les utilisateurs standard, et chaque écriture passe toujours par la sécurité de Dataverse.
 
 NOUVEAUTÉS
+• Un Colvio par environnement — DEV et PROD côte à côte, chacun dans son onglet avec son travail ; l'icône sur un onglet ramène le Colvio de cet environnement tel que vous l'avez laissé.
 • Script Console — exécutez du JavaScript sur la Web API avec votre session, pour ce qu'aucun écran ne fait : renseigner un lookup depuis une autre table, corriger des données selon des règles. Un dry run liste chaque écriture sans l'envoyer ; l'exécution réelle garde un journal de rollback qui remet chaque ligne en un clic.
 • Qui exécute quoi — chaque identité derrière vos automatisations et ce qu'elle est (personne, compte de service, app registration, utilisateur intégré, équipe), le compte de chaque connexion, et avec les droits de qui s'exécute chaque workflow et chaque étape de plug-in.
 • Record activity — sauvegardez un enregistrement et voyez ce que la sauvegarde a déclenché : les plug-ins dans l'ordre (durée, cascades, exception, trace complète), les tâches système et les flux cloud ; cliquez un échec pour son erreur, l'étape derrière et ses dernières exécutions ; « log every plug-in » pendant 15 à 60 minutes, remis seul.

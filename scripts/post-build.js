@@ -13,7 +13,7 @@ const dist = resolve(root, "dist");
 // sandbox.html / sandbox.js: the Script Console runner (manifest sandbox page, not bundled)
 const files = ["manifest.json", "background.js", "content.js", "sandbox.html", "sandbox.js"];
 // Pure modules the service worker imports (background.js is an ES module): src/x.js → dist/x.js
-const moduleFiles = ["saveCapture.js"];
+const moduleFiles = ["saveCapture.js", "panelRouting.js"];
 const dirs = ["icons"];
 
 console.log("📦 Copy static files to dist/...");

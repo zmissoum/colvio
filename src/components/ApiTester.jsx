@@ -56,7 +56,8 @@ export default function ApiTester({ bp, orgInfo, theme }) {
       // values. Re-redact once and write back, so old PII doesn't sit in storage forever (review finding).
       const { list, changed } = scrubApiEntries(h.filter(e => e && typeof e === "object"));
       setHistory(list);
-      if (changed) chrome.storage.local.set({ colvio_api_tester_history: list }, () => { void chrome.runtime.lastError; });
+      // against what storage holds now: another Colvio panel may have added entries since
+      if (changed) persistList("colvio_api_tester_history", cur => scrubApiEntries(cur.filter(e => e && typeof e === "object")).list);
     });
   }, []);
 

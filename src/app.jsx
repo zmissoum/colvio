@@ -179,6 +179,30 @@ export default function App(){
     }
   }, []);
 
+  // Several Colvio panels can be open, one per environment: the tab title says which.
+  useEffect(() => {
+    if (!orgInfo?.orgName) return;
+    document.title = `${orgInfo.isProduction ? "PROD · " : ""}${orgInfo.orgName} · Colvio`;
+  }, [orgInfo?.orgName, orgInfo?.isProduction]);
+
+  // Colvio opened again from another tab of this environment (toolbar icon): the panel follows that
+  // tab — the record open there is what Show All Data picks up — and its URL keeps it, so a reload
+  // stays on it. Messages for another environment's panel are ignored.
+  useEffect(() => {
+    if (!orgInfo?.isExtension || typeof chrome === "undefined" || !chrome.runtime?.onMessage) return undefined;
+    const onRebind = (msg) => {
+      if (!msg || !msg.__colvioRebind || msg.orgUrl !== orgInfo.orgUrl) return;
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set("tabId", String(msg.tabId));
+        window.history.replaceState(window.history.state, "", u);
+      } catch { /* keep the previous tab: the relay still checks the org */ }
+      window.dispatchEvent(new CustomEvent("colvio:rebound", { detail: { tabId: msg.tabId } }));
+    };
+    chrome.runtime.onMessage.addListener(onRebind);
+    return () => chrome.runtime.onMessage.removeListener(onRebind);
+  }, [orgInfo?.isExtension, orgInfo?.orgUrl]);
+
   const addHistory=(q,mode)=>setQueryHistory(h=>[{query:q,mode:mode||"builder",time:new Date().toLocaleTimeString(),id:Date.now()},...h.slice(0,19)]);
 
   const handleManualConnect = () => {

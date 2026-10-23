@@ -5,6 +5,7 @@ Query, load, inspect, test the Web API and audit your org from one side panel. C
 24 modules for consultants, admins and developers. Colvio adapts to your rights: admin-only modules stay hidden for standard users, and every write still goes through Dataverse's own security.
 
 WHAT'S NEW
+• One Colvio per environment — DEV and PROD side by side, each in its own tab with its own work; the icon on a tab brings back that environment's Colvio as you left it.
 • Script Console — run JavaScript on the Web API with your session, for what no screen does: fill a lookup from another table, fix data by rules. A dry run lists every write without sending it; the real run keeps a rollback journal that puts every row back in one click.
 • Who runs what — every identity behind your automation and what it is (person, service account, app registration, built-in user, team), the account each connection is signed in with, and whose rights each workflow and plug-in step runs with.
 • Record activity — save a record and see what the save set off: plug-ins in execution order (duration, cascades, exception, full trace), system jobs and cloud flows; click a failure for its error, the step behind it and its recent runs; "log every plug-in" for 15–60 minutes, reverted by itself.

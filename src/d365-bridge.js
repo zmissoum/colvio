@@ -123,7 +123,10 @@ async function cacheClear() {
   if (isExtension && chrome.storage?.local) {
     try {
       const all = await new Promise(r => chrome.storage.local.get(null, r));
-      const metaKeys = Object.keys(all).filter(k => k.startsWith("d365_cache_"));
+      // this environment's cache only (another panel may be open on another one) — plus entries
+      // from before the cache was keyed by org
+      const mine = `d365_cache_${getOrgUrl() || "default"}_`;
+      const metaKeys = Object.keys(all).filter(k => k.startsWith(mine) || (k.startsWith("d365_cache_") && !k.includes("://") && !k.startsWith("d365_cache_default_")));
       if (metaKeys.length) chrome.storage.local.remove(metaKeys, () => { void chrome.runtime.lastError; });
     } catch {}
   }

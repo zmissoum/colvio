@@ -6,6 +6,7 @@
  * Record activity: observe (read-only) the Web API writes a D365 tab sends
  */
 import { startSave, finishSave, addSave } from "./saveCapture.js";
+import { pickPanel, relayCandidates } from "./panelRouting.js";
 
 let d365TabId = null;
 // Tab ids the browser swapped out from under us (memory-saver discard can REPLACE a tab: same
@@ -16,9 +17,32 @@ const replacedIds = new Map(); // old id → new id
 const D365_DOMAINS = [".dynamics.com", ".microsoftdynamics.us", ".dynamics.cn"];
 const isD365Url = (url) => url && D365_DOMAINS.some(d => url.includes(d));
 
+// The D365 tab each environment's panel talks through: the one its Colvio was last opened from.
+// Also kept in session storage — a service-worker restart wipes memory, not that.
+const BOUND = "boundTab|";
+const bound = new Map(); // orgUrl → tab id
+const setBound = (orgUrl, tabId) => {
+  bound.set(orgUrl, tabId);
+  try { chrome.storage.session.set({ [BOUND + orgUrl]: tabId }).catch(() => {}); } catch { /* storage unavailable */ }
+};
+const dropBound = (orgUrl) => {
+  bound.delete(orgUrl);
+  try { chrome.storage.session.remove(BOUND + orgUrl).catch(() => {}); } catch { /* storage unavailable */ }
+};
+async function getBound(orgUrl) {
+  if (!orgUrl) return null;
+  if (bound.has(orgUrl)) return bound.get(orgUrl);
+  try {
+    const v = (await chrome.storage.session.get(BOUND + orgUrl))[BOUND + orgUrl];
+    if (v) bound.set(orgUrl, v);
+    return v || null;
+  } catch { return null; }
+}
+
 chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
   replacedIds.set(removedTabId, addedTabId);
   if (removedTabId === d365TabId) d365TabId = addedTabId;
+  for (const [org, id] of bound) if (id === removedTabId) setBound(org, addedTabId);
 });
 
 const resolveReplaced = (id) => {
@@ -45,7 +69,11 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// ── Click icon: open panel in new tab ────────────────────────
+// ── Click icon: this environment's panel ─────────────────────
+// One Colvio per environment (panelRouting.js): the org's panel already open is brought next to
+// the D365 tab and focused AS IT IS (no reload — its work stays), the panels of the other
+// environments are left alone; none yet → a new one. Panels are kept from being discarded by the
+// memory saver, like the org tabs they talk through.
 chrome.action.onClicked.addListener(async (tab) => {
   if (!isD365Url(tab.url)) return;
   d365TabId = tab.id;
@@ -55,17 +83,23 @@ chrome.action.onClicked.addListener(async (tab) => {
   try { await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] }); } catch {}
 
   const orgUrl = new URL(tab.url).origin;
+  setBound(orgUrl, tab.id);
   const panelUrl = chrome.runtime.getURL(`panel.html?orgUrl=${encodeURIComponent(orgUrl)}&tabId=${tab.id}`);
 
-  // Reuse existing panel tab or open a new one — always PLACED RIGHT NEXT to the D365 tab
-  // (index + 1) instead of the far end of the tab strip; openerTabId makes closing the panel
-  // return focus to the D365 tab, and keeps it in the same tab group if the org tab is in one.
-  const existing = await chrome.tabs.query({ url: chrome.runtime.getURL("panel.html*") });
-  if (existing.length > 0) {
-    try { await chrome.tabs.move(existing[0].id, { windowId: tab.windowId, index: tab.index + 1 }); } catch { /* dragged mid-move or pinned — keep it where it is */ }
-    await chrome.tabs.update(existing[0].id, { active: true, url: panelUrl });
+  // Always PLACED RIGHT NEXT to the D365 tab (index + 1) instead of the far end of the tab strip;
+  // openerTabId makes closing the panel return focus to the D365 tab, and keeps it in the same tab
+  // group if the org tab is in one.
+  const panels = await chrome.tabs.query({ url: chrome.runtime.getURL("panel.html*") });
+  const mine = pickPanel(panels, orgUrl, tab.windowId);
+  if (mine) {
+    try { await chrome.tabs.move(mine.id, { windowId: tab.windowId, index: tab.index + 1 }); } catch { /* dragged mid-move or pinned — keep it where it is */ }
+    await chrome.tabs.update(mine.id, { active: true });
+    keepAwake(mine.id);
+    // the panel now follows this tab (the record open in it, for Show All Data / the Explorer)
+    try { chrome.runtime.sendMessage({ __colvioRebind: true, orgUrl, tabId: tab.id }, () => { void chrome.runtime.lastError; }); } catch { /* no panel listening */ }
   } else {
-    await chrome.tabs.create({ url: panelUrl, index: tab.index + 1, openerTabId: tab.id });
+    const created = await chrome.tabs.create({ url: panelUrl, index: tab.index + 1, openerTabId: tab.id });
+    if (created?.id != null) keepAwake(created.id);
   }
 });
 
@@ -108,9 +142,10 @@ async function relayToD365(message) {
   if (!message.orgUrl) return { error: "This Colvio panel doesn't know which environment it belongs to. Close it and reopen it from your Dynamics 365 tab (Colvio icon)." };
   const okOrg = (t) => orgOf(t) === message.orgUrl;
 
-  const candidates = [];
-  if (message.d365TabId) candidates.push(resolveReplaced(message.d365TabId));
-  if (d365TabId && !candidates.includes(resolveReplaced(d365TabId))) candidates.push(resolveReplaced(d365TabId));
+  // the tab this environment's Colvio was last opened from, then the panel's own, then the last
+  // registered one (each checked to show the panel's org)
+  const b = await getBound(message.orgUrl);
+  const candidates = relayCandidates(b && resolveReplaced(b), message.d365TabId && resolveReplaced(message.d365TabId), d365TabId && resolveReplaced(d365TabId));
   let target = null, targetTab = null;
   for (const id of candidates) {
     const t = await tabsGet(id);
@@ -123,7 +158,7 @@ async function relayToD365(message) {
       try { chrome.tabs.query({ url: message.orgUrl + "/*" }, (ts) => { void chrome.runtime.lastError; res(ts || []); }); }
       catch { res([]); }
     });
-    if (found.length) { target = found[0].id; targetTab = found[0]; d365TabId = target; }
+    if (found.length) { target = found[0].id; targetTab = found[0]; d365TabId = target; setBound(message.orgUrl, target); }
   }
   if (!target) return { error: "Lost the D365 tab for this environment (closed, or replaced by the browser's memory saver). Open your Dynamics 365 environment and click the Colvio icon again." };
 
@@ -156,7 +191,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "d365_tab_ready") { d365TabId = sender.tab.id; keepAwake(sender.tab.id); sendResponse({ ok: true }); }
 });
 
-chrome.tabs.onRemoved.addListener((id) => { if (id === d365TabId) d365TabId = null; });
+chrome.tabs.onRemoved.addListener((id) => {
+  if (id === d365TabId) d365TabId = null;
+  for (const [org, t] of bound) if (t === id) dropBound(org);
+});
 
 // ── Record activity: the saves each D365 tab sends ───────────
 // chrome.webRequest only LOOKS at the org's Web API writes (form saves, ribbon actions, Colvio's own
