@@ -34,6 +34,41 @@ describe("buildHistoryEntry", () => {
     expect(e.builder.fields).toEqual(["accountid", "name"]);
     expect(JSON.stringify(e)).not.toContain("secret");
   });
+  it("REL / EXPAND: structure kept, condition values blanked and counted, no target metadata stored", () => {
+    const allFields = [{ l: "emailaddress1", t: "String", d: "Email" }];
+    const e = buildHistoryEntry({
+      ...BASE, mode: "builder", query: "GET /x",
+      builderState: {
+        fields: ["name"], filterGroups: [], groupLogic: "and", limit: 0, orderBy: { f: "", dir: "asc" },
+        expands: [
+          { navProperty: "primarycontactid", targetEntity: "contact", lookupField: "primarycontactid", type: "single", fields: ["fullname"], conditions: [], allFields },
+          { navProperty: "ownerid", targetEntity: "systemuser", lookupField: "ownerid", type: "single", fields: [], allFields }, // no column picked: not a join, not kept
+          { navProperty: "contact_customer_accounts", targetEntity: "contact", lookupField: "parentcustomerid", type: "collection", fields: ["fullname"], conditions: [{ field: "emailaddress1", op: "contains", value: "secret@x" }], conditionLogic: "or", allFields },
+        ],
+        relFilters: [
+          { navProperty: "opportunity_customer_accounts", targetEntity: "opportunity", lookupField: "customerid", type: "collection", mode: "none", conditions: [{ field: "statecode", op: "eq", value: "0" }, { field: "", op: "eq", value: "" }], conditionLogic: "and", allFields },
+        ],
+      },
+    });
+    expect(e.builder.expands).toEqual([
+      { navProperty: "primarycontactid", targetEntity: "contact", lookupField: "primarycontactid", type: "single", fields: ["fullname"], conditions: [], conditionLogic: "and" },
+      { navProperty: "contact_customer_accounts", targetEntity: "contact", lookupField: "parentcustomerid", type: "collection", fields: ["fullname"], conditions: [{ field: "emailaddress1", op: "contains", value: "" }], conditionLogic: "or" },
+    ]);
+    expect(e.builder.relFilters).toEqual([
+      { navProperty: "opportunity_customer_accounts", targetEntity: "opportunity", lookupField: "customerid", type: "collection", mode: "none", conditions: [{ field: "statecode", op: "eq", value: "" }, { field: "", op: "eq", value: "" }], conditionLogic: "and" },
+    ]);
+    expect(e.builder.redacted).toBe(2);
+    expect(e.builder.hadRel).toBe(true);
+    expect(e.builder.hadExpand).toBe(true);
+    const json = JSON.stringify(e);
+    expect(json).not.toContain("secret");
+    expect(json).not.toContain("allFields");
+    // a query without clauses records none
+    const none = buildHistoryEntry({ ...BASE, mode: "builder", query: "GET /x", builderState: { fields: ["name"], filterGroups: [] } });
+    expect(none.builder.expands).toEqual([]);
+    expect(none.builder.relFilters).toEqual([]);
+    expect(none.builder.hadRel).toBe(false);
+  });
   it("non-builder entries carry no builder snapshot; missing entity becomes '?'", () => {
     const e = buildHistoryEntry({ ...BASE, entityLogical: null, query: "q" });
     expect(e.builder).toBeUndefined();

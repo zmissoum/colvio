@@ -62,18 +62,30 @@ export function buildHistoryEntry({ entityLogical, query, mode, fieldCount, ts, 
   const entry = { entity: entityLogical || "?", query: safeQuery, mode, fields: fieldCount, ts };
   if (mode === "builder" && builderState) {
     let redacted = 0;
+    const blank = (conds) => (conds || []).map(c => { if (c.value) redacted++; return { field: c.field, op: c.op, value: "" }; });
+    // REL / EXPAND: the same promise as the WHERE — their STRUCTURE (relation, columns, condition
+    // fields + operators, mode) is kept so the Builder reopens whole; their condition VALUES are
+    // blanked and counted. Target-table metadata (allFields) is refetched on restore, never stored.
+    const expands = (builderState.expands || []).filter(ex => ex && ex.navProperty && (ex.fields || []).length).map(ex => ({
+      navProperty: ex.navProperty, targetEntity: ex.targetEntity, lookupField: ex.lookupField, type: ex.type || "single",
+      fields: [...ex.fields], conditions: blank(ex.conditions), conditionLogic: ex.conditionLogic || "and",
+    }));
+    const relFilters = (builderState.relFilters || []).filter(rf => rf && rf.navProperty).map(rf => ({
+      navProperty: rf.navProperty, targetEntity: rf.targetEntity, lookupField: rf.lookupField, type: rf.type || "single",
+      mode: rf.mode || "any", conditions: blank(rf.conditions), conditionLogic: rf.conditionLogic || "and",
+    }));
     entry.builder = {
       fields: builderState.fields,
-      filterGroups: (builderState.filterGroups || []).map(g => ({
-        logic: g.logic,
-        conditions: (g.conditions || []).map(c => { if (c.value) redacted++; return { field: c.field, op: c.op, value: "" }; }),
-      })),
+      filterGroups: (builderState.filterGroups || []).map(g => ({ logic: g.logic, conditions: blank(g.conditions) })),
       groupLogic: builderState.groupLogic,
       limit: builderState.limit,
       orderBy: builderState.orderBy,
+      expands,
+      relFilters,
       redacted,
-      hadRel: !!builderState.hadRel,
-      hadExpand: !!builderState.hadExpand,
+      // kept for entries written before the clauses were snapshotted (their restore says so)
+      hadRel: !!builderState.hadRel || relFilters.length > 0,
+      hadExpand: !!builderState.hadExpand || expands.length > 0,
     };
   }
   return entry;

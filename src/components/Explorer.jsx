@@ -112,7 +112,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // Entry construction (redaction + builder structure snapshot) lives in historyUtils.js —
     // pure and tested, since both its invariants were user-hit while they lived inline here.
     const entry=buildHistoryEntry({entityLogical:entity?.l,query,mode,fieldCount,ts:Date.now(),
-      builderState:mode==="builder"?{fields:sf,filterGroups,groupLogic,limit:lim,orderBy,hadRel:relFilters.length>0,hadExpand:expands.some(ex=>ex.fields.length>0)}:null});
+      builderState:mode==="builder"?{fields:sf,filterGroups,groupLogic,limit:lim,orderBy,expands,relFilters}:null});
     setQueryHistory(prev=>[entry,...prev.filter(h=>h.query!==entry.query)].slice(0,20));
     persistList("d365_query_history",cur=>[entry,...cur.filter(h=>h.query!==entry.query)].slice(0,20));
   };
@@ -162,35 +162,38 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         if(q.rq) setRq(q.rq);
         if(q.fxml) setFxml(q.fxml);
         if(q.sqlQ) setSqlQ(q.sqlQ);
-        // Relational filters need the target entity's field metadata back (types drive the
-        // operator lists and OData quoting) — refetch it per saved filter, drop the ones whose
-        // target no longer resolves. Guarded by selGen: switching entity while these getFields
-        // are in flight must DISCARD the restore, not repaint the old query's filters.
-        if(q.relFilters?.length){
-          const g=selGen.current;
-          Promise.all(q.relFilters.map(async rf=>{
-            try{
-              const tf=isLive?await bridge.getFields(rf.targetEntity):FLDS;
-              return {...rf, mode:rf.mode||"any", conditionLogic:rf.conditionLogic||"and", allFields:mapTargetFields(tf)};
-            }catch{return null;}
-          })).then(list=>{if(selGen.current===g)setRelFilters(list.filter(Boolean));});
-        }
-        // EXPANDS were saved but never restored — a reloaded query silently ran without its
-        // joins (audit finding). Same refetch + selGen-guard pattern as relFilters above.
-        if(q.expands?.length){
-          const g2=selGen.current;
-          Promise.all(q.expands.map(async ex=>{
-            try{
-              const tf=isLive?await bridge.getFields(ex.targetEntity):FLDS;
-              return {navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,type:ex.type||"single",allFields:mapTargetFields(tf),fields:ex.fields||[],conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"};
-            }catch{return null;}
-          })).then(list=>{if(selGen.current===g2)setExpands(list.filter(Boolean));});
-        }
+        restoreRelated(q);
       });
     } else {
       setError(`The saved query's table "${q.entity}" no longer exists on this org.`);
     }
     setShowSaved(false);
+  };
+
+  // REL filters and EXPANDS of a saved query or a history entry, back in the Builder. They need
+  // the target entity's field metadata (types drive the operator lists and OData quoting) —
+  // refetched per clause, the ones whose target no longer resolves dropped. Guarded by selGen:
+  // switching entity while these getFields are in flight must DISCARD the restore, not repaint
+  // the old query's clauses onto the new table. (EXPANDS were once saved but never restored — a
+  // reloaded query silently ran without its joins; audit finding.)
+  const restoreRelated=(q)=>{
+    const g=selGen.current;
+    if(q.relFilters?.length){
+      Promise.all(q.relFilters.map(async rf=>{
+        try{
+          const tf=isLive?await bridge.getFields(rf.targetEntity):FLDS;
+          return {...rf, type:rf.type||"single", mode:rf.mode||"any", conditions:rf.conditions||[], conditionLogic:rf.conditionLogic||"and", allFields:mapTargetFields(tf)};
+        }catch{return null;}
+      })).then(list=>{if(selGen.current===g)setRelFilters(list.filter(Boolean));});
+    }
+    if(q.expands?.length){
+      Promise.all(q.expands.map(async ex=>{
+        try{
+          const tf=isLive?await bridge.getFields(ex.targetEntity):FLDS;
+          return {navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,type:ex.type||"single",allFields:mapTargetFields(tf),fields:ex.fields||[],conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"};
+        }catch{return null;}
+      })).then(list=>{if(selGen.current===g)setExpands(list.filter(Boolean));});
+    }
   };
 
   const deleteSavedQuery=(name)=>{
@@ -1748,9 +1751,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                               setGroupLogic(b.groupLogic||"and");
                               setLim(b.limit??0);
                               setOrderBy(b.orderBy&&b.orderBy.f?{f:b.orderBy.f,dir:b.orderBy.dir==="desc"?"desc":"asc"}:{f:"",dir:"asc"});
+                              // REL / EXPAND come back too (structure; their condition values are
+                              // among the blanked ones). Entries older than that snapshot only know
+                              // the clauses existed: say so.
+                              setExpands([]);setRelFilters([]); // same table, no entity switch: the entry's clauses replace the current ones
+                              restoreRelated(b);
+                              const lostRel=b.hadRel&&!b.relFilters?.length, lostExpand=b.hadExpand&&!b.expands?.length;
                               const notes=[];
                               if(b.redacted) notes.push(`refill the ${b.redacted} condition value${b.redacted>1?"s":""} — values are never stored in the history (privacy)`);
-                              if(b.hadRel||b.hadExpand) notes.push(`the query's ${[b.hadRel?"REL":null,b.hadExpand?"EXPAND":null].filter(Boolean).join(" and ")} clause${b.hadRel&&b.hadExpand?"s are":" is"} not kept in history`);
+                              if(lostRel||lostExpand) notes.push(`the query's ${[lostRel?"REL":null,lostExpand?"EXPAND":null].filter(Boolean).join(" and ")} clause${lostRel&&lostExpand?"s were":" was"} recorded before the history kept them`);
                               if(notes.length) setError(`ℹ Restored into the Builder: ${notes.join("; ")}. Use Saved Queries (💾) to keep everything.`);
                               return;
                             }
