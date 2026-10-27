@@ -23,9 +23,56 @@ describe("builderToFetchXml", () => {
     expect((r.fetchxml.match(/<condition/g) || []).length).toBe(3);
   });
   it("refuses what a Builder view can't carry", () => {
-    expect(builderToFetchXml({ entity: "account", attrs: ["name"], hasExpands: true }).error).toMatch(/related tables/);
     expect(builderToFetchXml({ entity: "", attrs: [] }).error).toMatch(/No table/);
     expect(builderToFetchXml({ entity: "account", attrs: ["name"], groups: [{ conditions: [{ field: "name", op: "regex", value: "x" }] }], fieldTypes }).error).toMatch(/can't be saved/);
+  });
+});
+
+describe("builderToFetchXml — related tables", () => {
+  const contactFields = [{ l: "fullname", t: "String" }, { l: "emailaddress1", t: "String" }, { l: "statecode", t: "State" }];
+  const oppFields = [{ l: "name", t: "String" }, { l: "statecode", t: "State" }, { l: "estimatedvalue", t: "Money" }];
+  const parent = { navProperty: "primarycontactid", targetEntity: "contact", lookupField: "primarycontactid", type: "single", allFields: contactFields };
+  const children = { navProperty: "opportunity_customer_accounts", targetEntity: "opportunity", lookupField: "customerid", type: "collection", allFields: oppFields };
+
+  it("an EXPAND is an outer link-entity carrying its columns under the nav property", () => {
+    const r = builderToFetchXml({ entity: "account", attrs: ["name"], primaryId: "accountid", expands: [
+      { ...parent, targetPk: "contactid", fields: ["fullname", "emailaddress1"] },
+      { ...children, targetPk: "opportunityid", fields: ["name"], conditions: [{ field: "statecode", op: "eq", value: "0" }, { field: "gone", op: "eq", value: "1" }], conditionLogic: "and" },
+      { ...parent, navProperty: "ownerid", targetEntity: "systemuser", lookupField: "ownerid", fields: [] }, // no column picked: not a join
+    ] });
+    expect(r.fetchxml).toBe('<fetch version="1.0" mapping="logical"><entity name="account"><attribute name="name"/>'
+      + '<link-entity name="contact" from="contactid" to="primarycontactid" link-type="outer" alias="primarycontactid"><attribute name="fullname"/><attribute name="emailaddress1"/></link-entity>'
+      + '<link-entity name="opportunity" from="customerid" to="accountid" link-type="outer" alias="opportunity_customer_accounts"><attribute name="name"/><filter type="and"><condition attribute="statecode" operator="eq" value="0"/></filter></link-entity>'
+      + '</entity></fetch>');
+    // the view's columns follow: alias.attribute
+    expect(layoutColumns(r.fetchxml, "accountid")).toEqual(["name", "primarycontactid.fullname", "primarycontactid.emailaddress1", "opportunity_customer_accounts.name"]);
+  });
+  it("a parent REL filter is an inner join on its conditions; none set → no join", () => {
+    const r = builderToFetchXml({ entity: "account", attrs: ["name"], primaryId: "accountid", relFilters: [
+      { ...parent, targetPk: "contactid", mode: "any", conditionLogic: "or", conditions: [{ field: "emailaddress1", op: "contains", value: "@gmail" }, { field: "statecode", op: "eq", value: "1" }] },
+      { ...parent, navProperty: "ownerid", targetEntity: "systemuser", lookupField: "ownerid", conditions: [{ field: "", op: "eq", value: "" }] },
+    ] });
+    expect(r.fetchxml).toBe('<fetch version="1.0" mapping="logical"><entity name="account"><attribute name="name"/>'
+      + '<link-entity name="contact" from="contactid" to="primarycontactid" link-type="inner" alias="rel_primarycontactid"><filter type="or"><condition attribute="emailaddress1" operator="like" value="%@gmail%"/><condition attribute="statecode" operator="eq" value="1"/></filter></link-entity>'
+      + '</entity></fetch>');
+    expect(layoutColumns(r.fetchxml, "accountid")).toEqual(["name"]); // a REL filter shows no column
+  });
+  it("a child REL filter is link-type any / not any, with the child's conditions", () => {
+    const has = builderToFetchXml({ entity: "account", attrs: ["name"], primaryId: "accountid", relFilters: [{ ...children, targetPk: "opportunityid", mode: "any", conditions: [{ field: "statecode", op: "eq", value: "0" }] }] });
+    expect(has.fetchxml).toContain('<link-entity name="opportunity" from="customerid" to="accountid" link-type="any"><filter type="and"><condition attribute="statecode" operator="eq" value="0"/></filter></link-entity>');
+    const none = builderToFetchXml({ entity: "account", attrs: ["name"], primaryId: "accountid", relFilters: [{ ...children, targetPk: "opportunityid", mode: "none", conditions: [] }] });
+    expect(none.fetchxml).toContain('<link-entity name="opportunity" from="customerid" to="accountid" link-type="not any"></link-entity>');
+  });
+  it("keys fall back to <table>id, dropped conditions follow the Builder's schema-drift guard", () => {
+    const r = builderToFetchXml({ entity: "account", attrs: ["name"], expands: [{ ...parent, fields: ["fullname"] }], relFilters: [{ ...children, mode: "any", conditions: [{ field: "statecode", op: "eq", value: "0" }] }] });
+    expect(r.fetchxml).toContain('from="contactid" to="primarycontactid"');
+    expect(r.fetchxml).toContain('from="customerid" to="accountid" link-type="any"');
+    // every condition of a child filter gone from the schema: the filter is skipped, not turned into "has any child"
+    const drifted = builderToFetchXml({ entity: "account", attrs: ["name"], relFilters: [{ ...children, mode: "any", conditions: [{ field: "gone", op: "eq", value: "0" }] }] });
+    expect(drifted.fetchxml).not.toContain("link-entity");
+    // a condition the view can't hold is refused with the reason
+    expect(builderToFetchXml({ entity: "account", attrs: ["name"], relFilters: [{ ...parent, conditions: [{ field: "fullname", op: "regex", value: "x" }] }] }).error).toMatch(/can't be saved/);
+    expect(builderToFetchXml({ entity: "account", attrs: ["name"], expands: [{ ...parent, lookupField: "bad name", fields: ["fullname"] }] }).error).toMatch(/link-entity/);
   });
 });
 

@@ -1,6 +1,7 @@
 // Explorer › "Save as view": a query becomes a personal view (userquery) of its table — the FetchXML
 // a view runs, and the layout (its columns) the app shows. Builder queries are converted to FetchXML
-// here; FetchXML and SQL (through the transpiler) already are. Pure.
+// here — expanded lookups and relational filters become link-entities; FetchXML and SQL (through
+// the transpiler) already are. Pure.
 
 export const xmlEsc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -30,27 +31,94 @@ function condition(c, type) {
   return { xml: `<condition attribute="${f}" operator="${op}" value="${xmlEsc(v)}"/>` };
 }
 
-// The Builder's query → FetchXML. Related-table parts (expands, relational filters) aren't
-// converted: they're refused with the reason instead of saving a different query.
-export function builderToFetchXml({ entity, attrs, groups, groupLogic = "and", orderBy, fieldTypes = {}, hasExpands = false, hasRelFilters = false }) {
+// Conditions on one table (the root or a related one) → <condition> list; empty ones skipped.
+function conditionsXml(conds, fieldTypes, allowed) {
+  const parts = [];
+  for (const c of conds || []) {
+    if (!c.field) continue;
+    // schema-drift guard (same as the OData Builder): a condition whose field is no longer on the
+    // table is dropped, never emitted against the wrong table
+    if (allowed && !allowed.has(c.field)) continue;
+    const r = condition(c, fieldTypes[c.field]);
+    if (r.error) return r;
+    if (r.xml) parts.push(r.xml);
+  }
+  return { parts };
+}
+const filterXml = (parts, logic) => parts.length ? `<filter type="${logic === "or" ? "or" : "and"}">${parts.join("")}</filter>` : "";
+const typesOf = (allFields) => Object.fromEntries((allFields || []).map(f => [f.l, f.t]));
+const pkOf = (entity, pk) => (pk && NAME_RE.test(pk) ? pk : `${entity}id`);
+
+// The Builder's related-table parts → <link-entity>s. An EXPAND (what's displayed) is an outer
+// join carrying its columns under the navigation property as alias — a collection expand's own
+// conditions go in the join (a root row without a matching child still shows). A REL filter (which
+// rows come back) carries no column: a parent (N:1) one is an inner join on its conditions; a
+// child (1:N) one is the Advanced-Find link-type "any" / "not any" ("has at least one" / "has
+// none" matching child), with the child's conditions when it has some.
+function linkEntitiesXml({ expands, relFilters, rootPk }) {
+  const out = [];
+  const seen = new Set();
+  const alias = (base, prefix) => {
+    let a = NAME_RE.test(String(base || "")) ? base : `${prefix}${out.length + 1}`;
+    while (seen.has(a)) a = `${a}_`;
+    seen.add(a);
+    return a;
+  };
+  const join = (x) => {
+    if (!NAME_RE.test(String(x.targetEntity || "")) || !NAME_RE.test(String(x.lookupField || ""))) return { error: `The relation "${x.navProperty || x.targetEntity}" can't be written as a link-entity.` };
+    const tpk = pkOf(x.targetEntity, x.targetPk);
+    return x.type === "collection" ? { from: x.lookupField, to: rootPk } : { from: tpk, to: x.lookupField };
+  };
+  for (const ex of expands || []) {
+    const cols = (ex.fields || []).filter(f => NAME_RE.test(f));
+    if (!cols.length) continue;
+    const j = join(ex);
+    if (j.error) return j;
+    const types = typesOf(ex.allFields);
+    const r = ex.type === "collection" ? conditionsXml(ex.conditions, types, ex.allFields ? new Set(Object.keys(types)) : null) : { parts: [] };
+    if (r.error) return r;
+    out.push(`<link-entity name="${ex.targetEntity}" from="${j.from}" to="${j.to}" link-type="outer" alias="${alias(ex.navProperty, "link")}">${cols.map(a => `<attribute name="${a}"/>`).join("")}${filterXml(r.parts, ex.conditionLogic)}</link-entity>`);
+  }
+  for (const rf of relFilters || []) {
+    const types = typesOf(rf.allFields);
+    const defined = (rf.conditions || []).filter(c => c.field && (c.value || c.op === "is_null" || c.op === "is_not_null"));
+    const r = conditionsXml(defined, types, rf.allFields ? new Set(Object.keys(types)) : null);
+    if (r.error) return r;
+    if (rf.type === "collection") {
+      // every condition dropped: skip the filter rather than turn "has a matching child" into "has any child"
+      if (defined.length && !r.parts.length) continue;
+      const j = join(rf);
+      if (j.error) return j;
+      out.push(`<link-entity name="${rf.targetEntity}" from="${j.from}" to="${j.to}" link-type="${rf.mode === "none" ? "not any" : "any"}">${filterXml(r.parts, rf.conditionLogic)}</link-entity>`);
+    } else {
+      if (!r.parts.length) continue; // a parent filter with no condition filters nothing
+      const j = join(rf);
+      if (j.error) return j;
+      out.push(`<link-entity name="${rf.targetEntity}" from="${j.from}" to="${j.to}" link-type="inner" alias="${alias(`rel_${rf.navProperty}`, "rel")}">${filterXml(r.parts, rf.conditionLogic)}</link-entity>`);
+    }
+  }
+  return { xml: out.join("") };
+}
+
+// The Builder's query → FetchXML, related-table parts included (linkEntitiesXml above).
+// expands / relFilters: the Builder's own objects (navProperty, targetEntity, lookupField, type,
+// fields, conditions, conditionLogic, mode, allFields) plus targetPk, the target table's key
+// (<table>id when unknown); primaryId: the root table's key (same fallback).
+export function builderToFetchXml({ entity, attrs, groups, groupLogic = "and", orderBy, fieldTypes = {}, expands = [], relFilters = [], primaryId = null }) {
   if (!NAME_RE.test(String(entity || ""))) return { error: "No table selected." };
-  if (hasExpands || hasRelFilters) return { error: "This query uses related tables (expanded lookups or relational filters) — a view saved from the Builder can't carry them yet. Build it in FetchXML mode (link-entity) and save from there." };
   const cols = (attrs || []).filter(a => NAME_RE.test(a));
   const groupXml = [];
   for (const g of groups || []) {
-    const parts = [];
-    for (const c of g.conditions || []) {
-      if (!c.field) continue;
-      const r = condition(c, fieldTypes[c.field]);
-      if (r.error) return { error: r.error };
-      if (r.xml) parts.push(r.xml);
-    }
-    if (parts.length === 1) groupXml.push(parts[0]);
-    else if (parts.length) groupXml.push(`<filter type="${g.logic === "or" ? "or" : "and"}">${parts.join("")}</filter>`);
+    const r = conditionsXml(g.conditions, fieldTypes, null);
+    if (r.error) return { error: r.error };
+    if (r.parts.length === 1) groupXml.push(r.parts[0]);
+    else if (r.parts.length) groupXml.push(filterXml(r.parts, g.logic));
   }
-  const filter = groupXml.length ? `<filter type="${groupLogic === "or" ? "or" : "and"}">${groupXml.join("")}</filter>` : "";
+  const filter = filterXml(groupXml, groupLogic);
   const order = orderBy?.f && NAME_RE.test(orderBy.f) ? `<order attribute="${orderBy.f}" descending="${orderBy.dir === "desc" ? "true" : "false"}"/>` : "";
-  return { fetchxml: `<fetch version="1.0" mapping="logical"><entity name="${entity}">${cols.map(a => `<attribute name="${a}"/>`).join("")}${order}${filter}</entity></fetch>` };
+  const links = linkEntitiesXml({ expands, relFilters, rootPk: pkOf(entity, primaryId) });
+  if (links.error) return { error: links.error };
+  return { fetchxml: `<fetch version="1.0" mapping="logical"><entity name="${entity}">${cols.map(a => `<attribute name="${a}"/>`).join("")}${order}${filter}${links.xml}</entity></fetch>` };
 }
 
 // Any FetchXML → what a view can hold: no paging, row count or total-count attributes on <fetch>,

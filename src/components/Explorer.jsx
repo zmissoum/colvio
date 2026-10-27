@@ -376,7 +376,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       return r.error?{error:`This SQL can't be written as FetchXML for a view: ${r.error}`}:{fetchxml:r.fetchXml};
     }
     const ft={};fields.forEach(f=>{ft[f.l]=f.t;});
-    return builderToFetchXml({entity:ent?.l,attrs:sf,groups:filterGroups,groupLogic,orderBy,fieldTypes:ft,hasExpands:expands.some(ex=>ex.fields.length>0),hasRelFilters:relFilters.length>0});
+    // related tables ride along as link-entities: each needs its key (from the entity list's
+    // metadata; <table>id when unknown) — the root's too, for child (1:N) joins
+    const pkOfEntity=(l)=>entities.find(e=>e.l===l)?.pk||null;
+    const withPk=(x)=>({...x,targetPk:pkOfEntity(x.targetEntity)});
+    return builderToFetchXml({entity:ent?.l,attrs:sf,groups:filterGroups,groupLogic,orderBy,fieldTypes:ft,expands:expands.map(withPk),relFilters:relFilters.map(withPk),primaryId:ent?.pk||fields.find(f=>f.pk)?.l||null});
   };
   const openSaveView=()=>{const def=viewDefinition();setViewModal({name:activeSaved||`${ent?.d||ent?.l||"Query"} (Colvio)`,error:def.error||"",saving:false,done:null});};
   const saveView=async()=>{

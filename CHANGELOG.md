@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.204] - 2026-10-27
+### Fixed - Explorer › Save as view carries REL and EXPAND
+- **A Builder query with related tables can now be saved as a view.** It used to be refused ("a view saved from the Builder can't carry them yet — build it in FetchXML mode"). The conversion now writes the related parts as `link-entity`: an EXPAND is an outer join carrying its columns under the navigation property as alias (a collection expand's own conditions go in the join, so a row without a matching child still shows), a parent (N:1) REL filter an inner join on its conditions, a child (1:N) REL filter the Advanced-Find `link-type="any"` / `"not any"` ("has at least one" / "has none" matching child) with the child's conditions. Keys come from the table metadata (`<table>id` when unknown); the view's columns follow as `alias.column`. Same guards as the OData Builder: a condition whose field left the schema is dropped, a child filter whose conditions all dropped is skipped rather than turned into "has any child". 4 tests (700).
+
 ## [1.11.203] - 2026-10-23
 ### Added - one Colvio per environment
 - **Several environments in one browser, one Colvio each.** Clicking the icon used to reuse THE Colvio tab, whatever its environment: opening Colvio on PROD reloaded the DEV one onto PROD, so only one could stay open. Now each environment has its own Colvio tab, bound to its org URL. The icon on a DEV tab brings back the DEV Colvio **as it is** (no reload: queries, results, scripts kept), placed next to the tab; the other environments' tabs are left alone; an environment without a Colvio yet gets a new one. Pure `panelRouting.js` (`pickPanel`: the clicked window's panel first, then the one used last) + 4 tests.
