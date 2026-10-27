@@ -5,10 +5,10 @@ Free, in-browser toolkit for Dynamics 365 / Dataverse. Query, inspect, load, tes
 
 ## Detailed Description
 
-Paste-ready plain text, refreshed for v1.11.196 (Record activity, Record access, Health check, writes on plug-in steps / choice values / columns from file / web resources, data-model tools, SQL UPDATE / DELETE, Explorer streaming, big-org reads):
+Paste-ready plain text, refreshed for v1.11.210 (one Colvio per environment, Script Console, who runs what, SQL completion and N:N tables, Record activity, Record access, Health check, writes on plug-in steps / choice values / columns from file / web resources, data-model tools, SQL UPDATE / DELETE, Explorer streaming, big-org reads):
 
-- English → `store/description_en.txt` (~5,900 characters)
-- French → `store/description_fr.txt` (~7,200 characters) — add French under Store listing → language selector, so French-speaking users get it
+- English → `store/description_en.txt` (~9,300 characters)
+- French → `store/description_fr.txt` (~11,200 characters) — add French under Store listing → language selector, so French-speaking users get it
 
 The full feature-by-feature reference lives in README.md; the store text stays short enough to be read.
 

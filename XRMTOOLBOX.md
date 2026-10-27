@@ -1,6 +1,6 @@
 # Coming from XrmToolBox?
 
-Colvio is a Chrome extension: it runs next to your Dynamics 365 / Dataverse tab, signed in as you, with no install, no connection string and no client-side service account. It works on **one environment at a time — the one open in the tab** — and that is deliberate: multi-environment comparisons and transports stay with XrmToolBox.
+Colvio is a Chrome extension: it runs next to your Dynamics 365 / Dataverse tab, signed in as you, with no install, no connection string and no client-side service account. Each Colvio tab works on **one environment — the one it was opened from** (open it on DEV and on PROD and you get two tabs, side by side, each keeping its work) — and that is deliberate: multi-environment comparisons and transports stay with XrmToolBox.
 
 Everything below is read-only unless marked **(writes)**; every write is confirmed, and confirmed a second time on a production environment.
 
@@ -9,10 +9,11 @@ Everything below is read-only unless marked **(writes)**; every write is confirm
 | In XrmToolBox you use… | In Colvio |
 | --- | --- |
 | FetchXML Builder | **Data Explorer** — Builder, FetchXML, OData and SQL modes on the same query; FetchXML pages with the server's paging cookie; results to grid, CSV, Excel, or **To file** (every row streamed, whatever the size); **Save as view** (personal view of the table) |
-| SQL 4 CDS | **Data Explorer › SQL** — Dataverse's native `?sql=` engine (joins, aggregates, server-side) or Colvio's transpiler; `UPDATE` / `DELETE` **(writes)** always previewed row by row before Apply |
+| SQL 4 CDS | **Data Explorer › SQL** — Dataverse's native `?sql=` engine (joins, aggregates, server-side) or Colvio's transpiler, tables and columns completed as you type; `UPDATE` / `DELETE` **(writes)** always previewed row by row before Apply |
 | Bulk Data Updater | **Data Explorer** bulk update of a selection, or SQL `UPDATE … WHERE` **(writes)** |
 | Bulk record deletion | **Data Explorer** selection delete, or SQL `DELETE FROM … WHERE` **(writes)** — with CanBeDeleted and production checks |
 | Data Transporter / CSV import | **Data Loader** — CSV / Excel / paste, create / update / upsert / delete by primary or alternate key, typed pre-flight, `$batch` chunks, per-row log **(writes)** |
+| N:N association tools (Many-to-Many Relationship Manager…) | **Data Loader › N:N tables** — `teammembership`, `systemuserroles` or any intersect table: associate or disassociate from a file, a GUID or an email / name per end, pairs already linked counted as such, rollback of what the run added **(writes)** |
 | Record counter | **Storage** — rows per table from Dataverse's own snapshot, storage class, silent-growth tables, real file bytes per table |
 | Recycle bin viewer | **Recycle Bin** — find and restore deleted rows **(writes)** |
 | Web API request composer / Rest Builder | **API Tester** — any request against your org, history with redacted values |

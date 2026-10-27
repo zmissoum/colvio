@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.11.210] - 2026-10-27
+### Docs - everything brought up to 1.11.209
+- **What's New popup** (still 10 items per language): the Explorer item gets SQL completion and the many-to-many tables; "Change things" gets the Loader's N:N association; "Built for big orgs" names the second review pass (migration dates kept, numeric keys never rewritten, no duplicates after a timeout).
+- **Store descriptions** (EN / FR): a What's new line for SQL completion and N:N tables; Data Explorer, Data Loader and Web Resources lines updated; the US Government (GCC) and China clouds named. `STORE_LISTING.md` refreshed (versions covered, text sizes).
+- **In-app Help**: the SQL card explains completion; the Loader modes card explains N:N association (EN / FR).
+- **README**: N:N tables and the query's column order in the Data Explorer; stats (102 API actions, 52 components, 758 tests).
+- **XRMTOOLBOX.md**: one Colvio tab per environment; SQL completion; a row for the N:N association tools.
+- **EDGE_LISTING.md**: the permission table had only 4 of the 7 permissions (webRequest, alarms, unlimitedStorage added, the three host patterns named) and a pre-1.11.150 feature list; both current now.
+- LinkedIn Post 47: SQL completion, 758 tests (still under LinkedIn's 3,000 characters).
+
 ## [1.11.209] - 2026-10-27
 ### Added - Loader › N:N tables, loaded by association
 - **teammembership, systemuserroles and every many-to-many table can be loaded.** Their rows are not created — Dataverse refuses a POST on an intersect table — so the Loader gets an **association mode**: when the target is an N:N table (badge N:N in the picker), the mapping step becomes "one file column per end": a GUID, or a value Colvio resolves against a text column of that end's table (an email for `systemuser`, a name for `team`), through the relationship's own endpoints (`POST …/teams(id)/teammembership_association/$ref`, `DELETE …/$ref` to remove). ASSOCIATE or DISASSOCIATE, dry run, per-row log where blank, unresolved, ambiguous (a value matching two records is never picked at random) and duplicate pairs are reported (a pair twice in the file is sent once), production confirmation, retry of the errors, rollback of what the run added (not of what already existed). An association already there counts as "already", never as an error; removing one that isn't there likewise. `$batch` of changesets with the same per-run abort, 429 back-off and serial fallback as the other bulk writes (`batchAssociate` in content.js, `getIntersectRelationship` cached in the bridge). Pure `associationUtils.js` + 4 tests (758); the whole flow was driven in the demo panel with a browser (dry run → associate → rollback offered).

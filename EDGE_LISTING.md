@@ -1,8 +1,9 @@
 # Microsoft Edge Add-ons — Submission Guide & Listing Copy
 
 Colvio is fully compatible with Microsoft Edge (Chromium): same Manifest V3 package, every API
-we use (`storage`, `scripting`, `declarativeContent`, content scripts on
-`https://*.dynamics.com/*`) is supported by Edge. **No code changes are required** — our
+we use (`storage`, `unlimitedStorage`, `scripting`, `declarativeContent`, `webRequest`, `alarms`,
+the manifest sandbox page of the Script Console, host access to `*.dynamics.com`,
+`*.microsoftdynamics.us` and `*.dynamics.cn`) is supported by Edge. **No code changes are required** — our
 manifest has no `update_url` and no browser-brand wording, the two usual blockers.
 
 > Why Edge matters for Colvio: most enterprise Dynamics 365 users live in Edge.
@@ -39,10 +40,13 @@ manifest has no `update_url` and no browser-brand wording, the two usual blocker
 
 | Permission | Justification |
 |---|---|
-| content script on `*.dynamics.com` | Read the Dynamics 365 page context (org URL, session) to call the user's own Dataverse Web API; the extension is inert everywhere else. |
+| Host access to `*.dynamics.com`, `*.microsoftdynamics.us`, `*.dynamics.cn` | Read the Dynamics 365 page context (org URL, session) to call the user's own Dataverse Web API; the extension is inert everywhere else. |
 | `scripting` | Inject the bridge that relays panel requests to the Dataverse Web API in the page's session context. |
-| `storage` | Local cache of entity metadata, saved queries and user preferences. Nothing leaves the browser. |
+| `storage` | Local cache of entity metadata, saved queries and user preferences, and (session memory only) the list of saves Record activity shows. Nothing leaves the browser. |
+| `unlimitedStorage` | Keep the Script Console's rollback journal (the previous values of the rows a user's script changed, stored locally) whole past the default 10 MB quota: a journal cut by the quota could no longer undo the run. |
 | `declarativeContent` | Enable the toolbar action only on Dynamics 365 pages. |
+| `webRequest` | Observe, read-only, the Web API writes the user's Dynamics 365 tab sends (form saves), so Record activity can show what each save triggered. Requests are never blocked, modified or sent elsewhere. |
+| `alarms` | Set the org's plug-in trace log back to its previous value at the time the user chose after turning on full logging. |
 
 ## Updates
 
@@ -70,39 +74,33 @@ developers instant access to their Dataverse data and Web API — right from Mic
 with zero configuration. No API keys. No app registration. No account. Open a Dynamics 365
 page, click the icon, start working.
 
-KEY FEATURES
+KEY FEATURES — 24 modules
 
-• Data Explorer — query any table four ways: visual Builder, OData, FetchXML or SQL (native Dataverse ?sql= engine with real JOINs, or the built-in SQL→FetchXML transpiler)
-  No 5,000-row cap, virtual scrolling, inline edit (typed by field metadata, lookups
-  included), bulk update/delete, duplicate finder, CSV/XLSX/JSON exports.
+• Data Explorer — query any table with a visual Builder, OData, FetchXML or SQL (native
+  Dataverse ?sql= engine with real JOINs, or the built-in transpiler), SQL completed as you
+  type, many-to-many tables included. No 5,000-row cap, virtual scrolling, inline edit typed by
+  field metadata, bulk update / delete, SQL UPDATE / DELETE always previewed, duplicate finder,
+  exports, and "To file" streaming every row whatever the size.
 
-• Data Loader — import CSV/Excel files with four modes: CREATE, UPSERT (GUID or alternate
-  key), UPDATE-only (native If-Match — never creates) and DELETE. Dry run simulates the whole
-  import with zero writes; Rollback undoes the records a run just created; Delta mode sends
-  only the fields that changed. Parallel $batch engine, ~3-4k records/second, live per-row log.
+• Data Loader — CSV / Excel in: CREATE, UPSERT (GUID or alternate key), UPDATE-only (native
+  If-Match — never creates) and DELETE, plus N:N tables loaded by association. Dry run with zero
+  writes, rollback of what a run created, delta mode, parallel $batch (~3-4k records/second),
+  live per-row log.
 
-• Script Console — JavaScript on the Dataverse Web API with your session: dry run listing every write,
-  then a real run you can roll back; the script runs isolated, without network.
-• API Tester — a Postman-style client for the Dataverse Web API, authenticated by your
-  session. Header autocomplete, JSON validation, templates, cURL export, request history
-  with secrets redacted.
+• Show All Data — every field of the open record, editable in place; Record activity (what a
+  save triggered: plug-ins, jobs, flows); Record access (why a user can or can't see or edit
+  it, and what would grant a no); field-level change history. Recycle Bin restores deleted rows.
 
-• Recycle Bin — list and restore deleted records (server-side restore via the platform's
-  "keep deleted records" feature), with every Microsoft limitation explained in plain words.
+• Develop — Script Console (JavaScript on the Web API with a dry run and a rollback journal,
+  run isolated), API Tester, Metadata (fill rate, dependencies, solution layers, choice values,
+  columns from a sheet), Automation (plug-in steps on / off, who runs what), Web Resources,
+  Apps, Solutions, Environment Variables, Translations, ERD and relationship graph.
 
-• Change history — field-level audit timeline (who changed what, when, old → new) on any record.
+• Admin — users & licenses with bulk settings, business units, security audit, teams,
+  adoption analytics with a PowerPoint report, login history, storage per table, a health
+  check of the environment, and system jobs / plug-in traces.
 
-• System Ops — system jobs monitor (find and cancel stuck workflows) and plug-in trace viewer.
-
-• Metadata & modeling — metadata browser with data-dictionary exports, interactive ERD,
-  relationship graph, schema snapshot & diff between environments.
-
-• Governance — users & licenses (CAL types, last login, unused licenses), security role
-  audit (privilege depths, sensitive flags), business units (full org chart, bulk moves by
-  pasted email list), teams (members + the security roles they carry — the roles a user
-  inherits without them ever showing on their profile), adoption analytics (DAU/WAU/MAU,
-  per-BU rates, PowerPoint report), storage (rows and real file bytes per table, the system
-  tables that grow silently) and per-user login history.
+• One Colvio per environment — DEV and PROD side by side, each in its own tab with its work.
 
 PRIVACY FIRST
 Zero data collection. No telemetry, no external servers — every request goes to your own

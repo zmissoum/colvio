@@ -45,6 +45,8 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **Bulk Delete** — select and delete with typed confirmation + CanBeDeleted pre-check, on the fast **$batch pipeline** (chunks × parallel workers, automatic 429 retry) with a shared **✕ Cancel** for both bulk operations (honest "X done, Y untouched" feedback)
 - **⧉ Duplicate finder** — pick the columns that define a duplicate; groups computed over all loaded rows on **raw values** (lookups compared by GUID, optional dates-by-day), KEEP/DELETE verdicts per row, one click selects the excess rows for the normal bulk delete, CSV export of the groups as review/undo file
 - **Clickable lookups** — opens target record in D365
+- **N:N (intersect) tables** — `teammembership`, `systemuserroles` and custom many-to-many tables are listed with an N:N badge and query like any table (the Data Loader loads them by association)
+- **Columns in the query's order** — in the grid and in every export, whatever the mode (SQL and OData included, not the table's own order)
 - **Copy OData URL** — one-click copy for Postman/browser
 
 ### API Tester
@@ -303,9 +305,9 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 |--------|-------|
 | Modules | 24 |
 | Lines of code | ~27,100 |
-| API actions | 99 |
-| React components | 50 |
-| Unit tests | 696 |
+| API actions | 102 |
+| React components | 52 |
+| Unit tests | 758 |
 | Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |

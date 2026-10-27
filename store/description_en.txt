@@ -6,6 +6,7 @@ Query, load, inspect, test the Web API and audit your org from one side panel. C
 
 WHAT'S NEW
 • One Colvio per environment — DEV and PROD side by side, each in its own tab with its own work; the icon on a tab brings back that environment's Colvio as you left it.
+• SQL completion and N:N tables — the Explorer completes table and column names as you type and lists many-to-many tables; the Data Loader loads them by association (team members, user roles).
 • Script Console — run JavaScript on the Web API with your session, for what no screen does: fill a lookup from another table, fix data by rules. A dry run lists every write without sending it; the real run keeps a rollback journal that puts every row back in one click.
 • Who runs what — every identity behind your automation and what it is (person, service account, app registration, built-in user, team), the account each connection is signed in with, and whose rights each workflow and plug-in step runs with.
 • Record activity — save a record and see what the save set off: plug-ins in execution order (duration, cascades, exception, full trace), system jobs and cloud flows; click a failure for its error, the step behind it and its recent runs; "log every plug-in" for 15–60 minutes, reverted by itself.
@@ -17,8 +18,8 @@ WHAT'S NEW
 • Built for big orgs — set-based reads instead of one request per user or role, a real API meter against Dataverse's quota, nothing leaves your browser.
 
 DATA
-• Data Explorer — query any table with a visual Builder, OData, FetchXML or SQL (native ?sql= or transpiled; UPDATE / DELETE with a mandatory preview). No 5,000-row cap, virtual scrolling on 10k+ rows, AND/OR filter groups, relational filters ("accounts with no open opportunity"), parent and child expands. Edit cells in place, or bulk update / delete on a fast $batch pipeline — values typed and validated against the column's metadata, lookups included. Duplicate finder, query tabs, history, saved queries, save as personal view, Excel / CSV / JSON exports, and "To file" to stream every row whatever the size.
-• Data Loader — CSV, TSV or Excel in (UTF-8, UTF-16 or Windows-1252 files read as they are); CREATE, UPSERT (GUID or alternate key), UPDATE-only and DELETE. Parallel $batch (about 3–4k records per second), a live per-row log with the exact Dataverse error, label → option value transforms, EU / US dates, mapping templates. Safety net: dry run, rollback of what a run created, delta mode, pre-flight checks, retry of transient failures only, optional bypass of custom plug-ins and workflows.
+• Data Explorer — query any table with a visual Builder, OData, FetchXML or SQL (native ?sql= or transpiled, completed as you type; UPDATE / DELETE with a mandatory preview), many-to-many tables included. No 5,000-row cap, virtual scrolling on 10k+ rows, AND/OR filter groups, relational filters ("accounts with no open opportunity"), parent and child expands. Edit cells in place, or bulk update / delete on a fast $batch pipeline — values typed and validated against the column's metadata, lookups included. Duplicate finder, query tabs, history, saved queries, save as personal view, Excel / CSV / JSON exports, and "To file" to stream every row whatever the size.
+• Data Loader — CSV, TSV or Excel in (UTF-8, UTF-16 or Windows-1252 files read as they are); CREATE, UPSERT (GUID or alternate key), UPDATE-only and DELETE; N:N tables (team members, user roles) loaded by association, a GUID or an email / name per end. Parallel $batch (about 3–4k records per second), a live per-row log with the exact Dataverse error, label → option value transforms, EU / US dates, mapping templates. Safety net: dry run, rollback of what a run created, delta mode, pre-flight checks, retry of transient failures only, optional bypass of custom plug-ins and workflows.
 • Recycle Bin — restore deleted records server-side, with who deleted them and every platform limitation explained.
 • Show All Data — every field of the record open in your tab, with logical names and types, editable in place (field security still enforced). Record activity: save the record and see what it triggered — plug-in chains, system jobs, and which cloud flows run or not, and why. Record access: pick a user and get Dataverse's own yes / no for each right on the record, why, and what would grant a no. Field-level change history, and a Business Process Flow manager for admins.
 
@@ -27,7 +28,7 @@ DEVELOP
 • API Tester — a Postman for Dataverse with automatic authentication: GET / POST / PATCH / PUT / DELETE, header autocomplete, JSON editor with validation, templates, a history with secrets redacted, copy as cURL.
 • Metadata — tables, columns and choices, Virtual and Elastic table filters; per column: fill rate, dependencies (what blocks a delete, everything that uses it), solution layers; data dictionary export; edit choice values; create columns in bulk from a CSV / Excel sheet.
 • Automation — every plug-in step, classic workflow, cloud flow, business rule, action and business process flow registered in the org; enable / disable steps and set their filtering attributes; who runs what — every identity behind the automation (person, service account, app registration, built-in user, team), the account each connection is signed in with, and a "Runs as" column for workflows and plug-in steps.
-• Web Resources — edit and publish scripts, styles and pages; search a column name inside the scripts shown.
+• Web Resources — edit and publish scripts, styles and pages; search a column name inside the scripts shown; a save never overwrites a colleague's newer version.
 • Apps — what each model-driven app really exposes, including the "all forms / all views" state the maker portal never shows; view filters decoded to plain language.
 • Relationships & Schema — an interactive relationship graph, and an ERD canvas exportable as PNG, SVG or Mermaid.
 • Solutions — components resolved to readable names, and solution compare within an org or across orgs.
@@ -53,6 +54,6 @@ SAFE BY DESIGN
 • Filter values and secrets are redacted from histories.
 • Colvio cannot bypass Dataverse permissions: what you can't do in Dynamics 365, you can't do in Colvio.
 
-Works on every Dynamics 365 / Dataverse region (*.dynamics.com). Dark and light themes, English / French interface, command palette (Ctrl+K).
+Works on every Dynamics 365 / Dataverse region (*.dynamics.com), and on the US Government (GCC) and China clouds. Dark and light themes, English / French interface, command palette (Ctrl+K).
 
 100% free and open source — no freemium, no Pro tier. Source code and documentation: github.com/zmissoum/colvio
