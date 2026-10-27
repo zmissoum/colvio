@@ -426,7 +426,7 @@ export const bridge = {
 
   async getEntities() {
     if (!isExtension) return null;
-    const k = cacheKey("entities2"); // v2: entries carry primaryId (the Explorer's record key)
+    const k = cacheKey("entities3"); // v3: intersect (N:N) tables included, flagged isIntersect (v2 added primaryId)
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getEntities");

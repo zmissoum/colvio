@@ -80,7 +80,7 @@ export default function Storage({ bp, orgInfo }) {
       let ents;
       if (isLive) {
         const raw = await bridge.getEntities();
-        ents = (raw || []).map(e => ({ l: e.logical, d: e.display || e.logical, tt: e.tableType || "Standard", custom: !!(e.isCustom && isTrulyCustom(e.logical, e.isManaged)) }));
+        ents = (raw || []).map(e => ({ l: e.logical, d: e.display || e.logical, tt: e.tableType || "Standard", custom: !!(e.isCustom && isTrulyCustom(e.logical)) }));
       } else {
         ents = [...ENTS.map(e => ({ l: e.l, d: e.d, tt: e.tt || "Standard", custom: false })), ...DEMO_SYSTEM.map(e => ({ ...e, tt: "Standard", custom: false }))];
       }

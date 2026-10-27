@@ -12,8 +12,7 @@ describe("isTrulyCustom", () => {
     for (const n of ["1abc_x", "a_x", "_x"]) expect(isTrulyCustom(n)).toBe(false);
   });
   it("ignores the managed flag — a customer's tables are managed on every production org", () => {
-    expect(isTrulyCustom("new_invoice", true)).toBe(true);
-    expect(isTrulyCustom("new_invoice", false)).toBe(true);
+    expect(isTrulyCustom("new_invoice")).toBe(true); // a managed customer table is still custom
     expect(isTrulyCustom("msdyn_workorder", false)).toBe(false);
     expect(isTrulyCustom(undefined)).toBe(false);
   });

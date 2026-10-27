@@ -11,6 +11,7 @@ import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge, persistList, confirmProd } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
+import { sqlContext, suggestTables, columnScope, suggestColumns, applySuggestion } from "../sqlComplete.js";
 import { extractBaseTable, isSqlOptionUnsupported } from "../sqlNative.js";
 import { buildFilterClause } from "../filterUtils.js";
 import { buildHistoryEntry, scrubStoredHistory } from "../historyUtils.js";
@@ -59,6 +60,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   // keeps the client-side transpiler (supports HAVING and TOP). Native is the default; when the
   // org does not have the ?sql= option yet, the first run flips nativeSqlDown and falls back.
   const[sqlEngine,setSqlEngine]=useState("native");
+  // SQL completion (sqlComplete.js): tables after FROM / JOIN, the FROM table's columns in the
+  // SELECT list, WHERE, ON, ORDER BY… — { items, index, word } while there is something to offer.
+  const[sqlSug,setSqlSug]=useState(null);
+  const sqlRef=useRef(null);
+  const sqlFieldsCache=useRef(new Map()); // table → [{l,d,t}] | "loading"
+  const sqlSugReq=useRef(0);
   const[nativeSqlDown,setNativeSqlDown]=useState(false);
   const[lim,setLim]=useState(0);   // 0 = All (no $top) — an export tool should return everything by default; lower it for a quick preview
   const[orderBy,setOrderBy]=useState({f:"",dir:"asc"}); // server-side $orderby for the Builder (field + direction)
@@ -237,8 +244,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(data && Array.isArray(data)){
         const mapped = data.map(e=>({
           l:e.logical, d:e.display, p:e.entitySet||e.logical+"s", pk:e.primaryId||null,
-          i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",
-          tt:e.tableType||"Standard"
+          i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋", c:0, cat:(e.isCustom&&isTrulyCustom(e.logical))?"Custom":"Standard",
+          tt:e.isIntersect?"Intersect":(e.tableType||"Standard")
         })).sort((a,b)=>a.d.localeCompare(b.d));
         setEntities(mapped);
       }
@@ -451,6 +458,46 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(partialRef.current||fetchAbort.current){ setError(`Preview ${fetchAbort.current?"stopped":"incomplete"} — not every row of the WHERE was read, nothing can be applied. Run it again.`); return; }
       setRes(prev=>prev?{...prev,writePlan:plan,entity:{...prev.entity,pk:meta.primaryId,p:meta.entitySet}}:prev);
     }catch(e){ setError(e.message||String(e)); setLoading(false); }
+  };
+
+  // What to offer at the cursor of the SQL editor. Columns need the FROM table's metadata: it is
+  // fetched once per table (cached for the panel's life), and the list is recomputed when it lands
+  // if the editor hasn't moved on.
+  const updateSqlSug=(text,cursor)=>{
+    const req=++sqlSugReq.current;
+    const ctx=sqlContext(text,cursor);
+    if(ctx.kind==="table"){ const items=suggestTables(ctx,entities); setSqlSug(items.length?{items,index:0,word:ctx.word}:null); return; }
+    if(ctx.kind!=="column"){ setSqlSug(null); return; }
+    const scope=columnScope(ctx,entities);
+    if(!scope.length){ setSqlSug(null); return; }
+    const cache=sqlFieldsCache.current;
+    const missing=scope.filter(t=>!cache.has(t.name));
+    for(const t of missing){
+      cache.set(t.name,"loading");
+      (isLive?bridge.getFields(t.name):Promise.resolve(FLDS)).then(fl=>{
+        cache.set(t.name,(fl||[]).map(f=>({l:f.logical||f.l,d:f.display||f.d||f.logical||f.l,t:f.type||f.t||"String"})));
+      }).catch(()=>cache.set(t.name,[])).then(()=>{
+        // the editor is still where it was when the metadata was asked for → offer the columns now
+        if(sqlSugReq.current===req&&sqlRef.current&&sqlRef.current.value===text) updateSqlSug(text,sqlRef.current.selectionStart);
+      });
+    }
+    const fieldsByTable={};
+    for(const t of scope){ const v=cache.get(t.name); if(Array.isArray(v)) fieldsByTable[t.name]=v; }
+    const items=suggestColumns(ctx,scope,fieldsByTable);
+    setSqlSug(items.length?{items,index:0,word:ctx.word}:null);
+  };
+  const acceptSqlSug=(item)=>{
+    if(!sqlSug||!item) return;
+    const r=applySuggestion(sqlQ,sqlSug.word,item.insert);
+    setSqlQ(r.text);setShowSqlFx(false);setSqlFx("");setSqlSug(null);
+    setTimeout(()=>{ const el=sqlRef.current; if(el){ el.focus(); el.setSelectionRange(r.cursor,r.cursor); } },0);
+  };
+  const onSqlKeyDown=(e)=>{
+    if(!sqlSug) return;
+    if(e.key==="ArrowDown"){ e.preventDefault(); setSqlSug(sg=>sg?{...sg,index:(sg.index+1)%sg.items.length}:sg); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); setSqlSug(sg=>sg?{...sg,index:(sg.index-1+sg.items.length)%sg.items.length}:sg); }
+    else if((e.key==="Tab"||e.key==="Enter")&&!e.ctrlKey&&!e.metaKey){ e.preventDefault(); acceptSqlSug(sqlSug.items[sqlSug.index]); }
+    else if(e.key==="Escape"){ e.preventDefault(); setSqlSug(null); }
   };
 
   // Run cb once the selected table's fields are loaded. Live: after the async metadata fetch
@@ -1472,7 +1519,23 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               </div>
             </div>
             :qm==="sql"?<div>
-              <textarea value={sqlQ} onChange={e=>{setSqlQ(e.target.value);setShowSqlFx(false);setSqlFx("");}} placeholder={t("sql_placeholder")||`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name TOP 100`} style={inp({height:120,...mono,color:C.cy,resize:"vertical",fontSize:13,whiteSpace:"pre"})}/>
+              <textarea ref={sqlRef} value={sqlQ} onChange={e=>{setSqlQ(e.target.value);setShowSqlFx(false);setSqlFx("");updateSqlSug(e.target.value,e.target.selectionStart);}}
+                onKeyDown={onSqlKeyDown}
+                onKeyUp={e=>{ if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key)) updateSqlSug(e.target.value,e.target.selectionStart); }}
+                onClick={e=>updateSqlSug(e.target.value,e.target.selectionStart)}
+                onBlur={()=>setSqlSug(null)}
+                placeholder={t("sql_placeholder")||`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name TOP 100`} style={inp({height:120,...mono,color:C.cy,resize:"vertical",fontSize:13,whiteSpace:"pre"})}/>
+              {sqlSug&&(
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:4,padding:"4px 6px",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6}} title="Tab / Enter inserts, ↑↓ moves, Esc closes">
+                  <span style={{fontSize:10,color:C.txd,alignSelf:"center",marginRight:2}}>{sqlSug.items[0].kind==="table"?"Tables":"Columns"}</span>
+                  {sqlSug.items.map((it,i)=>(
+                    <button key={it.label} onMouseDown={e=>{e.preventDefault();acceptSqlSug(it);}} onMouseEnter={()=>setSqlSug(sg=>sg?{...sg,index:i}:sg)} title={it.detail||it.label}
+                      style={{padding:"2px 8px",fontSize:11,...mono,border:`1px solid ${i===sqlSug.index?C.cy:C.bd}`,borderRadius:3,background:i===sqlSug.index?C.cy+"22":"transparent",color:i===sqlSug.index?C.cy:C.txm,cursor:"pointer",display:"flex",gap:6,alignItems:"center"}}>
+                      <span>{it.label}</span>{it.detail&&<span style={{fontSize:10,color:C.txd,fontFamily:"inherit"}}>{it.detail}</span>}{it.badge&&<span style={{fontSize:9,color:C.vi}}>{it.badge==="Intersect"?"N:N":it.badge}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{display:"flex",border:`1px solid ${C.bd}`,borderRadius:4,overflow:"hidden"}} title={nativeSqlDown?"Native ?sql= isn't available on this environment — queries run through the FetchXML transpiler.":"Engine — Native: Dataverse executes the SQL server-side (multi-table joins with aliases, DISTINCT, GROUP BY, DATEADD/GETUTCDATE; no HAVING/TOP/SELECT *). Transpiled: Colvio converts to FetchXML client-side (supports TOP, and HAVING — applied by Colvio after the query, so it can't go into a saved view)."}>
                   {[["native",nativeSqlDown?"⚡ Native (n/a)":"⚡ Native"],["fetchxml","⇄ Transpiled"]].map(([k,lbl])=>(<button key={k} onClick={()=>setSqlEngine(k)} disabled={k==="native"&&nativeSqlDown} style={{padding:"3px 9px",fontSize:11,border:"none",cursor:k==="native"&&nativeSqlDown?"not-allowed":"pointer",background:sqlEngine===k?C.cy+"22":"transparent",color:k==="native"&&nativeSqlDown?C.txd:sqlEngine===k?C.cy:C.txd,fontWeight:sqlEngine===k?600:400,opacity:k==="native"&&nativeSqlDown?0.6:1}}>{lbl}</button>))}

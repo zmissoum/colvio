@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.207] - 2026-10-27
+### Added - Explorer › SQL completion, intersect (N:N) tables
+- **SQL mode completes what you type**, the way Salesforce Inspector does for SOQL: right after `FROM` / `JOIN` (and `UPDATE`, `DELETE FROM`), the environment's tables whose logical or display name matches; in the `SELECT` list, `WHERE`, `ON`, `GROUP BY`, `HAVING`, `ORDER BY` and `SET`, the columns of the table named after `FROM` — with their display name and type, `alias.` narrowing to one table of a join, alias-prefixed when several tables are in scope. Nothing is offered while there is no table after `FROM`, when that table doesn't exist on the org, inside a string literal or after `TOP`. Tab / Enter inserts, ↑↓ moves, Esc closes; Ctrl+Enter still runs. The columns' metadata is fetched once per table (cached). Pure `sqlComplete.js` + 9 tests (750).
+- **Intersect tables are listed.** The many-to-many tables — `teammembership`, `systemuserroles`, custom N:N — were filtered out of every table list (`IsIntersect eq false`), so the Builder couldn't query them. They show with an N:N badge and query like any table; the Loader leaves them out, since their rows are not created by a POST but by associating the two records (`$ref`).
+### Changed
+- `isTrulyCustom` takes the logical name only: the managed flag was accepted and ignored, which read as a bug. The name alone decides (a customer's managed table is still custom).
+
 ## [1.11.206] - 2026-10-27
 ### Fixed - the global code review: 60-odd corrections across every module
 Six parallel reviews of the whole code base (extension plumbing, Explorer, Loader, Script Console, administration, metadata), each finding traced to a concrete path, then fixed. Nothing changed in the security boundary, which held: sender checks, host-locked fetch, validated names, sandboxed Script Console.

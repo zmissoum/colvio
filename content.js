@@ -500,8 +500,12 @@
             // (Cosmos-backed — 500-row max pages, the audit-table gotcha). Selectable on current
             // orgs; fall back without it so the entity list can never break on an older schema.
             let rawE;
-            try { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,PrimaryIdAttribute,IsCustomEntity,IsManaged,MetadataId,TableType"); }
-            catch { rawE = await dvRequest("GET", "EntityDefinitions?$filter=IsIntersect eq false&$select=LogicalName,DisplayName,EntitySetName,PrimaryIdAttribute,IsCustomEntity,IsManaged,MetadataId"); }
+            // Intersect (N:N) tables — teammembership, systemuserroles, the custom many-to-many
+            // ones — are listed too, flagged isIntersect: they are queryable like any table (the
+            // Explorer reads them), only not created through a POST (the Loader leaves them out).
+            const selE = "LogicalName,DisplayName,EntitySetName,PrimaryIdAttribute,IsCustomEntity,IsManaged,MetadataId,IsIntersect";
+            try { rawE = await dvRequest("GET", `EntityDefinitions?$select=${selE},TableType`); }
+            catch { rawE = await dvRequest("GET", `EntityDefinitions?$select=${selE}`); }
             result = (rawE.value || []).map(e => ({
               logical: e.LogicalName,
               display: e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName,
@@ -509,6 +513,7 @@
               primaryId: e.PrimaryIdAttribute || null,
               isCustom: e.IsCustomEntity || false,
               isManaged: e.IsManaged || false,
+              isIntersect: e.IsIntersect === true,
               metadataId: e.MetadataId || null,
               tableType: e.TableType || "Standard",
             }));

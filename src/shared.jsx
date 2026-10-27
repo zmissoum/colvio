@@ -38,12 +38,14 @@ export const ths=()=>({padding:"6px 10px",textAlign:"left",borderBottom:`2px sol
 // provider (writes and filter operators depend on the provider; no audit, no recycle bin).
 // Elastic = Cosmos-backed (pages cap at 500 rows, limited joins/aggregates — the audit table).
 export const TableTypeBadge=({tt,style})=>{
-  if(tt!=="Virtual"&&tt!=="Elastic")return null;
-  const color=tt==="Virtual"?C.or:C.cy;
+  if(tt!=="Virtual"&&tt!=="Elastic"&&tt!=="Intersect")return null;
+  const color=tt==="Virtual"?C.or:tt==="Intersect"?C.vi:C.cy;
   const title=tt==="Virtual"
     ?"Virtual table — data lives in an EXTERNAL source, served by a data provider at query time. Writes and filter operators depend on the provider; no audit history, no recycle bin."
+    :tt==="Intersect"
+    ?"Intersect table — the rows of a many-to-many relationship (teammembership, systemuserroles…). Read it like any table; rows are added or removed by associating the two records, not by creating a row."
     :"Elastic table — Cosmos DB-backed. Result pages cap at 500 rows, eventual consistency, limited joins and aggregates.";
-  return <span title={title} style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,background:color+"22",color,border:`1px solid ${color}44`,letterSpacing:".5px",flexShrink:0,cursor:"help",...style}}>{tt.toUpperCase()}</span>;
+  return <span title={title} style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,background:color+"22",color,border:`1px solid ${color}44`,letterSpacing:".5px",flexShrink:0,cursor:"help",...style}}>{tt==="Intersect"?"N:N":tt.toUpperCase()}</span>;
 };
 export const tds={padding:"5px 10px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:14};
 
@@ -193,13 +195,13 @@ export function confirmProd(isProduction, actionLabel){
 // A truly custom entity/field has a publisher prefix with underscore (new_xxx, cr123_xxx, foe_xxx)
 // Microsoft entities NEVER have a publisher underscore prefix — they use plain names (account, contact)
 // or Microsoft prefixes (msdyn_, adx_). Both are NOT custom.
-// The managed flag is deliberately NOT a criterion (callers may pass it; it is ignored): on every
-// production org a customer's own tables arrive in a managed solution, so "managed ⇒ Standard"
-// would empty the Custom category exactly where it matters most. The name decides.
+// The managed flag is NOT a criterion (and no longer a parameter): on every production org a
+// customer's own tables arrive in a managed solution, so "managed ⇒ Standard" would empty the
+// Custom category exactly where it matters most. The name alone decides.
 const CUSTOM_PREFIX = /^[a-z][a-z0-9]{1,9}_/; // matches new_, cr123_, cr4d2_, foe_, colvio_ — prefixes start with a letter, digits allowed
 const STANDARD_DIGIT_PREFIX = /^address[0-9]+_/; // address1_city… are Microsoft columns that look like a digit prefix
 const MS_PREFIX = /^(msdyn|msdyncrm|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat)_/;
-export function isTrulyCustom(logicalName,_isManaged){ if(!CUSTOM_PREFIX.test(logicalName||""))return false; if(MS_PREFIX.test(logicalName)||STANDARD_DIGIT_PREFIX.test(logicalName))return false; return true; }
+export function isTrulyCustom(logicalName){ if(!CUSTOM_PREFIX.test(logicalName||""))return false; if(MS_PREFIX.test(logicalName)||STANDARD_DIGIT_PREFIX.test(logicalName))return false; return true; }
 
 // ── Detect extension mode ──
 export function detectExtension() {
