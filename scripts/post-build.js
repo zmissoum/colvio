@@ -10,8 +10,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const dist = resolve(root, "dist");
 
-// sandbox.html / sandbox.js: the Script Console runner (manifest sandbox page, not bundled)
-const files = ["manifest.json", "background.js", "content.js", "sandbox.html", "sandbox.js"];
+// sandbox.html / sandbox.js: the Script Console runner (manifest sandbox page, not bundled).
+// content.js is NOT copied: it is built from src/content/ by vite.content.config.js (npm run build).
+const files = ["manifest.json", "background.js", "sandbox.html", "sandbox.js"];
 // Pure modules the service worker imports (background.js is an ES module): src/x.js → dist/x.js
 const moduleFiles = ["saveCapture.js", "panelRouting.js"];
 const dirs = ["icons"];

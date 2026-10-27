@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.212] - 2026-10-27
+### Changed - the content script is modules now
+- **`content.js` (one 3,500-line IIFE holding a 103-case switch) is split into `src/content/`**: `core.js` (validation, the D365 context, the bulk-run abort state, the API meter and pacing, the request layer, counting, `$batch` retries, the privilege catalog), `actions/metadata.js`, `actions/data.js`, `actions/apps.js`, `actions/automation.js`, `actions/security.js` (one async function per action) and `index.js` (the once-per-page guard, the listener, the dispatch table — own properties only, so a message naming `__proto__` can't reach `Object.prototype`). The three actions that assign core state (`getContext`, `resetBatchAbort`, `abortBatch`) live in `core.js`.
+- **Built back into ONE classic script**, `dist/content.js`, by `vite.content.config.js` (Rollup only, no esbuild pass: not minified, every comment kept — the reviewer reads the repository's code). `npm run build` runs it after the panel build; `post-build` no longer copies a root `content.js`. The manifest and background.js are unchanged.
+- **Mechanical, verified**: the split was done by an AST transform (each `case` body kept byte for byte, switch-level `break`s became `return result`), then the old script and the new bundle were run side by side under the same fake page, chrome and fetch for all 103 actions plus an unknown one: 104 / 104 identical request sequences and answers.
+- **Testable at last**: `contentScript.test.js` drives the real dispatcher with a scripted fetch — the host lock and the Script Console's Web API-only check, `getRoleMemberIds` paging, `updateWebResource`'s `If-Match` and 412, `batchAssociate`'s missing-record error, the per-run abort tokens (6 tests, 766).
+
 ## [1.11.211] - 2026-10-27
 ### Fixed - three findings of the review of 1.11.204-209
 - **Adoption's role filter has no cap any more.** The holders of a role were read up to 50,000, with a warning past that — against the rule that a list is complete or it isn't applied. They are now paged to the end (ids only, 5,000 a page, new `getRoleMemberIds`); if the read fails, the filter is dropped and says so instead of showing every user under the role's name.

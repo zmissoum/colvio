@@ -7,7 +7,7 @@ import globals from "globals";
 
 export default [
   {
-    files: ["src/**/*.{js,jsx}", "content.js", "background.js", "sandbox.js"],
+    files: ["src/**/*.{js,jsx}", "background.js", "sandbox.js", "vite.content.config.js"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",

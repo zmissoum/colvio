@@ -305,9 +305,9 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 |--------|-------|
 | Modules | 24 |
 | Lines of code | ~27,100 |
-| API actions | 102 |
+| API actions | 103 |
 | React components | 52 |
-| Unit tests | 758 |
+| Unit tests | 766 |
 | Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |
@@ -325,6 +325,7 @@ Colvio has been through a full security audit. Results: **0 critical, 0 high, 0 
 ### Input Validation
 - **Entity/field name validation** — all names validated with regex in the content script
 - **OData injection protection** — numeric filter values validated, Lookup GUIDs format-checked, control characters stripped from batch key values (CRLF-injection proof)
+- **Content script as modules** — `src/content/` (core, one module per domain of actions, the dispatcher) bundled by Vite into one readable `dist/content.js`, not minified, every comment kept: what the store reviewer reads is what the repository holds; the dispatcher runs tests (`contentScript.test.js`) against a scripted Dataverse
 - **Same-org enforcement** — API Tester and Script Console re-validate the final URL host after path assembly; the Script Console also its resolved path (Web API only: dot segments, `%2e%2e` and backslashes refused before the request is built, `/api/data/vX.Y/` re-checked on the final URL)
 - **Script Console sandbox** — user scripts run in a Web Worker of a manifest sandbox page (opaque origin, CSP `default-src 'none'`): no network, no cookies, no extension API; every Web API call is relayed to the panel and checked there
 - **Content Security Policy** — explicit CSP on panel.html
