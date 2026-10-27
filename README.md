@@ -117,6 +117,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **🔎 Search in contents** — reads the text resources 25 per request (progress, Stop) and lists every line holding what you type (a column's logical name before deleting or renaming it, a URL, a function), case / whole-word options, a hit opens the editor on its line. The complement to Metadata › Dependencies: Dataverse's dependency tracking never sees inside a script
 
 ### Data Loader
+- **N:N tables (teammembership, systemuserroles, custom many-to-many)** — loaded by **association**: pick the intersect table, give one file column per end (a GUID, or a value resolved against a text column of that table — an email for systemuser, a name for team), ASSOCIATE or DISASSOCIATE. Dry run, per-row log (blank, unresolved, ambiguous and duplicate pairs reported), retry of the errors, rollback of what a run added; an association that already exists counts as "already", never as an error.
 - 5-step wizard: Source > Mapping > Lookups > Preview > Run
 - CSV / TSV / TXT drag-drop, **Excel (XLSX/XLS)** support, or paste from clipboard
 - **RFC-4180 parser**: quoted cells, embedded commas/newlines, escaped quotes; delimiter auto-detected (`,` / tab / `;`); values trimmed; leading zeros preserved

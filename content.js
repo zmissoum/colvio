@@ -1106,6 +1106,147 @@
             break;
           }
 
+          case "getIntersectRelationships": {
+            // Every many-to-many relationship of the org, by its intersect table: which two tables it
+            // joins, through which navigation properties (the association endpoints). One read, the
+            // bridge caches it; the Loader's association mode looks its table up in it.
+            const dM = await dvRequest("GET", "RelationshipDefinitions/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata?$select=SchemaName,IntersectEntityName,Entity1LogicalName,Entity2LogicalName,Entity1IntersectAttribute,Entity2IntersectAttribute,Entity1NavigationPropertyName,Entity2NavigationPropertyName");
+            result = (dM.value || []).map(r => ({
+              schemaName: r.SchemaName,
+              intersect: String(r.IntersectEntityName || "").toLowerCase(),
+              entity1: r.Entity1LogicalName, attr1: r.Entity1IntersectAttribute, nav1: r.Entity1NavigationPropertyName,
+              entity2: r.Entity2LogicalName, attr2: r.Entity2IntersectAttribute, nav2: r.Entity2NavigationPropertyName,
+            })).filter(r => r.intersect && r.entity1 && r.entity2 && r.nav1);
+            break;
+          }
+
+          case "batchAssociate": {
+            // Rows of a many-to-many table are not created: the two records are ASSOCIATED —
+            // POST {set1}(id1)/{nav1}/$ref with the second record's @odata.id — and removed by
+            // DELETE {set1}(id1)/{nav1}(id2)/$ref. One changeset per pair in a $batch, per-pair log,
+            // serial fallback, per-run abort: the same shape as batchCreate / batchDeleteKeyed.
+            const myRun = Number.isFinite(Number(params.runId)) ? Number(params.runId) : batchRunId;
+            const aborted = () => isRunAborted(myRun);
+            const set1 = validateEntitySet(params.set1), set2 = validateEntitySet(params.set2);
+            validateName(params.nav1, "nav1");
+            const removing = params.mode === "remove";
+            const items = params.items || []; // [{ id1, id2 }]
+            const results = { done: 0, already: 0, errors: [], log: [] };
+            const BATCH_SIZE = 500;
+            const ctx = d365Context || extractContext();
+            if (!ctx) throw new Error("D365 context not found");
+            const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
+            const okStatus = removing ? "DISASSOCIATED" : "ASSOCIATED";
+            const refuse = (rowIdx, msg) => { results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); };
+            // the idempotent outcomes: an association that already exists / one that wasn't there
+            const classify = (status, msg) => {
+              if (status === 204 || status === 200) return { status: okStatus };
+              if (!removing && (/already|duplicate|exists/i.test(msg) || status === 409)) return { status: okStatus, note: "already associated", already: true };
+              if (removing && (status === 404 || /does not exist|not found|no association/i.test(msg))) return { status: okStatus, note: "was not associated", already: true };
+              return null;
+            };
+            const parseBatchResponse = (text, batchOffset, chunkLen) => {
+              const log = [];
+              const blocks = text.split(/Content-Type:\s*application\/http/i);
+              for (let i = 1; i < blocks.length; i++) {
+                const block = blocks[i];
+                const statusMatch = block.match(/HTTP\/1\.1\s+(\d{3})/);
+                if (!statusMatch) continue;
+                const status = parseInt(statusMatch[1], 10);
+                const cid = parseInt((block.match(/Content-ID:\s*(\d+)/i) || [])[1], 10);
+                const rowIdx = Number.isFinite(cid) ? cid : (batchOffset + i);
+                if (rowIdx < batchOffset + 1 || rowIdx > batchOffset + chunkLen) continue;
+                const msg = (block.match(/"message":"([^"]{0,300})"/) || [])[1] || `HTTP ${status}`;
+                const c = classify(status, msg);
+                log.push(c ? { row: rowIdx, ...c } : { row: rowIdx, status: "ERROR", msg });
+              }
+              return log;
+            };
+            const pathOf = (it) => removing ? `${set1}(${it.id1})/${params.nav1}(${it.id2})/$ref` : `${set1}(${it.id1})/${params.nav1}/$ref`;
+            const bodyOf = (it) => removing ? null : { "@odata.id": `${baseUrl}/${set2}(${it.id2})` };
+            const single = async (it) => {
+              try { await dvRequest(removing ? "DELETE" : "POST", pathOf(it), bodyOf(it)); return { status: okStatus }; }
+              catch (e) {
+                const msg = String(e.message || e);
+                const st = parseInt((msg.match(/HTTP (\d{3})/) || [])[1], 10);
+                return classify(st, msg) || { status: "ERROR", msg: msg.substring(0, 500) };
+              }
+            };
+            const take = (rowIdx, entry) => {
+              results.log.push({ row: rowIdx, ...entry });
+              if (entry.status === "ERROR") results.errors.push({ row: rowIdx, msg: entry.msg || "Batch error", payload: "" });
+              else if (entry.already) results.already++;
+              else results.done++;
+            };
+
+            for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
+              if (aborted()) break;
+              const chunk = items.slice(batch, batch + BATCH_SIZE);
+              const boundary = "batch_d365_" + Date.now() + "_" + batch;
+              let body = "", parts = 0;
+              const refused = new Set();
+              for (let i = 0; i < chunk.length; i++) {
+                const rowIdx = batch + i + 1;
+                const it = chunk[i] || {};
+                try { validateGuid(it.id1); validateGuid(it.id2); }
+                catch { refused.add(rowIdx); refuse(rowIdx, "Both ends must be GUIDs"); continue; }
+                parts++;
+                const csName = "cs_" + Date.now() + "_" + (batch + i);
+                body += "--" + boundary + "\r\n";
+                body += "Content-Type: multipart/mixed; boundary=" + csName + "\r\n\r\n";
+                body += "--" + csName + "\r\n";
+                body += "Content-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n";
+                body += "Content-ID: " + rowIdx + "\r\n\r\n";
+                if (removing) {
+                  body += "DELETE " + baseUrl + "/" + pathOf(it) + " HTTP/1.1\r\n\r\n";
+                } else {
+                  body += "POST " + baseUrl + "/" + pathOf(it) + " HTTP/1.1\r\n";
+                  body += "Content-Type: application/json\r\n\r\n";
+                  body += JSON.stringify(bodyOf(it)) + "\r\n";
+                }
+                body += "--" + csName + "--\r\n";
+              }
+              body += "--" + boundary + "--\r\n";
+              if (!parts) continue;
+              const serial = async () => {
+                for (let i = 0; i < chunk.length; i++) {
+                  const rowIdx = batch + i + 1;
+                  if (aborted()) break;
+                  if (refused.has(rowIdx)) continue;
+                  take(rowIdx, await single(chunk[i]));
+                }
+              };
+              try {
+                const resp = await fetchBatchWithRetry(baseUrl + "/$batch", {
+                  method: "POST",
+                  headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
+                  body,
+                  credentials: "same-origin",
+                  signal: runSignal(myRun),
+                }, 4, aborted);
+                if (resp.ok) {
+                  const chunkLog = parseBatchResponse(await resp.text(), batch, chunk.length);
+                  const seen = new Set();
+                  for (const entry of chunkLog) { seen.add(entry.row); const { row, ...rest } = entry; take(row, rest); }
+                  for (let i = 0; i < chunk.length; i++) {
+                    const rowIdx = batch + i + 1;
+                    if (seen.has(rowIdx) || refused.has(rowIdx)) continue;
+                    refuse(rowIdx, "No response received from batch");
+                  }
+                } else {
+                  if (resp.status === 401) throw new Error("SESSION_EXPIRED: Session expired mid-run — refresh D365 (F5), reconnect, then retry the remaining rows");
+                  await serial();
+                }
+              } catch (batchErr) {
+                if (/SESSION_EXPIRED/.test(String(batchErr?.message || ""))) throw batchErr;
+                await serial();
+              }
+            }
+            padAbortedRows(results, items.length, myRun);
+            result = results;
+            break;
+          }
+
           case "batchDeleteKeyed": {
             const myRun = Number.isFinite(Number(params.runId)) ? Number(params.runId) : batchRunId; // see abortedRuns
             const aborted = () => isRunAborted(myRun);

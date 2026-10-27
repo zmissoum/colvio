@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
+import AssociationLoader from "./AssociationLoader.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES, valuesToVerifyOneByOne } from "../loaderUtils.js";
 import { createDemoLoaderIO } from "../loaderDemo.js";
 import { decodeBytes } from "../textDecode.js";
@@ -342,7 +343,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // loop lives in this page, so reloading it would abandon a run with no result and no rollback.
   // step===4 (Run) with no result yet = a run is in flight; the result step clears it.
   // Report "busy" up to the app so page-reloading actions (e.g. Restart onboarding tour) can guard.
-  useEffect(()=>{ const busy=(step===4 && !result && !loadError); runningRef.current=busy; onBusyChange?.(busy); },[step,result,loadError,onBusyChange]);
+  const[assocBusy,setAssocBusy]=useState(false); // the association step's own run (AssociationLoader)
+  useEffect(()=>{ const busy=(step===4 && !result && !loadError)||assocBusy; runningRef.current=busy; onBusyChange?.(busy); },[step,result,loadError,onBusyChange,assocBusy]);
   useEffect(()=>{
     const h=(e)=>{ if(runningRef.current){ e.preventDefault(); e.returnValue=""; } };
     window.addEventListener("beforeunload",h);
@@ -363,13 +365,15 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(!isLive) return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        // intersect (N:N) tables are not loadable — their rows come from associating two records
-        setLiveEntities(data.filter(e=>!e.isIntersect).map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",tt:e.tableType||"Standard"})).sort((a,b)=>a.d.localeCompare(b.d)));
+        // intersect (N:N) tables are loaded by association (AssociationLoader) — flagged, badged N:N
+        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",pk:e.primaryId||null,i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",tt:e.isIntersect?"Intersect":(e.tableType||"Standard"),isIntersect:!!e.isIntersect})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);
 
   const entityList = liveEntities.length > 0 ? liveEntities : ENTS;
+  // A many-to-many (intersect) table: loaded by ASSOCIATION (AssociationLoader), not by rows.
+  const isIntersectTarget=!!entityList.find(e=>e.l===target)?.isIntersect;
   const[targetFields,setTargetFields]=useState(D365CF);
   const[targetFieldsMeta,setTargetFieldsMeta]=useState([]); // full field objects with type info
   const[targetLookups,setTargetLookups]=useState([]);
@@ -1498,6 +1502,49 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   };
   const steps=[{l:"Source",i:"📄"},{l:"Mapping",i:"🔗"},{l:"Lookups",i:"🔍"},{l:"Preview",i:"👁"},{l:"Run",i:"🚀"}];
 
+  // The target-table picker (search + list) — shared by the mapping step and the association step.
+  const renderEntityPicker=()=>{
+                const selectedEnt=entityList.find(e=>e.l===target);
+                const filtered=(()=>{
+                  const q=entitySearch.trim().toLowerCase();
+                  if(!q) return entityList;
+                  return entityList.filter(e=>(e.l||"").toLowerCase().includes(q)||(e.d||"").toLowerCase().includes(q));
+                })();
+                return (<div ref={entityPickerRef} style={{position:"relative"}}>
+                  <input
+                    value={entityPickerOpen?entitySearch:(selectedEnt?`${selectedEnt.i} ${selectedEnt.d} (${selectedEnt.l})`:target)}
+                    onChange={e=>{setEntitySearch(e.target.value);if(!entityPickerOpen)setEntityPickerOpen(true);}}
+                    onFocus={()=>{setEntityPickerOpen(true);setEntitySearch("");}}
+                    placeholder="Type to search entities…"
+                    style={inp({fontSize:14,...mono,paddingRight:30})}
+                  />
+                  <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:C.txd,fontSize:14,pointerEvents:"none"}}>{entityPickerOpen?"🔍":"▾"}</span>
+                  {entityPickerOpen && (
+                    <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,maxHeight:280,overflow:"auto",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,.3)",zIndex:50}}>
+                      {filtered.length===0?(
+                        <div style={{padding:"10px 12px",fontSize:12,color:C.txd,fontStyle:"italic"}}>No entity matches "{entitySearch}"</div>
+                      ):filtered.slice(0,200).map(e=>(
+                        <button
+                          key={e.l}
+                          onMouseDown={(ev)=>{ev.preventDefault();setTarget(e.l);setEntityPickerOpen(false);setEntitySearch("");}}
+                          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",width:"100%",background:target===e.l?C.sfa:"transparent",border:"none",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",color:C.tx,fontSize:13,textAlign:"left"}}
+                        >
+                          <span style={{fontSize:14}}>{e.i}</span>
+                          <span style={{flex:1,fontWeight:target===e.l?600:400}}>{e.d}</span>
+                          <TableTypeBadge tt={e.tt}/>
+                          <span style={{...mono,fontSize:11,color:C.txd}}>{e.l}</span>
+                        </button>
+                      ))}
+                      {filtered.length>200 && (
+                        <div style={{padding:"6px 10px",fontSize:11,color:C.txd,textAlign:"center",fontStyle:"italic"}}>
+                          {filtered.length-200} more matches — type more to narrow down
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>);
+  };
+
   return(
     <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1400,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:bp.mobile?14:22,flexWrap:"wrap"}}>
@@ -1539,7 +1586,16 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         </div>
       )}
 
-      {step===1&&(
+      {step===1&&isIntersectTarget&&(
+        <div>
+          <div style={{...crd({padding:12}),marginBottom:12}}>
+            <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Target D365 entity</label>
+            {renderEntityPicker()}
+          </div>
+          <AssociationLoader target={target} csvData={csvData} entityList={entityList} isLive={isLive} orgInfo={orgInfo} bp={bp} onBusy={setAssocBusy} onBack={()=>setStep(0)}/>
+        </div>
+      )}
+      {step===1&&!isIntersectTarget&&(
         <div>
           {parseInfo?.badParse&&(
             <div style={{...crd({padding:"10px 14px",background:C.rd+"0c",borderColor:C.rd+"55"}),marginBottom:12,fontSize:12.5,lineHeight:1.6,color:C.rd}}>
@@ -1552,47 +1608,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           <div style={{display:"flex",gap:10,marginBottom:12,flexDirection:bp.mobile?"column":"row"}}>
             <div style={{...crd({padding:12}),flex:1}}>
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Target D365 entity</label>
-              {(()=>{
-                const selectedEnt=entityList.find(e=>e.l===target);
-                const filtered=(()=>{
-                  const q=entitySearch.trim().toLowerCase();
-                  if(!q) return entityList;
-                  return entityList.filter(e=>(e.l||"").toLowerCase().includes(q)||(e.d||"").toLowerCase().includes(q));
-                })();
-                return (<div ref={entityPickerRef} style={{position:"relative"}}>
-                  <input
-                    value={entityPickerOpen?entitySearch:(selectedEnt?`${selectedEnt.i} ${selectedEnt.d} (${selectedEnt.l})`:target)}
-                    onChange={e=>{setEntitySearch(e.target.value);if(!entityPickerOpen)setEntityPickerOpen(true);}}
-                    onFocus={()=>{setEntityPickerOpen(true);setEntitySearch("");}}
-                    placeholder="Type to search entities…"
-                    style={inp({fontSize:14,...mono,paddingRight:30})}
-                  />
-                  <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:C.txd,fontSize:14,pointerEvents:"none"}}>{entityPickerOpen?"🔍":"▾"}</span>
-                  {entityPickerOpen && (
-                    <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,maxHeight:280,overflow:"auto",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,.3)",zIndex:50}}>
-                      {filtered.length===0?(
-                        <div style={{padding:"10px 12px",fontSize:12,color:C.txd,fontStyle:"italic"}}>No entity matches "{entitySearch}"</div>
-                      ):filtered.slice(0,200).map(e=>(
-                        <button
-                          key={e.l}
-                          onMouseDown={(ev)=>{ev.preventDefault();setTarget(e.l);setEntityPickerOpen(false);setEntitySearch("");}}
-                          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",width:"100%",background:target===e.l?C.sfa:"transparent",border:"none",borderBottom:`1px solid ${C.bd}`,cursor:"pointer",color:C.tx,fontSize:13,textAlign:"left"}}
-                        >
-                          <span style={{fontSize:14}}>{e.i}</span>
-                          <span style={{flex:1,fontWeight:target===e.l?600:400}}>{e.d}</span>
-                          <TableTypeBadge tt={e.tt}/>
-                          <span style={{...mono,fontSize:11,color:C.txd}}>{e.l}</span>
-                        </button>
-                      ))}
-                      {filtered.length>200 && (
-                        <div style={{padding:"6px 10px",fontSize:11,color:C.txd,textAlign:"center",fontStyle:"italic"}}>
-                          {filtered.length-200} more matches — type more to narrow down
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>);
-              })()}
+              {renderEntityPicker()}
               {(()=>{const se=entityList.find(e=>e.l===target);return se?.tt==="Virtual"&&(
                 <div style={{marginTop:6,fontSize:11.5,lineHeight:1.5,color:C.or,padding:"6px 8px",background:C.or+"11",borderRadius:4,border:`1px solid ${C.or}33`}}>
                   ⚠ <b>Virtual table</b> — its data lives in an external source behind a data provider. Writes (create/update/delete) only work if the provider implements them; most virtual tables are <b>read-only</b> and every row will fail with the provider's error.

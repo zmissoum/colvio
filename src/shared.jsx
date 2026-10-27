@@ -57,6 +57,7 @@ export function useKeyboard(key, handler, deps=[]){const ref=useRef(handler);ref
 // ── DATA ──────────────────────────────────────────────────────
 export const ENTS=[
   {l:"account",d:"Account",p:"accounts",i:"🏢",c:12450,cat:"Sales"},
+  {l:"teammembership",d:"Team Membership",p:"teammemberships",i:"🔗",c:0,cat:"System",tt:"Intersect",isIntersect:true},
   {l:"contact",d:"Contact",p:"contacts",i:"👤",c:34200,cat:"Sales"},
   {l:"opportunity",d:"Opportunity",p:"opportunities",i:"💰",c:8730,cat:"Sales"},
   {l:"lead",d:"Lead",p:"leads",i:"🎯",c:15600,cat:"Sales"},

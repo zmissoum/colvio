@@ -166,7 +166,7 @@ async function callD365(action, params = {}) {
     let settled = false;
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
-    const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed";
+    const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed" || action === "batchAssociate";
     const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
@@ -1047,6 +1047,64 @@ export const bridge = {
     const data = await callD365("getSolutions");
     if (data) await cacheSet(k, data, CACHE_TTL.entities);
     return data;
+  },
+
+  // The many-to-many relationship behind an intersect table (teammembership → systemuser ⟷ team),
+  // or null when the table isn't one. One metadata read for the org, cached.
+  async getIntersectRelationship(intersectLogicalName) {
+    const want = String(intersectLogicalName || "").toLowerCase();
+    if (!isExtension) return want === "teammembership" ? { schemaName: "teammembership_association", intersect: "teammembership", entity1: "systemuser", attr1: "systemuserid", nav1: "teammembership_association", entity2: "team", attr2: "teamid", nav2: "teammembership_association" } : null;
+    const k = cacheKey("m2m1");
+    let all = await cacheGet(k);
+    if (!all) { all = await callD365("getIntersectRelationships"); if (all) await cacheSet(k, all, CACHE_TTL.entities); }
+    return (all || []).find(r => r.intersect === want) || null;
+  },
+
+  // Associate (mode "add") or disassociate ("remove") pairs of records through a many-to-many
+  // relationship: items = [{ id1, id2 }] (id1 on set1, reached through nav1; id2 on set2). Same
+  // worker pool, per-row log and abort handling as the other bulk writes.
+  async batchAssociate({ set1, nav1, set2 }, items, mode, onProgress, shouldAbort, opts = {}) {
+    if (!isExtension) return { done: items.length, already: 0, errors: [], log: items.map((_, i) => ({ row: i + 1, status: mode === "remove" ? "DISASSOCIATED" : "ASSOCIATED" })) };
+    let runId = null;
+    try { runId = (await callD365("resetBatchAbort"))?.runId ?? null; } catch {}
+    let abortNotified = false;
+    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch", { runId }).catch(() => {}); } };
+    const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
+    const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
+    const agg = { done: 0, already: 0, errors: [], log: [], aborted: false };
+    const chunks = [];
+    for (let i = 0; i < items.length; i += CHUNK) chunks.push({ start: i, slice: items.slice(i, i + CHUNK) });
+    let nextIdx = 0, processedRecords = 0, stopped = false;
+    const worker = async () => {
+      while (true) {
+        if (shouldAbort?.()) { agg.aborted = true; notifyAbort(); return; }
+        if (stopped) return;
+        const idx = nextIdx++;
+        if (idx >= chunks.length) return;
+        const { start, slice } = chunks[idx];
+        let chunkErrors, chunkLog;
+        try {
+          const r = await callD365("batchAssociate", { set1, nav1, set2, items: slice, mode, runId });
+          if (r?.aborted) { stopped = true; agg.aborted = true; }
+          agg.done += r?.done || 0;
+          agg.already += r?.already || 0;
+          chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+          chunkLog = (r?.log || []).map(e => ({ ...e, row: (e.row || 0) + start }));
+        } catch (e) {
+          const msg = e?.message || String(e);
+          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg) || /message port closed|receiving end does not exist|lost contact with the d365 tab/i.test(msg)) { stopped = true; agg.aborted = true; notifyAbort(); }
+          chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
+          chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
+        }
+        if (chunkErrors.length) agg.errors.push(...chunkErrors);
+        if (chunkLog.length) agg.log.push(...chunkLog);
+        processedRecords += slice.length;
+        onProgress?.({ done: Math.min(processedRecords, items.length), total: items.length, errorCount: agg.errors.length, newErrors: chunkErrors, newLog: chunkLog });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
+    flushNeverSent(agg, chunks, nextIdx, items.length, processedRecords, onProgress);
+    return agg;
   },
 
   // One request per solution: the list's component badge ({ count, capped } — capped at 5,000).
