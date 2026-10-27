@@ -7,6 +7,9 @@ export function redactFetchXml(xml) {
   return String(xml || "")
     .replace(/value\s*=\s*"[^"]*"/gi, 'value="..."')
     .replace(/value\s*=\s*'[^']*'/gi, "value='...'")
+    // uiname="Jane Doe" on a lookup condition is the record's NAME — PII the value=… blanking left behind
+    .replace(/\buiname\s*=\s*"[^"]*"/gi, 'uiname="..."')
+    .replace(/\buiname\s*=\s*'[^']*'/gi, "uiname='...'")
     .replace(/<value>[^<]*<\/value>/gi, "<value>...</value>");
 }
 

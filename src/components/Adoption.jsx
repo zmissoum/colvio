@@ -40,6 +40,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [buList, setBuList] = useState([]);            // org BU hierarchy [{id, name, parentId}]
   const [roleMembers, setRoleMembers] = useState(null); // Set<userId> for the selected role, or null
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [roleCapped, setRoleCapped] = useState(false); // the role's holder list hit the bridge cap — users past it silently left the scope (audit finding)
   const [userSearch, setUserSearch] = useState("");
   const [userSort, setUserSort] = useState("logins"); // logins | days | last
   const [chartMetric, setChartMetric] = useState("both"); // both | logins | users
@@ -107,20 +108,23 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
      
   }, [windowRange.from, windowRange.to, retryKey]);
 
-  // Role filter → fetch (and cache) the role's members across every BU copy. Guarded by its OWN
+  // Role filter → fetch (and cache) the role's DIRECT holders across every BU copy (team-inherited
+  // holders are not included — the UI says so). getRoleMemberIds caps at 50,000 — getRoleUsers' 10,000
+  // (alphabetical) silently dropped everyone after the cap from the scope. Guarded by its OWN
   // generation counter: switching role (or back to "All") mid-fetch must DISCARD the stale result —
   // the window `gen` doesn't change on role switches, so it can't catch this race.
+  const ROLE_CAP = 50000;
   const roleGen = useRef(0);
   useEffect(() => {
     const rg = ++roleGen.current;
-    if (!roleFilter) { setRoleMembers(null); setLoadingMembers(false); return; }
-    if (roleMemberCache.current.has(roleFilter)) { setRoleMembers(roleMemberCache.current.get(roleFilter)); setLoadingMembers(false); return; }
+    if (!roleFilter) { setRoleMembers(null); setLoadingMembers(false); setRoleCapped(false); return; }
+    if (roleMemberCache.current.has(roleFilter)) { const c = roleMemberCache.current.get(roleFilter); setRoleMembers(c); setRoleCapped(c.size >= ROLE_CAP); setLoadingMembers(false); return; }
     setLoadingMembers(true);
-    bridge.getRoleUsers(roleFilter).then(list => {
-      const set = new Set((list || []).map(u => String(u.id).toLowerCase()));
+    bridge.getRoleMemberIds(roleFilter).then(ids => {
+      const set = new Set([...(ids || [])].map(id => String(id).toLowerCase()));
       roleMemberCache.current.set(roleFilter, set); // cache even if stale — instant on next pick
-      if (roleGen.current === rg) { setRoleMembers(set); setLoadingMembers(false); }
-    }).catch(() => { if (roleGen.current === rg) { setRoleMembers(new Set()); setLoadingMembers(false); } });
+      if (roleGen.current === rg) { setRoleMembers(set); setRoleCapped(set.size >= ROLE_CAP); setLoadingMembers(false); }
+    }).catch(() => { if (roleGen.current === rg) { setRoleMembers(new Set()); setRoleCapped(false); setLoadingMembers(false); } });
   }, [roleFilter]);
 
   // Per-user metadata (BU + name + disabled), keyed by lowercase id.
@@ -416,10 +420,12 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
           <input type="date" value={customTo} min={customValid ? customFrom : MIN_ISO} max={todayISO} onClick={openPicker} onFocus={openPicker} onChange={e => setCustomTo(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px", ...(customValid ? {} : { borderColor: C.rd + "88" }) })} />
           {!customValid && <span style={{ fontSize: 11, color: C.rd }}>Pick a valid range (from ≤ to, {MIN_ISO.slice(0, 4)}–today)</span>}
         </>}
-        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} style={inp({ width: "auto", maxWidth: 220, fontSize: 12, padding: "5px 8px" })}>
+        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} title="Direct role assignments only — users holding the role through a team are not included" style={inp({ width: "auto", maxWidth: 220, fontSize: 12, padding: "5px 8px" })}>
           <option value="">All security roles</option>
           {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
+        {roleFilter && <span title="Users holding the role through a team are not included" style={{ fontSize: 11, color: C.txd }}>direct assignments</span>}
+        {roleFilter && roleCapped && <span title={`The role's holder list stopped at ${ROLE_CAP.toLocaleString()} users — anyone past that cap is missing from this scope`} style={{ fontSize: 11, color: C.yw }}>⚠ role scope capped at {ROLE_CAP.toLocaleString()} users — incomplete</span>}
         <select value={buFilter} onChange={e => setBuFilter(e.target.value)} style={inp({ width: "auto", maxWidth: 220, fontSize: 12, padding: "5px 8px" })}>
           <option value="">All business units</option>
           {buOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
@@ -527,7 +533,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
           <div style={{ ...crd({ padding: 14 }), flex: 2, minWidth: 320 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 600 }}>Adoption by business unit</span>
-              <span style={{ fontSize: 10.5, color: C.txd }}>active ÷ enabled users in window{roleFilter ? " · role filter applied" : ""}</span>
+              <span style={{ fontSize: 10.5, color: C.txd }}>active ÷ enabled users in window{roleFilter ? " · role filter applied (direct assignments)" : ""}</span>
               <button onClick={() => exportTable(["businessUnit", "enabledUsers", "activeUsers", "adoptionRate"], agg.buRows.map(r => [r.bu, r.enrolled, r.active, `${(r.rate * 100).toFixed(0)}%`]), `adoption_by_bu_${preset}`, "csv", "By BU")} style={{ ...bt(null, { fontSize: 10.5, padding: "2px 8px" }), marginLeft: "auto" }}><I.Download /> CSV</button>
               <button onClick={() => exportTable(["businessUnit", "enabledUsers", "activeUsers", "adoptionRate"], agg.buRows.map(r => [r.bu, r.enrolled, r.active, `${(r.rate * 100).toFixed(0)}%`]), `adoption_by_bu_${preset}`, "xlsx", "By BU")} style={bt(null, { fontSize: 10.5, padding: "2px 8px" })}><I.Download /> Excel</button>
             </div>

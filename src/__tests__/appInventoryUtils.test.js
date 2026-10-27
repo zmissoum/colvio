@@ -34,6 +34,26 @@ const ACTIONS = [
 const inv = () => buildAppInventory({ apps: APPS, components: COMPONENTS, forms: FORMS, views: VIEWS, entities: ENTITIES, actions: ACTIONS });
 
 describe("buildAppInventory — include-all inference", () => {
+  it("include-all draws from active public views and app-selectable forms only; explicit picks are kept as they are", () => {
+    const forms = [...FORMS,
+      { id: "f-dash", name: "Account dashboard", entity: "account", type: 10 },              // interactive dashboard: not a form of the table
+      { id: "f-old", name: "Old main", entity: "account", type: 2, formactivationstate: 0 }, // inactive
+      { id: "f-card", name: "Account card", entity: "account", type: 11, formactivationstate: 1 }, // active card form: in
+      { id: "f-mob", name: "Account mobile", entity: "account", type: 5 },                   // legacy mobile form: not app-selectable
+    ];
+    const views = [...VIEWS,
+      { id: "v-af", name: "Account Advanced Find", entity: "account", querytype: 2 },        // advanced find view
+      { id: "v-off", name: "Retired view", entity: "account", querytype: 0, statecode: 1 },  // inactive
+      { id: "v-lookup", name: "Account Lookup", entity: "account", querytype: 64 },          // lookup view
+    ];
+    const comps = [...COMPONENTS, { objectId: "v-off", componentType: 26, appUid: "uidV" }]; // explicitly registered although inactive
+    const r = buildAppInventory({ apps: APPS, components: comps, forms, views, entities: ENTITIES, actions: [] });
+    const service = r.byApp.uidV.tables.find(t => t.entity === "account");
+    expect(service.forms.map(f => f.name).sort()).toEqual(["Account Main", "Account Quick Create", "Account card"]);
+    expect(service.views.map(v => v.name)).toEqual(["Active Accounts", "Retired view"]);
+    const sales = r.byApp.uidS.tables.find(t => t.entity === "account");
+    expect(sales.views.map(v => v.name).sort()).toEqual(["Active Accounts", "My Accounts"]);
+  });
   it("drops apps with blank display names (and their components)", () => {
     const r = inv();
     expect(r.apps.map(a => a.uid)).toEqual(["uidS", "uidV"]);

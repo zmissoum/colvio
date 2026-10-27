@@ -4,6 +4,7 @@ import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../sha
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import { formatPrivName, searchPrivileges, rolesHolding, holderExportRows, DEPTH_LABEL } from "../rolePrivilegeFilter.js";
+import { userLookupFilter, resolveUsers } from "../userResolve.js";
 import { matricesFromGrants, catalogIndex } from "../privilegeMatrix.js";
 
 // Privileges considered sensitive for security review
@@ -268,26 +269,27 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
     const gen = selectGen.current; // captured at START — if the user switches role mid-flight, don't touch the new role's view
     setAssignBusy(true); setAssignReport(null);
     try {
-      const byToken = new Map(); // lower(email|domain) -> user
+      const found = []; // every systemuser matching any token (several can share one address)
       for (let i = 0; i < tokens.length; i += 15) {
         const chunk = tokens.slice(i, i + 15);
-        const f = chunk.map(t => { const e = t.replace(/'/g, "''"); return `(internalemailaddress eq '${e}' or domainname eq '${e}')`; }).join(" or ");
-        const d = await bridge.query("systemusers", { select: "systemuserid,fullname,internalemailaddress,domainname", filter: f });
-        (d?.records || []).forEach(u => {
-          if (u.internalemailaddress) byToken.set(String(u.internalemailaddress).toLowerCase(), u);
-          if (u.domainname) byToken.set(String(u.domainname).toLowerCase(), u);
-        });
+        const d = await bridge.query("systemusers", { select: "systemuserid,fullname,internalemailaddress,domainname,isdisabled,applicationid", filter: userLookupFilter(chunk) });
+        (d?.records || []).forEach(u => found.push({ id: u.systemuserid, fullname: u.fullname, email: u.internalemailaddress, upn: u.domainname, disabled: !!u.isdisabled, isApp: !!u.applicationid }));
       }
+      // Per-token resolution: an address shared by a stale disabled user and its re-provisioned
+      // copy picks the enabled one; still ambiguous → reported and skipped, never "last match wins".
+      const { byToken, ambiguous } = resolveUsers(found, tokens);
       const report = []; const matched = []; const seen = new Set();
       for (const t of tokens) {
-        const u = byToken.get(t.toLowerCase());
+        const key = t.toLowerCase();
+        if (ambiguous.has(key)) { report.push({ label: t, ok: false, msg: `ambiguous (${ambiguous.get(key)} users share this address) — skipped, assign from the Users tab` }); continue; }
+        const u = byToken.get(key);
         if (!u) { report.push({ label: t, ok: false, msg: "no user found with this email / login" }); continue; }
-        if (!seen.has(u.systemuserid)) { seen.add(u.systemuserid); matched.push(u); }
+        if (!seen.has(u.id)) { seen.add(u.id); matched.push(u); }
       }
       if (matched.length && confirmProd(orgInfo?.isProduction, `Assign the role "${selRole.name}" to ${matched.length} user${matched.length > 1 ? "s" : ""}.`)) {
-        const res = await bridge.assignRoleUsers(selRole.name, matched.map(u => u.systemuserid), "assign");
+        const res = await bridge.assignRoleUsers(selRole.name, matched.map(u => u.id), "assign");
         (res || []).forEach(r => {
-          const u = matched.find(m => String(m.systemuserid).toLowerCase() === String(r.id).toLowerCase());
+          const u = matched.find(m => String(m.id).toLowerCase() === String(r.id).toLowerCase());
           report.push({ label: u?.fullname || r.id, ok: !!r.ok, msg: r.error || r.note || "assigned" });
         });
         if (selectGen.current === gen) reloadMembers();

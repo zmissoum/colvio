@@ -31,10 +31,14 @@ export default function HealthCheck({ bp, orgInfo }) {
     let org = {};
     try { org = (await q(() => bridge.query("organizations", { select: "plugintracelogsetting,isauditenabled,auditretentionperiodv2", top: "1" })))?.records?.[0] || {}; }
     catch { try { org = (await q(() => bridge.query("organizations", { select: "plugintracelogsetting,isauditenabled", top: "1" })))?.records?.[0] || {}; } catch { /* org settings unreadable */ } }
+    const fetchAll = (xml) => fetchAllPages((x) => q(() => bridge.executeFetchXml(x)), xml, { shouldStop: () => stop.current });
     return {
       isProd: !!orgInfo?.isProduction, org,
-      fetchAggregate: async (xml) => (await q(() => bridge.executeFetchXml(xml)))?.records || [],
-      fetchAll: (xml) => fetchAllPages((x) => q(() => bridge.executeFetchXml(x)), xml, { shouldStop: () => stop.current }),
+      // An aggregate answers one row per group, and a group-by over job names can exceed a page —
+      // the first page alone under-counted. Same paging as the lists (page numbers when the server
+      // returns no cookie for an aggregate).
+      fetchAggregate: fetchAll,
+      fetchAll,
       odataAll: async (path) => {
         const out = [];
         let p = path;

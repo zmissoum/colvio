@@ -10,6 +10,18 @@
 // componenttype codes (same enumeration as solutioncomponent)
 export const CT_ENTITY = 1, CT_VIEW = 26, CT_FORM = 60;
 
+// What "all forms / all views" actually includes: active public views (querytype 0 — not
+// advanced-find, lookup, quick-find or sub-grid views) and active forms of the kinds the app
+// designer offers (systemform.type: main, quick view, quick create, card, main interactive —
+// dashboards, mobile and task-flow forms are not forms of a table). The same filter content.js
+// applies server-side (getAllViews / getAllForms), kept here too so records read with the fields
+// but without the filter come out the same; records without the fields pass as they are. Explicit
+// registrations are never filtered: a hand-picked form is a fact even when it is inactive.
+export const APP_FORM_TYPES = new Set([2, 6, 7, 11, 12]);
+const active = (r) => (r.statecode == null || Number(r.statecode) === 0) && (r.formactivationstate == null || Number(r.formactivationstate) === 1);
+export const isAppView = (v) => active(v) && (v.querytype == null || Number(v.querytype) === 0);
+export const isAppForm = (f) => active(f) && (f.type == null || APP_FORM_TYPES.has(Number(f.type)));
+
 /**
  * Build the full inventory.
  * @param apps      [{id, uid, name, uniqueName}]           — blank/whitespace names are dropped
@@ -28,8 +40,8 @@ export function buildAppInventory({ apps = [], components = [], forms = [], view
   const formById = new Map(forms.map(f => [f.id, f]));
   const viewById = new Map(views.map(v => [v.id, v]));
   const entityByMeta = new Map(entities.map(e => [e.metadataId, e]));
-  const formsByEntity = groupBy(forms, f => f.entity);
-  const viewsByEntity = groupBy(views, v => v.entity);
+  const formsByEntity = groupBy(forms.filter(isAppForm), f => f.entity);
+  const viewsByEntity = groupBy(views.filter(isAppView), v => v.entity);
 
   // Pass 1 — read the explicit registrations per app.
   const tablesByApp = new Map();        // appUid -> Set(entity logical)

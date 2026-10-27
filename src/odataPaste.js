@@ -10,7 +10,10 @@ const API_RE_START = /^\/?api\/data\/v\d+(?:\.\d+)?\//i;
 // ("accounts?$select=name"); `host` is set when a full URL was pasted, `foreignHost` when that URL
 // points at another environment than the panel's (the query then runs on THIS one — say so).
 export function normalizeODataInput(text, orgUrl) {
-  let s = String(text || "").replace(/\s*[\r\n]+\s*/g, "").trim(); // a wrapped query, indentation included
+  // A wrapped query, indentation included: a break next to a URL delimiter (& ? = , parens) is pure
+  // wrapping and goes; elsewhere it stood for a space ("statecode eq 0⏎and …" must not become "0and").
+  const GLUE = "&?=,()";
+  let s = String(text || "").replace(/\s*[\r\n]+\s*/g, (m, at, str) => (GLUE.includes(str[at - 1] || "&") || GLUE.includes(str[at + m.length] || "&")) ? "" : " ").trim();
   if (!s) return { error: "The OData query is empty." };
   s = s.replace(/^GET\s+/i, "");
   let host = null;

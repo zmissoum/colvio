@@ -16,6 +16,17 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const[loadingComp,setLoadingComp]=useState(false);
   const[collapsed,setCollapsed]=useState({});
   const[compCounts,setCompCounts]=useState({});
+  const[compErr,setCompErr]=useState(""); // component load failure — shown with ↻, never rendered as "0 components"
+  // Components per solution id for the panel's lifetime: a managed Microsoft solution is thousands
+  // of rows plus name resolution — clicking it twice must not read it twice. The PROMISE is cached
+  // (the badge loader and a click on the same solution share one read); a failure is forgotten so
+  // ↻ Retry really retries. ↻ on the list clears it.
+  const compCache=useRef(new Map());
+  const loadComponents=(id)=>{
+    let p=compCache.current.get(id);
+    if(!p){p=bridge.getSolutionComponents(id).then(d=>d||[]);p.catch(()=>compCache.current.delete(id));compCache.current.set(id,p);}
+    return p;
+  };
   // Compare mode: selSol = side A (its components are already loaded), cmpSol = side B.
   const[cmpSol,setCmpSol]=useState(null);
   const[cmpComponents,setCmpComponents]=useState(null);
@@ -29,23 +40,23 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   // imported since the panel opened actually appears.
   const[tick,setTick]=useState(0);
   useEffect(()=>{setLoading(true);bridge.getSolutions().then(d=>{setSolutions(d||[]);setLoading(false);}).catch(()=>setLoading(false));},[tick]);
-  const doRefresh=async()=>{try{await bridge.clearCache();}catch{}setTick(t2=>t2+1);};
+  const doRefresh=async()=>{try{await bridge.clearCache();}catch{}compCache.current.clear();setTick(t2=>t2+1);};
 
-  // Load component counts lazily (first 20 solutions only)
+  // Count badges of the first 20 solutions: one $count request each. getSolutionComponents pages
+  // every component AND resolves their names — thousands of reads on a Microsoft managed solution,
+  // far too much for a badge; names are read only when a solution is selected (then cached).
   useEffect(()=>{
     if(solutions.length===0)return;
     let cancelled=false;
     const loadCounts=async()=>{
-      const counts={};
       for(const sol of solutions.slice(0,20)){
         if(cancelled)break;
         try{
-          const comps=await bridge.getSolutionComponents(sol.id);
-          counts[sol.id]=(comps||[]).length;
-          if(!cancelled)setCompCounts(prev=>({...prev,...counts}));
-        }catch{
-          counts[sol.id]=0;
-        }
+          // the count action answers { count, capped } (capped: $count stops at 5,000 — "5000+"); a bridge without it falls back to the full read, as before
+          const r=bridge.getSolutionComponentCount?await bridge.getSolutionComponentCount(sol.id):(await loadComponents(sol.id)).length;
+          const n=typeof r==="number"?r:r?.count;
+          if(!cancelled&&n!=null)setCompCounts(prev=>({...prev,[sol.id]:r?.capped?`${n}+`:n}));
+        }catch{ /* no badge for this one — the selection shows the real error */ }
       }
     };
     loadCounts();
@@ -60,16 +71,17 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const selGen=useRef(0); // guards a slow component load from a previous solution overwriting the current one
   const handleSelect=async(sol)=>{
     const gen=++selGen.current;
-    setSelSol(sol);setLoadingComp(true);setCollapsed({});
+    setSelSol(sol);setLoadingComp(true);setCollapsed({});setCompErr("");
     setCmpSol(null);setCmpComponents(null);setCmpError("");setCrossOrg(null); // side B belonged to the previous side A
-    try{const d=await bridge.getSolutionComponents(sol.id);if(selGen.current!==gen)return;setComponents(d||[]);}catch{if(selGen.current===gen)setComponents([]);}
-    if(selGen.current===gen)setLoadingComp(false);
+    try{const d=await loadComponents(sol.id);if(selGen.current!==gen)return;setComponents(d);setCompCounts(prev=>({...prev,[sol.id]:d.length}));}
+    catch(e){if(selGen.current!==gen)return;setComponents([]);setCompErr(e.message||String(e));}
+    setLoadingComp(false);
   };
 
   const startCompare=async(solB)=>{
     const gen=++cmpGen.current;
     setCmpSol(solB);setCmpComponents(null);setCmpError("");setCrossOrg(null);setCmpLoading(true);
-    try{const d=await bridge.getSolutionComponents(solB.id);if(cmpGen.current!==gen)return;setCmpComponents(d||[]);}
+    try{const d=await loadComponents(solB.id);if(cmpGen.current!==gen)return;setCmpComponents(d);}
     catch(e){if(cmpGen.current===gen)setCmpError(e.message||String(e));}
     if(cmpGen.current===gen)setCmpLoading(false);
   };
@@ -153,7 +165,8 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
       <div style={{flex:1,overflow:"auto",padding:20}}>
         {!selSol&&<div style={{textAlign:"center",color:C.txd,marginTop:60}}>Select a solution to browse its components</div>}
         {selSol&&loadingComp&&<div style={{textAlign:"center",marginTop:60}}><Spin s={20}/></div>}
-        {selSol&&!loadingComp&&(
+        {selSol&&!loadingComp&&compErr&&<div style={{textAlign:"center",color:C.rd,fontSize:13,marginTop:60}}>⚠ Couldn't load the components of "{selSol.displayName}": {compErr} <button onClick={()=>handleSelect(selSol)} style={bt(null,{fontSize:12,marginLeft:8})}>↻ Retry</button></div>}
+        {selSol&&!loadingComp&&!compErr&&(
           <div>
             <div style={{marginBottom:16,display:"flex",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
               <div style={{flex:1,minWidth:220}}>

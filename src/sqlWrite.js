@@ -2,6 +2,7 @@
 // SELECT of the rows it would touch (run through the same SQL engine as any query), and only the
 // rows of that preview are written. Constant values only (text in quotes, numbers, NULL,
 // TRUE/FALSE); a WHERE is mandatory. Pure — parsing, preview SQL, typed bodies.
+import { CLEAR_VALUE } from "./updateUtils.js";
 
 const NAME = "[A-Za-z_][A-Za-z0-9_]*";
 
@@ -108,9 +109,11 @@ export function previewSelect(plan, primaryId, primaryName) {
 
 export const describeSets = (sets) => (sets || []).map(st => `${st.col} = ${st.sql}`).join(", ");
 
-// The string the typed-write preparation (updateUtils.prepareUpdate) expects for a constant.
+// What the typed-write preparation (updateUtils.prepareUpdate, called with { literal: true }) gets
+// for a constant: SQL NULL is the CLEAR_VALUE marker, not "" / "null" — the text 'null' in quotes
+// used to clear the column too (review finding).
 export function rawForPrepare(st) {
-  if (st.value === null) return "";
+  if (st.value === null) return CLEAR_VALUE;
   if (typeof st.value === "boolean") return st.value ? "true" : "false";
   if (typeof st.value === "number") return st.raw ?? String(st.value);
   return st.value;

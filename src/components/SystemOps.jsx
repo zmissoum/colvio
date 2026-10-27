@@ -29,11 +29,21 @@ const RESUMABLE = (j) => j.statecode === 1;
 // Escape a single-quoted OData string literal (double the quotes). The query path is percent-
 // encoded by fetch(), so only the OData-level quote needs handling.
 const odEsc = (s) => String(s).replace(/'/g, "''");
-// createdon range → OData conditions. The "to" date includes the whole day.
+// The picker's "YYYY-MM-DD" is a LOCAL calendar day: midnight of that day (+ plusDays) in the
+// user's zone. Invalid input → null (Date.toISOString throws on NaN).
+const localDay = (iso, plusDays = 0) => {
+  const [y, m, d] = String(iso || "").split("-").map(Number);
+  const dt = new Date(y, m - 1, d + plusDays);
+  return isNaN(dt) ? null : dt;
+};
+// createdon range → OData conditions: from local midnight to the NEXT local midnight (exclusive),
+// so the "to" day is whole. `${from}T00:00:00Z` was UTC midnight — off by the user's offset at
+// both ends (a Paris user's "today" started an hour into yesterday evening).
 const dateConds = (col, from, to) => {
   const p = [];
-  if (from) p.push(`${col} ge ${from}T00:00:00Z`);
-  if (to) p.push(`${col} le ${to}T23:59:59Z`);
+  const f = localDay(from), t = localDay(to, 1);
+  if (f) p.push(`${col} ge ${f.toISOString()}`);
+  if (t) p.push(`${col} lt ${t.toISOString()}`);
   return p;
 };
 
@@ -440,24 +450,25 @@ function FlowRuns({ bp, theme }) {
       const filter = dateConds("starttime", dateFrom, dateTo).join(" and ");
       const opts = { orderby: "starttime desc", maxpagesize: "100" };
       if (filter) opts.filter = filter;
-      let data;
+      let data, sf = true;
       try {
         data = await bridge.query("flowruns", opts);
-        setServerFiltered(true);
       } catch (e1) {
         if (/does not exist|Resource not found|404/i.test(e1.message || "")) throw e1;
         data = await bridge.query("flowruns", { maxpagesize: "100" });
-        setServerFiltered(false);
+        sf = false;
       }
       if (loadGen.current !== g) return;
+      setServerFiltered(sf);
       setRows(data?.records || []);
       setNextLink(data?.nextLink || null);
     } catch (e) {
+      if (loadGen.current !== g) return; // a stale load's failure must not blank the current filter's list
       if (/does not exist|Resource not found|404/i.test(e.message || "")) setNotSupported(true);
       else setError(e.message);
       setRows([]); setNextLink(null);
     }
-    setLoading(false);
+    if (loadGen.current === g) setLoading(false);
   };
   const loadMore = async () => {
     if (!nextLink || loadingMore) return;
@@ -483,8 +494,8 @@ function FlowRuns({ bp, theme }) {
   // name only exists as a formatted value — neither is reliably filterable server-side.
   const inRange = (r) => {
     if (serverFiltered || !r.starttime) return true;
-    const d = r.starttime.slice(0, 10);
-    return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+    const ts = new Date(r.starttime).getTime(), f = localDay(dateFrom), t = localDay(dateTo, 1); // same local-day bounds as the server filter
+    return (!f || ts >= f.getTime()) && (!t || ts < t.getTime());
   };
   const filtered = (rows || []).filter(r => {
     if (status && String(r.status || "").toLowerCase() !== status) return false;

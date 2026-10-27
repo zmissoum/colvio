@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { coerceScalarForEdit, prepareUpdate } from "../updateUtils.js";
+import { coerceScalarForEdit, prepareUpdate, CLEAR_VALUE } from "../updateUtils.js";
 
 const G = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 const META = {
@@ -96,5 +96,19 @@ describe("prepareUpdate — lookups (the user-hit class)", () => {
     const r = prepareUpdate(META, "nosetlookup", G);
     expect(r.ok).toBe(false);
     expect(r.reason).toMatch(/entity set/);
+  });
+});
+
+describe("review pass", () => {
+  it("legacy branch: only a number that round-trips is coerced — a phone number keeps its leading zero", () => {
+    expect(prepareUpdate({}, "telephone1", "0612345678").body).toEqual({ telephone1: "0612345678" });
+    expect(prepareUpdate({}, "x", "1e3").body).toEqual({ x: "1e3" });
+    expect(prepareUpdate({}, "x", " 42 ").body).toEqual({ x: 42 });
+  });
+  it("the typed-in word null clears (grid convention) unless the caller says the value is literal", () => {
+    const meta = { fieldTypes: { name: "String" } };
+    expect(prepareUpdate(meta, "name", "null").body).toEqual({ name: null });
+    expect(prepareUpdate(meta, "name", "null", undefined, { literal: true }).body).toEqual({ name: "null" });
+    expect(prepareUpdate(meta, "name", CLEAR_VALUE, undefined, { literal: true }).body).toEqual({ name: null });
   });
 });

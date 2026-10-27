@@ -193,11 +193,13 @@ export function confirmProd(isProduction, actionLabel){
 // A truly custom entity/field has a publisher prefix with underscore (new_xxx, cr123_xxx, foe_xxx)
 // Microsoft entities NEVER have a publisher underscore prefix — they use plain names (account, contact)
 // or Microsoft prefixes (msdyn_, adx_). Both are NOT custom.
-// IsManaged=true is also always Standard regardless of name.
+// The managed flag is deliberately NOT a criterion (callers may pass it; it is ignored): on every
+// production org a customer's own tables arrive in a managed solution, so "managed ⇒ Standard"
+// would empty the Custom category exactly where it matters most. The name decides.
 const CUSTOM_PREFIX = /^[a-z][a-z0-9]{1,9}_/; // matches new_, cr123_, cr4d2_, foe_, colvio_ — prefixes start with a letter, digits allowed
 const STANDARD_DIGIT_PREFIX = /^address[0-9]+_/; // address1_city… are Microsoft columns that look like a digit prefix
 const MS_PREFIX = /^(msdyn|msdyncrm|mspp|msfp|msdynce|msdynmkt|msdyncr|msevtmgt|msfsi|msind|adx|cds|mserp|mspcat)_/;
-export function isTrulyCustom(logicalName){ if(!CUSTOM_PREFIX.test(logicalName))return false; if(MS_PREFIX.test(logicalName)||STANDARD_DIGIT_PREFIX.test(logicalName))return false; return true; }
+export function isTrulyCustom(logicalName,_isManaged){ if(!CUSTOM_PREFIX.test(logicalName||""))return false; if(MS_PREFIX.test(logicalName)||STANDARD_DIGIT_PREFIX.test(logicalName))return false; return true; }
 
 // ── Detect extension mode ──
 export function detectExtension() {
@@ -216,7 +218,6 @@ export function detectExtension() {
 }
 
 // ── Solution component types (used by SolutionExplorer) ──
-// Codes are Microsoft's solutioncomponent.componenttype enumeration. (The earlier map had
-// several shifted by a few — e.g. 60 is System Form, 61 is Web Resource, 63 is Connection Role,
-// 90 is Plugin Type — so they've been corrected against the official list.)
-export const COMP_TYPES={1:{l:"Entity",i:"📋"},2:{l:"Attribute",i:"🔤"},3:{l:"Relationship",i:"🔗"},9:{l:"OptionSet",i:"📊"},10:{l:"Relationship",i:"🔗"},14:{l:"Entity Key",i:"🔑"},20:{l:"Security Role",i:"🛡"},22:{l:"Display String",i:"🔠"},24:{l:"Form",i:"📝"},25:{l:"Organization",i:"🏛"},26:{l:"View",i:"👁"},29:{l:"Workflow / Process",i:"⚙"},31:{l:"Report",i:"📄"},35:{l:"Attachment",i:"📎"},36:{l:"Email Template",i:"✉"},37:{l:"Contract Template",i:"📑"},39:{l:"Mail Merge Template",i:"📨"},44:{l:"Duplicate Rule",i:"🔁"},48:{l:"Ribbon Command",i:"🎀"},50:{l:"Ribbon Customization",i:"🎀"},59:{l:"Chart",i:"📈"},60:{l:"System Form",i:"📝"},61:{l:"Web Resource",i:"🌐"},62:{l:"Sitemap",i:"🗺"},63:{l:"Connection Role",i:"🔌"},65:{l:"Hierarchy Rule",i:"🌳"},66:{l:"Custom Control",i:"🎛"},70:{l:"Field Security Profile",i:"🔒"},71:{l:"Field Permission",i:"🔐"},80:{l:"Model-driven App",i:"📱"},90:{l:"Plugin Type",i:"⚙"},91:{l:"Plugin Assembly",i:"🔧"},92:{l:"SDK Message Step",i:"📍"},93:{l:"SDK Step Image",i:"🖼"},95:{l:"Service Endpoint",i:"📡"},150:{l:"Routing Rule",i:"🧭"},151:{l:"Routing Rule Item",i:"🧭"},152:{l:"SLA",i:"⏱"},153:{l:"SLA Item",i:"⏱"},154:{l:"Convert Rule",i:"🔄"},161:{l:"Mobile Offline Profile",i:"📶"},300:{l:"Canvas App",i:"🎨"},371:{l:"Connector",i:"🔌"},372:{l:"Connector",i:"🔌"},380:{l:"Environment Variable",i:"🌱"},381:{l:"Env Variable Value",i:"🌱"}};
+// One table for every component-type map of the panel lives in componentTypes.js; re-exported here
+// because every module reads it from shared.
+export { COMP_TYPES } from "./componentTypes.js";

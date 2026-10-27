@@ -192,14 +192,14 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
                 <div><span style={{ color: C.txd }}>{t("licenses.cal_type")}:</span> <span style={{ fontWeight: 500 }}>{selUser.calTypeLabel}</span></div>
                 <div><span style={{ color: C.txd }}>{t("licenses.created")}:</span> <span style={{ fontWeight: 500, ...mono }}>{selUser.createdOn ? new Date(selUser.createdOn).toLocaleDateString() : "—"}</span></div>
                 <div>
-                  <span style={{ color: C.txd }}>{t("licenses.last_login")}:</span>{" "}
+                  <span style={{ color: C.txd }} title={t("licenses.last_access_tip")}>{t("licenses.last_access")}:</span>{" "}
                   {loadingDetail ? <Spin s={10} /> :
                     detailErr ? <span style={{ color: C.txd }}>—</span> :
                     lastLogin?.date ? (
                       <span style={{ fontWeight: 500, ...mono }}>
                         {new Date(lastLogin.date).toLocaleDateString()} <span style={{ color: C.txd }}>({daysAgo(lastLogin.date)} {t("licenses.days_ago")})</span>
                       </span>
-                    ) : <span style={{ color: C.rd, fontWeight: 500 }}>{t("licenses.never")}</span>
+                    ) : <span style={{ color: C.rd, fontWeight: 500 }} title={t("licenses.last_access_tip")}>{t("licenses.never_access")}</span>
                   }
                 </div>
               </div>

@@ -11,4 +11,10 @@ describe("isTrulyCustom", () => {
   it("needs a letter first and a prefix of 2+ characters", () => {
     for (const n of ["1abc_x", "a_x", "_x"]) expect(isTrulyCustom(n)).toBe(false);
   });
+  it("ignores the managed flag — a customer's tables are managed on every production org", () => {
+    expect(isTrulyCustom("new_invoice", true)).toBe(true);
+    expect(isTrulyCustom("new_invoice", false)).toBe(true);
+    expect(isTrulyCustom("msdyn_workorder", false)).toBe(false);
+    expect(isTrulyCustom(undefined)).toBe(false);
+  });
 });

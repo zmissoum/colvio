@@ -3,22 +3,10 @@
 // remove that dependency. One read for the dependencies, then one read per component type to name
 // them (ids grouped, never one request per component). Pure: shaping, labels, hints.
 
-// componenttype values (the dependency table's global choice) → readable names
-export const COMPONENT_LABEL = {
-  1: "Table", 2: "Column", 3: "Relationship", 4: "Choice value", 9: "Choice (global)", 10: "Relationship",
-  14: "Alternate key", 16: "Privilege", 20: "Security role", 21: "Role privilege", 24: "Form", 25: "Organization",
-  26: "View", 29: "Process", 31: "Report", 36: "Email template", 37: "Contract template", 39: "Mail merge template",
-  44: "Duplicate detection rule", 45: "Duplicate detection condition", 46: "Relationship mapping", 47: "Column mapping",
-  48: "Ribbon command", 50: "Ribbon customization", 52: "Ribbon rule", 55: "Ribbon diff", 59: "Chart", 60: "Form",
-  61: "Web resource", 62: "Site map", 63: "Connection role", 64: "Complex control", 65: "Hierarchy rule",
-  66: "Custom control (PCF)", 68: "Custom control default config", 70: "Field security profile", 71: "Field permission",
-  80: "Model-driven app", 90: "Plug-in type", 91: "Plug-in assembly", 92: "Plug-in step", 93: "Plug-in step image",
-  95: "Service endpoint", 150: "Routing rule", 151: "Routing rule item", 152: "SLA", 153: "SLA item",
-  154: "Record creation rule", 155: "Record creation rule item", 161: "Mobile offline profile", 162: "Mobile offline profile item",
-  165: "Similarity rule", 166: "Data source mapping", 208: "Import map", 300: "Canvas app", 371: "Connector", 372: "Connector",
-  380: "Environment variable", 381: "Environment variable value", 400: "AI project type", 401: "AI project", 402: "AI configuration",
-  430: "Table analytics configuration", 431: "Column image configuration", 432: "Table image configuration",
-};
+// componenttype values (the dependency table's global choice) → readable names: componentTypes.js
+// is the one table of them; re-exported for the callers and tests that read it from here.
+import { COMPONENT_LABEL } from "./componentTypes.js";
+export { COMPONENT_LABEL };
 
 // workflow.category → what the "process" really is
 const PROCESS_KIND = { 0: "Classic workflow", 1: "Dialog", 2: "Business rule", 3: "Custom action", 4: "Business process flow", 5: "Cloud flow", 6: "Desktop flow" };

@@ -47,6 +47,25 @@ export function contentBytes(b64) {
 }
 export const byteSize = (b64) => (b64 ? Math.floor((b64.length * 3) / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0) : 0);
 
+// Did the server's copy change since the editor opened it? The update PATCHes with If-Match: *,
+// so this read-before-write is the only thing between two people editing the same script and the
+// second one silently erasing the first. Stamps are compared as instants (Dataverse may serve
+// "…Z" and "….000Z" for the same moment); a stamp missing or unreadable on either side counts as
+// unchanged — an org that hides modifiedon must stay editable.
+export function changedSince(openedOn, serverOn) {
+  if (!openedOn || !serverOn) return false;
+  const a = Date.parse(openedOn), b = Date.parse(serverOn);
+  if (Number.isNaN(a) || Number.isNaN(b)) return String(openedOn) !== String(serverOn);
+  return a !== b;
+}
+// "changed on the server since you opened it (by X at HH:MM)" — the refusal's wording.
+export function changedMessage(name, { modifiedOn, modifiedBy } = {}) {
+  const d = modifiedOn ? new Date(modifiedOn) : null;
+  const when = d && !Number.isNaN(d.getTime()) ? ` at ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
+  const by = modifiedBy ? ` by ${modifiedBy}` : "";
+  return `${name} changed on the server since you opened it${by || when ? ` (${(by + when).trim()})` : ""} — reload to see the current version.`;
+}
+
 export function publishXmlFor(ids) {
   const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const list = (ids || []).filter(id => GUID.test(String(id)));

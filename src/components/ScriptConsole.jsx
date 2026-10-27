@@ -4,6 +4,7 @@ import { C, Spin, mono, inp, bt, crd, confirmProd, dl, expName, exportTable } fr
 import { t } from "../i18n.js";
 import { createRuntime, runRollback, summarize, rollbackStats, scriptLine, hashRows, normalizeJournal } from "../scriptRuntime.js";
 import { createJournalStore } from "../scriptJournalStore.js";
+import { SCRIPT_DEMO_ORG } from "../scriptDemo.js";
 import { SCRIPT_TEMPLATES } from "../scriptTemplates.js";
 import { parseDelimited, detectSep } from "../loaderUtils.js";
 import { readTextFile } from "../textDecode.js";
@@ -30,7 +31,6 @@ const storeRemove = (keys) => new Promise(res => {
 });
 const storeGet = (key) => storeGetMany([key]).then(r => r[key] ?? null);
 const storeSet = (key, value) => storeSetMany({ [key]: value });
-const DEMO_ORG = "https://demo.crm4.dynamics.com";
 const SAVE_EVERY_MS = 2000; // journal saved while a live run writes (a closed panel keeps what was done)
 const newId = () => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const MAX_SHOWN = 2000;      // console lines / list rows rendered (all kept for export)
@@ -85,11 +85,15 @@ export default function ScriptConsole({ bp, orgInfo }) {
     return () => clearInterval(id);
   }, [phase]);
   // Leaving Colvio mid-run: stop the script and keep the journal of what was already written.
+  // app.jsx keeps every module mounted (display: none), so this unmount path is a fallback: the
+  // page's own pagehide / beforeunload (the panel closed, the tab navigated or reloaded) are
+  // watched by each live run (see start / unwatch).
   useEffect(() => () => {
     const rn = run.current;
     if (!rn) return;
     rn.stopped = true; rn.closing = true;
     if (rn.onMsg) window.removeEventListener("message", rn.onMsg);
+    unwatch(rn);
     rn.frame?.remove();
     if (rn.mode === "live" && rn.buf?.entries.length) jstoreRef.current.save(journalOf(rn, true));
   }, []);
@@ -163,13 +167,24 @@ export default function ScriptConsole({ bp, orgInfo }) {
   };
 
   // ── Run ──
-  const orgUrl = orgInfo?.orgUrl || DEMO_ORG;
+  const orgUrl = orgInfo?.orgUrl || SCRIPT_DEMO_ORG;
   // The journal object saved: entries is the run's live array (the store writes only the chunks
   // that changed — no copy of the whole journal per save).
   const journalOf = (rn, inProgress) => ({ at: new Date(rn.t0).toISOString(), runId: rn.id, script: rn.script, orgUrl, entries: rn.buf.entries, rolledBack: false, inProgress });
   const saveJournal = async (j) => {
     const err = await jstoreRef.current.save(j);
     setSaveError(err);
+  };
+  // A live run watches the page going away (panel closed, reload, navigation) to save the journal
+  // of what was written so far — until its last request (Stop lets them finish) is back.
+  const watch = (rn) => {
+    rn.onLeave = () => { if (rn.mode === "live" && rn.buf.entries.length) jstoreRef.current.save(journalOf(rn, true)); };
+    window.addEventListener("pagehide", rn.onLeave); window.addEventListener("beforeunload", rn.onLeave);
+  };
+  const unwatch = (rn) => {
+    if (!rn.onLeave) return;
+    window.removeEventListener("pagehide", rn.onLeave); window.removeEventListener("beforeunload", rn.onLeave);
+    rn.onLeave = null;
   };
 
   // End of a run (script returned, failed, or Stop). A script that returned with dv calls still
@@ -207,7 +222,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
       setJournal({ ...j, entries: [...j.entries] });
       saveJournal(j);
     };
-    setResult({ ...r, mode: rn.mode, ms: Date.now() - rn.t0 });
+    setResult({ ...r, mode: rn.mode, ms: Date.now() - rn.t0, unreadable: rollbackStats(rn.buf.entries).unreadable });
     keep();
     if (rn.mode === "dry" && r.ok) setLastDry({ sig: rn.sig, plan: summarize(rn.buf.plan), count: rn.buf.plan.length });
     setTab(r.ok && rn.mode === "dry" && rn.buf.plan.length ? "plan" : "console");
@@ -218,6 +233,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
       setDraining(0);
       keep();
     }
+    unwatch(rn);
   };
 
   const start = (m) => {
@@ -283,6 +299,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
     };
     rn.onMsg = onMsg;
     window.addEventListener("message", onMsg);
+    if (m === "live") watch(rn);
     host.current.appendChild(frame);
   };
   const stopRun = () => {
@@ -315,7 +332,6 @@ export default function ScriptConsole({ bp, orgInfo }) {
     setJournal(j); saveJournal(j);
     setPhase("idle"); setTab("writes");
   };
-  const exportJournal = () => journal && dl(JSON.stringify(journal, null, 2), "application/json", expName("colvio_script_journal", "json", true));
   const importJournal = (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f || draining) return;
@@ -327,7 +343,10 @@ export default function ScriptConsole({ bp, orgInfo }) {
       if (!j) throw new Error(t("script.journal_invalid"));
       // GUIDs are shared between a production org and its copies: a journal only undoes where it was written
       if (j.orgUrl !== orgUrl) throw new Error(t("script.journal_other_org").replace("{org}", j.orgUrl || "?"));
-      setJournal(j); setTab("writes");
+      // the import replaces the current journal, like a new live run does: same confirmation, and
+      // persisted the same way (an imported journal must survive a reload too)
+      if (journal?.entries?.length && !journal.rolledBack && !window.confirm(t("script.replace_journal"))) return;
+      setJournal(j); saveJournal(j); setTab("writes");
     }).catch(err => window.alert(err.message || String(err)));
   };
 
@@ -358,8 +377,10 @@ export default function ScriptConsole({ bp, orgInfo }) {
   const planList = mode === "dry" && (result || phase === "running") ? b.plan : null;
   const view = tab === "plan" && !planList ? "writes" : tab;
   // during a live run the writes stream in; afterwards the saved journal (with its rollback)
-  const liveJournal = phase === "running" && mode === "live" ? { script: run.current?.script || cur.name, at: new Date(run.current?.t0 || Date.now()).toISOString(), orgUrl, entries: b.entries } : journal;
+  const liveJournal = phase === "running" && mode === "live" ? { at: new Date(run.current?.t0 || Date.now()).toISOString(), runId: run.current?.id, script: run.current?.script || cur.name, orgUrl, entries: b.entries, rolledBack: false, inProgress: true } : journal;
   const jStats = liveJournal ? rollbackStats(liveJournal.entries) : null;
+  // Export what the Writes tab shows: mid-run, the writes done so far (not the previous run's journal).
+  const exportJournal = () => liveJournal && dl(JSON.stringify(liveJournal, null, 2), "application/json", expName("colvio_script_journal", "json", true));
   const tabBtn = (id, label, n) => <button onClick={() => setTab(id)} style={{ padding: "6px 12px", background: "none", border: "none", borderBottom: `2px solid ${view === id ? C.vi : "transparent"}`, color: view === id ? C.tx : C.txm, cursor: "pointer", fontSize: 13, fontWeight: view === id ? 600 : 400 }}>{label}{n ? <span style={{ marginLeft: 5, fontSize: 11, color: C.txd, ...mono }}>{n.toLocaleString()}</span> : null}</button>;
 
   return (
@@ -459,6 +480,7 @@ function ConsoleView({ b, result, goLine, busy }) {
         <b>{result.ok ? "✓ " + (result.mode === "dry" ? t("script.done_dry") : t("script.done_live")) : result.stopped ? "■ " + t("script.stopped") : "✕ " + t("script.failed")}</b>
         <span style={{ color: C.txm }}> · {(result.ms / 1000).toFixed(1)} s</span>
         {result.error && !result.stopped && <div style={{ whiteSpace: "pre-wrap", marginTop: 4, color: C.tx }}>{result.error}</div>}
+        {result.unreadable > 0 && <div style={{ marginTop: 4, color: C.yw }}>⚠ {t("script.unreadable_writes").replace("{n}", result.unreadable.toLocaleString())}</div>}
         {result.line && <button onClick={() => goLine(result.line)} style={bt(null, { fontSize: 11, padding: "2px 8px", marginTop: 6 })}>{t("script.go_line")} {result.line}</button>}
         {result.ok && result.value !== null && result.value !== undefined && <div style={{ whiteSpace: "pre-wrap", marginTop: 4, color: C.tx }}>↩ {typeof result.value === "string" ? result.value : JSON.stringify(result.value, null, 2)}</div>}
       </div>}
@@ -533,6 +555,7 @@ function JournalView({ journal, stats, saveError, busy, running, onRollback, onE
         <div style={{ fontSize: 12.5, color: C.txm, marginBottom: 8 }}>
           {journal.entries.length.toLocaleString()} {t("script.writes_done")} — <span style={{ color: C.gn }}>{stats.full} {t("script.rev_full")}</span> · <span style={{ color: C.yw }}>{stats.partial} {t("script.rev_partial")}</span> · <span style={{ color: C.rd }}>{stats.none} {t("script.rev_none")}</span>
         </div>
+        {stats.unreadable > 0 && <div style={{ fontSize: 12.5, marginBottom: 8, color: C.yw }}>⚠ {t("script.unreadable_writes").replace("{n}", stats.unreadable.toLocaleString())}</div>}
         {saveError && <div style={{ fontSize: 12.5, marginBottom: 8, color: C.rd }}>⚠ {t("script.journal_save_failed")} ({saveError})</div>}
         {journal.inProgress && !running && !busy && <div style={{ fontSize: 12.5, marginBottom: 8, color: C.yw }}>⚠ {t("script.journal_in_progress")}</div>}
         {rb && <div style={{ fontSize: 12.5, marginBottom: 8, color: failed.length || rb.stopped ? C.yw : C.gn }}>

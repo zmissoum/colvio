@@ -66,12 +66,25 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // Returns false when there's nothing to ingest (<2 rows) — callers surface that instead of silence.
   const ingestAoa=(aoa)=>{
     if(!aoa||aoa.length<2)return false;
-    const headers=(aoa[0]||[]).map(h=>String(h==null?"":h).trim().replace(/^\uFEFF/,""));
+    const rawHeaders=(aoa[0]||[]).map(h=>String(h==null?"":h).trim().replace(/^\uFEFF/,""));
+    // Two columns with the same header used to collapse into one (the LAST column's value won,
+    // silently): the duplicates are renamed "Name (2)", "Name (3)" so both stay mappable.
+    const seenH=new Map();
+    const headers=rawHeaders.map(h=>{const n=(seenH.get(h)||0)+1;seenH.set(h,n);return n===1?h:`${h} (${n})`;});
     // .trim() every value: stray spaces around delimiters ("a, b") would otherwise leak into
     // upsert keys (' A001' → no match → duplicate created), lookup GUIDs and field values; a
     // whitespace-only cell must read as empty (skipped), not overwrite a field with " ".
-    const rows=aoa.slice(1).filter(arr=>arr.some(v=>String(v??"").trim()!=="")).map(arr=>{const obj={};headers.forEach((h,i)=>{const v=arr[i];obj[h]=v==null?"":String(v).trim();});return obj;});
-    setCsvData({h:headers,r:rows});
+    // Blank records are dropped, but each kept row remembers its record number in the FILE (header
+    // = 1) — the log and the error export show that number, not the index after the drop, so the
+    // user lands on the right line of the file.
+    const ln=[];
+    const rows=[];
+    aoa.slice(1).forEach((arr,j)=>{
+      if(!arr.some(v=>String(v??"").trim()!=="")) return;
+      const obj={};headers.forEach((h,i)=>{const v=arr[i];obj[h]=v==null?"":String(v).trim();});
+      rows.push(obj);ln.push(j+2);
+    });
+    setCsvData({h:headers,r:rows,ln});
 
     const commonMapping={firstname:"firstname",lastname:"lastname",email:"emailaddress1",phone:"telephone1",title:"jobtitle",mailingstreet:"address1_line1",mailingcity:"address1_city",mailingpostalcode:"address1_postalcode",mailingcountry:"address1_country",name:"name",accountnumber:"accountnumber",description:"description",website:"websiteurl",fax:"fax"};
     const d365Set=new Set(targetFields);
@@ -173,9 +186,21 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           const ws=wb.Sheets[wb.SheetNames[0]];
           const fmtAoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:false});
           const rawAoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",blankrows:false,raw:true});
+          const pad2=(n)=>String(n).padStart(2,"0");
           const aoa=fmtAoa.map((row,ri)=>row.map((cell,ci)=>{
             const rv=rawAoa[ri]?.[ci];
-            return (typeof rv==="number"&&Number.isFinite(rv))?String(rv):cell;
+            // A date cell is handed over as an ISO calendar date (plus its time when it has one),
+            // never as the sheet's display text: "1/15/24" (Excel's short date) was re-parsed
+            // month-first whatever the day/month setting and shifted to UTC (15 Jan → 14 Jan).
+            if(rv instanceof Date&&!isNaN(rv.getTime())){
+              const d=`${rv.getFullYear()}-${pad2(rv.getMonth()+1)}-${pad2(rv.getDate())}`;
+              const hasTime=rv.getHours()||rv.getMinutes()||rv.getSeconds();
+              return hasTime?`${d}T${pad2(rv.getHours())}:${pad2(rv.getMinutes())}:${pad2(rv.getSeconds())}`:d;
+            }
+            // a zero-padded integer ("01234" formatted 00000: postal codes, SAP numbers) keeps its
+            // padding — the raw value would send 1234
+            if(typeof rv==="number"&&Number.isFinite(rv)) return /^0\d+$/.test(String(cell))?String(cell):String(rv);
+            return cell;
           }));
           if(!ingestAoa(aoa)){setParseInfo({rawLines:0,maxNl:0,maxNlRow:0,badParse:true,parsedRecords:Math.max(0,(aoa?.length||0)-1)});return;}
           setParseInfo(null); // line-count diagnostics are CSV-only (no "lines" in a sheet)
@@ -624,6 +649,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       return [ent, {
         fields: (fields||[]).map(f=>f.logical||f.l).sort(),
         altKeys: (keys||[]).filter(k=>k.keyAttributes?.length===1).map(k=>k.keyAttributes[0]),
+        // numeric columns: their literals go unquoted in $filter and alt-key binds ('123' 400s)
+        numeric: new Set((fields||[]).filter(f=>COERCE_NUMERIC_TYPES.has(f.type||f.t)).map(f=>f.logical||f.l)),
       }];
     })).then(results=>{
       setLookupEntityMeta(prev=>{
@@ -640,6 +667,14 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const meta = lookupEntityMeta[lk.entity];
     return !!(meta?.altKeys?.includes(lk.d365f));
   };
+  // The OData literal of a lookup's match value: unquoted on a numeric column, quoted otherwise.
+  const lkLit = (lk, v) => lookupEntityMeta[lk.entity]?.numeric?.has(lk.d365f) ? String(v).trim() : `'${String(v).replace(/'/g,"''")}'`;
+  // A numeric key value the table can address — anything else is refused per row (the content
+  // script used to strip the letters: "SAP-00123" became key -123 and THAT record was written).
+  const NUMERIC_KEY_RE=/^[+-]?\d+(\.\d+)?$/;
+  const badNumericKey=(v)=>!NUMERIC_KEY_RE.test(String(v).trim());
+  // Row number as in the FILE (blank records dropped at ingest are counted) for the log/exports.
+  const fileRow=(n)=>(n>=2&&csvData.ln?.[n-2])||n||0;
 
   // Real EntitySetName for @odata.bind (resolveEntitySet handles irregular plurals + abstract
   // owner/customer targets). MEMOIZED: this is called per lookup per row (×400k rows in the
@@ -660,11 +695,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // "no such record" from "couldn't check" — instead of silently treating both as not-found.
   const resolveLookup=async(lk, value)=>{
     if(!value||!lk.entity||!lk.d365f) return null;
-    const escaped=value.replace(/'/g,"''");
     // $select the filter field itself — guaranteed to exist, unlike `${entity}id` (activities'
     // PK is activityid, abstract owners' isn't ownerid → permanent 400). Dataverse always
     // includes the primary key attribute in the response regardless of $select.
-    const data=await io.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq '${escaped}'`,top:"1",select:lk.d365f});
+    const data=await io.query(entitySetFor(lk.entity),{filter:`${lk.d365f} eq ${lkLit(lk,value)}`,top:"1",select:lk.d365f});
     if(data?.records?.length>0){
       const rec=data.records[0];
       const fkey=lk.d365f.toLowerCase();
@@ -696,7 +730,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     for (let i = 0; i < values.length; i += CHUNK) chunks.push(values.slice(i, i + CHUNK));
     let nextIdx = 0, done = 0;
     const queryChunk = async (slice) => {
-      const filter = slice.map(v => `${fkey} eq '${String(v).replace(/'/g, "''")}'`).join(" or ");
+      const filter = slice.map(v => `${fkey} eq ${lkLit(lk, v)}`).join(" or ");
       const data = await io.query(set, { filter, select: fkey, top: String(slice.length) });
       const recs = data?.records || [];
       for (const rec of recs) {
@@ -750,7 +784,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     const lit=(v)=>isPK?String(v).replace(/[^0-9a-fA-F-]/g,""):(keyIsNumeric?String(v).trim():`'${String(v).trim().replace(/'/g,"''")}'`);
     const CHUNK=80; // OR-filters of ~80 values keep the URL within Dataverse limits
     const chunks=[];
-    for(let i=0;i<values.length;i+=CHUNK) chunks.push(values.slice(i,i+CHUNK));
+    // a non-numeric value on a numeric key can't exist on the server (and would 400 the whole
+    // OR-chunk): it is neither queried nor "unverified" — the prep loop refuses the row itself
+    const queryable=keyIsNumeric?values.filter(v=>!badNumericKey(v)):values;
+    for(let i=0;i<queryable.length;i+=CHUNK) chunks.push(queryable.slice(i,i+CHUNK));
     let nextIdx=0,done=0;
     const selectCols=selectFields?[...new Set([keyField,...selectFields])].join(","):keyField;
     const queryChunk=async(slice)=>{
@@ -855,7 +892,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       if(!val){ if(emptyAsNull) rec[nav]=null; continue; } // mirror doLoad's empty-as-NULL clear
       if(isNullToken(val)){ rec[nav]=null; continue; } // explicit clear — mirrors doLoad
       if(lk.mode==="direct") rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${val})`;
-      else if(isAltKeyBind(lk)){const e=String(val).replace(/'/g,"''");rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${e}')`;}
+      else if(isAltKeyBind(lk)){rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}=${lkLit(lk,val)})`;}
       else rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(<resolved at runtime>)`;
     }
     if(uKey.d&&uKey.c&&row[uKey.c]){
@@ -909,12 +946,15 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(deleteMode && uKey.d && uKey.c){
       const entitySetD=entitySetFor(target);
       const isPKD=uKey.d.toLowerCase()===target+"id"||(!!pkLogical&&uKey.d===pkLogical);
+      const keyMetaD0=targetFieldsMeta.find(f=>(f.logical||f.l)===uKey.d);
+      const keyNumericD=!isPKD&&COERCE_NUMERIC_TYPES.has(keyMetaD0?.type||keyMetaD0?.t);
       const startTimeD=Date.now();
       const deleteItems=[];const deleteRowMap=[];
       for(let i=0;i<rows.length;i++){
         if(retrySet&&!retrySet.has(i)) continue; // retry pass: only re-run the previously-failed rows
         const v=rows[i][uKey.c];
         if(v===undefined||v===null||v===""){ skipped++; logEntries.push({row:i+2,status:"SKIPPED",detail:`Empty key: ${uKey.c}`,d365Id:""}); continue; }
+        if(keyNumericD&&badNumericKey(v)){ const msg=`Key ${uKey.d}="${v}" is not a number — the column is numeric, the row was not sent`; errors.push({row:i+2,msg}); logEntries.push({row:i+2,status:"ERROR",detail:msg,d365Id:""}); continue; }
         deleteItems.push({keyValue:v});deleteRowMap.push(i);
       }
       // Dry run: classify by existence instead of deleting.
@@ -1121,6 +1161,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // Field type per logical name — drives string→number/boolean coercion at build time
     // (Dataverse rejects a string in an Edm.Decimal with the cryptic IEEE754Compatible 400).
     const typeByField=new Map(targetFieldsMeta.map(f=>[(f.logical||f.l),(f.type||f.t)]));
+    const isPKKey=!!uKey.d&&(uKey.d.toLowerCase()===target+"id"||(!!pkLogical&&uKey.d===pkLogical));
+    const keyNumeric=!!uKey.d&&!isPKKey&&COERCE_NUMERIC_TYPES.has(typeByField.get(uKey.d));
 
     for(let i=0;i<rows.length;i++){
       if(loadAbort.current) break; // allow Cancel to interrupt the (potentially long) prep phase, not just the batch
@@ -1205,8 +1247,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           } else if(isAltKeyBind(lk)){
             // Alt-key direct binding — Dataverse resolves server-side. Empty fb=skip/null already
             // short-circuited above; missing record on the server returns a per-row PATCH error.
-            const escaped=String(val).replace(/'/g,"''");
-            rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}='${escaped}')`;
+            rec[`${nav}@odata.bind`]=`/${entitySetFor(lk.entity)}(${lk.d365f}=${lkLit(lk,val)})`;
           } else {
             const cached=lookupCache[`${lk.entity}.${lk.d365f}.${val}`];
             if(cached&&typeof cached==="object"&&cached.__resolveError){
@@ -1226,7 +1267,13 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         }
         if(skipRow) continue;
 
-        if(uKey.d && uKey.c && row[uKey.c]){
+        if(uKey.d && uKey.c && row[uKey.c] && keyNumeric && badNumericKey(row[uKey.c])){
+          // a numeric key that isn't a number: refused here, so the dry run, the live run and the
+          // content script all agree (nothing is sent, nothing is "cleaned" into another key)
+          const msg=`Key ${uKey.d}="${row[uKey.c]}" is not a number — the column is numeric, the row was not sent`;
+          errors.push({row:i+2,msg});
+          logEntries.push({row:i+2,status:"ERROR",detail:msg,d365Id:""});
+        } else if(uKey.d && uKey.c && row[uKey.c]){
           // UPDATE-only: skip (error) any key that doesn't already exist — guarantees no create.
           // norm() canonicalizes both sides ({braces}, case, spaces) so formatting can't mismatch.
           const nk=existCheck?existCheck.norm(row[uKey.c]):null;
@@ -1287,6 +1334,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       }catch(e){
         errors.push({row:i+2,msg:e.message?.substring(0,500)||"Error",payload:JSON.stringify(rec).substring(0,200)});
         logEntries.push({row:i+2,status:"ERROR",detail:e.message?.substring(0,200)||"Error",d365Id:""});
+      }
+    }
+    // Cancelled during preparation: the rows never visited get an explicit, RETRYABLE entry — they
+    // used to be in neither the log nor Retry (only the export's UNACCOUNTED line revealed them).
+    if(loadAbort.current){
+      const seenPrep=new Set(logEntries.map(e=>e.row));
+      for(let j=0;j<rows.length;j++){
+        if(retrySet&&!retrySet.has(j)) continue;
+        if(seenPrep.has(j+2)) continue;
+        const msg="Aborted before prepare — the run was cancelled; retry to send this row";
+        errors.push({row:j+2,msg});logEntries.push({row:j+2,status:"ERROR",detail:msg,d365Id:""});
       }
     }
 
@@ -1367,11 +1425,21 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     // Retry candidates — derived from the (updated) fullLog: every ERROR row that maps to a CSV line.
     // Transient ones (timeouts/throttle/5xx/deadlock) are the safe default; the rest are data/
     // permission errors a blind retry won't fix.
+    // A chunk that hit the bridge timeout was NOT cancelled server-side for sure: a key-less CREATE
+    // of those rows may well have landed, and re-POSTing it (auto-resume, Retry transient) made up
+    // to 500 duplicates per pass (audit finding). Those rows are kept out of the transient set —
+    // the message tells the user to check before a manual retry. Keyed writes are idempotent.
+    const createdIdx=new Set(createRowMap);
+    const timedOutCreate=(e,idx)=>createdIdx.has(idx)&&/timeout after \d+s|message port closed|lost contact with the d365 tab/i.test(e.msg||"");
+    for(const e of fullLog.current){
+      if(e.status!=="ERROR"||!(e.csvRowNumber>=2)) continue;
+      if(timedOutCreate(e,e.csvRowNumber-2)&&!/may already exist/.test(e.msg||"")) e.msg=`${e.msg} — the server may have created this row anyway: check before retrying it (may already exist)`;
+    }
     const seenIdx=new Set();const retryAll=[];const retryTransient=[];
     for(const e of fullLog.current){
       if(e.status!=="ERROR"||!(e.csvRowNumber>=2)) continue;
       const idx=e.csvRowNumber-2; if(seenIdx.has(idx)) continue; seenIdx.add(idx);
-      retryAll.push(idx); if(isTransientError(e.msg)) retryTransient.push(idx);
+      retryAll.push(idx); if(isTransientError(e.msg)&&!timedOutCreate(e,idx)) retryTransient.push(idx);
     }
     // Cumulative counts/errors when this was a retry pass (the retried rows were previously errors, so
     // adding this pass's successes can't double-count). Errors are re-derived from the authoritative
@@ -2062,7 +2130,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   const esc=(v)=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`:s;};
                   // Each row now also carries the exact request that was sent: Method, Request URL, and Payload (JSON).
                   const header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Error detail"].map(esc).join(",");
-                  const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
+                  const lines=fullLog.current.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [fileRow(e.csvRowNumber),e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"")].join(",");});
                   dl("﻿"+[header,...lines].join("\n"),"text/csv;charset=utf-8",expName(`live_log_${target}`,"csv",true));
                 };
                 return (<div style={{...crd({padding:0,overflow:"hidden"}),marginTop:8}}>
@@ -2096,7 +2164,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                         return (
                           <Fragment key={e.csvRowNumber??`${e.row}-${i}`}>
                           <tr onClick={()=>setExpandedLog(isExpanded?null:e.csvRowNumber)} title="Click to see the request sent for this row" style={{borderBottom:`1px solid ${C.bd}`,background:isExpanded?C.vi+"11":isError?C.rd+"08":"transparent",cursor:"pointer"}}>
-                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{isExpanded?"▾ ":"▸ "}{(e.csvRowNumber||0).toLocaleString()}</td>
+                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{isExpanded?"▾ ":"▸ "}{fileRow(e.csvRowNumber).toLocaleString()}</td>
                             {csvData.h.map(h=>{
                               const val=e.csvRow?.[h]??"";
                               return <td key={h} style={{...tds,color:C.txd,fontSize:11,...mono}} title={String(val)}>{String(val)}</td>;
@@ -2248,7 +2316,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                         return(
                           <Fragment key={i}>
                           <tr onClick={()=>canExpand&&setExpandedLog(isExpanded?null:e.row)} style={{borderBottom:`1px solid ${C.bd}`,cursor:canExpand?"pointer":"default",background:isExpanded?C.vi+"11":"transparent"}} onMouseEnter={ev=>{if(!isExpanded)ev.currentTarget.style.background=C.sfh;}} onMouseLeave={ev=>{if(!isExpanded)ev.currentTarget.style.background="transparent";}}>
-                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{canExpand?(isExpanded?"▾ ":"▸ "):""}{e.row}</td>
+                            <td style={{...tds,fontWeight:600,...mono,color:C.txm}}>{canExpand?(isExpanded?"▾ ":"▸ "):""}{fileRow(e.row)}</td>
                             <td style={tds}><span style={{fontSize:11,padding:"2px 8px",borderRadius:3,background:sc+"22",color:sc,fontWeight:600}}>{e.status}</span></td>
                             <td style={{...tds,color:e.status==="ERROR"?C.rd:C.txm,fontSize:12,...mono}}>{e.detail}</td>
                           </tr>
@@ -2278,10 +2346,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   let lines, header;
                   if(full.length){
                     header=["CSV row","Status","Method","Request URL","Payload",...csvData.h,"Detail"].map(esc).join(",");
-                    lines=full.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [e.csvRowNumber||0,e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"OK")].join(",");});
+                    lines=full.map(e=>{const orig=e.csvRowNumber>=2?csvData.r[e.csvRowNumber-2]:null;const req=buildRequestForRow(orig);return [fileRow(e.csvRowNumber),e.status,req?req.method:"",req?esc(`/api/data/v9.2/${req.path}`):"",req&&req.body?esc(JSON.stringify(req.body)):"",...csvData.h.map(h=>esc(orig?.[h]??"")),esc(e.status==="ERROR"?(e.msg||""):"OK")].join(",");});
                   }else{
                     header="Row,Status,Detail";
-                    lines=(result.log||[]).map(e=>[e.row,e.status,esc(e.detail)].join(","));
+                    lines=(result.log||[]).map(e=>[fileRow(e.row),e.status,esc(e.detail)].join(","));
                   }
                   // Summary counts are RECOMPUTED from the per-row log being exported — the log is
                   // the source of truth. The result-object counters can lie when a run dies mid-
@@ -2317,7 +2385,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   ];
                   dl("\uFEFF"+[header,...lines,...summary].join("\n"),"text/csv;charset=utf-8",expName(`colvio_load_${result.entity||target}`,"csv",true));
                 }} style={bt(null,{color:C.gn})}><I.Download/> Download Log</button>
-                {result.errors.length>0&&<button onClick={()=>{const csv=["Row,Error,Payload",...result.errors.map(e=>{const escE=(v)=>{let sv=String(v??"");if(/^[=+\-@\t\r]/.test(sv))sv="'"+sv;return `"${sv.replace(/"/g,'""')}"`;};return `${e.row},${escE(e.msg)},${escE(e.payload)}`;})].join("\n");dl("\uFEFF"+csv,"text/csv;charset=utf-8",expName(`load_errors_${result.entity||target}`,"csv",true));}} style={bt(null,{color:C.rd})}>Export errors CSV</button>}
+                {result.errors.length>0&&<button onClick={()=>{const csv=["Row,Error,Payload",...result.errors.map(e=>{const escE=(v)=>{let sv=String(v??"");if(/^[=+\-@\t\r]/.test(sv))sv="'"+sv;return `"${sv.replace(/"/g,'""')}"`;};return `${fileRow(e.row)},${escE(e.msg)},${escE(e.payload)}`;})].join("\n");dl("\uFEFF"+csv,"text/csv;charset=utf-8",expName(`load_errors_${result.entity||target}`,"csv",true));}} style={bt(null,{color:C.rd})}>Export errors CSV</button>}
               </div>
             </div>
           )}

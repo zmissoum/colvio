@@ -12,6 +12,8 @@ const typeIcon=(t)=>{
   if(t==="Uniqueidentifier")return{icon:"🔑",color:C.yw,label:"id"};
   if(t==="Lookup"||t==="Customer"||t==="Owner")return{icon:"🔗",color:C.vi,label:"reference"};
   if(t==="Picklist"||t==="State"||t==="Status")return{icon:"■",color:C.gn,label:"picklist"};
+  if(t==="MultiSelectPicklist")return{icon:"■",color:C.gn,label:"choices"};
+  if(t==="File"||t==="Image")return{icon:"●",color:C.or,label:t.toLowerCase()};
   if(t==="Money"||t==="Decimal"||t==="Double")return{icon:"●",color:C.yw,label:"decimal"};
   if(t==="Integer"||t==="BigInt")return{icon:"●",color:C.yw,label:"integer"};
   if(t==="DateTime")return{icon:"●",color:C.cy,label:"datetime"};
@@ -37,6 +39,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const[expanded,setExpanded]=useState({});// {logicalName: true} for cards showing all fields
   const[collapseAll,setCollapseAll]=useState(false);// true = headers only (no fields)
   const[loadingEntity,setLoadingEntity]=useState(null);
+  const pending=useRef(new Set()); // tables whose read is in flight — not yet in `selected`, must not be added twice
   const[confirmModal,setConfirmModal]=useState(null);
   // Escape closes the confirm modal — destructive confirms shouldn't be mouse-only (a11y audit).
   useEffect(()=>{
@@ -47,7 +50,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   },[confirmModal]);
 
   useEffect(()=>{
-    if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l,e.isManaged)})))}).catch(()=>{});
+    if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l)})))}).catch(()=>{});
   },[]);
 
   const filtered=useMemo(()=>{
@@ -59,6 +62,8 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const entityCount=Object.keys(selected).length;
 
   const doAddEntity=useCallback(async(e)=>{
+    if(pending.current.has(e.l))return;
+    pending.current.add(e.l);
     setLoadingEntity(e.l);
     try{
       const[fieldsData,lookupsData,m2mData]=await Promise.all([
@@ -87,6 +92,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
         return {...prev,[e.l]:{x:col*GAP_X,y:row*GAP_Y}};
       });
     }catch{}
+    pending.current.delete(e.l);
     setLoadingEntity(null);
   },[selected]);
 
@@ -106,13 +112,17 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   const addRelated=useCallback((entityLogical)=>{
     const ent=selected[entityLogical];
     if(!ent)return;
-    ent.lookups.forEach(lk=>{
-      if(!selected[lk.target]){
-        const match=entities.find(e=>e.l===lk.target);
-        if(match)addEntity(match);
-      }
-    });
-  },[selected,entities,addEntity]);
+    // Several lookups point at ONE table (createdby / modifiedby / owninguser → systemuser): the
+    // targets are deduped, the ones on canvas or in flight skipped, and the batch counted as a
+    // whole against the 30-card confirm — per-lookup addEntity calls each saw the same stale
+    // count and added systemuser five times past the confirm.
+    const seen=new Set();
+    const targets=ent.lookups.map(lk=>lk.target).filter(tg=>tg&&!seen.has(tg)&&seen.add(tg)&&!selected[tg]&&!pending.current.has(tg)).map(tg=>entities.find(e=>e.l===tg)).filter(Boolean);
+    if(!targets.length)return;
+    const go=()=>targets.forEach(e=>doAddEntity(e));
+    if(entityCount+targets.length>30){setConfirmModal({msg:`This adds ${targets.length} entities to the ${entityCount} already on canvas. Adding more may slow down the viewer. Continue?`,onOk:()=>{setConfirmModal(null);go();}});return;}
+    go();
+  },[selected,entities,entityCount,doAddEntity]);
 
   const removeEntity=useCallback((logicalName)=>{
     setSelected(prev=>{const n={...prev};delete n[logicalName];return n;});

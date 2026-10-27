@@ -160,28 +160,42 @@ export function applyTransform(val, transform, optionMap, dateMD = false) {
       return Math.trunc(parseFloat(s));
     }
     case "float": {
+      // Same discipline as int: normalise the separators, then require a CLEAN number — parseFloat's
+      // partial parse made "1,234,567" → 1.234 and "12abc" → 12, loaded silently wrong.
       let s = String(val).trim().replace(/[\s ]/g, "");
       if (s.includes(",") && s.includes(".")) {
         if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
         else s = s.replace(/,/g, "");
       } else if (s.includes(",")) {
-        s = s.replace(",", ".");
+        // one comma = decimal mark (EU); several = thousands separators ("1,234,567")
+        s = (s.match(/,/g) || []).length > 1 ? s.replace(/,/g, "") : s.replace(",", ".");
+      } else if ((s.match(/\./g) || []).length > 1) {
+        s = s.replace(/\./g, ""); // "1.234.567" — dots as thousands separators
       }
+      if (!/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s)) return null;
       const n = parseFloat(s); return isNaN(n) ? null : n;
     }
     case "date_iso": {
       const s = String(val).trim();
       // ISO date-only: keep verbatim — avoids the UTC-midnight shift on DateOnly fields.
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[T\s]+(.*))?$/);
+      // ISO date-time: keep as given (a trailing Z / offset is the author's intent).
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) { const d = new Date(s); return isNaN(d.getTime()) ? null : d.toISOString(); }
+      // yyyy/mm/dd or yyyy.mm.dd (unambiguous: year first)
+      const ymd = s.match(/^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})(?:[T\s]+(.*))?$/);
+      // d/m/y, m/d/y, with "/", "-" or "." and a 2- or 4-digit year — a 2-digit year (Excel's default
+      // short date "1/15/24") used to fall through to new Date(), which parses month-first whatever
+      // the day/month setting AND shifts local midnight to UTC: 15 Jan became "14 Jan 23:00Z".
+      const m = ymd ? [s, ymd[3], ymd[2], ymd[1], ymd[4]] : s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})(?:[T\s]+(.*))?$/);
       if (m) {
         // Day-first by default (EU d/m); dateMD forces month-first (US m/d). Either way, if the chosen
         // order is impossible (the "month" part is >12), swap — that case is unambiguous.
-        let dd = dateMD ? +m[2] : +m[1];
-        let mm = dateMD ? +m[1] : +m[2];
-        if (mm > 12 && dd <= 12) { const t = dd; dd = mm; mm = t; }
+        let dd = ymd ? +m[1] : (dateMD ? +m[2] : +m[1]);
+        let mm = ymd ? +m[2] : (dateMD ? +m[1] : +m[2]);
+        if (!ymd && mm > 12 && dd <= 12) { const t = dd; dd = mm; mm = t; }
         if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-        const dateStr = `${m[3]}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+        const yyyy = m[3].length === 2 ? String((+m[3] < 30 ? 2000 : 1900) + +m[3]) : m[3]; // Excel's pivot: 00–29 → 20xx, 30–99 → 19xx
+        const dateStr = `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
         const rest = (m[4] || "").trim();
         if (!rest) return dateStr; // DateOnly — no time, no TZ shift
         // Time part: HH:mm[:ss] with optional AM/PM → build a LOCAL Date, emit UTC ISO.
@@ -192,7 +206,14 @@ export function applyTransform(val, transform, optionMap, dateMD = false) {
         const d = new Date(`${dateStr}T${String(hh).padStart(2, "0")}:${t[2]}:${t[3] || "00"}`);
         return isNaN(d.getTime()) ? null : d.toISOString();
       }
-      try { const d = new Date(s); return isNaN(d.getTime()) ? null : d.toISOString(); } catch { return null; }
+      // Anything else: let the engine parse it, but a value WITHOUT a time of day stays a calendar
+      // date (local), never a UTC instant that lands on the previous day west of Greenwich.
+      try {
+        const d = new Date(s);
+        if (isNaN(d.getTime())) return null;
+        if (!/\d:\d/.test(s)) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        return d.toISOString();
+      } catch { return null; }
     }
     case "strip_html": {
       // HTML source → plain-text target: keep the visible text, drop the markup.

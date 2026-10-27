@@ -364,3 +364,61 @@ describe("Cross-table WHERE splitting", () => {
     expect(fx).toContain('operator="not-null"');
   });
 });
+
+// ── Review pass: nothing is dropped silently ──────────────────
+describe("Unsupported clauses are refused, never silently dropped", () => {
+  it("LIMIT / OFFSET (the old parser stopped at the first unknown token and ran the rest)", () => {
+    expect(sqlToFetchXml("SELECT name FROM account LIMIT 10").error).toMatch(/Unexpected "LIMIT".*TOP/);
+    expect(sqlToFetchXml("SELECT name FROM account ORDER BY name OFFSET 5").error).toMatch(/Unexpected "OFFSET"/);
+  });
+  it("a HAVING after ORDER BY says where it goes", () => {
+    expect(sqlToFetchXml("SELECT statecode, COUNT(*) AS n FROM account GROUP BY statecode ORDER BY statecode HAVING n > 1").error).toMatch(/HAVING goes/);
+  });
+  it("RIGHT / FULL / CROSS JOIN (RIGHT used to run as an INNER join)", () => {
+    expect(sqlToFetchXml("SELECT a.name FROM account a RIGHT JOIN contact c ON c.parentcustomerid = a.accountid").error).toMatch(/RIGHT JOIN isn't supported/);
+    expect(sqlToFetchXml("SELECT a.name FROM account a FULL OUTER JOIN contact c ON c.parentcustomerid = a.accountid").error).toMatch(/FULL JOIN/);
+    expect(sqlToFetchXml("SELECT a.name FROM account a CROSS JOIN contact c ON c.parentcustomerid = a.accountid").error).toMatch(/CROSS JOIN/);
+    expect(sql("SELECT a.name FROM account a LEFT OUTER JOIN contact c ON c.parentcustomerid = a.accountid")).toContain('link-type="outer"');
+  });
+  it("column-to-column comparison (used to compare with the literal text 'ownerid')", () => {
+    const r = sqlToFetchXml("SELECT name FROM account WHERE accountid = ownerid");
+    expect(r.error).toMatch(/comparing two columns/);
+    expect(r.fetchXml).toBe("");
+  });
+  it("TRUE / FALSE stay allowed as bare literals", () => {
+    expect(sql("SELECT name FROM account WHERE donotemail = true")).toContain('value="true"');
+  });
+});
+
+describe("HAVING (client-side — emitted as a Colvio-only <having> block the Explorer strips and applies)", () => {
+  it("by alias and by aggregate expression, AND-joined", () => {
+    const fx = sql("SELECT industrycode, COUNT(*) AS cnt, SUM(revenue) AS total FROM account GROUP BY industrycode HAVING cnt >= 5 AND SUM(revenue) > 1000");
+    expect(fx).toContain("<having>");
+    expect(fx).toContain('<condition attribute="cnt" operator="ge" value="5"/>');
+    expect(fx).toContain('<condition attribute="total" operator="gt" value="1000"/>');
+    expect(fx.replace(/<having>[\s\S]*?<\/having>/gi, "")).not.toContain("<condition"); // what the server gets
+  });
+  it("COUNT(*) without an alias is matched through its default alias", () => {
+    const fx = sql("SELECT statecode, COUNT(*) FROM account GROUP BY statecode HAVING COUNT(*) > 2");
+    expect(fx).toContain('<condition attribute="count" operator="gt" value="2"/>');
+  });
+  it("refuses what the client-side filter can't evaluate", () => {
+    expect(sqlToFetchXml("SELECT name FROM account HAVING name > 1").error).toMatch(/aggregate SELECT/);
+    expect(sqlToFetchXml("SELECT statecode, COUNT(*) AS n FROM account GROUP BY statecode HAVING SUM(revenue) > 1").error).toMatch(/isn't in the SELECT/);
+    expect(sqlToFetchXml("SELECT statecode, COUNT(*) AS n FROM account GROUP BY statecode HAVING n > 'x'").error).toMatch(/must be a number/);
+    expect(sqlToFetchXml("SELECT statecode, COUNT(*) AS n FROM account GROUP BY statecode HAVING n > 1 OR n < 0").error).toMatch(/only AND/);
+  });
+});
+
+describe("GROUP BY with an alias", () => {
+  it("emits ONE alias attribute (it was duplicated — invalid XML)", () => {
+    const fx = sql("SELECT statecode AS s, COUNT(*) AS n FROM account GROUP BY statecode");
+    expect(fx).toContain('<attribute name="statecode" groupby="true" alias="s"/>');
+    expect((fx.match(/alias="s"/g) || []).length).toBe(1);
+  });
+  it("same on a joined table", () => {
+    const fx = sql("SELECT c.statecode AS cs, COUNT(*) AS n FROM account a JOIN contact c ON c.parentcustomerid = a.accountid GROUP BY c.statecode");
+    expect(fx).toContain('<attribute name="statecode" groupby="true" alias="cs"/>');
+    expect((fx.match(/alias="cs"/g) || []).length).toBe(1);
+  });
+});

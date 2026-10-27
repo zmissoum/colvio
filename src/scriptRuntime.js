@@ -76,6 +76,22 @@ export function resourceOf(path) {
 }
 export const queryOf = (path) => { const p = toPath(path); const q = p.indexOf("?"); return q < 0 ? "" : p.slice(q + 1); };
 
+// A typed value a script marks explicitly, in an alternate key or a function parameter: { $guid }
+// (an Edm.Guid, unquoted), { $raw } (exactly as given), { $date } (a Date — a Date object itself
+// crosses postMessage from the sandbox as an ISO STRING, so it would be quoted as text). The wire
+// form, or undefined when v isn't a wrapper.
+function wrapped(v) {
+  if (!v || typeof v !== "object") return undefined;
+  if (typeof v.$guid === "string") return keySegment(v.$guid);
+  if (typeof v.$raw === "string") return v.$raw;
+  if (v.$date !== undefined) {
+    const d = new Date(v.$date);
+    if (Number.isNaN(d.getTime())) throw new ScriptError(`Invalid $date: ${JSON.stringify(v.$date)}`);
+    return d.toISOString();
+  }
+  return undefined;
+}
+
 // A key as written inside parentheses: a GUID (braces dropped), an alternate key object
 // ({ accountnumber: "A-1", region: 2 } → accountnumber='A-1',region=2), or a raw key expression.
 export function keySegment(key) {
@@ -83,8 +99,10 @@ export function keySegment(key) {
     const parts = Object.entries(key).map(([k, v]) => {
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new ScriptError(`Invalid key column "${k}"`);
       if (v === null || v === undefined) throw new ScriptError(`Key column "${k}" has no value`);
+      const w = wrapped(v) ?? (v instanceof Date ? v.toISOString() : undefined);
+      if (w !== undefined) return `${k}=${w}`;
+      if (typeof v === "object") throw new ScriptError(`Key column "${k}": pass a Date as { $date: d }, a GUID as { $guid: "…" }, anything literal as { $raw: "…" }`);
       // the value is URL-encoded: a "#", "?" or "%41" in a key must reach Dataverse as typed
-      if (v instanceof Date) return `${k}=${v.toISOString()}`;
       return `${k}=${typeof v === "string" ? `'${encodeURIComponent(v.replace(/'/g, "''"))}'` : String(v)}`;
     });
     if (!parts.length) throw new ScriptError("Empty key");
@@ -97,11 +115,11 @@ export function keySegment(key) {
 }
 
 // Function parameters go through aliases: Name(a=@a)?@a=<value> — strings quoted, objects as JSON,
-// { $guid: "…" } unquoted (an Edm.Guid parameter), { $raw: "…" } exactly as given.
+// { $guid: "…" } unquoted (an Edm.Guid parameter), { $raw: "…" } exactly as given, { $date } ISO.
 export function encodeParam(v) {
   if (v === null || v === undefined) return "null";
-  if (v && typeof v === "object" && typeof v.$guid === "string") return keySegment(v.$guid);
-  if (v && typeof v === "object" && typeof v.$raw === "string") return v.$raw;
+  const w = wrapped(v);
+  if (w !== undefined) return w;
   if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (v instanceof Date) return v.toISOString();
@@ -135,8 +153,14 @@ export function parseSegments(resource) {
   });
 }
 
-// A GET that calls a function with a publisher prefix (a Custom API — its plug-in may write):
-// unbound new_Name(…) or bound …/Microsoft.Dynamics.CRM.new_Name(…). Built-in functions have no "_".
+// Built-in GET functions that write: a dry run must not call them either (CalculateRollupField
+// recalculates the rollup AND persists it on the row).
+const WRITING_FUNCTIONS = new Set(["calculaterollupfield"]);
+
+// A GET that calls a function with a publisher prefix (a Custom API — its plug-in may write), or a
+// built-in one known to write: unbound new_Name(…) or bound …/Microsoft.Dynamics.CRM.new_Name(…).
+// Other built-in functions have no "_". `custom` says the name may also be a table's (prefix_
+// tables read with a key look the same — the metadata tells, see call()).
 export function customFunctionOf(path) {
   const res = resourceOf(path);
   if (res == null) return null;
@@ -145,7 +169,8 @@ export function customFunctionOf(path) {
   if (!last || last.key == null) return null;
   const name = last.name.startsWith(NS) ? last.name.slice(NS.length) : last.name;
   if (segs.length > 1 && !last.name.startsWith(NS)) return null;
-  return name.includes("_") ? { name, bound: segs.length > 1 } : null;
+  if (name.includes("_")) return { name, bound: segs.length > 1, custom: true };
+  return WRITING_FUNCTIONS.has(name.toLowerCase()) ? { name, bound: segs.length > 1, custom: false } : null;
 }
 
 // What a request does. `isEntitySet(name)` answers whether a bare first segment is a table (a POST
@@ -304,8 +329,8 @@ export function summarize(entries) {
   return [...m.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 export function rollbackStats(entries) {
-  const s = { full: 0, partial: 0, none: 0, ops: 0 };
-  for (const e of entries || []) { s[e.reversible] = (s[e.reversible] || 0) + 1; s.ops += (e.inverse || []).length; }
+  const s = { full: 0, partial: 0, none: 0, ops: 0, unreadable: 0 }; // unreadable: sent without a before-image ({ journal: "best-effort" })
+  for (const e of entries || []) { s[e.reversible] = (s[e.reversible] || 0) + 1; s.ops += (e.inverse || []).length; if (e.unreadable) s.unreadable++; }
   return s;
 }
 const clip = (v, n = 2000) => { if (v === undefined || v === null) return null; const s = typeof v === "string" ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + "…" : s; };
@@ -737,8 +762,25 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
       case "batch": e.reversible = "none"; e.note = "Raw $batch sent with dv.request — use dv.batch() to journal each operation"; break;
       default: e.reversible = "none"; e.note = "Operation not recognised — not journaled";
     }
+    // A clearProp / clearRef of a value that was already empty (or an update of nothing) has no
+    // inverse: counted as reversible, the rollback would skip it — say so instead.
+    if (!e.inverse.length && e.reversible !== "none") { e.reversible = "none"; e.note = `Nothing to undo (no previous value)${e.note ? "; " + e.note : ""}`; }
     return e;
   }
+  // A write sent and left without response (timeout, network): the server may have run it.
+  // Journal what can be undone from the before-image, flagged — an inverse of a write that didn't
+  // happen is harmless for updates (same values) and fails readably for the rest.
+  const unanswered = (cls, op, cap, why) => {
+    const e = finalize(cls, op, cap, { headers: {} });
+    e.reversible = e.inverse.length ? "partial" : "none";
+    e.note = `${why} — the write may or may not have run${e.note ? "; " + e.note : ""}`;
+    entries.push(e); onJournal?.(e);
+  };
+  // The journal promised an inverse for every write: one whose before-image can't be read (503,
+  // 403, a timeout, 429 attempts exhausted — a 404 is "no row", not a failure) would be
+  // irreversible, so it is NOT sent, unless the script accepts that with { journal: "best-effort" }.
+  const unreadable = (what, failed) => new ScriptError(`${what} not sent: its before-image couldn't be read for the rollback journal (${failed}) — retry, or pass { journal: "best-effort" } to write it anyway (not reversible)`);
+  const unreadableStub = (cls, op, failed) => ({ ...stub(cls, op, `Before-image unreadable: ${failed}`), unreadable: true });
 
   const record = (cls, op) => {
     const e = { seq: ++seq, method: op.method, path: resourceOf(op.path) ?? op.path, kind: cls.kind, table: cls.kind === "action" || cls.kind === "function" ? cls.action : (cls.table || cls.set), body: clip(op.body) };
@@ -751,8 +793,8 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
     return { ok: true, status: cls.kind === "function" ? 200 : 204, statusText: "No Content (dry run)", headers, body: "", bodyParsed: null, dryRun: true };
   };
 
-  // Every request of a script goes through here.
-  async function call(op0, { throwOnError = true } = {}) {
+  // Every request of a script goes through here. bestEffort: { journal: "best-effort" } on the call.
+  async function call(op0, { throwOnError = true, bestEffort = false } = {}) {
     const op = { method: String(op0.method || "GET").toUpperCase(), path: toPath(op0.path), headers: op0.headers || {}, body: op0.body };
     if (resourceOf(op.path) == null) throw new ScriptError(`Only Web API paths (/api/data/…) are allowed: ${op.path}`);
     let cls = await classifyOp(op);
@@ -760,31 +802,34 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
       // a Custom API function runs a plug-in that may write: not sent in a dry run (unless it is a table)
       const fn = customFunctionOf(op.path);
       if (fn) {
-        const ents = fn.bound ? { ok: false } : await entities();
-        if (!(ents.ok && ents.bySet.has(fn.name.toLowerCase()))) cls = { kind: "function", table: fn.name, action: fn.name };
+        let isTable = false;
+        if (fn.custom && !fn.bound) {
+          // new_things(<key>) reads a custom TABLE: only the metadata tells it from a function. Unknown
+          // must not pass for a function (the read would be skipped, answered empty): read again, then refuse.
+          let ents = await entities();
+          if (!ents.ok) ents = await entities();
+          if (!ents.ok) throw new ScriptError(`Metadata unreadable — can't tell whether ${fn.name}(…) is a table or a Custom API function; try again`, { url: op.path });
+          isTable = ents.bySet.has(fn.name.toLowerCase());
+        }
+        if (!isTable) cls = { kind: "function", table: fn.name, action: fn.name };
       }
     }
     const isWrite = cls.kind !== "read";
     if (isWrite && dry) { record(cls, op); return synthetic(cls); }
     let cap = null;
-    if (isWrite && journal) { try { cap = await capture(cls, op); } catch (err) { if (err instanceof StopError) throw err; cap = { failed: err.message }; } }
+    if (isWrite && journal) {
+      try { cap = await capture(cls, op); } catch (err) { if (err instanceof StopError) throw err; cap = { failed: err.message }; }
+      if (cap?.failed && !bestEffort) throw unreadable(`${op.method} ${resourceOf(op.path)}`, cap.failed);
+    }
     let res;
     try { res = await raw(op); }
     catch (err) {
-      // No response (timeout, network): the server may have run the write. Journal what can be
-      // undone from the before-image, flagged — an inverse of a write that didn't happen is harmless
-      // for updates (same values) and fails readably for the rest.
-      if (isWrite && journal && !(err instanceof StopError) && !cap?.failed) {
-        const e = finalize(cls, op, cap, { headers: {} });
-        e.reversible = e.inverse.length ? "partial" : "none";
-        e.note = `No response (${err.message}) — the write may or may not have run${e.note ? "; " + e.note : ""}`;
-        entries.push(e); onJournal?.(e);
-      }
+      if (isWrite && journal && !(err instanceof StopError) && !cap?.failed) unanswered(cls, op, cap, `No response (${err.message})`);
       throw err;
     }
     if (!res.ok) { if (throwOnError) throw errorFrom(res, op.path); return res; }
     if (isWrite && journal) {
-      const e = cap?.failed ? stub(cls, op, `Before-image unreadable: ${cap.failed}`) : finalize(cls, op, cap, res);
+      const e = cap?.failed ? unreadableStub(cls, op, cap.failed) : finalize(cls, op, cap, res);
       entries.push(e); onJournal?.(e);
     } else if (isWrite) {
       const e = stub(cls, op, "Journal off");
@@ -795,6 +840,7 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
 
   // ── The dv API (each method receives the script's default headers first) ──
   const hdr = (defaults, opts) => ({ ...(defaults || {}), ...(opts?.headers || {}) });
+  const jopt = (opts) => ({ bestEffort: opts?.journal === "best-effort" }); // call() options of a write
   const withPrefer = (h, pref) => ({ ...h, Prefer: h.Prefer ? `${h.Prefer},${pref}` : pref });
   const ann = (h, opts) => (opts?.formatted ? withPrefer(h, 'odata.include-annotations="*"') : h);
   const qs = (opts) => {
@@ -832,7 +878,7 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
 
   const api = {
     async request(d, method, path, opts = {}) {
-      const res = await call({ method, path, headers: hdr(d, opts), body: opts.body }, { throwOnError: opts.throwOnError !== false });
+      const res = await call({ method, path, headers: hdr(d, opts), body: opts.body }, { throwOnError: opts.throwOnError !== false, ...jopt(opts) });
       return { ok: res.ok, status: res.status, headers: res.headers || {}, body: bodyOf(res), dryRun: !!res.dryRun };
     },
     async get(d, path, opts = {}) { return bodyOf(await call({ method: "GET", path, headers: ann(hdr(d, opts), opts) })); },
@@ -868,7 +914,7 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
     },
     async create(d, set, data, opts = {}) {
       let h = hdr(d, opts); if (opts.returnRecord) h = withPrefer(h, "return=representation");
-      const res = await call({ method: "POST", path: set, headers: h, body: data ?? {} });
+      const res = await call({ method: "POST", path: set, headers: h, body: data ?? {} }, jopt(opts));
       const newId = entityIdFrom(res)?.id ?? null;
       if (!opts.returnRecord) return newId;
       // a dry run returns the row the server would: the columns sent, the placeholder id, the
@@ -876,19 +922,19 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
       return res.dryRun ? dryRow(set, data, newId) : bodyOf(res);
     },
     async update(d, set, key, data, opts = {}) {
-      await call({ method: "PATCH", path: `${set}(${keySegment(key)})`, headers: { "If-Match": "*", ...hdr(d, opts) }, body: data ?? {} });
+      await call({ method: "PATCH", path: `${set}(${keySegment(key)})`, headers: { "If-Match": "*", ...hdr(d, opts) }, body: data ?? {} }, jopt(opts));
     },
     async upsert(d, set, key, data, opts = {}) {
-      const res = await call({ method: "PATCH", path: `${set}(${keySegment(key)})`, headers: hdr(d, opts), body: data ?? {} });
+      const res = await call({ method: "PATCH", path: `${set}(${keySegment(key)})`, headers: hdr(d, opts), body: data ?? {} }, jopt(opts));
       return entityIdFrom(res)?.id ?? null;
     },
-    async delete(d, set, key, opts = {}) { await call({ method: "DELETE", path: `${set}(${keySegment(key)})`, headers: hdr(d, opts) }); },
+    async delete(d, set, key, opts = {}) { await call({ method: "DELETE", path: `${set}(${keySegment(key)})`, headers: hdr(d, opts) }, jopt(opts)); },
     async associate(d, set, key, nav, targetSet, targetKey, opts = {}) {
-      await call({ method: "POST", path: `${set}(${keySegment(key)})/${nav}/$ref`, headers: hdr(d, opts), body: { "@odata.id": abs(`${targetSet}(${keySegment(targetKey)})`) } });
+      await call({ method: "POST", path: `${set}(${keySegment(key)})/${nav}/$ref`, headers: hdr(d, opts), body: { "@odata.id": abs(`${targetSet}(${keySegment(targetKey)})`) } }, jopt(opts));
     },
     async disassociate(d, set, key, nav, targetKey, opts = {}) {
       const p = targetKey != null ? `${set}(${keySegment(key)})/${nav}(${keySegment(targetKey)})/$ref` : `${set}(${keySegment(key)})/${nav}/$ref`;
-      await call({ method: "DELETE", path: p, headers: hdr(d, opts) });
+      await call({ method: "DELETE", path: p, headers: hdr(d, opts) }, jopt(opts));
     },
     async callAction(d, name, params = {}, opts = {}) {
       const p = opts.bound ? `${opts.bound.set}(${keySegment(opts.bound.key)})/${NS}${name}` : name;
@@ -922,6 +968,10 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
         try { caps = await captureAll(clss, norm); }
         catch (err) { if (err instanceof StopError) throw err; caps = clss.map(c => (c.kind === "read" ? null : { failed: err.message })); }
       }
+      if (journal && opts.journal !== "best-effort") {
+        const bad = caps.findIndex(c => c?.failed);
+        if (bad >= 0) throw unreadable(`$batch (request #${bad + 1}, ${norm[bad].method} ${resourceOf(norm[bad].path)})`, caps[bad].failed);
+      }
       const atomic = opts.atomic !== false;
       const b = buildBatch(norm, { orgUrl, atomic, id: `${Date.now().toString(36)}${(++batchN).toString(36)}` });
       let h = { "Content-Type": b.contentType, ...(opts.headers || {}) };
@@ -929,13 +979,7 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
       let res;
       try { res = await raw({ method: "POST", path: "$batch", headers: h, body: b.body }); }
       catch (err) {
-        if (journal && !(err instanceof StopError)) clss.forEach((c, i) => {
-          if (c.kind === "read" || caps[i]?.failed) return;
-          const e = finalize(c, norm[i], caps[i], { headers: {} });
-          e.reversible = e.inverse.length ? "partial" : "none";
-          e.note = `No response to the $batch (${err.message}) — this write may or may not have run${e.note ? "; " + e.note : ""}`;
-          entries.push(e); onJournal?.(e);
-        });
+        if (journal && !(err instanceof StopError)) clss.forEach((c, i) => { if (c.kind !== "read" && !caps[i]?.failed) unanswered(c, norm[i], caps[i], `No response to the $batch (${err.message})`); });
         throw err;
       }
       if (!res.ok && !/multipart/i.test(header(res, "content-type") || "")) throw errorFrom(res, "$batch");
@@ -943,7 +987,7 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
       results.forEach((r, i) => {
         if (clss[i].kind === "read" || !r?.ok) return;
         const e = !journal ? stub(clss[i], norm[i], "Journal off")
-          : caps[i]?.failed ? stub(clss[i], norm[i], `Before-image unreadable: ${caps[i].failed}`)
+          : caps[i]?.failed ? unreadableStub(clss[i], norm[i], caps[i].failed)
           : finalize(clss[i], norm[i], caps[i], r);
         entries.push(e); onJournal?.(e);
       });
@@ -974,7 +1018,13 @@ export function createRuntime({ send, orgUrl = "", mode = "live", journal = true
     // invoke("update", ["accounts", id, {…}], { MSCRMCallerID: … })
     async invoke(method, args, defaults) {
       if (!Object.prototype.hasOwnProperty.call(api, method)) throw new ScriptError(`dv.${method} doesn't exist`);
-      return api[method](defaults || {}, ...(args || []));
+      // The sandbox relays the arguments as JSON: an explicit `undefined` arrives as null, and a
+      // null skips a parameter default (`opts = {}` → "Cannot read properties of null"). Trailing
+      // nulls are dropped so the defaults apply; every method reads a null in a data position
+      // (`data ?? {}`, `targetKey != null`, a missing key) exactly as it reads an absent one.
+      const a = [...(args || [])];
+      while (a.length && a[a.length - 1] === null) a.pop();
+      return api[method](defaults || {}, ...a);
     },
     plan, entries, call,
   };

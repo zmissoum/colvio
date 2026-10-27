@@ -323,3 +323,29 @@ describe("valuesToVerifyOneByOne", () => {
     expect(valuesToVerifyOneByOne(["a"], 1, seen(new Set()))).toEqual([]);
   });
 });
+
+describe("applyTransform — review fixes (float partial parse, 2-digit years, local dates)", () => {
+  it("float requires a clean number: thousands separators folded, garbage refused", () => {
+    expect(applyTransform("1,234,567", "float")).toBe(1234567);
+    expect(applyTransform("1.234.567", "float")).toBe(1234567);
+    expect(applyTransform("1 234,56", "float")).toBe(1234.56);
+    expect(applyTransform("1,5", "float")).toBe(1.5);
+    expect(applyTransform("-2.5", "float")).toBe(-2.5);
+    expect(applyTransform("1e3", "float")).toBe(1000);
+    expect(applyTransform("12abc", "float")).toBeNull();
+    expect(applyTransform("abc", "float")).toBeNull();
+  });
+  it("date_iso: 2-digit years follow the day/month setting and stay calendar dates", () => {
+    expect(applyTransform("1/15/24", "date_iso")).toBe("2024-01-15");          // impossible day-first → swapped
+    expect(applyTransform("1/5/24", "date_iso", null, false)).toBe("2024-05-01"); // EU: 1 May
+    expect(applyTransform("1/5/24", "date_iso", null, true)).toBe("2024-01-05");  // US: 5 Jan
+    expect(applyTransform("31/12/99", "date_iso")).toBe("1999-12-31");         // Excel pivot
+    expect(applyTransform("15.01.2024", "date_iso")).toBe("2024-01-15");
+    expect(applyTransform("2024/01/15", "date_iso")).toBe("2024-01-15");
+  });
+  it("date_iso: a value without a time of day never becomes the previous day in UTC", () => {
+    const r = applyTransform("March 5, 2024", "date_iso");
+    expect(r).toBe("2024-03-05");
+    expect(applyTransform("2024-01-15T10:00:00Z", "date_iso")).toBe("2024-01-15T10:00:00.000Z");
+  });
+});

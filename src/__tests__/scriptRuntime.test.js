@@ -456,3 +456,79 @@ describe("scriptRuntime — PR review fixes", () => {
     expect(normalizeJournal({ ...ok, entries: [{ method: "DELETE", path: "p", inverse: [] }] }).entries[0]).toMatchObject({ seq: 1, reversible: "none" });
   });
 });
+
+describe("scriptRuntime — third review fixes", () => {
+  it("journal on: a write whose before-image can't be read is NOT sent, unless { journal: 'best-effort' }", async () => {
+    const org = fakeOrg(); let fail = true;
+    const send = async (r) => (fail && r.method === "GET" && /accounts/.test(r.path) ? json(503, { error: { message: "busy" } }) : org.send(r));
+    const rt = createRuntime({ send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await expect(rt.invoke("update", ["accounts", g(31), { name: "X" }])).rejects.toThrow(/not sent.*best-effort/);
+    await expect(rt.invoke("batch", [[{ method: "PATCH", path: `accounts(${g(31)})`, body: { name: "X" } }]])).rejects.toThrow(/\$batch \(request #1.*not sent/);
+    expect(org.log.filter(l => !l.startsWith("GET"))).toEqual([]); // nothing written
+    expect(org.t.accounts.get(g(31)).name).toBe("Contoso");
+    expect(rt.entries).toEqual([]);
+    await rt.invoke("update", ["accounts", g(31), { name: "X" }, { journal: "best-effort" }]);
+    await rt.invoke("batch", [[{ method: "PATCH", path: `accounts(${g(32)})`, body: { name: "Y" } }], { journal: "best-effort" }]);
+    expect(org.t.accounts.get(g(31)).name).toBe("X");
+    expect(rt.entries.map(e => e.reversible)).toEqual(["none", "none"]);
+    expect(rt.entries[0]).toMatchObject({ unreadable: true, note: expect.stringMatching(/^Before-image unreadable/) });
+    expect(rollbackStats(rt.entries)).toMatchObject({ none: 2, unreadable: 2 });
+    fail = false; // a 404 is "no row", not a failure: an upsert that creates still goes through
+    expect(await rt.invoke("upsert", ["accounts", g(99), { name: "New" }])).toBe(g(99));
+    expect(rt.entries[2]).toMatchObject({ reversible: "full", inverse: [{ method: "DELETE" }] });
+  });
+  it("dry run: a keyed read of a prefix_ table with the metadata unreadable is refused, not skipped as a function", async () => {
+    const org = fakeOrg(); let fail = true, metaReads = 0;
+    const send = async (r) => (fail && /EntityDefinitions\?/.test(r.path) ? (metaReads++, json(503, { error: { message: "busy" } })) : org.send(r));
+    const rt = createRuntime({ send, orgUrl: ORG, mode: "dry", sleep: noSleep });
+    await expect(rt.invoke("retrieve", ["fou_spritcodes", g(11)])).rejects.toThrow(/Metadata unreadable/);
+    expect(metaReads).toBe(2); // read, read again, then refused
+    expect(rt.plan).toEqual([]);
+    fail = false;
+    expect(await rt.invoke("retrieve", ["fou_spritcodes", g(11)])).toMatchObject({ fou_name: "SP-FR" });
+    expect(rt.plan).toEqual([]);
+  });
+  it("a dry run doesn't call a built-in function that writes (CalculateRollupField)", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "dry", sleep: noSleep });
+    expect(await rt.invoke("callFunction", ["CalculateRollupField", { Target: { "@odata.id": `accounts(${g(31)})` }, FieldName: "x" }])).toBe(null);
+    expect(await rt.invoke("get", [`accounts(${g(31)})/Microsoft.Dynamics.CRM.CalculateRollupField(FieldName='x')`])).toBeFalsy();
+    expect(org.log.some(l => /CalculateRollupField/i.test(l))).toBe(false);
+    expect(rt.plan.map(p => `${p.kind} ${p.table}`)).toEqual(["function CalculateRollupField", "function CalculateRollupField"]);
+    expect(await rt.invoke("whoAmI", [])).toMatchObject({ UserId: g(21) }); // other built-ins still run
+  });
+  it("an explicit undefined option (null after the sandbox's JSON) leaves the defaults in place", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "dry", sleep: noSleep });
+    expect(await rt.invoke("get", ["accounts?$top=1", null])).toMatchObject({ value: [expect.any(Object)] });
+    expect(await rt.invoke("getAll", ["accounts", null])).toHaveLength(2);
+    expect(await rt.invoke("retrieve", ["accounts", g(31), null])).toMatchObject({ name: "Contoso" });
+    expect(await rt.invoke("create", ["accounts", { name: "N" }, null])).toBe(fakeId(1));
+    expect(await rt.invoke("create", ["accounts", null, null])).toBe(fakeId(2)); // a null body stays "{}"
+    await rt.invoke("update", ["accounts", g(31), null, null]);
+    expect(await rt.invoke("callFunction", ["WhoAmI", null, null])).toMatchObject({ UserId: g(21) });
+    expect(await rt.invoke("batch", [[{ method: "GET", path: "accounts" }], null])).toHaveLength(1);
+    await rt.invoke("disassociate", ["accounts", g(32), "parentaccountid", null]); // null target = single-valued $ref
+    expect(rt.plan.map(p => `${p.kind} ${p.table}`)).toEqual(["create accounts", "create accounts", "update accounts", "clearRef accounts"]);
+  });
+  it("alternate-key values accept { $guid } / { $raw } / { $date } like function parameters", () => {
+    expect(keySegment({ owner: { $guid: `{${g(1).toUpperCase()}}` }, code: "A" })).toBe(`owner=${g(1)},code='A'`);
+    expect(keySegment({ since: { $date: "2026-01-02T03:04:05.000Z" } })).toBe("since=2026-01-02T03:04:05.000Z");
+    expect(keySegment({ since: { $date: new Date(Date.UTC(2026, 0, 2)) } })).toBe("since=2026-01-02T00:00:00.000Z");
+    expect(keySegment({ n: { $raw: "1.5M" } })).toBe("n=1.5M");
+    expect(() => keySegment({ since: { $date: "nope" } })).toThrow(/Invalid \$date/);
+    expect(() => keySegment({ owner: { id: 1 } })).toThrow(/\$date.*\$guid.*\$raw/); // not "[object Object]"
+    expect(functionPath("F", { d: { $date: "2026-01-02T00:00:00Z" } })).toBe("F(d=@d)?@d=2026-01-02T00%3A00%3A00.000Z");
+  });
+  it("a clear of a value that was already empty is 'nothing to undo', not a reversible entry the rollback skips", async () => {
+    const org = fakeOrg();
+    const rt = createRuntime({ send: org.send, orgUrl: ORG, mode: "live", sleep: noSleep });
+    await rt.invoke("request", ["DELETE", `accounts(${g(32)})/telephone1`]); // telephone1 is null
+    await rt.invoke("disassociate", ["accounts", g(31), "parentaccountid"]);   // no parent
+    expect(rt.entries.map(e => e.reversible)).toEqual(["none", "none"]);
+    expect(rt.entries[0].note).toMatch(/Nothing to undo/);
+    expect(rollbackStats(rt.entries)).toMatchObject({ full: 0, none: 2, ops: 0 });
+    await rt.invoke("request", ["DELETE", `accounts(${g(31)})/telephone1`]); // had "01": restored
+    expect(rt.entries[2]).toMatchObject({ reversible: "full", inverse: [{ method: "PUT", body: { value: "01" } }] });
+  });
+});

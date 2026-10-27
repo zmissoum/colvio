@@ -5,7 +5,9 @@
 
 export const RIGHTS = ["Read", "Write", "Append", "AppendTo", "Delete", "Assign", "Share"];
 export const RIGHT_LABEL = { Read: "Read", Write: "Write", Append: "Append", AppendTo: "Append to", Delete: "Delete", Assign: "Assign", Share: "Share" };
-export const DEPTH_LABEL = { 1: "User", 2: "Business Unit", 4: "Parent: Child BU", 8: "Organization" };
+// Depth labels and the mask → depth normalisation are the Security module's (one definition).
+import { DEPTH_LABEL, depthFromMask } from "./rolePrivilegeFilter.js";
+export { DEPTH_LABEL, depthFromMask };
 export const SYSADMIN_TEMPLATE = "627090ff-40a3-4053-8790-584edc5be201";
 export const ACCESS_MODE = { 0: "Read-Write", 1: "Administrative", 2: "Read", 3: "Support User", 4: "Non-interactive", 5: "Delegated Admin" };
 const OWNER_TEAM_TYPES = new Set([0, 2, 3]); // owner, Entra security group, Microsoft 365 group — access teams (1) carry no roles
@@ -29,12 +31,6 @@ export function privilegeRight(p) {
   return m ? m[1] : null;
 }
 
-export function depthFromMask(mask) {
-  const m = Number(mask) || 0;
-  for (const d of [8, 4, 2, 1]) if (m & d) return d;
-  return 0;
-}
-
 // BU tree helpers: within(child, ancestor) — child is the ancestor or below it.
 export function buTree(bus) {
   const parent = new Map(), name = new Map();
@@ -51,8 +47,12 @@ export function buTree(bus) {
 
 // Does a privilege at `depth`, scoped to business unit `scopeBu`, reach the record?
 // ownsIt = the record is owned by the principal the Basic level counts for.
+// Levels are cumulative (User ⊂ Business Unit ⊂ Parent: Child ⊂ Organization): an owned record is
+// reached at EVERY depth, even when the privilege's business unit isn't the record's (a role from
+// another BU, a team's BU) — the BU tests alone said no for a depth-2/4 privilege on an owned record.
 export function reaches(depth, scopeBu, rec, ownsIt, tree) {
   if (depth >= 8) return true;
+  if (depth >= 1 && ownsIt) return true;
   if (depth >= 4) return tree.within(rec.buId, scopeBu);
   if (depth >= 2) return !!rec.buId && lc(rec.buId) === lc(scopeBu);
   if (depth >= 1) return !!ownsIt;

@@ -136,7 +136,7 @@ export default function RecordAccess({ record, orgInfo }) {
               {ctx.shares && !ctx.shares.length && <div style={{ color: C.txd }}>not shared</div>}
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: C.txd, marginTop: 10, lineHeight: 1.5 }}>Read-only. The ✓ / ✗ are Dataverse's own answer (RetrievePrincipalAccess); the explanation is rebuilt from the user's roles and teams ({Object.values(DEPTH_LABEL).join(" / ")} depths), business units, owner and shares. Not modeled: hierarchy security, access inherited from a related record, and column-level (field) security. Access mode: {ACCESS_MODE[ctx.user.accessMode] || ctx.user.accessMode}.</div>
+          <div style={{ fontSize: 11.5, color: C.txd, marginTop: 10, lineHeight: 1.5 }}>Read-only. The ✓ / ✗ are Dataverse's own answer (RetrievePrincipalAccess); the explanation is rebuilt from the user's roles and teams ({[1, 2, 4, 8].map(d => DEPTH_LABEL[d]).join(" / ")} depths), business units, owner and shares. Not modeled: hierarchy security, access inherited from a related record, and column-level (field) security. Access mode: {ACCESS_MODE[ctx.user.accessMode] || ctx.user.accessMode}.</div>
         </div>}
       </div>}
     </div>

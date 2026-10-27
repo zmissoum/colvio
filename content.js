@@ -43,29 +43,50 @@
     if (typeof v !== "string") return "";
     return v.replace(/[\x00-\x1f]/g, "").substring(0, 100).replace(/'/g, "''");
   }
+  // An OData string literal, ready for a URL: quotes doubled, control chars dropped, then
+  // percent-encoded — a raw "&" split the query string, "%" was an invalid escape, "+" read as a
+  // space ("john+doe@x" matched nothing, "R&D Manager" 400'd). fetch() leaves those three alone.
+  const odataStr = (v) => encodeURIComponent("'" + String(v ?? "").replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''") + "'");
+
+  // The Dataverse clouds the manifest covers — commercial, US Government, China.
+  const D365_HOST_SUFFIXES = [".dynamics.com", ".microsoftdynamics.us", ".dynamics.cn"];
+
+  // The URL segment addressing ONE record by key — shared by batchUpsert, batchDeleteKeyed and the
+  // serial fallbacks, so a fix lands in every transport. Returns { path } or { error }: a key the
+  // table can't address is REFUSED per row, never "cleaned" into another key (the old numeric
+  // allow-list turned "SAP-00123" into -00123 and wrote THAT record — audit finding). Alternate-key
+  // values are percent-encoded: inside a $batch request line a space, "%", "?" or "#" otherwise
+  // mis-parses the part (the serial fallback went through fetch, which encodes, so the same row
+  // failed in one transport and passed in the other).
+  const stripCtrl = (v) => String(v ?? "").replace(/[\x00-\x1f\x7f]/g, "");
+  const GUID_KEY_RE = /^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$/;
+  const NUMERIC_KEY_RE = /^[+-]?\d+(\.\d+)?$/;
+  function buildKeyPath(entitySet, keyField, value, { isPrimaryKey = false, keyIsNumeric = false } = {}) {
+    const v = stripCtrl(value).trim();
+    if (!v) return { error: "Empty key value" };
+    if (isPrimaryKey) {
+      if (!GUID_KEY_RE.test(v)) return { error: `"${v.slice(0, 60)}" is not a GUID` };
+      return { path: `${entitySet}(${v.replace(/[{}]/g, "").toLowerCase()})` };
+    }
+    if (keyIsNumeric) {
+      if (!NUMERIC_KEY_RE.test(v)) return { error: `Key ${keyField}="${v.slice(0, 60)}" is not a number — the column is numeric, the row was not sent` };
+      return { path: `${entitySet}(${keyField}=${v})` };
+    }
+    return { path: `${entitySet}(${keyField}=${encodeURIComponent("'" + v.replace(/'/g, "''") + "'")})` };
+  }
 
   let d365Context = null;
 
   // ── Context D365 ─────────────────────────────────────────
+  // Content scripts run in the isolated world: window.Xrm is never visible here, so the org is
+  // read from the page's origin (the manifest already restricts injection to the Dataverse hosts).
+  // Every cloud the manifest covers is accepted — the commercial-only check left GCC and China
+  // orgs with "D365 context not detected" on every action (audit finding).
   function extractContext() {
     try {
-      const ctx = window.Xrm?.Utility?.getGlobalContext?.();
-      if (ctx) {
-        const orgSettings = ctx.organizationSettings || {};
-        return {
-          clientUrl: ctx.getClientUrl(),
-          orgName: orgSettings.uniqueName || new URL(ctx.getClientUrl()).hostname.split(".")[0],
-          userId: ctx.userSettings?.userId,
-          userName: ctx.userSettings?.userName,
-          apiVersion: "v9.2",
-          source: "xrm_sdk",
-          isProduction: !ctx.getClientUrl().includes("sandbox") && !ctx.getClientUrl().includes("dev"),
-        };
-      }
-    } catch {}
-    try {
       const url = window.location.origin;
-      if (url.includes(".dynamics.com")) {
+      const host = new URL(url).hostname;
+      if (D365_HOST_SUFFIXES.some(sfx => host.endsWith(sfx))) {
         return {
           clientUrl: url,
           orgName: url.split("//")[1]?.split(".")[0] || "unknown",
@@ -82,20 +103,31 @@
   // Set by the panel (via "abortBatch") when the user cancels a bulk run; cleared by
   // "resetBatchAbort" at the start of each run. Checked by the batch builders and the 429
   // back-off loops so a cancel stops retries and chunk processing inside the content script too.
-  let batchAborted = false;
-  // Run token: resetBatchAbort BUMPS it. An ORPHANED serial-fallback loop (its bridge call timed
-  // out, the user already clicked Retry) used to see the freshly-reset batchAborted=false and
-  // RESUME posting its rows concurrently with the retry run → duplicate records (audit finding).
-  // Loops capture the token at run start and stop the moment a new run begins.
+  let batchAborted = false; // "the current run is aborted" — read by the 429 back-off loops
+  // Run tokens: resetBatchAbort mints one per bulk run (the bridge passes it on every chunk and on
+  // abortBatch). Abort state is PER RUN: several bulk runs can share a tab (the Loader imports
+  // while the Explorer bulk-deletes) and a single global flag let a cancel in one of them abort
+  // the other, and a newer run's reset make an older run's chunk stop mid-loop with its rows
+  // neither sent nor logged (audit finding). An orphaned loop (its bridge call timed out, the user
+  // clicked Retry) is stopped by the timeout's own abortBatch(runId) — and the run's in-flight
+  // $batch fetch is aborted with it, so the server stops as soon as it can.
   let batchRunId = 0;
+  const abortedRuns = new Set();
+  const runControllers = new Map(); // runId → AbortController of its in-flight $batch fetches
+  const runSignal = (runId) => {
+    let c = runControllers.get(runId);
+    if (!c) { c = new AbortController(); runControllers.set(runId, c); }
+    return c.signal;
+  };
+  const isRunAborted = (runId) => abortedRuns.has(runId);
 
   // When an abort (user cancel, or the panel's chunk-timeout abort) short-circuits a batch loop,
   // the untouched rows must NOT vanish from the results — the run would look "done" while most of
   // the file was never sent. Give every row with no log entry an explicit, RETRYABLE error, and
   // tell the panel this call ended aborted so it stops dispatching further chunks.
-  const padAbortedRows = (results, total) => {
-    results.aborted = batchAborted;
-    if (!batchAborted) return;
+  const padAbortedRows = (results, total, runId) => {
+    results.aborted = isRunAborted(runId);
+    if (!results.aborted) return;
     const seen = new Set(results.log.map(e => e.row));
     const msg = "Aborted before send — the run stopped early (chunk timeout or cancel); retry to send this row";
     for (let i = 1; i <= total; i++) {
@@ -181,11 +213,19 @@
     // restores) — the bridge caps this call at 10 min.
     // PublishXml and metadata creates (columns, relationships) are synchronous server-side jobs
     // that take minutes on big orgs — same 9.5 min budget as Restore.
-    const isRestore = path === "Restore" || path === "PublishXml" || path === "RelationshipDefinitions" || /^EntityDefinitions\([^)]*\)\/Attributes$/.test(path);
+    // PublishAllXml, ExportTranslation / ImportTranslation and a heavy owner's business-unit move
+    // are the same kind of synchronous job (minutes on a real solution); the 25 s budget made the
+    // panel report "publish failed" / "move failed" while the server was still finishing, and the
+    // user re-ran the import (audit finding). A caller can also ask for the long budget explicitly
+    // with the X-Colvio-Long header (stripped before sending).
+    const longHint = headers["X-Colvio-Long"] === "1";
+    delete headers["X-Colvio-Long"];
+    const isRestore = longHint || path === "Restore" || path === "PublishXml" || path === "PublishAllXml" || path === "RelationshipDefinitions" || path === "ImportTranslation" || /ExportTranslation$/.test(path) || /^EntityDefinitions\([^)]*\)\/Attributes$/.test(path);
     // Pacing waits BEFORE the timer is armed — a paced request must never read as "D365 did not respond".
     await apiPace();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), isRestore ? 570000 : isWrite ? 25000 : 60000);
+    const budgetMs = isRestore ? 570000 : isWrite ? 25000 : 60000;
+    let controller = new AbortController();
+    let timeout = setTimeout(() => controller.abort(), budgetMs);
 
     try {
       let resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
@@ -202,7 +242,12 @@
         if (batchAborted) break;
         attempt429++;
         await apiPace();
-        resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin" });
+        // each retry gets its own timer — a retried request used to carry no signal at all and
+        // could hang in the content script forever (the panel's timeout fired, the request leaked)
+        controller = new AbortController();
+        timeout = setTimeout(() => controller.abort(), budgetMs);
+        resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: controller.signal });
+        clearTimeout(timeout);
       }
 
       if (!resp.ok) {
@@ -233,6 +278,9 @@
       if (ct.includes("application/json")) {
         return await resp.json();
       }
+      // /$count answers text/plain — returned as text (it used to come back as {status, ok}, which
+      // parseInt read as NaN: every table count showed 0; audit finding)
+      if (ct.includes("text/plain")) return await resp.text();
       return { status: resp.status, ok: true };
     } catch (e) {
       clearTimeout(timeout);
@@ -241,20 +289,37 @@
     }
   }
 
+  // An exact "how many rows match": $count=true is honest only below 5,000 (Dataverse caps the
+  // annotation there and the Security Audit showed "5000 users" for a 12,000-holder role — audit
+  // finding); past the cap the ids are paged and counted (5,000 a page, 50 pages).
+  async function countByFilter(entitySet, idField, filter) {
+    const d = await dvRequest("GET", `${entitySet}?$select=${idField}&$top=1&$count=true&$filter=${filter}`, null, NO_ANN);
+    const c = d["@odata.count"];
+    if (c == null) return (d.value || []).length;
+    if (c < 5000) return c;
+    let n = 0, guard = 0, url = `${entitySet}?$select=${idField}&$filter=${filter}`;
+    while (url && guard++ < 50) {
+      const pg = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
+      n += (pg.value || []).length;
+      url = pg["@odata.nextLink"] || null;
+    }
+    return n;
+  }
+
   // Fetch a $batch with automatic 429 (Service Protection) backoff. Dataverse counts every
   // operation inside a $batch against the request budget, so big loads can hit 429 — this honors
   // Retry-After (capped) and retries the same batch instead of surfacing a throttle as a row error.
-  async function fetchBatchWithRetry(url, options, maxRetries = 4) {
+  async function fetchBatchWithRetry(url, options, maxRetries = 4, isAborted = () => batchAborted) {
     let attempt = 0;
     const ops = batchOps(options && options.body);
     while (true) {
       await apiPace(ops);
       const resp = await fetch(url, options);
-      if (resp.status !== 429 || attempt >= maxRetries || batchAborted) return resp;
+      if (resp.status !== 429 || attempt >= maxRetries || isAborted()) return resp;
       const ra = parseInt(resp.headers.get("Retry-After") || "", 10);
       const waitMs = Math.min(isNaN(ra) ? 2 * (attempt + 1) : ra, 30) * 1000; // cap 30s
       await new Promise(r => setTimeout(r, waitMs));
-      if (batchAborted) return resp; // user cancelled during the back-off — never re-send writes
+      if (isAborted()) return resp; // user cancelled during the back-off — never re-send writes
       attempt++;
     }
   }
@@ -452,6 +517,7 @@
 
           case "getFields": {
             validateName(params.logicalName, 'logicalName');
+            const VIRTUAL_TYPES = { MultiSelectPicklistType: "MultiSelectPicklist", FileType: "File", ImageType: "Image" };
             // Base attribute metadata + the typed String/Memo casts — MaxLength/Format live only on
             // those typed metadata, not on the base AttributeMetadata. The casts are best-effort: if
             // an org/version rejects them, fields still return (without lengths).
@@ -482,14 +548,17 @@
                 // Also skip fields that are computed from another field
                 if (a.AttributeOf) return false;
 
-                // Skip types that are never useful in data queries
+                // Skip types that are never useful in data queries. "Virtual" is ALSO what
+                // multi-select choice, File and Image columns report as AttributeType — those are
+                // real, queryable columns (they vanished from Metadata, Schema and Show All Data).
                 const aType = a.AttributeType || "";
-                if (aType === "Virtual" || aType === "CalendarRules") return false;
+                if (aType === "CalendarRules") return false;
+                if (aType === "Virtual" && !VIRTUAL_TYPES[a.AttributeTypeName?.Value]) return false;
 
                 return true;
               })
               .map(a => {
-                const aType = a.AttributeType || "String";
+                const aType = (a.AttributeType === "Virtual" && VIRTUAL_TYPES[a.AttributeTypeName?.Value]) || a.AttributeType || "String";
                 const logicalName = a.LogicalName;
                 // Lookup / Customer / Owner are all single-valued lookups → the queryable column is
                 // _<name>_value (Owner is the polymorphic principal type; missing it made ownerid
@@ -561,7 +630,9 @@
             const ps = [];
             if (params.options?.select) ps.push(`$select=${params.options.select}`);
             if (!isDirectFetch) {
-              if (params.options?.filter) ps.push(`$filter=${params.options.filter}`);
+              // the whole predicate percent-encoded (no caller pre-encodes): a "+" in an email read
+              // as a space → "not found" → a row created WITHOUT its parent; "&" cut the query
+              if (params.options?.filter) ps.push(`$filter=${encodeURIComponent(params.options.filter)}`);
               if (params.options?.top) ps.push(`$top=${params.options.top}`);
               if (params.options?.orderby) ps.push(`$orderby=${params.options.orderby}`);
               if (params.options?.expand) ps.push(`$expand=${params.options.expand}`);
@@ -583,7 +654,7 @@
                 let fallbackPath = params.entitySet;
                 const fps = [];
                 if (!isDirectFetch) {
-                  if (params.options?.filter) fps.push(`$filter=${params.options.filter}`);
+                  if (params.options?.filter) fps.push(`$filter=${encodeURIComponent(params.options.filter)}`);
                   if (params.options?.top) fps.push(`$top=${params.options.top}`);
                   if (params.options?.orderby) fps.push(`$orderby=${params.options.orderby}`);
                   if (params.options?.expand) fps.push(`$expand=${params.options.expand}`);
@@ -665,11 +736,15 @@
             break;
           }
           case "batchCreate": {
-            const myRun = batchRunId; // orphan guard — see batchRunId declaration
+            const myRun = Number.isFinite(Number(params.runId)) ? Number(params.runId) : batchRunId; // see abortedRuns
+            const aborted = () => isRunAborted(myRun);
             const records = params.records || [];
             const entitySet = params.entitySet;
             const results = { created: 0, errors: [], log: [] };
-            const STRIP = new Set(["createdon","modifiedon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
+            // overriddencreatedon / modifiedon are NOT stripped: migration mode maps them on purpose
+            // (the panel gates them behind the privilege check) — stripping them here silently gave
+            // every migrated record today's date while the log said CREATED (audit finding).
+            const STRIP = new Set(["createdon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","timezoneruleversionnumber","utcconversiontimezonecode"]);
             validateEntitySet(entitySet);
             // Process the whole received slice as ONE HTTP $batch (capped at 500). The panel-side
             // worker pool already chunks to the user's batch size, so this avoids re-chunking into
@@ -736,7 +811,7 @@
             };
 
             for (let batch = 0; batch < records.length; batch += BATCH_SIZE) {
-              if (batchAborted || myRun !== batchRunId) break; // user cancelled or a newer run started — stop sending further chunks
+              if (aborted()) break; // user cancelled / chunk timed out — stop sending further chunks
               const chunk = records.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
 
@@ -765,7 +840,8 @@
                   headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
                   body,
                   credentials: "same-origin",
-                });
+                  signal: runSignal(myRun),
+                }, 4, aborted);
                 if (resp.ok) {
                   const respText = await resp.text();
                   const chunkLog = parseBatchResponse(respText, batch, chunk.length);
@@ -796,7 +872,7 @@
                   if (resp.status === 401) throw new Error("SESSION_EXPIRED: Session expired mid-run — refresh D365 (F5), reconnect, then retry the remaining rows");
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
-                    if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
+                    if (aborted()) break; // cancelled — stop the serial fallback
                     try {
                       await dvRequest("POST", entitySet, buildClean(chunk[i]), bypassHeaderObj);
                       results.created++;
@@ -811,7 +887,7 @@
               } catch (batchErr) {
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
-                  if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
+                  if (aborted()) break; // cancelled — stop the serial fallback
                   try {
                     await dvRequest("POST", entitySet, buildClean(chunk[i]), bypassHeaderObj);
                     results.created++;
@@ -824,19 +900,23 @@
                 }
               }
             }
-            padAbortedRows(results, records.length);
+            padAbortedRows(results, records.length, myRun);
             result = results;
             break;
           }
 
           case "batchUpsert": {
-            const myRun = batchRunId; // orphan guard — see batchRunId declaration
+            const myRun = Number.isFinite(Number(params.runId)) ? Number(params.runId) : batchRunId; // see abortedRuns
+            const aborted = () => isRunAborted(myRun);
             const items = params.items || [];
             const entitySet = params.entitySet;
             const keyField = params.keyField;
             const isPrimaryKey = params.isPrimaryKey || false;
             const results = { created: 0, updated: 0, errors: [], log: [] };
-            const STRIP = new Set(["createdon","modifiedon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
+            // overriddencreatedon / modifiedon are NOT stripped: migration mode maps them on purpose
+            // (the panel gates them behind the privilege check) — stripping them here silently gave
+            // every migrated record today's date while the log said CREATED (audit finding).
+            const STRIP = new Set(["createdon","createdby","modifiedby","ownerid","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","timezoneruleversionnumber","utcconversiontimezonecode"]);
             validateEntitySet(entitySet);
             validateName(keyField, 'keyField');
             // One HTTP $batch per received slice (capped 500) — see batchCreate for rationale.
@@ -866,30 +946,10 @@
               ? { ...Object.fromEntries(bypassPairs), ...(params.updateOnly ? { "If-Match": "*" } : {}) }
               : null;
 
-            // Sanitize the key value before it goes into the multipart request line — prevents
-            // changeset break-out / HTTP-request injection when a CSV key column contains \r\n or
-            // path metacharacters (malformed or hostile data). Done per-record, no chunk abort.
-            const stripCtrl = (v) => String(v ?? "").replace(/[\x00-\x1f\x7f]/g, "");
-            const buildPath = (item) => {
-              if (isPrimaryKey) {
-                // PK upsert: value is a bare GUID inside (…) with no quotes — strip anything that
-                // isn't a GUID character so a malicious value can't inject path segments. A
-                // non-GUID result just yields a clean per-record 400/404, not an injection.
-                const guid = stripCtrl(item.keyValue).replace(/[^0-9a-fA-F-]/g, "");
-                return `${entitySet}(${guid})`;
-              }
-              // Alt-key upsert: numeric alternate keys must be UNQUOTED ('123' 400s on an integer
-              // alt-key while the dry-run's $filter used the bare number — audit finding); the
-              // panel passes keyIsNumeric from field metadata. Character allow-list keeps the
-              // predicate injection-proof either way.
-              if (params.keyIsNumeric) {
-                const num = stripCtrl(item.keyValue).replace(/[^0-9.eE+\-]/g, "");
-                return `${entitySet}(${keyField}=${num})`;
-              }
-              // String alt-key: value sits inside '…' (OData string literal). Escaping quotes +
-              // stripping control chars is sufficient; ) or / inside quotes can't break out.
-              return `${entitySet}(${keyField}='${stripCtrl(item.keyValue).replace(/'/g, "''")}')`;
-            };
+            // The record's URL segment — buildKeyPath (shared with batchDeleteKeyed): a value the key
+            // can't address (not a GUID / not a number) is a per-row error, never sent.
+            const buildPath = (item) => buildKeyPath(entitySet, keyField, item.keyValue, { isPrimaryKey, keyIsNumeric: !!params.keyIsNumeric });
+            const refuse = (rowIdx, msg, payload) => { results.errors.push({ row: rowIdx, msg, payload }); results.log.push({ row: rowIdx, status: "ERROR", msg }); };
             const buildClean = (item) => {
               const c = {};
               for (const [k, v] of Object.entries(item.record)) {
@@ -933,17 +993,21 @@
             };
 
             for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
-              if (batchAborted || myRun !== batchRunId) break; // user cancelled or a newer run started — stop sending further chunks
+              if (aborted()) break; // user cancelled / chunk timed out — stop sending further chunks
               const chunk = items.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
 
               // One changeset per record → per-record atomicity, errors don't cascade.
               // Still a single HTTP roundtrip for the whole chunk.
-              let body = "";
+              let body = "", parts = 0;
+              const refused = new Set(); // rows whose key was refused — logged, never sent, not padded
               for (let i = 0; i < chunk.length; i++) {
                 const csName = "cs_" + Date.now() + "_" + (batch + i);
                 const clean = buildClean(chunk[i]);
-                const path = buildPath(chunk[i]);
+                const kp = buildPath(chunk[i]);
+                if (kp.error) { refused.add(batch + i + 1); refuse(batch + i + 1, kp.error, JSON.stringify(chunk[i].record).substring(0, 200)); continue; }
+                const path = kp.path;
+                parts++;
                 body += "--" + boundary + "\r\n";
                 body += "Content-Type: multipart/mixed; boundary=" + csName + "\r\n\r\n";
                 body += "--" + csName + "\r\n";
@@ -957,6 +1021,7 @@
                 body += "--" + csName + "--\r\n";
               }
               body += "--" + boundary + "--\r\n";
+              if (!parts) continue; // every key of the chunk refused — nothing to send
 
               try {
                 const resp = await fetchBatchWithRetry(baseUrl + "/$batch", {
@@ -964,7 +1029,8 @@
                   headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
                   body,
                   credentials: "same-origin",
-                });
+                  signal: runSignal(myRun),
+                }, 4, aborted);
                 if (resp.ok) {
                   const respText = await resp.text();
                   const chunkLog = parseBatchResponse(respText, batch, chunk.length);
@@ -987,7 +1053,7 @@
                     const seen = new Set(chunkLog.map(e => e.row));
                     for (let i = 0; i < chunk.length; i++) {
                       const rowIdx = batch + i + 1;
-                      if (seen.has(rowIdx)) continue;
+                      if (seen.has(rowIdx) || refused.has(rowIdx)) continue;
                       results.log.push({ row: rowIdx, status: "ERROR", msg: "No response received from batch" });
                       results.errors.push({ row: rowIdx, msg: "No response received from batch", payload: "" });
                     }
@@ -999,9 +1065,10 @@
                   if (resp.status === 401) throw new Error("SESSION_EXPIRED: Session expired mid-run — refresh D365 (F5), reconnect, then retry the remaining rows");
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
-                    if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
+                    if (aborted()) break; // cancelled — stop the serial fallback
+                    if (refused.has(rowIdx)) continue;
                     try {
-                      await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), fbHeaders);
+                      await dvRequest("PATCH", buildPath(chunk[i]).path, buildClean(chunk[i]), fbHeaders);
                       results.updated++;
                       results.log.push({ row: rowIdx, status: "UPSERTED" });
                     } catch (e) {
@@ -1015,9 +1082,10 @@
                 // Network/transport failure — same fallback
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
-                  if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
+                  if (aborted()) break; // cancelled — stop the serial fallback
+                  if (refused.has(rowIdx)) continue;
                   try {
-                    await dvRequest("PATCH", buildPath(chunk[i]), buildClean(chunk[i]), fbHeaders);
+                    await dvRequest("PATCH", buildPath(chunk[i]).path, buildClean(chunk[i]), fbHeaders);
                     results.updated++;
                     results.log.push({ row: rowIdx, status: "UPSERTED" });
                   } catch (e) {
@@ -1028,13 +1096,14 @@
                 }
               }
             }
-            padAbortedRows(results, items.length);
+            padAbortedRows(results, items.length, myRun);
             result = results;
             break;
           }
 
           case "batchDeleteKeyed": {
-            const myRun = batchRunId; // orphan guard — see batchRunId declaration
+            const myRun = Number.isFinite(Number(params.runId)) ? Number(params.runId) : batchRunId; // see abortedRuns
+            const aborted = () => isRunAborted(myRun);
             // Bulk DELETE by primary key (GUID) or alternate key, via multipart $batch with
             // one changeset per record (per-record log, errors don't cascade). Mirrors batchUpsert.
             const items = params.items || []; // [{ keyValue }]
@@ -1060,18 +1129,8 @@
             const bypassHeaderLinesD = bypassPairsD.map(([k, v]) => `${k}: ${v}\r\n`).join("");
             const bypassHeaderObjD = bypassPairsD.length ? Object.fromEntries(bypassPairsD) : null;
 
-            const stripCtrl = (v) => String(v ?? "").replace(/[\x00-\x1f\x7f]/g, "");
-            const buildPath = (item) => {
-              if (isPrimaryKey) {
-                const guid = stripCtrl(item.keyValue).replace(/[^0-9a-fA-F-]/g, "");
-                return `${entitySet}(${guid})`;
-              }
-              if (params.keyIsNumeric) {
-                const num = stripCtrl(item.keyValue).replace(/[^0-9.eE+\-]/g, "");
-                return `${entitySet}(${keyField}=${num})`;
-              }
-              return `${entitySet}(${keyField}='${stripCtrl(item.keyValue).replace(/'/g, "''")}')`;
-            };
+            const buildPath = (item) => buildKeyPath(entitySet, keyField, item.keyValue, { isPrimaryKey, keyIsNumeric: !!params.keyIsNumeric }); // shared with batchUpsert
+            const refuse = (rowIdx, msg) => { results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); };
 
             const parseBatchResponse = (text, batchOffset, chunkLen) => {
               const log = [];
@@ -1096,13 +1155,17 @@
             };
 
             for (let batch = 0; batch < items.length; batch += BATCH_SIZE) {
-              if (batchAborted || myRun !== batchRunId) break; // user cancelled or a newer run started — stop sending further chunks
+              if (aborted()) break; // user cancelled / chunk timed out — stop sending further chunks
               const chunk = items.slice(batch, batch + BATCH_SIZE);
               const boundary = "batch_d365_" + Date.now() + "_" + batch;
-              let body = "";
+              let body = "", parts = 0;
+              const refused = new Set();
               for (let i = 0; i < chunk.length; i++) {
                 const csName = "cs_" + Date.now() + "_" + (batch + i);
-                const path = buildPath(chunk[i]);
+                const kp = buildPath(chunk[i]);
+                if (kp.error) { refused.add(batch + i + 1); refuse(batch + i + 1, kp.error); continue; }
+                const path = kp.path;
+                parts++;
                 body += "--" + boundary + "\r\n";
                 body += "Content-Type: multipart/mixed; boundary=" + csName + "\r\n\r\n";
                 body += "--" + csName + "\r\n";
@@ -1112,6 +1175,7 @@
                 body += "--" + csName + "--\r\n";
               }
               body += "--" + boundary + "--\r\n";
+              if (!parts) continue; // every key of the chunk refused — nothing to send
 
               try {
                 const resp = await fetchBatchWithRetry(baseUrl + "/$batch", {
@@ -1119,7 +1183,8 @@
                   headers: { "Content-Type": "multipart/mixed; boundary=" + boundary, "OData-MaxVersion": "4.0", "OData-Version": "4.0", "Accept": "application/json" },
                   body,
                   credentials: "same-origin",
-                });
+                  signal: runSignal(myRun),
+                }, 4, aborted);
                 if (resp.ok) {
                   const respText = await resp.text();
                   const chunkLog = parseBatchResponse(respText, batch, chunk.length);
@@ -1134,7 +1199,7 @@
                     const seen = new Set(chunkLog.map(e => e.row));
                     for (let i = 0; i < chunk.length; i++) {
                       const rowIdx = batch + i + 1;
-                      if (seen.has(rowIdx)) continue;
+                      if (seen.has(rowIdx) || refused.has(rowIdx)) continue;
                       results.log.push({ row: rowIdx, status: "ERROR", msg: "No response received from batch" });
                       results.errors.push({ row: rowIdx, msg: "No response received from batch", payload: "" });
                     }
@@ -1147,21 +1212,23 @@
                   if (resp.status === 401) throw new Error("SESSION_EXPIRED: Session expired mid-run — refresh D365 (F5), reconnect, then retry the remaining rows");
                   for (let i = 0; i < chunk.length; i++) {
                     const rowIdx = batch + i + 1;
-                    if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
-                    try { await dvRequest("DELETE", buildPath(chunk[i]), null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
+                    if (aborted()) break; // cancelled — stop the serial fallback
+                    if (refused.has(rowIdx)) continue;
+                    try { await dvRequest("DELETE", buildPath(chunk[i]).path, null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                     catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                   }
                 }
               } catch (batchErr) {
                 for (let i = 0; i < chunk.length; i++) {
                   const rowIdx = batch + i + 1;
-                  if (batchAborted || myRun !== batchRunId) break; // cancelled or superseded by a NEWER run — stop the serial fallback
-                  try { await dvRequest("DELETE", buildPath(chunk[i]), null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
+                  if (aborted()) break; // cancelled — stop the serial fallback
+                  if (refused.has(rowIdx)) continue;
+                  try { await dvRequest("DELETE", buildPath(chunk[i]).path, null, bypassHeaderObjD || undefined); results.deleted++; results.log.push({ row: rowIdx, status: "DELETED" }); }
                   catch (e) { const msg = e.message?.substring(0, 500) || "Error"; results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); }
                 }
               }
             }
-            padAbortedRows(results, items.length);
+            padAbortedRows(results, items.length, myRun);
             result = results;
             break;
           }
@@ -1305,8 +1372,8 @@
 
           case "searchUsers": {
             // Search systemusers by name or email
-            const term = sanitizeSearchTerm(params.search);
-            const filter = `contains(fullname,'${term}') or contains(internalemailaddress,'${term}')`;
+            const term = odataStr(typeof params.search === "string" ? params.search.substring(0, 100) : "");
+            const filter = `contains(fullname,${term}) or contains(internalemailaddress,${term})`;
             const data = await dvRequest("GET",
               `systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,title&$filter=${filter}&$top=20&$orderby=fullname asc`
             );
@@ -1454,7 +1521,10 @@
 
           case "getAllForms": {
             const rowsF = [];
-            let urlF = `systemforms?$select=formid,name,objecttypecode,type`;
+            // active forms of the types an app can include (main, quick view, quick create, card,
+            // main interactive) — inactive and dashboard/mobile-express forms were listed as
+            // "exposed by the app" (audit finding)
+            let urlF = `systemforms?$select=formid,name,objecttypecode,type,formactivationstate&$filter=formactivationstate eq 1 and (type eq 2 or type eq 6 or type eq 7 or type eq 11 or type eq 12)`;
             while (urlF) {
               const dF = await dvRequest("GET", urlF, null, { Prefer: "odata.maxpagesize=5000" });
               (dF.value || []).forEach(f => rowsF.push({ id: f.formid, name: f.name || "", entity: f.objecttypecode || "", type: f.type, typeLabel: f["type@OData.Community.Display.V1.FormattedValue"] || "" }));
@@ -1466,7 +1536,9 @@
 
           case "getAllViews": {
             const rowsV = [];
-            let urlV = `savedqueries?$select=savedqueryid,name,returnedtypecode`;
+            // public, active views only (querytype 0): lookup, quick-find, associated and
+            // inactive views were counted as components the app exposes (audit finding)
+            let urlV = `savedqueries?$select=savedqueryid,name,returnedtypecode,querytype,statecode&$filter=querytype eq 0 and statecode eq 0`;
             while (urlV) {
               const dV = await dvRequest("GET", urlV, null, { Prefer: "odata.maxpagesize=5000" });
               (dV.value || []).forEach(v => rowsV.push({ id: v.savedqueryid, name: v.name || "", entity: v.returnedtypecode || "" }));
@@ -1916,15 +1988,22 @@
             break;
           // Bulk-run cancellation: the bridge resets the flag when a run starts and sets it when
           // the user cancels — so retries/chunks already inside the content script stop too.
-          case "resetBatchAbort":
+          case "resetBatchAbort": {
+            batchRunId++;
             batchAborted = false;
-            batchRunId++; // invalidates any orphaned loop from a previous (timed-out) run
+            for (const k of [...runControllers.keys()]) if (k < batchRunId - 8) runControllers.delete(k); // finished runs
+            result = { ok: true, runId: batchRunId };
+            break;
+          }
+          case "abortBatch": {
+            // the run named by the caller (the bridge always names it); a nameless abort = the current run
+            const rid = Number.isFinite(Number(params.runId)) ? Number(params.runId) : batchRunId;
+            abortedRuns.add(rid);
+            try { runControllers.get(rid)?.abort(); } catch { /* no fetch in flight */ }
+            if (rid === batchRunId) batchAborted = true;
             result = { ok: true };
             break;
-          case "abortBatch":
-            batchAborted = true;
-            result = { ok: true };
-            break;
+          }
           // ── Solutions ──
           case "getSolutions": {
             const data = await dvRequest("GET",
@@ -1939,6 +2018,16 @@
               installedOn: s.installedon,
               description: s.description || "",
             }));
+            break;
+          }
+          case "getSolutionComponentCount": {
+            // The badge of the solution list — ONE request per solution ($count annotation, honest
+            // below 5,000; `capped` says the real number is at least that) instead of paging every
+            // component and resolving its name just to paint a number (audit finding).
+            validateGuid(params.solutionId);
+            const dCnt = await dvRequest("GET", `solutioncomponents?$select=solutioncomponentid&$top=1&$count=true&$filter=_solutionid_value eq ${params.solutionId}`, null, NO_ANN);
+            const cnt = dCnt["@odata.count"] != null ? dCnt["@odata.count"] : (dCnt.value || []).length;
+            result = { count: cnt, capped: cnt >= 5000 };
             break;
           }
           case "getSolutionComponents": {
@@ -2034,7 +2123,11 @@
             const attrIds = new Set(comps.filter(c => c.type === 2 && c.objectId).map(c => c.objectId.toLowerCase()));
             if (attrIds.size > 0 && entityIds.length > 0) {
               try {
-                await Promise.all(entityIds.map(async entId => {
+                // 4 at a time — one request per table of the solution, all at once, burst past the
+                // service-protection quota on Microsoft managed solutions (300+ tables; audit finding)
+                let nextEnt = 0;
+                const entWorker = async () => { while (nextEnt < entityIds.length) {
+                  const entId = entityIds[nextEnt++];
                   try {
                     const d = await dvRequest("GET", `EntityDefinitions(${entId})/Attributes?$select=MetadataId,LogicalName,DisplayName`);
                     (d.value || []).forEach(a => {
@@ -2044,7 +2137,8 @@
                       }
                     });
                   } catch {}
-                }));
+                } };
+                await Promise.all(Array.from({ length: Math.min(4, entityIds.length) }, () => entWorker()));
               } catch {}
             }
 
@@ -2123,26 +2217,9 @@
             });
             fullAttr.DisplayName.LocalizedLabels = existingLabels;
             // Step 4: PUT the entire attribute back with MSCRM.MergeLabels header
-            const ctx2 = d365Context || extractContext();
-            const putUrl = `${ctx2.clientUrl}/api/data/${ctx2.apiVersion}/EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')${castSegment}`;
-            const putResp = await fetch(putUrl, {
-              method: "PUT",
-              headers: {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "OData-MaxVersion": "4.0",
-                "OData-Version": "4.0",
-                "MSCRM.MergeLabels": "true"
-              },
-              body: JSON.stringify(fullAttr),
-              credentials: "same-origin"
-            });
-            if (!putResp.ok) {
-              const errText = await putResp.text();
-              let msg = `HTTP ${putResp.status}`;
-              try { msg = `HTTP ${putResp.status}: ${JSON.parse(errText).error?.message || errText}`; } catch {}
-              throw new Error(msg);
-            }
+            // through dvRequest like every other write (pacing, 429 retry, timeout, API meter) — a raw
+            // fetch here surfaced throttles as failed rows and could hang (audit finding)
+            await dvRequest("PUT", `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.attributeName}')${castSegment}`, fullAttr, { "MSCRM.MergeLabels": "true", "X-Colvio-Long": "1" });
             result = { ok: true };
             break;
           }
@@ -2427,10 +2504,12 @@
             });
             const filtB = buIdB ? `_businessunitid_value eq ${buIdB}` : "_businessunitid_value eq null";
             let usersB = [];
-            let urlB = `systemusers?$select=${fieldsB}&$filter=${filtB}&$orderby=fullname asc&$top=5000`;
+            // paged with maxpagesize, NOT $top: $top is a hard result cap and suppresses
+            // @odata.nextLink, so a BU with more than 5,000 members was cut silently (audit finding)
+            let urlB = `systemusers?$select=${fieldsB}&$filter=${filtB}&$orderby=fullname asc`;
             let guardB = 0;
             while (urlB && guardB++ < 50) {
-              const dataB = await dvRequest("GET", urlB);
+              const dataB = await dvRequest("GET", urlB, null, { Prefer: "odata.maxpagesize=5000" });
               usersB = usersB.concat((dataB.value || []).map(mapUserB));
               const nlB = dataB["@odata.nextLink"];
               urlB = nlB ? nlB.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
@@ -2567,7 +2646,7 @@
             const isoOf = (ms) => new Date(ms).toISOString();
             const walk = async (fMs, tMs) => {
               const f = isoOf(fMs), t = isoOf(tMs);
-              const fx = `<fetch aggregate="true" count="5000"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="eq" value="64"/><condition attribute="createdon" operator="ge" value="${f}"/><condition attribute="createdon" operator="lt" value="${t}"/></filter><order alias="uid"/></entity></fetch>`;
+              const fx = `<fetch aggregate="true" count="5000"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="in"><value>64</value><value>65</value></condition><condition attribute="createdon" operator="ge" value="${f}"/><condition attribute="createdon" operator="lt" value="${t}"/></filter><order alias="uid"/></entity></fetch>`;
               let d = null, truncated = false;
               requests++;
               try {
@@ -2581,7 +2660,7 @@
               }
               if (tMs - fMs > 3600000) { const mid = fMs + Math.floor((tMs - fMs) / 2); await walk(mid, tMs); await walk(fMs, mid); return; }
               scans++;
-              let url = `audits?$select=createdon,_objectid_value&$filter=action eq 64 and createdon ge ${f} and createdon lt ${t}`;
+              let url = `audits?$select=createdon,_objectid_value&$filter=(action eq 64 or action eq 65) and createdon ge ${f} and createdon lt ${t}`;
               while (url) {
                 requests++;
                 const dL = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
@@ -2598,7 +2677,10 @@
           case "getUserLastLogin": {
             validateGuid(params.userId);
             const data = await dvRequest("GET",
-              `audits?$select=createdon&$filter=_objectid_value eq ${params.userId} and action eq 64&$top=1&$orderby=createdon desc`, null, NO_ANN
+              // 64 = User Access via Web, 65 = via Web Services (Excel / Outlook add-ins, Power BI,
+              // flow connections): a web-services-only user showed "Never" and was offered for
+              // license cleanup (audit finding)
+              `audits?$select=createdon&$filter=_objectid_value eq ${params.userId} and (action eq 64 or action eq 65)&$top=1&$orderby=createdon desc`, null, NO_ANN
             );
             const rec = (data.value || [])[0];
             result = rec ? { date: rec.createdon } : null;
@@ -2769,22 +2851,20 @@
           case "getRoleUserCount": {
             const nameC = String(params.roleName || "");
             if (!nameC) { result = { count: 0 }; break; }
-            const escC = nameC.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''"); // strip control chars then quote-escape
-            const d = await dvRequest("GET", `systemusers?$select=systemuserid&$top=1&$count=true&$filter=systemuserroles_association/any(o:o/name eq '${escC}')`);
-            result = { count: d["@odata.count"] != null ? d["@odata.count"] : (d.value || []).length };
+            result = { count: await countByFilter("systemusers", "systemuserid", `systemuserroles_association/any(o:o/name eq ${odataStr(nameC)})`) };
             break;
           }
 
           case "getRoleUsers": {
             const nameU = String(params.roleName || "");
             if (!nameU) { result = []; break; }
-            const escU = nameU.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''"); // strip control chars then quote-escape
+            const escU = odataStr(nameU);
             // Cap the fetch: a baseline role can be held by tens of thousands of users — paging all of
             // them is slow and risks a timeout. We stop once CAP distinct users are collected; the panel
             // already knows the true count and shows "first N of M". Caller may override (1..50000).
             const CAP = Math.min(Math.max(parseInt(params.cap, 10) || 10000, 1), 50000);
             const map = {};
-            let url = `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value,title,address1_telephone1,mobilephone,_parentsystemuserid_value&$filter=systemuserroles_association/any(o:o/name eq '${escU}')&$orderby=fullname asc`;
+            let url = `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,accessmode,_businessunitid_value,title,address1_telephone1,mobilephone,_parentsystemuserid_value&$filter=systemuserroles_association/any(o:o/name eq ${escU})&$orderby=fullname asc`;
             while (url) {
               const d = await dvRequest("GET", url);
               (d.value || []).forEach(u => {
@@ -2817,9 +2897,7 @@
             // every business-unit copy of the role is covered in one query.
             const nameT = String(params.roleName || "");
             if (!nameT) { result = { count: 0 }; break; }
-            const escT = nameT.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''");
-            const dT = await dvRequest("GET", `teams?$select=teamid&$top=1&$count=true&$filter=teamroles_association/any(o:o/name eq '${escT}')`);
-            result = { count: dT["@odata.count"] != null ? dT["@odata.count"] : (dT.value || []).length };
+            result = { count: await countByFilter("teams", "teamid", `teamroles_association/any(o:o/name eq ${odataStr(nameT)})`) };
             break;
           }
 
@@ -2830,9 +2908,9 @@
             // capped to the first 50 teams — beyond that the count shows as unknown.
             const nameTs = String(params.roleName || "");
             if (!nameTs) { result = []; break; }
-            const escTs = nameTs.replace(/[\x00-\x1f\x7f]/g, "").replace(/'/g, "''");
+            const escTs = odataStr(nameTs);
             const mapT = {};
-            let urlT = `teams?$select=teamid,name,teamtype,description,_businessunitid_value,_administratorid_value&$filter=teamroles_association/any(o:o/name eq '${escTs}')&$orderby=name asc`;
+            let urlT = `teams?$select=teamid,name,teamtype,description,_businessunitid_value,_administratorid_value&$filter=teamroles_association/any(o:o/name eq ${escTs})&$orderby=name asc`;
             while (urlT) {
               const dTs = await dvRequest("GET", urlT);
               (dTs.value || []).forEach(tm => {
@@ -2852,11 +2930,23 @@
               urlT = nlT ? nlT.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
             }
             const teamsList = Object.values(mapT).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-            for (const tm of teamsList.slice(0, 50)) {
+            // Member counts: ONE aggregate per 50 teams on the membership table (it used to be one
+            // $count request per team, sequential, capped to 50 teams and to 5,000 per count).
+            for (let i = 0; i < teamsList.length; i += 50) {
+              const sliceT = teamsList.slice(i, i + 50);
+              const vals = sliceT.map(tm => `<value>${tm.id}</value>`).join("");
+              const fxT = `<fetch aggregate="true"><entity name="teammembership"><attribute name="systemuserid" alias="n" aggregate="count"/><attribute name="teamid" alias="t" groupby="true"/><filter><condition attribute="teamid" operator="in">${vals}</condition></filter></entity></fetch>`;
               try {
-                const cD = await dvRequest("GET", `systemusers?$select=systemuserid&$top=1&$count=true&$filter=teammembership_association/any(o:o/teamid eq ${tm.id})`);
-                tm.memberCount = cD["@odata.count"] != null ? cD["@odata.count"] : null;
-              } catch { tm.memberCount = null; }
+                const dA = await dvRequest("GET", `teammemberships?fetchXml=${encodeURIComponent(fxT)}`, null, NO_ANN);
+                const byTeam = {};
+                (dA.value || []).forEach(r => { byTeam[String(r.t || "").toLowerCase()] = r.n ?? 0; });
+                sliceT.forEach(tm => { tm.memberCount = byTeam[String(tm.id).toLowerCase()] ?? 0; });
+              } catch {
+                // the aggregate refused (50k scanned rows) — fall back to one exact count per team
+                for (const tm of sliceT) {
+                  try { tm.memberCount = await countByFilter("systemusers", "systemuserid", `teammembership_association/any(o:o/teamid eq ${tm.id})`); } catch { tm.memberCount = null; }
+                }
+              }
             }
             result = teamsList;
             break;
@@ -2879,10 +2969,20 @@
               while (idxM < idsM.length) {
                 const uid = idsM[idxM++];
                 try {
-                  await dvRequest("PATCH", `systemusers(${uid})`, { "businessunitid@odata.bind": `/businessunits(${params.buId})` });
+                  // the long budget: the server re-parents every owned record synchronously (minutes
+                  // for a heavy owner) and a 25 s timeout reported users as failed who HAD moved
+                  await dvRequest("PATCH", `systemusers(${uid})`, { "businessunitid@odata.bind": `/businessunits(${params.buId})` }, { "X-Colvio-Long": "1" });
                   outM.push({ id: uid, ok: true });
                 } catch (e) {
-                  outM.push({ id: uid, ok: false, error: (e?.message || String(e)).slice(0, 300) });
+                  const msgM = e?.message || String(e);
+                  if (/^Timeout:/.test(msgM)) {
+                    // reconcile: did the move land anyway?
+                    try {
+                      const chk = await dvRequest("GET", `systemusers(${uid})?$select=_businessunitid_value`, null, NO_ANN);
+                      if (String(chk._businessunitid_value || "").toLowerCase() === String(params.buId).toLowerCase()) { outM.push({ id: uid, ok: true, note: "moved (slow)" }); continue; }
+                    } catch { /* keep the timeout */ }
+                  }
+                  outM.push({ id: uid, ok: false, error: msgM.slice(0, 300) });
                 }
               }
             };
@@ -2903,9 +3003,10 @@
             const removing = params.mode === "remove";
             if (!nameR || !idsR.length) { result = []; break; }
             idsR.forEach(validateGuid);
-            const escRn = nameR.replace(/'/g, "''");
+            const escRn = odataStr(nameR);
             const ctxA = d365Context || extractContext();
-            const copies = await dvRequest("GET", `roles?$select=roleid,_businessunitid_value&$filter=name eq '${escRn}'`);
+            const copies = await dvRequest("GET", `roles?$select=roleid,_businessunitid_value&$filter=name eq ${escRn}`);
+            const copyIds = new Set((copies.value || []).map(r => String(r.roleid || "").toLowerCase()));
             const roleByBu = {};
             (copies.value || []).forEach(r => { roleByBu[String(r._businessunitid_value || "").toLowerCase()] = r.roleid; });
             const buByUser = {};
@@ -2921,11 +3022,26 @@
               while (idxR < idsR.length) {
                 const uid = idsR[idxR++];
                 const bu = buByUser[uid.toLowerCase()];
+                if (removing) {
+                  // Detach the copies the user ACTUALLY holds (a user moved between BUs, or an org
+                  // with cross-BU role assignment, holds another BU's copy): deleting the inferred
+                  // "copy in the user's BU" 404'd and was reported as "was not assigned" while the
+                  // user kept the role (audit finding).
+                  try {
+                    const held = await dvRequest("GET", `systemusers(${uid})/systemuserroles_association?$select=roleid`, null, NO_ANN);
+                    const mine = (held.value || []).map(r => String(r.roleid || "").toLowerCase()).filter(r => copyIds.has(r));
+                    if (!mine.length) { out.push({ id: uid, ok: true, note: "was not assigned" }); continue; }
+                    for (const rid of mine) await dvRequest("DELETE", `systemusers(${uid})/systemuserroles_association(${rid})/$ref`);
+                    out.push({ id: uid, ok: true });
+                  } catch (e) {
+                    out.push({ id: uid, ok: false, error: String(e.message || e).slice(0, 300) });
+                  }
+                  continue;
+                }
                 const rid = bu ? roleByBu[bu] : null;
                 if (!rid) { out.push({ id: uid, ok: false, error: bu ? "No copy of this role in the user's business unit" : "User not found" }); continue; }
                 try {
-                  if (removing) await dvRequest("DELETE", `systemusers(${uid})/systemuserroles_association(${rid})/$ref`);
-                  else await dvRequest("POST", `systemusers(${uid})/systemuserroles_association/$ref`, { "@odata.id": `${ctxA.clientUrl}/api/data/${ctxA.apiVersion}/roles(${rid})` });
+                  await dvRequest("POST", `systemusers(${uid})/systemuserroles_association/$ref`, { "@odata.id": `${ctxA.clientUrl}/api/data/${ctxA.apiVersion}/roles(${rid})` });
                   out.push({ id: uid, ok: true });
                 } catch (e) {
                   const msg = String(e.message || e);

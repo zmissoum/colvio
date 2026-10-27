@@ -35,6 +35,17 @@ describe("business unit reach", () => {
     expect(reaches(1, "F", rec, false, tree)).toBe(false);
     expect(reaches(1, "F", rec, true, tree)).toBe(true);
   });
+  it("levels are cumulative: an owned record is reached at every depth, whatever the privilege's BU", () => {
+    // a role from another business unit (S) at BU / Parent-Child depth on a record the user owns in F
+    expect(reaches(2, "S", rec, true, tree)).toBe(true);
+    expect(reaches(4, "S", rec, true, tree)).toBe(true);
+    expect(reaches(2, "S", rec, false, tree)).toBe(false);
+    expect(reaches(4, "S", rec, false, tree)).toBe(false);
+    // Parent: Child includes the BU itself; Organization needs nothing
+    expect(reaches(4, "F", rec, false, tree)).toBe(true);
+    expect(reaches(8, "S", { buId: "" }, false, tree)).toBe(true);
+    expect(reaches(0, "F", rec, true, tree)).toBe(false);
+  });
   it("needs the narrowest depth that reaches the record from the user's BU", () => {
     const ctx = (u, r) => ({ entity: { ownership: "UserOwned" }, user: u, record: r });
     expect(depthNeeded(ctx({ id: "u", buId: "S" }, { ownerId: "u", buId: "F" }), tree)).toBe(1);

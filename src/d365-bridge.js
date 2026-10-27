@@ -175,7 +175,7 @@ async function callD365(action, params = {}) {
         // A batch chunk that blows past the timeout is likely mid serial-PATCH fallback under heavy
         // throttling. Tell the content script to STOP (batchAborted) so it doesn't keep writing after
         // we've given up — closes the orphaned-write / double-create-on-retry window.
-        if (isBatchOp && isExtension) { try { chrome.runtime.sendMessage({ __d365InspectorRequest: true, id: ++reqId, action: "abortBatch", params: {}, d365TabId: getD365TabId(), orgUrl: getOrgUrl() }, () => { void chrome.runtime.lastError; }); } catch {} }
+        if (isBatchOp && isExtension) { try { chrome.runtime.sendMessage({ __d365InspectorRequest: true, id: ++reqId, action: "abortBatch", params: { runId: params.runId }, d365TabId: getD365TabId(), orgUrl: getOrgUrl() }, () => { void chrome.runtime.lastError; }); } catch {} }
         reject(new Error(`Timeout after ${timeoutMs/1000}s — action: ${action}`));
       }
     }, timeoutMs);
@@ -451,7 +451,7 @@ export const bridge = {
 
   async getFields(logicalName) {
     if (!isExtension) return demoFields(logicalName);
-    const k = cacheKey("fields3", logicalName); // v3: entries now carry metadataId (dependency-graph resolution)
+    const k = cacheKey("fields4", logicalName); // v4: multi-select / File / Image columns included (v3 added metadataId)
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getFields", { logicalName });
@@ -543,9 +543,12 @@ export const bridge = {
     if (!isExtension) return { created: records.length, errors: [], log: [] };
     // Clear any stale abort flag in the content script, and prepare a once-only notifier so a
     // user cancel also stops retries/chunks already running inside the content script.
-    try { await callD365("resetBatchAbort"); } catch {}
+    // The run token: abort state is per run in the content script (several bulk runs can share a
+    // tab), so every chunk and the abort carry it.
+    let runId = null;
+    try { runId = (await callD365("resetBatchAbort"))?.runId ?? null; } catch {}
     let abortNotified = false;
-    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch").catch(() => {}); } };
+    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch", { runId }).catch(() => {}); } };
     const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     // MSCRM bypass headers — forwarded per-chunk; content.js injects them on each
@@ -571,7 +574,7 @@ export const bridge = {
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
-          const r = await callD365("batchCreate", { entitySet, records: slice, ...bypass });
+          const r = await callD365("batchCreate", { entitySet, records: slice, runId, ...bypass });
           if (r?.aborted) { stopped = true; agg.aborted = true; }
           agg.created += r?.created || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
@@ -581,7 +584,7 @@ export const bridge = {
           // rest of the load — record its rows as per-row errors (logged + retryable). A TIMEOUT
           // already fired abortBatch, so stop dispatching; never-sent rows are accounted for below.
           const msg = e?.message || String(e);
-          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg)) { stopped = true; agg.aborted = true; } // a dead session stops the whole pool — remaining chunks would all fail identically
+          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg) || /message port closed|receiving end does not exist|lost contact with the d365 tab/i.test(msg)) { stopped = true; agg.aborted = true; notifyAbort(); } // a dead session / a relay that died mid-chunk (service worker killed) stops the whole pool — remaining chunks would all fail identically, and the content script must stop that run
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -598,9 +601,12 @@ export const bridge = {
 
   async batchUpsert(entitySet, keyField, items, isPrimaryKey = false, onProgress, shouldAbort, opts = {}) {
     if (!isExtension) return { updated: items.length, errors: [], log: [] };
-    try { await callD365("resetBatchAbort"); } catch {}
+    // The run token: abort state is per run in the content script (several bulk runs can share a
+    // tab), so every chunk and the abort carry it.
+    let runId = null;
+    try { runId = (await callD365("resetBatchAbort"))?.runId ?? null; } catch {}
     let abortNotified = false;
-    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch").catch(() => {}); } };
+    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch", { runId }).catch(() => {}); } };
     const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     // MSCRM bypass headers + update-only flag (If-Match: * → 404 instead of create when missing).
@@ -631,7 +637,7 @@ export const bridge = {
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
-          const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, keyIsNumeric: opts.keyIsNumeric, ...bypass });
+          const r = await callD365("batchUpsert", { entitySet, keyField, items: slice, isPrimaryKey, keyIsNumeric: opts.keyIsNumeric, runId, ...bypass });
           if (r?.aborted) { stopped = true; agg.aborted = true; } // content-side abort flag is set — later chunks would bounce
           agg.created += r?.created || 0; // upsert-created (201) tracked separately from real updates (204)
           agg.updated += r?.updated || 0;
@@ -642,7 +648,7 @@ export const bridge = {
           // rest of the load — record its rows as per-row errors (logged + retryable). A TIMEOUT is
           // special: callD365 already fired abortBatch, so stop dispatching (see above).
           const msg = e?.message || String(e);
-          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg)) { stopped = true; agg.aborted = true; } // a dead session stops the whole pool — remaining chunks would all fail identically
+          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg) || /message port closed|receiving end does not exist|lost contact with the d365 tab/i.test(msg)) { stopped = true; agg.aborted = true; notifyAbort(); } // a dead session / a relay that died mid-chunk (service worker killed) stops the whole pool — remaining chunks would all fail identically, and the content script must stop that run
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -660,9 +666,12 @@ export const bridge = {
   // Bulk DELETE by primary key or alternate key — same worker-pool + per-row log as batchUpsert.
   async batchDeleteKeyed(entitySet, keyField, items, isPrimaryKey = false, onProgress, shouldAbort, opts = {}) {
     if (!isExtension) return { deleted: items.length, errors: [], log: [] };
-    try { await callD365("resetBatchAbort"); } catch {}
+    // The run token: abort state is per run in the content script (several bulk runs can share a
+    // tab), so every chunk and the abort carry it.
+    let runId = null;
+    try { runId = (await callD365("resetBatchAbort"))?.runId ?? null; } catch {}
     let abortNotified = false;
-    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch").catch(() => {}); } };
+    const notifyAbort = () => { if (!abortNotified) { abortNotified = true; callD365("abortBatch", { runId }).catch(() => {}); } };
     const CHUNK = Math.max(1, Math.min(500, opts.chunk || 100));
     const CONCURRENCY = Math.max(1, Math.min(10, opts.concurrency || 5));
     const agg = { deleted: 0, errors: [], log: [], aborted: false };
@@ -680,7 +689,7 @@ export const bridge = {
         const { start, slice } = chunks[idx];
         let chunkErrors, chunkLog;
         try {
-          const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey, keyIsNumeric: opts.keyIsNumeric, bypassPlugins: opts.bypassPlugins, bypassAsyncLogic: opts.bypassAsyncLogic });
+          const r = await callD365("batchDeleteKeyed", { entitySet, keyField, items: slice, isPrimaryKey, keyIsNumeric: opts.keyIsNumeric, runId, bypassPlugins: opts.bypassPlugins, bypassAsyncLogic: opts.bypassAsyncLogic });
           if (r?.aborted) { stopped = true; agg.aborted = true; }
           agg.deleted += r?.deleted || 0;
           chunkErrors = (r?.errors || []).map(e => ({ ...e, row: (e.row || 0) + start }));
@@ -690,7 +699,7 @@ export const bridge = {
           // the delete — log its rows as per-row errors. A TIMEOUT already fired abortBatch, so stop
           // dispatching; never-sent rows are accounted for below.
           const msg = e?.message || String(e);
-          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg)) { stopped = true; agg.aborted = true; } // a dead session stops the whole pool — remaining chunks would all fail identically
+          if (/timeout after \d+s/i.test(msg) || /SESSION_EXPIRED/.test(msg) || /message port closed|receiving end does not exist|lost contact with the d365 tab/i.test(msg)) { stopped = true; agg.aborted = true; notifyAbort(); } // a dead session / a relay that died mid-chunk (service worker killed) stops the whole pool — remaining chunks would all fail identically, and the content script must stop that run
           chunkErrors = slice.map((_, i) => ({ row: start + i + 1, msg, payload: "" }));
           chunkLog = slice.map((_, i) => ({ row: start + i + 1, status: "ERROR", msg }));
         }
@@ -1038,6 +1047,12 @@ export const bridge = {
     const data = await callD365("getSolutions");
     if (data) await cacheSet(k, data, CACHE_TTL.entities);
     return data;
+  },
+
+  // One request per solution: the list's component badge ({ count, capped } — capped at 5,000).
+  async getSolutionComponentCount(solutionId) {
+    if (!isExtension) return { count: 18, capped: false };
+    return callD365("getSolutionComponentCount", { solutionId });
   },
 
   async getSolutionComponents(solutionId) {

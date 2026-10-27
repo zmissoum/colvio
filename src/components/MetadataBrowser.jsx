@@ -90,6 +90,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const[mbPanel,setMbPanel]=useState("browser"); // "browser" | "diff"
   const[fields,setFields]=useState([]);
   const[loadingFields,setLoadingFields]=useState(false);
+  const[fieldsErr,setFieldsErr]=useState(""); // getFields failure — shown with ↻, never rendered as "0 columns"
 
   // tick > 0 = user-requested refresh (↻). getEntities caches for 2h — clear first, or a table
   // created since the panel opened stays invisible for the rest of the session.
@@ -98,7 +99,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     if(!isLive)return;
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
-        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical,e.isManaged))?"Custom":"Standard",tt:e.tableType||"Standard",mid:e.metadataId||null,cust:!!e.isCustom})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical))?"Custom":"Standard",tt:e.tableType||"Standard",mid:e.metadataId||null,cust:!!e.isCustom})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive,tick]);
@@ -108,6 +109,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   // (Re)load the columns of a table — on selection, and after columns were created from a file.
   const loadFields=(e)=>{
     const gen=++selGen.current;
+    setFieldsErr("");
     if(isLive){
       setLoadingFields(true);
       bridge.getFields(e.l).then(data=>{
@@ -115,7 +117,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
         if(data&&Array.isArray(data)){
           setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,o:f.odataName||f.logical,t:f.type||"String",req:f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false,mid:f.metadataId||null})).sort((a,b)=>a.l.localeCompare(b.l)));
         }
-      }).catch(()=>{}).finally(()=>{if(selGen.current===gen)setLoadingFields(false);});
+      }).catch(err=>{if(selGen.current===gen)setFieldsErr(err.message||String(err));}).finally(()=>{if(selGen.current===gen)setLoadingFields(false);});
     } else {
       setFields(FLDS);
     }
@@ -263,7 +265,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                 <div style={{fontSize:13,color:C.txd,...mono,display:"flex",alignItems:"center",gap:4}}>{selEnt.l} <button onClick={()=>cp(selEnt.l,"ent")} style={{background:"none",border:"none",color:copied==="ent"?C.gn:C.txd,cursor:"pointer",padding:0}}>{copied==="ent"?"✓":<I.Copy/>}</button></div>
               </div>
               <span style={{fontSize:12,color:C.txd,background:C.bg,padding:"3px 10px",borderRadius:4}}>{selEnt.cat}</span>
-              {loadingFields?<Spin s={12}/>:<span style={{fontSize:13,color:C.txm}}>{fields.length} columns</span>}
+              {loadingFields?<Spin s={12}/>:!fieldsErr&&<span style={{fontSize:13,color:C.txm}}>{fields.length} columns</span>}
               {!loadingFields&&fields.length>0&&<><button onClick={()=>exportAllFields("csv")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Export All Fields</button><button onClick={()=>exportAllFields("xlsx")} style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}><I.Download/> Excel</button><Tooltip text={t("help.fields_export")}/></>}
               {!loadingFields&&fields.length>0&&<button onClick={runFill} disabled={fill?.phase==="running"} title="How many rows have a value in each column — exact counts (aggregates; a big table is counted in date slices, never row by row)" style={{...bt(C.vi,{fontSize:12,padding:"4px 12px",opacity:fill?.phase==="running"?.6:1})}}>📊 Fill rate</button>}
               <button onClick={()=>runImpact("table",selEnt)} title="What would block deleting this table, or everything that uses it — Dataverse's own dependency check, read-only (nothing is deleted)" style={{...bt(C.or,{fontSize:12,padding:"4px 12px"})}}>🧨 Dependencies</button>
@@ -285,6 +287,8 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
 
             {loadingFields ? (
               <div style={{textAlign:"center",padding:30}}><Spin/><p style={{color:C.txd,fontSize:13,marginTop:8}}>Loading columns...</p></div>
+            ) : fieldsErr ? (
+              <div style={{textAlign:"center",color:C.rd,fontSize:13,padding:30}}>⚠ Couldn't load the columns of "{selEnt.l}": {fieldsErr} <button onClick={()=>loadFields(selEnt)} style={bt(null,{fontSize:12,marginLeft:8})}>↻ Retry</button></div>
             ) : (
             <div style={{...crd({overflow:"hidden"})}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:450}}>

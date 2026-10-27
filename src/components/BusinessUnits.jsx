@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
 import { layoutBuTree, visibleBuList, extractEmails, matchUsersByEmails } from "../buTreeUtils.js";
+import { userLookupFilter, resolveUsers } from "../userResolve.js";
 
 // Business Units — the org's BU hierarchy with the users assigned to each. Users are grouped by
 // their _businessunitid_value (every user sits in exactly one BU). Read-only.
@@ -195,7 +196,10 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
       if (missing.length) {
         setExporting(true);
         try {
-          const fetched = await Promise.all(missing.map(id => bridge.getUsersByBu(id).then(l => [id, l || []]).catch(() => [id, null])));
+          // 3 workers (like moveUsersToBu): a region with dozens of sub-BUs fired every read at once.
+          const fetched = []; let next = 0;
+          const work = async () => { while (next < missing.length) { const id = missing[next++]; try { fetched.push([id, (await bridge.getUsersByBu(id)) || []]); } catch { fetched.push([id, null]); } } };
+          await Promise.all(Array.from({ length: Math.min(3, missing.length) }, work));
           // null = fetch FAILED: never cached as "empty BU", and the export says it's incomplete —
           // the old catch silently exported the BU as memberless AND poisoned the cache (audit finding).
           const failed = fetched.filter(([, l]) => l === null).map(([id]) => id);
@@ -234,30 +238,30 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
   // a failed chunk marks its tokens "couldn't check" — never silently "missing" (audit rule).
   const doInFind = async () => {
     const tokens = extractEmails(inText);
-    if (!tokens.length) { setInFound({ movable: [], already: [], missing: [], failed: [], none: true }); return; }
+    if (!tokens.length) { setInFound({ movable: [], already: [], missing: [], failed: [], ambiguous: [], none: true }); return; }
     setInBusy(true); setInFound(null); setInResults(null);
-    const byToken = new Map(); const failed = [];
+    const found = []; const failed = [];
     for (let i = 0; i < tokens.length; i += 15) {
       const chunk = tokens.slice(i, i + 15);
-      const f = chunk.map(t => { const e = t.replace(/'/g, "''"); return `(internalemailaddress eq '${e}' or domainname eq '${e}')`; }).join(" or ");
       try {
-        const d = await bridge.query("systemusers", { select: "systemuserid,fullname,internalemailaddress,domainname,isdisabled,_businessunitid_value", filter: f });
-        (d?.records || []).forEach(u => {
-          const rec = { id: u.systemuserid, name: u.fullname || "", email: u.internalemailaddress || "", upn: u.domainname || "", disabled: !!u.isdisabled, buId: u._businessunitid_value || "", buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "" };
-          [rec.email, rec.upn].forEach(k => { const kk = (k || "").toLowerCase(); if (kk && !byToken.has(kk)) byToken.set(kk, rec); });
-        });
+        const d = await bridge.query("systemusers", { select: "systemuserid,fullname,internalemailaddress,domainname,isdisabled,applicationid,_businessunitid_value", filter: userLookupFilter(chunk) });
+        (d?.records || []).forEach(u => found.push({ id: u.systemuserid, name: u.fullname || "", email: u.internalemailaddress || "", upn: u.domainname || "", disabled: !!u.isdisabled, isApp: !!u.applicationid, buId: u._businessunitid_value || "", buName: u["_businessunitid_value@OData.Community.Display.V1.FormattedValue"] || "" }));
       } catch { failed.push(...chunk); }
     }
+    // Per-token resolution: an address shared by a stale disabled user and its re-provisioned copy
+    // picks the enabled one; still ambiguous → listed, never moved (first-match-wins moved the wrong one).
+    const { byToken, ambiguous: amb } = resolveUsers(found, tokens);
     const failedSet = new Set(failed);
-    const seen = new Set(); const movable = []; const already = []; const missing = [];
+    const seen = new Set(); const movable = []; const already = []; const missing = []; const ambiguous = [];
     for (const t of tokens) {
       if (failedSet.has(t)) continue;
+      if (amb.has(t)) { ambiguous.push({ token: t, count: amb.get(t) }); continue; }
       const u = byToken.get(t);
       if (!u) { missing.push(t); continue; }
       if (seen.has(u.id)) continue; seen.add(u.id);
       (u.buId === sel ? already : movable).push(u);
     }
-    setInFound({ movable, already, missing, failed });
+    setInFound({ movable, already, missing, failed, ambiguous });
     setInBusy(false);
   };
 
@@ -384,6 +388,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
                         <div style={{ color: C.yw }}>⚠ {inFound.missing.length} not found anywhere in the org (typo, or not provisioned/synced yet):</div>
                         <div style={{ maxHeight: 90, overflow: "auto", whiteSpace: "pre-wrap", ...mono, fontSize: 11, color: C.yw }}>{inFound.missing.join("\n")}</div>
                       </>}
+                      {inFound.ambiguous?.length > 0 && <div style={{ color: C.yw }}>⚠ {inFound.ambiguous.length} ambiguous — several users share the address (skipped, move them from their BU's member list): {inFound.ambiguous.slice(0, 4).map(a => `${a.token} (${a.count} users)`).join(", ")}{inFound.ambiguous.length > 4 ? "…" : ""}</div>}
                       {inFound.failed.length > 0 && <div style={{ color: C.rd }}>✗ {inFound.failed.length} could NOT be checked (query failed) — retry Find: {inFound.failed.slice(0, 4).join(", ")}{inFound.failed.length > 4 ? "…" : ""}</div>}
                       {inFound.movable.length > 0 && (
                         <div style={{ marginTop: 6, padding: "6px 10px", borderRadius: 6, fontSize: 12, background: (retain === true ? C.gn : retain === false ? C.rd : C.yw) + "14", border: `1px solid ${(retain === true ? C.gn : retain === false ? C.rd : C.yw)}44`, color: retain === true ? C.gn : retain === false ? C.rd : C.yw }}>

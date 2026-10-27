@@ -17,12 +17,16 @@ import { buildHistoryEntry, scrubStoredHistory } from "../historyUtils.js";
 import FieldPicker from "./FieldPicker.jsx";
 import ExpandCard from "./ExpandCard.jsx";
 import RelFilterCard from "./RelFilterCard.jsx";
+import ConditionRow from "./ConditionRow.jsx";
 import Results from "./Results.jsx";
 
 // A 401 / lost session looks the same whatever the query mode (Builder, OData, FetchXML, SQL) — one
 // detector + one message so every path reports it identically (and can't drift over time).
 const SESSION_EXPIRED_MSG = "Session expired — refresh D365 (F5) then click ⚡ again";
 const isSessionExpired = (msg) => { const s = String(msg || ""); return s.includes("401") || s.includes("SESSION_EXPIRED"); };
+// Saved queries per environment. A save or import past it is REFUSED with a message — the old
+// slice(0,20) silently dropped the oldest saved query (review finding).
+const MAX_SAVED_QUERIES = 100;
 
 function StreamCard({st,onStop,onClose}){
   const secs=Math.max(1,Math.round(((st.phase==="running"?Date.now():st.ended||Date.now())-(st.started||Date.now()))/1000));
@@ -61,6 +65,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const[showList,setShowList]=useState(true);
   const[savedQueries,setSavedQueries]=useState([]);
   const[importErr,setImportErr]=useState(""); // bad saved-queries file — shown inline in the dropdown (was a jarring alert())
+  const[saveErr,setSaveErr]=useState("");     // save refused (cap) — shown in the save dialog
   const qImportRef=useRef(null);
   const[queryHistory,setQueryHistory]=useState([]);
   const[showHistory,setShowHistory]=useState(false);
@@ -83,6 +88,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const partialRef=useRef(false); // a paging loop broke on a page error — the result shown is incomplete                 // the stream run() writes to instead of the grid
   const[viewModal,setViewModal]=useState(null);  // "Save as view": { name, saving, error, done }
   const selGen=useRef(0); // generation counter: incremented on every entity selection to cancel stale fetches
+  const runGen=useRef(0); // run counter: a run() started after mine makes mine stale (two paging loops used to race on setRes)
   const onFieldsReady=useRef(null); // callback invoked after fields are loaded (used by loadSavedQuery/templates)
   const[bookmarks,setBookmarks]=useState([]);
 
@@ -131,14 +137,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
   const saveCurrentQuery=()=>{
     if(!ent) return;
-    setSaveName(activeSaved||"");setSaveModal(true);
+    setSaveName(activeSaved||"");setSaveErr("");setSaveModal(true);
   };
   const doSaveQuery=(name)=>{
     if(!name||!ent) return;
+    if(savedQueries.length>=MAX_SAVED_QUERIES&&!savedQueries.some(s=>s.name===name)){setSaveErr(`${MAX_SAVED_QUERIES} saved queries already — delete one first (📂), or reuse a name to overwrite it.`);return;}
     const q={name,entity:ent.l,entitySet:ent.p,fields:sf,filterGroups,groupLogic,expands:expands.map(ex=>({navProperty:ex.navProperty,targetEntity:ex.targetEntity,lookupField:ex.lookupField,type:ex.type||"single",fields:ex.fields,conditions:ex.conditions||[],conditionLogic:ex.conditionLogic||"and"})),relFilters:relFilters.map(rf=>({navProperty:rf.navProperty,targetEntity:rf.targetEntity,lookupField:rf.lookupField,type:rf.type,mode:rf.mode||"any",conditions:rf.conditions||[],conditionLogic:rf.conditionLogic||"and"})),limit:lim,orderBy,qm,fxml,rq,sqlQ,savedAt:new Date().toISOString()};
-    setSavedQueries([q,...savedQueries.filter(s=>s.name!==name)].slice(0,20));
-    persistList("d365_saved_queries",cur=>[q,...cur.filter(s=>s.name!==name)].slice(0,20));
-    setSaveModal(false);
+    setSavedQueries([q,...savedQueries.filter(s=>s.name!==name)].slice(0,MAX_SAVED_QUERIES));
+    persistList("d365_saved_queries",cur=>[q,...cur.filter(s=>s.name!==name)].slice(0,MAX_SAVED_QUERIES));
+    setSaveModal(false);setSaveErr("");
     setActiveSaved(name);setSavedFlash(name);setTimeout(()=>setSavedFlash(""),1600);
   };
 
@@ -250,6 +257,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
   const selEnt=(e)=>{
     fetchAbort.current = true;
+    setLoading(false); // a run on the OLD table may be awaiting page 1: its result is discarded as stale and it never reset loading — Execute stayed on "Querying…" (review finding)
     const gen=++selGen.current; // capture generation for staleness check
     onFieldsReady.current=null; // a pending saved-query/template callback belongs to a PREVIOUS selection — never replay it on this entity
     setEnt(e);setRes(null);setPicker(false);setError("");
@@ -376,7 +384,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     if(qm==="sql"){
       if(parseSqlWrite(sqlQ)) return {error:"An UPDATE / DELETE can't be a view."};
       const r=sqlToFetchXml(sqlQ);
-      return r.error?{error:`This SQL can't be written as FetchXML for a view: ${r.error}`}:{fetchxml:r.fetchXml};
+      if(r.error) return {error:`This SQL can't be written as FetchXML for a view: ${r.error}`};
+      if(/<having>/i.test(r.fetchXml)) return {error:"HAVING is applied by Colvio after the query runs — a view can't carry it. Remove the HAVING to save this as a view."};
+      return {fetchxml:r.fetchXml};
     }
     const ft={};fields.forEach(f=>{ft[f.l]=f.t;});
     // related tables ride along as link-entities: each needs its key (from the entity list's
@@ -425,7 +435,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         body={};
         for(const st of w.sets){
           if(isLive&&um.fieldTypes[st.col]===undefined) throw new Error(`"${st.col}" isn't a column of ${w.table}.`);
-          const prep=prepareTypedUpdate({...um,odataFieldMap:{}},st.col,rawForPrepare(st));
+          const prep=prepareTypedUpdate({...um,odataFieldMap:{}},st.col,rawForPrepare(st),undefined,{literal:true}); // literal: 'null' in quotes is text — SQL NULL arrives as CLEAR_VALUE
           if(!prep.ok) throw new Error(prep.reason);
           Object.assign(body,prep.body);
         }
@@ -433,9 +443,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       const plan={kind:w.kind,table:w.table,entitySet:meta.entitySet,pk:meta.primaryId,displayName:meta.displayName,setsText:w.kind==="update"?describeSets(w.sets):"",body,statement:sqlQ.trim()};
       setLoading(false);
       partialRef.current=false;
+      const sg=selGen.current, rg=runGen.current; // run() bumps runGen exactly once, synchronously, at its top
       await run({sql:previewSelect(w,meta.primaryId,meta.primaryName)});
-      // a preview cut short by a page error must not get an Apply button: the rows shown aren't the WHERE
-      if(partialRef.current){ setError("Preview incomplete — not every row of the WHERE could be read, nothing can be applied. Run it again."); return; }
+      if(selGen.current!==sg||runGen.current!==rg+1) return; // the table changed, or a later run replaced the preview — its rows aren't this WHERE
+      // a preview cut short — a page error, or ■ Stop (the loop exits without marking partial) — must
+      // not get an Apply button: the rows shown aren't the WHERE (review finding)
+      if(partialRef.current||fetchAbort.current){ setError(`Preview ${fetchAbort.current?"stopped":"incomplete"} — not every row of the WHERE was read, nothing can be applied. Run it again.`); return; }
       setRes(prev=>prev?{...prev,writePlan:plan,entity:{...prev.entity,pk:meta.primaryId,p:meta.entitySet}}:prev);
     }catch(e){ setError(e.message||String(e)); setLoading(false); }
   };
@@ -600,11 +613,6 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const getOdataName = (logicalName, fl=fields) => {
     const f = fl.find(x => x.l === logicalName);
     return f?.odata || logicalName;
-  };
-
-  const getFieldType = (logicalName, fl=fields) => {
-    const f = fl.find(x => x.l === logicalName);
-    return f?.t || "String";
   };
 
   // Typed-update metadata handed to the results view (bulk update + inline edit): field → type,
@@ -806,9 +814,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   };
 
   const run=async(runOpts)=>{
+    const stream=streamRef.current; // a streamed export: pages go to the file, not to the grid
+    if(stream?.sink) return; // the stream already writes: a second run() (Ctrl+Enter mid-stream) would open a second sink on the same file
+    const my=++runGen.current;
     setError("");
     fetchAbort.current = false;
-    const stream=streamRef.current; // a streamed export: pages go to the file, not to the grid
     // run({ sql }) = run THIS SQL instead of the editor's (the preview of an UPDATE / DELETE).
     // (A click passes an event — only a plain { sql } object counts.)
     const ro=runOpts&&typeof runOpts==="object"&&typeof runOpts.sql==="string"?runOpts:null;
@@ -833,10 +843,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       setRes(null); setTooBig({rows:n}); setLoading(false);
       return true;
     };
-    const runGen=selGen.current; // capture to detect entity change mid-run
+    const selAt=selGen.current; // capture to detect entity change mid-run
     // stale() guards every setRes AFTER an await: switching entity mid-run used to paint the OLD
     // entity's rows under the NEW entity's header (fetchAbort only stopped pages 2+ — audit finding).
-    const stale=()=>selGen.current!==runGen;
+    // A LATER run() makes this one stale too: Execute was re-enabled after page 1, and two paging
+    // loops then raced, each painting its own row set over the other's (review finding).
+    const stale=()=>selGen.current!==selAt||runGen.current!==my;
     const validFieldNames = new Set(fields.map(f => f.l));
     const validSf = sf.filter(f => validFieldNames.has(f));
     if(isLive && loadingFields){ setError("Wait for fields to load..."); return; }
@@ -935,6 +947,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         if(!stale())setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fields:[...fieldSet],fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         return;
       }catch(e){
+        setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
         if(stale())return;
         if(isSqlOptionUnsupported(e.message||"")){
           setNativeSqlDown(true);fellBack=true; // engine toggle shows why; this session stays on the transpiler
@@ -970,10 +983,17 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           try{ return await bridge.executeFetchXml(pagedFetchXml(serverFxml,pg,useCookie?cookie:null)); }
           catch(e){ if(useCookie&&cookie&&isCookieMismatch(e.message)){ useCookie=false; return await bridge.executeFetchXml(pagedFetchXml(serverFxml,pg,null)); } throw e; }
         };
-        const firstRec=data.records[0]||{};
-        const headerFields=Object.keys(firstRec).filter(k=>!k.startsWith("@")&&!k.includes("@")&&k!=="__error");
-        const odataFieldMap={};
-        headerFields.forEach(f=>{odataFieldMap[f]=f;});
+        // Columns: the ones the FetchXML names (a column empty on row 1 is simply ABSENT from that row —
+        // Object.keys(firstRec) used to lose it from the grid and the exports; review finding), plus
+        // whatever the rows carry that the query didn't declare (<all-attributes/>, a link-entity
+        // without alias) — discovered on every page, as the OData and SQL loops do. A lookup's value
+        // lives under _x_value: odataFieldMap points each column at the key the rows actually carry.
+        const decl=fetchXmlColumns(serverFxml);
+        const headerFields=[],odataFieldMap={},colOfKey={};
+        const addCol=(name,key)=>{if(name in odataFieldMap)return;headerFields.push(name);odataFieldMap[name]=key;};
+        for(const c of decl.cols){addCol(c.name,c.keys[0]);for(const k of c.keys)colOfKey[k]=c.name;}
+        const discover=(recs)=>{let changed=false;for(const r of recs)for(const k of Object.keys(r)){if(k.startsWith("@")||k.includes("@")||k==="__error"||k in odataFieldMap)continue;const own=colOfKey[k];if(own){if(odataFieldMap[own]!==k){odataFieldMap[own]=k;changed=true;}}else{addCol(k,k);colOfKey[k]=k;changed=true;}}return changed;};
+        discover(data.records);
         // HAVING is a client-side post-aggregation filter (FetchXML can't express it server-side).
         // Apply it to EVERY page, not just the first — a grouped query that pages would otherwise leak
         // unfiltered rows from page 2 onward.
@@ -1027,18 +1047,21 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             if(!pageData?.records?.length)break;
             addRows(allRecords,applyHaving(pageData.records));
             if(overMemory(allRecords))return;
+            const newCols=discover(pageData.records);
             hasMore=!!pageData.moreRecords;
             cookie=cookieFrom(pageData.pagingCookie);
             // Throttle the data re-render (every 5 pages) so the Results memos don't recompute over the
-            // whole accumulating set on every page; count/progress still update each page.
-            const paint=!hasMore||page%5===0;
-            setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            // whole accumulating set on every page; count/progress still update each page. A column
+            // first seen on this page forces a paint (fresh copies so the memos see the change).
+            const paint=!hasMore||page%5===0||newCols;
+            setRes(prev=>({...prev,...(newCols?{fields:[...headerFields],odataFieldMap:{...odataFieldMap}}:{}),...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e){
             setError(`Page ${page}: ${e.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;
           }
         }
         if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
+        setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
         if(stream){ await streamFail(stream,e.message||String(e)); setLoading(false); return; }
         // ── Client-side aggregation fallback (50k limit) ──
         if(e.message&&(e.message.includes("50000")||e.message.includes("having")||e.message.includes("Having"))&&activeFxml.includes("aggregate")){
@@ -1119,7 +1142,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const pagedFlatXml=cleanFlatXml.replace("<fetch",`<fetch count="5000"`);
 
             // Paginate all records
-            let allRaw=[];
+            const allRaw=[];
             let pg=1;
             let more=true;
             const t0b=Date.now();
@@ -1128,7 +1151,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               try{
                 const pgData=await bridge.executeFetchXml(pgXml);
                 if(!pgData?.records?.length)break;
-                allRaw=[...allRaw,...pgData.records];
+                addRows(allRaw,pgData.records); // in place — the spread copy was quadratic over the whole set on every page
                 more=pgData.records.length>=5000;
                 pg++;
                 const elapsed=((Date.now()-t0b)/1000).toFixed(1);
@@ -1266,6 +1289,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         }
         if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
       }catch(e){
+        setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
         setError(e.message);setLoading(false);
       }
       return;
@@ -1342,15 +1366,19 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           if (isSessionExpired(pageErr.message)) {
             setError(SESSION_EXPIRED_MSG);
           } else { setError(`Page ${pageNum}: ${pageErr.message}`); }
-          setRes(prev => ({...prev, nextLink: null, fetching: false}));
+          partialRef.current=true; // as the other modes do: the grid holds an incomplete result
+          setRes(prev => ({...prev, nextLink: null, fetching: false, partial: true}));
           break;
         }
       }
-      if (hasExpand && ent.c && allRecords.length < ent.c * 0.9) {
+      // Only when nothing else explains a short result: a $filter / REL (both in opts.filter), a
+      // $top, ■ Stop or a page error — each used to trigger the warning falsely (review finding).
+      if (hasExpand && ent.c && allRecords.length < ent.c * 0.9 && !opts.filter && !opts.top && !fetchAbort.current && !partialRef.current) {
         setError(`⚠ ${allRecords.length} records retrieved out of ${ent.c} — D365 limits results with $expand. Remove expand to get all records, then enrich in a second query.`);
       }
       if(!stale()) setRes(prev => ({...prev, data: allRecords, dataVersion: ++ver, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
     } catch(e) {
+        setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
       if(isSessionExpired(e.message)) {
         setError(SESSION_EXPIRED_MSG);
       } else { setError(e.message); }
@@ -1381,7 +1409,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
   // Gate on `active`: every query tab keeps its Explorer mounted, so without this guard Ctrl+Enter
   // would fire run() on every hidden tab at once. Only the visible tab should execute.
-  useKeyboard("Enter",()=>{if(active&&ent&&!loading&&!loadingFields)run();},[active,ent,sf,filterGroups,groupLogic,lim,qm,rq,fxml,sqlQ,loading,loadingFields]);
+  // Same gates as the Execute button: not while page 1 loads, while pages 2+ stream into the grid
+  // (res.fetching — ■ Stop ends that) or while a file is being written: Ctrl+Enter mid-stream used to
+  // open a second sink on the same file, and a second run mid-paging raced the first (review finding).
+  const runBusy=loading||loadingFields||!!res?.fetching||streamState?.phase==="running";
+  useKeyboard("Enter",()=>{if(active&&ent&&!runBusy)run();},[active,ent,sf,filterGroups,groupLogic,lim,qm,rq,fxml,sqlQ,runBusy]);
 
   return(
     <div style={{display:"flex",height:"100%",flexDirection:bp.mobile?"column":"row"}}>
@@ -1442,7 +1474,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             :qm==="sql"?<div>
               <textarea value={sqlQ} onChange={e=>{setSqlQ(e.target.value);setShowSqlFx(false);setSqlFx("");}} placeholder={t("sql_placeholder")||`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name TOP 100`} style={inp({height:120,...mono,color:C.cy,resize:"vertical",fontSize:13,whiteSpace:"pre"})}/>
               <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{display:"flex",border:`1px solid ${C.bd}`,borderRadius:4,overflow:"hidden"}} title={nativeSqlDown?"Native ?sql= isn't available on this environment — queries run through the FetchXML transpiler.":"Engine — Native: Dataverse executes the SQL server-side (multi-table joins with aliases, DISTINCT, GROUP BY, DATEADD/GETUTCDATE; no HAVING/TOP/SELECT *). Transpiled: Colvio converts to FetchXML client-side (supports HAVING and TOP)."}>
+                <div style={{display:"flex",border:`1px solid ${C.bd}`,borderRadius:4,overflow:"hidden"}} title={nativeSqlDown?"Native ?sql= isn't available on this environment — queries run through the FetchXML transpiler.":"Engine — Native: Dataverse executes the SQL server-side (multi-table joins with aliases, DISTINCT, GROUP BY, DATEADD/GETUTCDATE; no HAVING/TOP/SELECT *). Transpiled: Colvio converts to FetchXML client-side (supports TOP, and HAVING — applied by Colvio after the query, so it can't go into a saved view)."}>
                   {[["native",nativeSqlDown?"⚡ Native (n/a)":"⚡ Native"],["fetchxml","⇄ Transpiled"]].map(([k,lbl])=>(<button key={k} onClick={()=>setSqlEngine(k)} disabled={k==="native"&&nativeSqlDown} style={{padding:"3px 9px",fontSize:11,border:"none",cursor:k==="native"&&nativeSqlDown?"not-allowed":"pointer",background:sqlEngine===k?C.cy+"22":"transparent",color:k==="native"&&nativeSqlDown?C.txd:sqlEngine===k?C.cy:C.txd,fontWeight:sqlEngine===k?600:400,opacity:k==="native"&&nativeSqlDown?0.6:1}}>{lbl}</button>))}
                 </div>
                 <button onClick={()=>{setSqlQ(sqlEngine==="native"&&!nativeSqlDown?`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name ASC`:`SELECT name, createdon FROM ${ent.l} WHERE statecode = 0 ORDER BY name ASC TOP 100`);setShowSqlFx(false);}} style={{padding:"4px 10px",fontSize:11,border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",background:"transparent"}}>📋 Simple</button>
@@ -1506,24 +1538,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                       <button onClick={addCond} style={{padding:"0px 4px",background:"transparent",border:`1px dashed ${C.bd}`,borderRadius:2,color:C.txd,cursor:"pointer",fontSize:10}}>+</button>
                       {filterGroups.length>1&&<button onClick={()=>setFilterGroups(filterGroups.filter((_,j)=>j!==gi))} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:11,marginLeft:"auto"}}>✕</button>}
                     </div>}
-                    {grp.conditions.map((fil,ci)=>{
-                      const fType=fil.field?getFieldType(fil.field):"";
-                      const sT=new Set(["String","Memo"]);const nT=new Set(["Integer","Money","Decimal","Double","BigInt"]);
-                      const dT=new Set(["DateTime"]);const pT=new Set(["Picklist","State","Status"]);
-                      let ops=["eq","ne","is_null","is_not_null"];
-                      if(sT.has(fType)) ops=["eq","ne","contains","not_contains","startswith","not_startswith","endswith","not_endswith","is_null","is_not_null"];
-                      else if(nT.has(fType)||dT.has(fType)) ops=["eq","ne","gt","lt","ge","le","is_null","is_not_null"];
-                      const needsValue=fil.op!=="is_null"&&fil.op!=="is_not_null";
-                      const opLabels={"eq":"=","ne":"≠","gt":">","lt":"<","ge":"≥","le":"≤","contains":"contains","not_contains":"not contains","startswith":"starts with","not_startswith":"not starts with","endswith":"ends with","not_endswith":"not ends with","is_null":"is null","is_not_null":"is not null"};
-                      const placeholder=sT.has(fType)?"text":nT.has(fType)?"number":dT.has(fType)?"2025-01-15":fType==="Boolean"?"true / false":pT.has(fType)?"int":"value";
-                      return (<div key={ci} style={{display:"flex",alignItems:"center",gap:3,marginBottom:2}}>
-                        {hasMultiple&&ci>0&&filterGroups.length===1&&<span style={{fontSize:10,color:C.yw,minWidth:24,textAlign:"center"}}>{grp.logic.toUpperCase()}</span>}
-                        <select value={fil.field} onChange={e=>updateCond(ci,"field",e.target.value)} style={inp({width:"auto",fontSize:12,padding:"3px 6px"})}><option value="">(none)</option>{fields.map(f=><option key={f.l} value={f.l}>{f.l}</option>)}</select>
-                        {fil.field&&<select value={ops.includes(fil.op)?fil.op:"eq"} onChange={e=>updateCond(ci,"op",e.target.value)} style={inp({width:"auto",fontSize:11,padding:"3px 5px",color:C.cy})}>{ops.map(o=><option key={o} value={o}>{opLabels[o]||o}</option>)}</select>}
-                        {fil.field&&needsValue&&<input value={fil.value} onChange={e=>updateCond(ci,"value",e.target.value)} placeholder={placeholder} style={inp({width:bp.mobile?"100%":120,fontSize:12,padding:"3px 6px"})}/>}
-                        {(grp.conditions.length>1||filterGroups.length>1)&&<button onClick={()=>rmCond(ci)} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:1,fontSize:11}}>✕</button>}
-                      </div>);
-                    })}
+                    {grp.conditions.map((fil,ci)=><ConditionRow key={ci} fil={fil} fields={fields} bp={bp}
+                      logicLabel={hasMultiple&&ci>0&&filterGroups.length===1?grp.logic.toUpperCase():null}
+                      onChange={(k,v)=>updateCond(ci,k,v)} onRemove={grp.conditions.length>1||filterGroups.length>1?()=>rmCond(ci):null}/>)}
                     {filterGroups.length===1&&<button onClick={addCond} style={{padding:"2px 8px",background:"transparent",border:`1px dashed ${C.bd}`,borderRadius:3,color:C.txd,cursor:"pointer",fontSize:11,marginTop:2}}>{t("explorer.add_condition")}</button>}
                     {filterGroups.length===1&&grp.conditions.length>1&&<select value={grp.logic} onChange={e=>updateGrp({...grp,logic:e.target.value})} style={inp({width:"auto",fontSize:10,padding:"2px 6px",color:C.yw,marginTop:2,marginLeft:4})}><option value="and">AND</option><option value="or">OR</option></select>}
                   </div>);
@@ -1708,9 +1725,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               {qm==="fetchxml"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fxml.replace(/\n/g," ").substring(0,100)}{fxml.length>100?"…":""}</code>}
               {qm==="sql"&&!bp.mobile&&<code style={{fontSize:11,color:C.cy,...mono,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sqlQ.replace(/\n/g," ").substring(0,100)}{sqlQ.length>100?"…":""}</code>}
               <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                <button onClick={run} disabled={loading||loadingFields||streamState?.phase==="running"} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:<><I.Play/> {sqlWritePeek&&!sqlWritePeek.error?`Preview ${sqlWritePeek.kind.toUpperCase()}`:"Execute"} <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
+                <button onClick={run} disabled={runBusy} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`)}>{loading?<><Spin s={12}/> Querying...</>:loadingFields?<><Spin s={12}/> Fields...</>:res?.fetching?<><Spin s={12}/> Paging...</>:<><I.Play/> {sqlWritePeek&&!sqlWritePeek.error?`Preview ${sqlWritePeek.kind.toUpperCase()}`:"Execute"} <span style={{fontSize:11,opacity:.7}}>Ctrl+⏎</span></>}</button>
                 <div style={{position:"relative"}}>
-                  <button onClick={()=>setShowStreamMenu(v=>!v)} disabled={loading||loadingFields||streamState?.phase==="running"} title="Run this query and write EVERY row straight to a file — nothing kept in the browser, any size" style={{padding:"4px 8px",background:showStreamMenu?C.cy+"22":"transparent",border:`1px solid ${C.cy}55`,borderRadius:4,color:C.cy,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>⬇ To file</button>
+                  <button onClick={()=>setShowStreamMenu(v=>!v)} disabled={runBusy} title="Run this query and write EVERY row straight to a file — nothing kept in the browser, any size" style={{padding:"4px 8px",background:showStreamMenu?C.cy+"22":"transparent",border:`1px solid ${C.cy}55`,borderRadius:4,color:C.cy,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>⬇ To file</button>
                   {showStreamMenu&&<div style={{position:"absolute",top:"100%",left:0,zIndex:30,marginTop:4,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,minWidth:250,boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
                     <div style={{padding:"7px 10px",fontSize:11,color:C.txd,borderBottom:`1px solid ${C.bd}`,lineHeight:1.5}}>Runs the query and streams every row to the file you pick — page after page, nothing kept in the browser.</div>
                     <button onClick={()=>startStream("csv")} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",border:"none",background:"transparent",color:C.tx,cursor:"pointer",fontSize:12.5}}>CSV <span style={{color:C.txd,fontSize:11}}>— any number of rows</span></button>
@@ -1793,10 +1810,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                   {showSaved&&(
                     <div style={{position:"absolute",top:"100%",right:0,zIndex:20,background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,marginTop:4,minWidth:240,maxHeight:240,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
                       {/* Share saved queries between colleagues: plain JSON export/import (merge by name). */}
-                      <div style={{display:"flex",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`}}>
+                      <div style={{display:"flex",gap:6,padding:"6px 10px",borderBottom:`1px solid ${C.bd}`,alignItems:"center"}}>
+                        <span title={`Saved queries on this environment (${MAX_SAVED_QUERIES} at most)`} style={{fontSize:11,color:savedQueries.length>=MAX_SAVED_QUERIES?C.yw:C.txd,...mono,whiteSpace:"nowrap"}}>{savedQueries.length}/{MAX_SAVED_QUERIES}</span>
                         <button onClick={()=>{dl(JSON.stringify({colvioQueries:1,queries:savedQueries},null,1),"application/json",expName("colvio_queries","json"));}} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬇ {t("explorer.export_queries")}</button>
                         <button onClick={()=>qImportRef.current?.click()} style={{flex:1,padding:"3px 8px",fontSize:11,background:"transparent",border:`1px solid ${C.cy}55`,borderRadius:3,color:C.cy,cursor:"pointer",fontWeight:600}}>⬆ {t("explorer.import_queries")}</button>
-                        <input ref={qImportRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const qs=d.colvioQueries===1?d.queries:null;if(!Array.isArray(qs))throw 0;const mergeIn=(list)=>[...qs.filter(q=>q&&q.name),...list.filter(s2=>!qs.some(q=>q.name===s2.name))].slice(0,20);setSavedQueries(mergeIn(savedQueries));setImportErr("");persistList("d365_saved_queries",mergeIn);}catch{setImportErr(t("explorer.import_queries_bad"));}};r.readAsText(f);e.target.value="";}}/>
+                        <input ref={qImportRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const qs=d.colvioQueries===1?d.queries:null;if(!Array.isArray(qs))throw 0;const mergeIn=(list)=>[...qs.filter(q=>q&&q.name),...list.filter(s2=>!qs.some(q=>q.name===s2.name))];const merged=mergeIn(savedQueries);if(merged.length>MAX_SAVED_QUERIES){setImportErr(`Importing would make ${merged.length} saved queries — the cap is ${MAX_SAVED_QUERIES}. Delete some first.`);return;}setSavedQueries(merged);setImportErr("");persistList("d365_saved_queries",cur=>mergeIn(cur).slice(0,MAX_SAVED_QUERIES));}catch{setImportErr(t("explorer.import_queries_bad"));}};r.readAsText(f);e.target.value="";}}/>
                       </div>
                       {importErr&&<div style={{padding:"6px 10px",fontSize:11,color:C.rd,borderBottom:`1px solid ${C.bd}`,display:"flex",alignItems:"center",gap:6}}>⚠ {importErr}<button onClick={()=>setImportErr("")} style={{marginLeft:"auto",background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,fontSize:11}}>✕</button></div>}
                       {savedQueries.map(q=>(
@@ -1851,6 +1869,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           <div style={{fontSize:15,fontWeight:700,marginBottom:12,color:C.tx}}>{t("explorer.query_name")}</div>
           <input value={saveName} onChange={e=>setSaveName(e.target.value)} placeholder={t("explorer.query_name_placeholder")} autoFocus style={inp({fontSize:13,marginBottom:12,width:"100%",boxSizing:"border-box"})} onKeyDown={e=>{if(e.key==="Enter"&&saveName.trim())doSaveQuery(saveName.trim());if(e.key==="Escape")setSaveModal(false);}}/>
           {savedQueries.some(s=>s.name===saveName.trim())&&<div style={{fontSize:12,color:C.yw,marginTop:-6,marginBottom:12}}>A saved query already has this name — saving replaces it.</div>}
+          {saveErr&&<div style={{fontSize:12,color:C.rd,marginTop:-6,marginBottom:12}}>⚠ {saveErr}</div>}
           <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
             <button onClick={()=>setSaveModal(false)} style={bt(null,{fontSize:12})}>{t("common.cancel")}</button>
             <button onClick={()=>doSaveQuery(saveName.trim())} disabled={!saveName.trim()} style={bt(saveName.trim()?(savedQueries.some(s=>s.name===saveName.trim())?C.yw:C.vi):C.sfh,{fontSize:12,opacity:saveName.trim()?1:.5})}>{savedQueries.some(s=>s.name===saveName.trim())?"Overwrite":t("common.save")}</button>

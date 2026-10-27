@@ -55,19 +55,34 @@ const resolveReplaced = (id) => {
 // bulk chunk dies with a bogus "tab was closed". Pin it awake while it serves the panel.
 const keepAwake = (tabId) => { try { chrome.tabs.update(tabId, { autoDiscardable: false }); } catch { /* tab may be gone */ } };
 
-chrome.runtime.onInstalled.addListener(() => {
-  // Gray the icon everywhere by default; the declarativeContent rules below re-enable it on D365
-  // pages only. Without this disable(), MV3 keeps the action enabled on every tab and the rules
-  // are a no-op (the click handler was already guarded by isD365Url — this makes the affordance
-  // visible AND gives the declarativeContent permission its observable use).
-  chrome.action.disable();
-  chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
-    chrome.declarativeContent.onPageChanged.addRules([{
-      conditions: D365_DOMAINS.map(d => new chrome.declarativeContent.PageStateMatcher({ pageUrl: { hostSuffix: d } })),
-      actions: [new chrome.declarativeContent.ShowAction()],
-    }]);
-  });
+// Gray the icon everywhere by default; the declarativeContent rules re-enable it on D365 pages
+// only. Without the disable(), MV3 keeps the action enabled on every tab and the rules are a no-op
+// (the click handler is guarded by isD365Url anyway — this makes the affordance visible AND gives
+// the declarativeContent permission its observable use). Idempotent, so it runs at install/update,
+// at browser start AND once per rules version at worker start: it used to run in onInstalled only,
+// and one failed worker start at update time (a half-built dist/) left the icon disabled on every
+// tab — a disabled action opens the context menu on left click — until a reinstall (user report).
+const RULES_VERSION = "2";
+const installActionRules = () => new Promise((resolve) => {
+  try {
+    chrome.action.disable();
+    chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
+      chrome.declarativeContent.onPageChanged.addRules([{
+        conditions: D365_DOMAINS.map(d => new chrome.declarativeContent.PageStateMatcher({ pageUrl: { hostSuffix: d } })),
+        actions: [new chrome.declarativeContent.ShowAction()],
+      }], () => { void chrome.runtime.lastError; resolve(); });
+    });
+  } catch { resolve(); }
 });
+chrome.runtime.onInstalled.addListener(() => { installActionRules().then(() => { try { chrome.storage.local.set({ colvioActionRules: RULES_VERSION }); } catch { /* storage unavailable */ } }); });
+chrome.runtime.onStartup.addListener(() => { installActionRules(); });
+try {
+  chrome.storage.local.get("colvioActionRules", (r) => {
+    void chrome.runtime.lastError;
+    if (r?.colvioActionRules === RULES_VERSION) return;
+    installActionRules().then(() => { try { chrome.storage.local.set({ colvioActionRules: RULES_VERSION }); } catch { /* storage unavailable */ } });
+  });
+} catch { /* storage unavailable */ }
 
 // ── Click icon: this environment's panel ─────────────────────
 // One Colvio per environment (panelRouting.js): the org's panel already open is brought next to
@@ -93,7 +108,12 @@ chrome.action.onClicked.addListener(async (tab) => {
   const mine = pickPanel(panels, orgUrl, tab.windowId);
   if (mine) {
     try { await chrome.tabs.move(mine.id, { windowId: tab.windowId, index: tab.index + 1 }); } catch { /* dragged mid-move or pinned — keep it where it is */ }
-    await chrome.tabs.update(mine.id, { active: true });
+    try { await chrome.tabs.update(mine.id, { active: true }); }
+    catch { // the panel closed between the query and the update — open a fresh one instead of nothing
+      const created = await chrome.tabs.create({ url: panelUrl, index: tab.index + 1, openerTabId: tab.id });
+      if (created?.id != null) keepAwake(created.id);
+      return;
+    }
     keepAwake(mine.id);
     // the panel now follows this tab (the record open in it, for Show All Data / the Explorer)
     try { chrome.runtime.sendMessage({ __colvioRebind: true, orgUrl, tabId: tab.id }, () => { void chrome.runtime.lastError; }); } catch { /* no panel listening */ }
@@ -191,9 +211,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "d365_tab_ready") { d365TabId = sender.tab.id; keepAwake(sender.tab.id); sendResponse({ ok: true }); }
 });
 
-chrome.tabs.onRemoved.addListener((id) => {
+// A closed panel releases the org tab it was pinned to: autoDiscardable goes back on unless
+// another panel of the same org is still open (the pin was never undone — tabs stayed
+// undiscardable for the rest of the session; audit finding).
+const releaseOrgTab = async (orgUrl) => {
+  const id = bound.get(orgUrl);
+  if (id == null) return;
+  try {
+    const panels = await chrome.tabs.query({ url: chrome.runtime.getURL("panel.html*") });
+    if (panels.some(p => { try { return new URL(p.url).searchParams.get("orgUrl") === orgUrl; } catch { return false; } })) return;
+    await chrome.tabs.update(id, { autoDiscardable: true });
+  } catch { /* tab gone */ }
+};
+chrome.tabs.onRemoved.addListener((id, info) => {
   if (id === d365TabId) d365TabId = null;
   for (const [org, t] of bound) if (t === id) dropBound(org);
+  if (info?.isWindowClosing) return;
+  // was it a panel? its org is in its URL, which is gone with the tab — ask each bound org
+  for (const org of [...bound.keys()]) releaseOrgTab(org);
 });
 
 // ── Record activity: the saves each D365 tab sends ───────────

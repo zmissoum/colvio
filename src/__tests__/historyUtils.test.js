@@ -161,3 +161,19 @@ describe("pre-publication review fixes (store-readiness pass)", () => {
     expect(scrubApiEntries(list).changed).toBe(false);
   });
 });
+
+describe("redactFetchXml — uiname", () => {
+  it("PRIVACY: a lookup condition's uiname (the record's name) is blanked, in both quote styles", () => {
+    const x = redactFetchXml(`<condition attribute="ownerid" operator="eq" uiname="Jane Doe" uitype="systemuser" value="{guid}"/><condition attribute="x" operator="eq" uiname='O Brien' value='1'/>`);
+    expect(x).not.toContain("Jane Doe");
+    expect(x).not.toContain("O Brien");
+    expect(x).toContain('uiname="..."');
+    expect(x).toContain("uiname='...'");
+    expect(x).toContain('uitype="systemuser"');
+  });
+  it("scrubStoredHistory re-applies it to entries stored before the redaction existed", () => {
+    const { list, changed } = scrubStoredHistory([{ mode: "fetchxml", query: '<condition attribute="ownerid" operator="eq" uiname="Jane Doe" value="..."/>' }]);
+    expect(changed).toBe(true);
+    expect(list[0].query).not.toContain("Jane Doe");
+  });
+});

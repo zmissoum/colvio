@@ -41,11 +41,17 @@ export function coerceScalarForEdit(rawStr, t) {
  * @returns {ok:true, body, localValue} | {ok:false, reason, needsTarget?} — body is the PATCH
  *          fragment, localValue what the displayed row should show after the write.
  */
-export function prepareUpdate(meta, field, rawStr, lookupTarget) {
+// What a caller passes as rawStr to say "clear this column" without the typed-in "null" convention —
+// SQL's NULL keyword, where the text 'null' in quotes is data (review finding).
+export const CLEAR_VALUE = Symbol("clear");
+
+export function prepareUpdate(meta, field, rawStr, lookupTarget, { literal = false } = {}) {
   const { fieldTypes, lookupBinds, odataFieldMap } = meta || {};
   const odataField = odataFieldMap?.[field] || field;
   const t = fieldTypes?.[field];
-  const isEmpty = rawStr === "" || rawStr === "null";
+  // literal: the value is a parsed constant (SQL SET), so the text "null" is text; only CLEAR_VALUE
+  // (and '' — Dataverse stores an empty string as null anyway) clears.
+  const isEmpty = rawStr === CLEAR_VALUE || rawStr === "" || (rawStr === "null" && !literal);
   if (t === "Lookup" || t === "Owner" || t === "Customer") {
     const binds = lookupBinds?.[field];
     if (!binds?.length) return { ok: false, reason: `"${field}" is a lookup but its relationship metadata isn't available here — use the Data Loader for this update.` };
@@ -62,7 +68,9 @@ export function prepareUpdate(meta, field, rawStr, lookupTarget) {
     let val = rawStr;
     if (val === "true") val = true;
     else if (val === "false") val = false;
-    else if (!isNaN(val) && String(val).trim() !== "") val = Number(val);
+    // Only a number that round-trips: "0612345678" or "1e3" on a String column must stay text —
+    // Number() used to rewrite the phone number as 612345678 (review finding).
+    else if (typeof val === "string" && Number.isFinite(Number(val)) && String(Number(val)) === val.trim()) val = Number(val);
     return { ok: true, body: { [odataField]: val }, localValue: val };
   }
   const c = coerceScalarForEdit(rawStr, t);

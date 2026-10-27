@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseValue, parseSqlWrite, previewSelect, describeSets, rawForPrepare, updateMetaFor } from "../sqlWrite.js";
-import { prepareUpdate } from "../updateUtils.js";
+import { prepareUpdate, CLEAR_VALUE } from "../updateUtils.js";
 
 describe("parseValue", () => {
   it("reads the constants it supports", () => {
@@ -73,5 +73,17 @@ describe("review pass", () => {
     expect(parseSqlWrite("DELETE FROM account JOIN contact ON account.accountid = contact.parentcustomerid WHERE contact.x = 1").error).toMatch(/DELETE with a JOIN/);
     expect(parseSqlWrite("UPDATE account SET name = 'x' WHERE name = 'y'; -- note")).toMatchObject({ kind: "update", where: "name = 'y'" });
     expect(parseSqlWrite("UPDATE account SET name = 'a\n--b' WHERE accountid IS NOT NULL")).toMatchObject({ kind: "update", sets: [{ col: "name", value: "a\n--b" }] });
+  });
+});
+
+describe("SQL NULL vs the text 'null'", () => {
+  it("SET col = 'null' (text in quotes) writes the text; SET col = NULL clears", () => {
+    const meta = { fieldTypes: { description: "Memo" }, lookupBinds: {}, odataFieldMap: {} };
+    const txt = parseSqlWrite("UPDATE account SET description = 'null' WHERE x = 1").sets[0];
+    expect(rawForPrepare(txt)).toBe("null");
+    expect(prepareUpdate(meta, "description", rawForPrepare(txt), undefined, { literal: true }).body).toEqual({ description: "null" });
+    const nul = parseSqlWrite("UPDATE account SET description = NULL WHERE x = 1").sets[0];
+    expect(rawForPrepare(nul)).toBe(CLEAR_VALUE);
+    expect(prepareUpdate(meta, "description", rawForPrepare(nul), undefined, { literal: true }).body).toEqual({ description: null });
   });
 });

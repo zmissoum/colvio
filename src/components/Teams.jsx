@@ -14,6 +14,7 @@ export default function Teams({ bp, orgInfo }) {
   const [loading, setLoading] = useState(true);
   const [accessLoading, setAccessLoading] = useState(false);
   const [error, setError] = useState("");
+  const [accessErr, setAccessErr] = useState(""); // the lazy access-team load's own error — shown under the Access chip only, not on every chip
   const [chip, setChip] = useState("all");
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState(null);
@@ -38,11 +39,11 @@ export default function Teams({ bp, orgInfo }) {
   const pickChip = (k) => {
     setChip(k);
     if (k === "access" && accessTeams === null && !accessLoading) {
-      setAccessLoading(true);
+      setAccessLoading(true); setAccessErr("");
       bridge.getTeams(true)
         .then(r => { setAccessTeams(sortTeams((r?.rows || []).map(normalizeTeam))); setAccessLoading(false); })
-        // an empty list must not impersonate a failed load (review finding)
-        .catch(e => { setAccessTeams([]); setError("Access teams: " + (e.message || String(e))); setAccessLoading(false); });
+        // an empty list must not impersonate a failed load (review finding); null keeps the chip retryable
+        .catch(e => { setAccessTeams(null); setAccessErr("Access teams: " + (e.message || String(e))); setAccessLoading(false); });
     }
   };
 
@@ -111,7 +112,8 @@ export default function Teams({ bp, orgInfo }) {
         <div style={{ flex: 1, overflow: "auto", padding: "0 6px 6px" }}>
           {(loading || (chip === "access" && accessLoading)) && <div style={{ textAlign: "center", padding: 20 }}><Spin /></div>}
           {error && <div style={{ padding: 10, color: C.rd, fontSize: 12 }}>{error}</div>}
-          {!loading && !error && shown.length === 0 && !(chip === "access" && accessLoading) && (
+          {chip === "access" && accessErr && <div style={{ padding: 10, color: C.rd, fontSize: 12 }}>{accessErr} <button onClick={() => pickChip("access")} style={bt(null, { fontSize: 11, padding: "2px 8px", marginLeft: 6 })}>Retry</button></div>}
+          {!loading && !error && shown.length === 0 && !(chip === "access" && (accessLoading || accessErr)) && (
             <div style={{ padding: 14, color: C.txd, fontSize: 12, textAlign: "center" }}>{search ? `No team matches “${search}”` : "No teams here"}</div>
           )}
           {shown.slice(0, 500).map(tm => (

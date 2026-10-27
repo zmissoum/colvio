@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decodeContent, encodeContent, byteSize, publishXmlFor, filterResources, searchContents, offsetOfLine, isTextType, typeLabel } from "../webResources.js";
+import { decodeContent, encodeContent, byteSize, publishXmlFor, filterResources, searchContents, offsetOfLine, isTextType, typeLabel, changedSince, changedMessage } from "../webResources.js";
 
 describe("content round trip", () => {
   it("decodes and re-encodes UTF-8 text, keeping a BOM", () => {
@@ -56,5 +56,25 @@ describe("search in contents", () => {
   it("finds a line's offset", () => {
     expect(offsetOfLine("a\nbb\nccc", 3)).toBe(5);
     expect(offsetOfLine("a", 9)).toBe(1);
+  });
+});
+
+describe("changed on the server since it was opened", () => {
+  it("compares stamps as instants — the same moment in two spellings is not a change", () => {
+    expect(changedSince("2024-05-01T10:00:00Z", "2024-05-01T10:00:00.000Z")).toBe(false);
+    expect(changedSince("2024-05-01T10:00:00Z", "2024-05-01T10:00:01Z")).toBe(true);
+    expect(changedSince("2024-05-01T10:00:01Z", "2024-05-01T10:00:00Z")).toBe(true); // older on the server still means "not what you opened"
+  });
+  it("a missing or unreadable stamp never blocks a save; two unreadable stamps compare as text", () => {
+    expect(changedSince("", "2024-05-01T10:00:00Z")).toBe(false);
+    expect(changedSince("2024-05-01T10:00:00Z", undefined)).toBe(false);
+    expect(changedSince("v1", "v1")).toBe(false);
+    expect(changedSince("v1", "v2")).toBe(true);
+  });
+  it("names who changed it and when, and degrades when the server says neither", () => {
+    const m = changedMessage("new_/scripts/account.js", { modifiedOn: "2024-05-01T10:00:00Z", modifiedBy: "Alex Baker" });
+    expect(m).toMatch(/^new_\/scripts\/account\.js changed on the server since you opened it \(by Alex Baker at \d{1,2}:\d{2}( [AP]M)?\) — reload to see the current version\.$/);
+    expect(changedMessage("x.js", { modifiedOn: "", modifiedBy: "" })).toBe("x.js changed on the server since you opened it — reload to see the current version.");
+    expect(changedMessage("x.js", { modifiedBy: "Alex" })).toContain("(by Alex)");
   });
 });

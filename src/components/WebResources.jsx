@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, Spin, mono, inp, bt, crd, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
-import { WR_TYPES, isTextType, isImageType, typeLabel, decodeContent, encodeContent, contentBytes, byteSize, filterResources, searchContents, offsetOfLine } from "../webResources.js";
+import { WR_TYPES, isTextType, isImageType, typeLabel, decodeContent, encodeContent, contentBytes, byteSize, filterResources, searchContents, offsetOfLine, changedSince, changedMessage } from "../webResources.js";
 
 const PACKET = 25;
 const fmtBytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
@@ -45,7 +45,8 @@ export default function WebResources({ bp, orgInfo }) {
       if (!c) throw new Error("The web resource couldn't be read.");
       const { text, bom, encoding } = isTextType(r.type) ? decodeContent(c.content) : { text: "", bom: false, encoding: "utf-8" };
       cache.current.set(r.id, text);
-      setOpen({ ...r, loading: false, b64: c.content, text, saved: text, bom, readOnly: encoding !== "utf-8", busy: "", msg: null, description: c.description });
+      // the stamp of the copy actually opened (the list's may be minutes old) — what a save is checked against
+      setOpen({ ...r, modifiedOn: c.modifiedOn || r.modifiedOn, loading: false, b64: c.content, text, saved: text, bom, readOnly: encoding !== "utf-8", busy: "", msg: null, description: c.description });
       if (line) setTimeout(() => goToLine(text, line), 50);
     } catch (e) { if (openGen.current === my) setOpen(o => (o ? { ...o, loading: false, failed: true, msg: { ok: false, text: e.message || String(e) } } : o)); }
   };
@@ -56,27 +57,53 @@ export default function WebResources({ bp, orgInfo }) {
     el.scrollTop = Math.max(0, (line - 4) * 18);
   };
 
+  // The server's current stamp of a resource — one tiny read, no content. The demo org doesn't
+  // serve the query action: there the contents read (which carries modifiedOn) stands in.
+  const serverStamp = async (id) => {
+    const x = (await bridge.query(`webresourceset(${id})`, { select: "modifiedon,_modifiedby_value" }))?.records?.[0];
+    if (x) return { modifiedOn: x.modifiedon || "", modifiedBy: x["_modifiedby_value@OData.Community.Display.V1.FormattedValue"] || "" };
+    const [c] = (await bridge.getWebResourceContents([id])) || [];
+    return c ? { modifiedOn: c.modifiedOn || "", modifiedBy: "" } : null;
+  };
+
   const save = async (publish) => {
     if (!open || open.busy) return;
+    const { id } = open, my = openGen.current;
+    const upd = (f) => setOpen(o => (o && o.id === id ? f(o) : o)); // the user may open another resource while a request runs
     const dirty = open.text !== open.saved;
     if (!dirty && !publish) return;
     const b64 = encodeContent(open.text, open.bom);
     const what = dirty ? (publish ? "Save and publish" : "Save") : "Publish";
+    // The update is an unconditional PATCH (If-Match: *): without this check, two people editing
+    // the same script means the second save silently erases the first — refuse unless told to.
+    if (dirty) {
+      upd(o => ({ ...o, busy: "Checking…", msg: null }));
+      let stamp = null;
+      try { stamp = await serverStamp(id); } catch { /* unreadable stamp: can't tell, save as before */ }
+      if (openGen.current !== my) return; // switched to another resource meanwhile
+      if (stamp && changedSince(open.modifiedOn, stamp.modifiedOn)) {
+        const text = changedMessage(open.name, stamp);
+        if (!window.confirm(`${text}\n\nOK = overwrite the server's version with yours anyway.\nCancel = keep your edits here, unsaved.`)) { upd(o => ({ ...o, busy: "", msg: { ok: false, text: `Not saved: ${text}`, reload: true } })); return; }
+      }
+      upd(o => ({ ...o, busy: "" }));
+    }
     const lines = [`${what} ${open.name}?`, "", dirty ? `${fmtBytes(byteSize(b64))} (was ${fmtBytes(byteSize(open.b64))}).` : "No change in the content — the current version is published."];
     if (publish) lines.push("Every form and page that loads it gets this version at once, for every user."); else if (dirty) lines.push("Saved but not published: users keep the published version until a publish.");
     if (open.managed) lines.push("It comes from a managed solution: the next import of that solution may overwrite this change.");
     if (!window.confirm(lines.join("\n"))) return;
     if (!confirmProd(orgInfo?.isProduction, `${what} web resource ${open.name}`)) return;
-    setOpen(o => ({ ...o, busy: dirty ? "Saving…" : "Publishing…", msg: null }));
+    upd(o => ({ ...o, busy: dirty ? "Saving…" : "Publishing…", msg: null }));
     try {
-      if (dirty) await bridge.updateWebResource(open.id, b64);
-      if (publish) { setOpen(o => ({ ...o, busy: "Publishing…" })); await bridge.publishWebResources([open.id]); }
-      cache.current.set(open.id, open.text);
-      const now = new Date().toISOString();
-      setList(l => (l || []).map(r => (r.id === open.id && dirty ? { ...r, modifiedOn: now, modifiedBy: "you" } : r)));
+      if (dirty) await bridge.updateWebResource(id, b64);
+      if (publish) { upd(o => ({ ...o, busy: "Publishing…" })); await bridge.publishWebResources([id]); }
+      cache.current.set(id, open.text);
+      // the server's stamp of what was just written — the next save is checked against it
+      const after = dirty ? await serverStamp(id).catch(() => null) : null;
+      const stamp = dirty ? { modifiedOn: after?.modifiedOn || new Date().toISOString(), modifiedBy: after?.modifiedBy || "you" } : {};
+      setList(l => (l || []).map(r => (r.id === id && dirty ? { ...r, ...stamp } : r)));
       // what was WRITTEN is what's saved — not whatever was typed while the request ran
-      setOpen(o => ({ ...o, b64: dirty ? b64 : o.b64, saved: open.text, ...(dirty ? { modifiedOn: now, modifiedBy: "you" } : {}), busy: "", msg: { ok: true, text: `✓ ${dirty ? "Saved" : ""}${dirty && publish ? " and " : ""}${publish ? "published" : ""}.` } }));
-    } catch (e) { setOpen(o => ({ ...o, busy: "", msg: { ok: false, text: `${what} failed: ${e.message || String(e)}` } })); }
+      upd(o => ({ ...o, b64: dirty ? b64 : o.b64, saved: open.text, ...stamp, busy: "", msg: { ok: true, text: `✓ ${dirty ? "Saved" : ""}${dirty && publish ? " and " : ""}${publish ? "published" : ""}.` } }));
+    } catch (e) { upd(o => ({ ...o, busy: "", msg: { ok: false, text: `${what} failed: ${e.message || String(e)}` } })); }
   };
   // Ctrl+S: one listener, reading the latest save() through a ref (no re-registration per keystroke)
   const saveRef = useRef(null);
@@ -188,7 +215,7 @@ export default function WebResources({ bp, orgInfo }) {
                 <button onClick={() => save(true)} disabled={!!open.busy || open.loading || open.failed || open.readOnly} title="Ctrl+S" style={bt(C.vi, { fontSize: 11.5 })}>{open.busy ? <><Spin s={10} /> {open.busy}</> : "Save & publish"}</button>
               </>}
             </div>
-            {open.msg && <div style={{ padding: "6px 14px", fontSize: 12.5, color: open.msg.ok ? C.gn : C.rd, borderBottom: `1px solid ${C.bd}` }}>{open.msg.text}</div>}
+            {open.msg && <div style={{ padding: "6px 14px", fontSize: 12.5, color: open.msg.ok ? C.gn : C.rd, borderBottom: `1px solid ${C.bd}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><span style={{ flex: 1 }}>{open.msg.text}</span>{open.msg.reload && <button onClick={() => openRes(open)} title="Discard your edits and open the server's current version" style={bt(null, { fontSize: 11.5, padding: "3px 9px" })}>↻ Reload</button>}</div>}
             {open.managed && isTextType(open.type) && <div style={{ padding: "5px 14px", fontSize: 12, color: C.yw, borderBottom: `1px solid ${C.bd}` }}>From a managed solution — a change here is an unmanaged layer that the solution's next import may overwrite.</div>}
             {open.readOnly && <div style={{ padding: "5px 14px", fontSize: 12, color: C.yw, borderBottom: `1px solid ${C.bd}` }}>UTF-16 content — shown read-only: Colvio edits UTF-8 web resources only (download it to change it elsewhere).</div>}
             <div style={{ flex: 1, minHeight: 0, display: "flex" }}>

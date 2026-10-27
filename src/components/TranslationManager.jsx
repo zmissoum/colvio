@@ -4,6 +4,10 @@ import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, exportTabl
 import { t } from "../i18n.js";
 import { decodeBytes } from "../textDecode.js";
 
+// The bridge rejects with "Timeout after Ns — action: …" when the panel stops waiting: the server
+// may well still be exporting / importing / publishing. Those must not read as "failed".
+const timedOut=(e)=>/^Timeout after [\d.]+s — action: /.test(e?.message||String(e)); // the bridge's own text — a server-side "SQL timeout" is a real failure
+
 export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const isLive=orgInfo?.isExtension;
   // No publish privilege → read-only: browse + export stay, editing/saving/import are hidden.
@@ -59,7 +63,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
       const a=document.createElement("a");a.href=url;a.download=`CrmTranslations_${selSolName}.zip`;a.click();
       setTimeout(()=>URL.revokeObjectURL(url),5000);
       setSolMsg({ok:true,text:"Exported — edit CrmTranslations.xml inside the zip (Excel opens it), keep the structure, then import the zip back here."});
-    }catch(e){setSolMsg({ok:false,text:`Export failed: ${e.message}`});}
+    }catch(e){setSolMsg({ok:false,text:timedOut(e)?"Export timed out — the server may still be building the file (a big solution takes minutes). Wait a minute, then export again; nothing was changed.":`Export failed: ${e.message}`});}
     setSolBusy("");
   };
 
@@ -74,34 +78,43 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
       let s="";const bytes=new Uint8Array(buf);const CH=0x8000;
       for(let i=0;i<bytes.length;i+=CH) s+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
       const jobId=crypto.randomUUID();
-      await bridge.importTranslations(btoa(s),jobId);
+      try{ await bridge.importTranslations(btoa(s),jobId); }
+      catch(e){
+        if(!timedOut(e)) throw e;
+        // the panel stopped waiting, the server didn't: the job may still be running — watch it
+        // under the id we gave it rather than announce a failure (and a retry would import twice)
+        setSolMsg({ok:false,text:"Import timed out on the panel side — the server may still be importing. Watching the import job; check Settings > Data Management > Imports in a minute before importing again."});
+      }
       setSolBusy("");
-      setImportJob({id:jobId,progress:0,done:false});
-      let polls=0; // the poll used to retry FOREVER on missing job/failed reads — "0%" spinner for the whole session (audit finding)
-      jobPollRef.current=setInterval(async()=>{
-        if(++polls>60){ // ~5 min at 5s ticks
-          clearInterval(jobPollRef.current);jobPollRef.current=null;
-          setImportJob(null);
-          setSolMsg({ok:false,text:"Couldn't read the import job's status after 5 minutes (missing importjobs read privilege, or the job never registered). Check Settings > Data Management > Imports in D365, then publish customizations manually if the import succeeded."});
-          return;
-        }
-        try{
-          const d=await bridge.query("importjobs",{filter:`importjobid eq ${jobId}`,select:"progress,completedon"});
-          const j=d?.records?.[0];
-          if(!j) return;
-          setImportJob(prev=>prev?{...prev,progress:Math.round(j.progress||0),done:!!j.completedon}:prev);
-          if(j.completedon){
-            clearInterval(jobPollRef.current);jobPollRef.current=null;
-            if(autoPublish){
-              setSolBusy("publish");
-              try{ await bridge.publishAll(); setSolMsg({ok:true,text:"Translations imported and published — reload D365 forms to see the new labels."}); }
-              catch(e2){ setSolMsg({ok:false,text:`Imported, but publish failed: ${e2.message} — publish customizations manually.`}); }
-              setSolBusy("");
-            } else setSolMsg({ok:true,text:"Translations imported — publish customizations to apply them."});
-          }
-        }catch{/* transient poll failure — next tick retries */}
-      },5000);
+      watchJob(jobId);
     }catch(e){ setSolMsg({ok:false,text:`Import failed: ${e.message}`}); setSolBusy(""); }
+  };
+  const watchJob=(jobId)=>{
+    setImportJob({id:jobId,progress:0,done:false});
+    let polls=0; // the poll used to retry FOREVER on missing job/failed reads — "0%" spinner for the whole session (audit finding)
+    jobPollRef.current=setInterval(async()=>{
+      if(++polls>60){ // ~5 min at 5s ticks
+        clearInterval(jobPollRef.current);jobPollRef.current=null;
+        setImportJob(null);
+        setSolMsg({ok:false,text:"Couldn't read the import job's status after 5 minutes (missing importjobs read privilege, or the job never registered). Check Settings > Data Management > Imports in D365, then publish customizations manually if the import succeeded."});
+        return;
+      }
+      try{
+        const d=await bridge.query("importjobs",{filter:`importjobid eq ${jobId}`,select:"progress,completedon"});
+        const j=d?.records?.[0];
+        if(!j) return;
+        setImportJob(prev=>prev?{...prev,progress:Math.round(j.progress||0),done:!!j.completedon}:prev);
+        if(j.completedon){
+          clearInterval(jobPollRef.current);jobPollRef.current=null;
+          if(autoPublish){
+            setSolBusy("publish");
+            try{ await bridge.publishAll(); setSolMsg({ok:true,text:"Translations imported and published — reload D365 forms to see the new labels."}); }
+            catch(e2){ setSolMsg({ok:false,text:timedOut(e2)?"Imported — the publish timed out on the panel side; the server may still be publishing. Check a form's labels in a minute before publishing again.":`Imported, but publish failed: ${e2.message} — publish customizations manually.`}); }
+            setSolBusy("");
+          } else setSolMsg({ok:true,text:"Translations imported — publish customizations to apply them."});
+        }
+      }catch{/* transient poll failure — next tick retries */}
+    },5000);
   };
 
   useEffect(()=>{

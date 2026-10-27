@@ -90,7 +90,7 @@ export function parseSqlToAst(sql) {
     return name;
   };
 
-  const ast = { select: [], from: null, fromAlias: null, joins: [], where: null, orderBy: [], top: null, distinct: false, aggregate: false, groupBy: [] };
+  const ast = { select: [], from: null, fromAlias: null, joins: [], where: null, orderBy: [], top: null, distinct: false, aggregate: false, groupBy: [], having: [] };
 
   // SELECT
   expect("KW", "SELECT");
@@ -101,6 +101,7 @@ export function parseSqlToAst(sql) {
   // TOP N
   if (kw("TOP")) { next(); ast.top = parseInt(next().value, 10); }
 
+  const aggs = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
   // columns
   if (peek()?.type === "STAR") {
     next();
@@ -108,7 +109,6 @@ export function parseSqlToAst(sql) {
   } else {
     do {
       // check for aggregate: COUNT(*), SUM(col), etc.
-      const aggs = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
       if (peek()?.type === "KW" && aggs.includes(peek().value)) {
         const fn = next().value;
         expect("LPAREN");
@@ -133,7 +133,8 @@ export function parseSqlToAst(sql) {
   expect("KW", "FROM");
   ast.from = ident();
   if (kw("AS")) { next(); ast.fromAlias = ident(); }
-  else if (peek()?.type === "IDENT" && !["WHERE","ORDER","JOIN","LEFT","INNER","RIGHT","GROUP"].includes(peek()?.value?.toUpperCase?.())) {
+  // LIMIT / OFFSET aren't keywords here: excluded so they reach the trailing-token check below instead of being read as the table's alias
+  else if (peek()?.type === "IDENT" && !["WHERE","ORDER","JOIN","LEFT","INNER","RIGHT","GROUP","LIMIT","OFFSET"].includes(peek()?.value?.toUpperCase?.())) {
     ast.fromAlias = ident();
   }
 
@@ -142,7 +143,9 @@ export function parseSqlToAst(sql) {
     let linkType = "inner";
     if (kw("LEFT")) { linkType = "outer"; next(); kwNext("OUTER"); }
     else if (kw("INNER")) { next(); }
-    else if (kw("RIGHT")) { linkType = "inner"; next(); }
+    // FetchXML has no right/full/cross join (the main entity is always the preserved side): the
+    // old code silently ran RIGHT JOIN as an INNER join, dropping rows the user asked for.
+    else if (kw("RIGHT") || kw("FULL") || kw("CROSS")) throw new Error(`${peek().value} JOIN isn't supported — FetchXML only has inner and left outer joins. Put the table whose rows must all come back in FROM and use LEFT JOIN.`);
     if (!kw("JOIN")) break;
     next(); // consume JOIN
     const entity = ident();
@@ -168,6 +171,39 @@ export function parseSqlToAst(sql) {
     do { ast.groupBy.push(dottedName()); } while (peek()?.type === "COMMA" && next());
   }
 
+  // HAVING — FetchXML can't express it; the Explorer strips the <having> block before sending and
+  // applies it client-side on every page (applyHaving), so it is emitted as a Colvio-only element:
+  // alias op number, AND-joined. The alias is the SELECT's (COUNT(*) without AS → "count").
+  // The old parser stopped at HAVING silently — the grouped query ran UNFILTERED (audit finding).
+  if (kw("HAVING")) {
+    next();
+    if (!ast.aggregate) throw new Error("HAVING needs an aggregate SELECT (COUNT / SUM / AVG / MIN / MAX with GROUP BY).");
+    const opMap = { "=": "eq", "!=": "ne", "<>": "ne", ">": "gt", ">=": "ge", "<": "lt", "<=": "le" };
+    do {
+      let alias;
+      if (peek()?.type === "KW" && aggs.includes(peek().value)) {
+        const fn = next().value;
+        expect("LPAREN");
+        let col = "*";
+        if (peek()?.type === "STAR") next(); else col = dottedName();
+        expect("RPAREN");
+        const sel = ast.select.find(s => s.expr === "aggregate" && s.fn === fn && s.col === col);
+        if (!sel) throw new Error(`HAVING ${fn}(${col}): that aggregate isn't in the SELECT — add it there (with an alias) first.`);
+        alias = sel.alias;
+      } else {
+        alias = ident();
+        if (!ast.select.some(s => s.alias === alias)) throw new Error(`HAVING "${alias}": not an alias of the SELECT.`);
+      }
+      const op = next();
+      const fxOp = op?.type === "OP" ? opMap[op.value] : null;
+      if (!fxOp) throw new Error(`HAVING: expected a comparison after "${alias}"`);
+      const val = next();
+      if (!val || val.type !== "NUMBER") throw new Error(`HAVING "${alias} ${op.value} ${val?.value ?? ""}": the right side must be a number.`);
+      ast.having.push({ alias, operator: fxOp, value: val.value });
+    } while (kwNext("AND"));
+    if (kw("OR")) throw new Error("HAVING: only AND between conditions is supported.");
+  }
+
   // ORDER BY
   if (kw("ORDER")) {
     next(); expect("KW", "BY");
@@ -184,6 +220,14 @@ export function parseSqlToAst(sql) {
   // Without this the limit is silently dropped → the query falls back to the 5000-row default
   // page and starts paginating (which then surfaced the paging-cookie error). Catch it here.
   if (ast.top == null && kw("TOP")) { next(); ast.top = parseInt(next().value, 10); }
+
+  // Anything left is a clause this transpiler doesn't know (LIMIT, OFFSET, a misplaced HAVING…):
+  // say so — the old parser stopped here silently and ran the query WITHOUT it (audit finding).
+  if (pos < tokens.length) {
+    const v = String(tokens[pos].value), u = v.toUpperCase();
+    const hint = u === "LIMIT" || u === "OFFSET" ? " — use TOP n for a row limit" : u === "HAVING" ? " — HAVING goes between GROUP BY and ORDER BY" : "";
+    throw new Error(`Unexpected "${v}"${hint}: the query from there on isn't supported by the transpiler.`);
+  }
 
   return ast;
 
@@ -296,6 +340,10 @@ export function parseSqlToAst(sql) {
     if (!fxOp) throw new Error(`Unsupported operator "${op.value}"`);
     const val = next();
     if (!val) throw new Error(`Expected value after "${col} ${op.value}"`);
+    // A bare word on the right is another column: FetchXML has no column-to-column condition, and
+    // the old code sent it as the literal text 'ownerid' (silently matching nothing). TRUE/FALSE
+    // are the only bare literals allowed.
+    if (val.type === "IDENT" && !/^(true|false)$/i.test(val.value)) throw new Error(`"${col} ${op.value} ${val.value}": comparing two columns isn't supported — the right side must be a literal (text in quotes, a number, TRUE or FALSE).`);
     const isNum = val.type === "NUMBER";
     return { type: "condition", attribute: col, operator: fxOp, value: val.value, numeric: isNum };
   }
@@ -370,8 +418,9 @@ export function astToFetchXml(ast) {
     let attrStr = `${ind(2)}<attribute name="${escapeXml(a.name)}"`;
     if (a.aggregate) attrStr += ` aggregate="${a.aggregate}" alias="${escapeXml(a.alias)}"`;
     else {
-      if (a.alias) attrStr += ` alias="${escapeXml(a.alias)}"`;
-      if (a.groupby) attrStr += ` groupby="true" alias="${escapeXml(a.alias || a.name)}"`;
+      // groupby needs an alias; one named in SQL must not emit alias="…" TWICE (invalid XML)
+      if (a.groupby) attrStr += ' groupby="true"';
+      if (a.alias || a.groupby) attrStr += ` alias="${escapeXml(a.alias || a.name)}"`;
     }
     attrStr += "/>";
     lines.push(attrStr);
@@ -393,6 +442,13 @@ export function astToFetchXml(ast) {
     }
   }
 
+  // HAVING → Colvio-only <having> block (stripped before the server sees it, applied client-side)
+  if (ast.having?.length) {
+    lines.push(`${ind(2)}<having>`);
+    for (const h of ast.having) lines.push(`${ind(3)}<condition attribute="${escapeXml(h.alias)}" operator="${h.operator}" value="${escapeXml(h.value)}"/>`);
+    lines.push(`${ind(2)}</having>`);
+  }
+
   // JOINs → link-entity
   for (const j of ast.joins) {
     const { from, to } = resolveJoinFields(j, ast);
@@ -408,8 +464,8 @@ export function astToFetchXml(ast) {
       let attrStr = `${ind(3)}<attribute name="${escapeXml(a.name)}"`;
       if (a.aggregate) attrStr += ` aggregate="${a.aggregate}" alias="${escapeXml(a.alias)}"`;
       else {
-        if (a.alias) attrStr += ` alias="${escapeXml(a.alias)}"`;
-        if (a.groupby) attrStr += ` groupby="true" alias="${escapeXml(a.alias || a.name)}"`;
+        if (a.groupby) attrStr += ' groupby="true"';
+        if (a.alias || a.groupby) attrStr += ` alias="${escapeXml(a.alias || a.name)}"`;
       }
       attrStr += "/>";
       lines.push(attrStr);

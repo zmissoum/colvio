@@ -55,3 +55,10 @@ describe("review pass", () => {
     expect(normalizeODataInput("accounts?$select=name\n   &$top=5\n", "https://org.crm.dynamics.com").path).toBe("accounts?$select=name&$top=5");
   });
 });
+
+describe("line breaks inside a query", () => {
+  it("a break inside a $filter stands for a space; one next to a delimiter is pure wrapping", () => {
+    expect(normalizeODataInput("accounts?$filter=statecode eq 0\n and revenue gt 1000\n&$select=name", ORG).path).toBe("accounts?$filter=statecode eq 0 and revenue gt 1000&$select=name");
+    expect(normalizeODataInput("accounts?$select=name,\n  revenue&$expand=contacts(\n$select=fullname\n)", ORG).path).toBe("accounts?$select=name,revenue&$expand=contacts($select=fullname)");
+  });
+});
