@@ -1138,11 +1138,17 @@
             const baseUrl = `${ctx.clientUrl}/api/data/${ctx.apiVersion}`;
             const okStatus = removing ? "DISASSOCIATED" : "ASSOCIATED";
             const refuse = (rowIdx, msg) => { results.errors.push({ row: rowIdx, msg, payload: "" }); results.log.push({ row: rowIdx, status: "ERROR", msg }); };
-            // the idempotent outcomes: an association that already exists / one that wasn't there
+            // the idempotent outcomes: an association that already exists / one that wasn't there.
+            // A 404 "<table> With Id = <guid> Does Not Exist" is the RECORD missing (a wrong GUID in
+            // the file): an error, never "was not associated". Mirror of classifyAssociationOutcome
+            // in src/associationUtils.js (tested there — this script can't import modules).
+            const RECORD_MISSING = /With Id\s*=\s*\{?[0-9a-f-]{36}\}?\s+Does Not Exist/i;
             const classify = (status, msg) => {
+              const m = String(msg || "");
               if (status === 204 || status === 200) return { status: okStatus };
-              if (!removing && (/already|duplicate|exists/i.test(msg) || status === 409)) return { status: okStatus, note: "already associated", already: true };
-              if (removing && (status === 404 || /does not exist|not found|no association/i.test(msg))) return { status: okStatus, note: "was not associated", already: true };
+              if (RECORD_MISSING.test(m)) return null;
+              if (!removing && (status === 409 || /already|duplicate|exists/i.test(m))) return { status: okStatus, note: "already associated", already: true };
+              if (removing && (status === 404 || /does not exist|not found|no association/i.test(m))) return { status: okStatus, note: "was not associated", already: true };
               return null;
             };
             const parseBatchResponse = (text, batchOffset, chunkLen) => {
@@ -2436,17 +2442,31 @@
             idsW.forEach(validateGuid);
             if (!idsW.length) { result = []; break; }
             const dC = await dvRequest("GET", `webresourceset?$select=webresourceid,name,webresourcetype,content,description,modifiedon,ismanaged&$filter=${idsW.map(id => `webresourceid eq ${id}`).join(" or ")}`, null, NO_ANN);
-            result = (dC.value || []).map(r => ({ id: r.webresourceid, name: r.name || "", type: r.webresourcetype, content: r.content || "", description: r.description || "", modifiedOn: r.modifiedon || "", managed: !!r.ismanaged }));
+            // etag: the version opened — a save is conditional on it (updateWebResource)
+            result = (dC.value || []).map(r => ({ id: r.webresourceid, name: r.name || "", type: r.webresourcetype, content: r.content || "", description: r.description || "", modifiedOn: r.modifiedon || "", managed: !!r.ismanaged, etag: r["@odata.etag"] || "" }));
             break;
           }
 
           case "updateWebResource": {
-            // New content (base64) for one web resource — update only (If-Match: *), nothing else changes.
+            // New content (base64) for one web resource, nothing else changes. With the ETag of the
+            // version the editor opened (params.etag) the PATCH is CONDITIONAL — If-Match — and
+            // Dataverse itself refuses it (412) when the resource changed on the server since: atomic,
+            // no read-then-write window. No ETag = overwrite (If-Match: *). The server's new stamp
+            // comes back (return=representation) so the next save is conditional on it.
             validateGuid(params.id);
             const cW = String(params.content ?? "");
             if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cW)) throw new Error("Invalid content encoding.");
-            await dvRequest("PATCH", `webresourceset(${params.id})`, { content: cW }, { "If-Match": "*" });
-            result = { ok: true };
+            const etagW = params.etag == null ? "" : String(params.etag);
+            if (etagW && !/^W\/"[^"]*"$/.test(etagW)) throw new Error("Invalid ETag.");
+            let rW;
+            try {
+              rW = await dvRequest("PATCH", `webresourceset(${params.id})?$select=modifiedon,_modifiedby_value`, { content: cW },
+                { "If-Match": etagW || "*", "Prefer": 'return=representation,odata.include-annotations="OData.Community.Display.V1.FormattedValue"' });
+            } catch (e) {
+              if (/^HTTP 412\b/.test(String(e?.message || ""))) throw new Error("CHANGED_ON_SERVER: the web resource changed on the server since you opened it");
+              throw e;
+            }
+            result = { ok: true, etag: rW?.["@odata.etag"] || "", modifiedOn: rW?.modifiedon || "", modifiedBy: rW?.["_modifiedby_value@OData.Community.Display.V1.FormattedValue"] || "" };
             break;
           }
 
@@ -3034,6 +3054,23 @@
               url = (nl && Object.keys(map).length < CAP) ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
             }
             result = Object.values(map).sort((a, b) => (a.name || "").localeCompare(b.name || "")).slice(0, CAP);
+            break;
+          }
+
+          case "getRoleMemberIds": {
+            // Every direct holder of the role (ids only) across its business-unit copies, paged to
+            // the end — no cap: Adoption's role scope is complete, or it isn't applied at all.
+            const nameM = String(params.roleName || "");
+            if (!nameM) { result = []; break; }
+            const idsM = new Set();
+            let urlM = `systemusers?$select=systemuserid&$filter=systemuserroles_association/any(o:o/name eq ${odataStr(nameM)})`;
+            while (urlM) {
+              const dM = await dvRequest("GET", urlM, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
+              (dM.value || []).forEach(u => { if (u.systemuserid) idsM.add(String(u.systemuserid).toLowerCase()); });
+              const nlM = dM["@odata.nextLink"];
+              urlM = nlM ? nlM.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+            }
+            result = [...idsM];
             break;
           }
 

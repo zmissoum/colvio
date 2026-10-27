@@ -52,6 +52,22 @@ export function buildAssociationItems(pairs, resolved1, resolved2) {
   return { items, problems };
 }
 
+// The outcome of one association request, from its HTTP status and Dataverse's message:
+// { status } done; { status, note, already: true } for the idempotent cases (associating a pair
+// already linked, removing one that isn't); null = an error to report. A 404 reading
+// "<table> With Id = <guid> Does Not Exist" is the RECORD missing — a wrong GUID in the file —
+// never "was not associated": it stays an error in both directions. Mirrored in content.js
+// (batchAssociate), which can't import modules.
+export const RECORD_MISSING_RE = /With Id\s*=\s*\{?[0-9a-f-]{36}\}?\s+Does Not Exist/i;
+export function classifyAssociationOutcome(status, msg, removing) {
+  const okStatus = removing ? "DISASSOCIATED" : "ASSOCIATED", m = String(msg || "");
+  if (status === 204 || status === 200) return { status: okStatus };
+  if (RECORD_MISSING_RE.test(m)) return null;
+  if (!removing && (status === 409 || /already|duplicate|exists/i.test(m))) return { status: okStatus, note: "already associated", already: true };
+  if (removing && (status === 404 || /does not exist|not found|no association/i.test(m))) return { status: okStatus, note: "was not associated", already: true };
+  return null;
+}
+
 // Counts for the result card from the per-row log entries.
 export function summarizeAssociation(log) {
   const out = { done: 0, already: 0, errors: 0 };

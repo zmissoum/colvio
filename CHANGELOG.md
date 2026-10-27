@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.211] - 2026-10-27
+### Fixed - three findings of the review of 1.11.204-209
+- **Adoption's role filter has no cap any more.** The holders of a role were read up to 50,000, with a warning past that — against the rule that a list is complete or it isn't applied. They are now paged to the end (ids only, 5,000 a page, new `getRoleMemberIds`); if the read fails, the filter is dropped and says so instead of showing every user under the role's name.
+- **A dissociation on a GUID that doesn't exist is an error, not "was not associated".** Dataverse answers 404 "<table> With Id = … Does Not Exist" for a missing record and the Loader's association mode counted it as already done: a wrong GUID in the file went unreported. The record-missing message is told apart from a missing association, in both directions (pure `classifyAssociationOutcome` + test, mirrored in content.js).
+- **Web Resources: the save is conditional on the ETag, atomically.** The conflict check read `modifiedon` and then wrote — a window in which a colleague's save could still be overwritten. The PATCH now carries `If-Match: <the ETag of the version opened>`: Dataverse itself refuses it (412) when the resource changed since, and the editor explains who changed it, offers Reload or Overwrite (an unconditional save). The server's new ETag comes back with the save (`return=representation`) for the next one. Demo org: ETags as version counters, stale saves refused the same way.
+
 ## [1.11.210] - 2026-10-27
 ### Docs - everything brought up to 1.11.209
 - **What's New popup** (still 10 items per language): the Explorer item gets SQL completion and the many-to-many tables; "Change things" gets the Loader's N:N association; "Built for big orgs" names the second review pass (migration dates kept, numeric keys never rewritten, no duplicates after a timeout).

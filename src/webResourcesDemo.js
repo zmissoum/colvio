@@ -56,10 +56,14 @@ const store = new Map([
 ]);
 
 export const demoWebResources = () => [...store.entries()].map(([id, r]) => ({ id, name: r.name, displayName: r.displayName, type: r.type, managed: r.managed, hidden: false, customizable: !r.managed, modifiedOn: r.modifiedOn, modifiedBy: r.modifiedBy }));
-export const demoWebResourceContents = (ids) => (ids || []).filter(id => store.has(id)).map(id => { const r = store.get(id); return { id, name: r.name, type: r.type, content: r.content, description: "", modifiedOn: r.modifiedOn, managed: r.managed }; });
-export function demoUpdateWebResource(id, content) {
+// The demo's ETags: a version counter per resource, like Dataverse's W/"<n>".
+const etagOf = (r) => `W/"${r.v || 1}"`;
+export const demoWebResourceContents = (ids) => (ids || []).filter(id => store.has(id)).map(id => { const r = store.get(id); return { id, name: r.name, type: r.type, content: r.content, description: "", modifiedOn: r.modifiedOn, managed: r.managed, etag: etagOf(r) }; });
+// A save conditional on the ETag opened (null = overwrite): a stale one is refused like Dataverse's 412.
+export function demoUpdateWebResource(id, content, etag = null) {
   const r = store.get(id);
   if (!r) throw new Error("No such web resource.");
-  r.content = content; r.modifiedOn = new Date().toISOString();
-  return { ok: true };
+  if (etag && etag !== etagOf(r)) throw new Error("CHANGED_ON_SERVER: the web resource changed on the server since you opened it");
+  r.content = content; r.modifiedOn = new Date().toISOString(); r.modifiedBy = "You"; r.v = (r.v || 1) + 1;
+  return { ok: true, etag: etagOf(r), modifiedOn: r.modifiedOn, modifiedBy: r.modifiedBy };
 }

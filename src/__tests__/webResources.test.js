@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { decodeContent, encodeContent, byteSize, publishXmlFor, filterResources, searchContents, offsetOfLine, isTextType, typeLabel, changedSince, changedMessage } from "../webResources.js";
+import { demoWebResources, demoWebResourceContents, demoUpdateWebResource } from "../webResourcesDemo.js";
 
 describe("content round trip", () => {
   it("decodes and re-encodes UTF-8 text, keeping a BOM", () => {
@@ -76,5 +77,19 @@ describe("changed on the server since it was opened", () => {
     expect(m).toMatch(/^new_\/scripts\/account\.js changed on the server since you opened it \(by Alex Baker at \d{1,2}:\d{2}( [AP]M)?\) — reload to see the current version\.$/);
     expect(changedMessage("x.js", { modifiedOn: "", modifiedBy: "" })).toBe("x.js changed on the server since you opened it — reload to see the current version.");
     expect(changedMessage("x.js", { modifiedBy: "Alex" })).toContain("(by Alex)");
+  });
+});
+
+describe("web resources - a save is conditional on the ETag opened (demo org, like Dataverse's 412)", () => {
+  it("a stale ETag is refused, a fresh one saves and the ETag moves on, no ETag overwrites", () => {
+    const id = demoWebResources()[0].id;
+    const [c] = demoWebResourceContents([id]);
+    expect(c.etag).toMatch(/^W\/"\d+"$/);
+    const w = demoUpdateWebResource(id, "YQ==", c.etag);
+    expect(w.ok).toBe(true); expect(w.etag).not.toBe(c.etag); expect(w.modifiedBy).toBe("You");
+    expect(() => demoUpdateWebResource(id, "Yg==", c.etag)).toThrow(/CHANGED_ON_SERVER/);
+    expect(demoWebResourceContents([id])[0].content).toBe("YQ==");
+    expect(demoUpdateWebResource(id, "Yw==", null).ok).toBe(true); // overwrite
+    expect(demoWebResourceContents([id])[0]).toMatchObject({ content: "Yw==", etag: `W/"3"` });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readPairs, valuesToResolve, buildAssociationItems, summarizeAssociation, isGuid } from "../associationUtils.js";
+import { readPairs, valuesToResolve, buildAssociationItems, summarizeAssociation, isGuid, classifyAssociationOutcome } from "../associationUtils.js";
 
 const G1 = "11111111-1111-1111-1111-111111111111", G2 = "22222222-2222-2222-2222-222222222222", G3 = "33333333-3333-3333-3333-333333333333";
 
@@ -31,6 +31,17 @@ describe("association mode (N:N tables)", () => {
     expect(r.problems[3].duplicate).toBe(true);
     expect(isGuid(G3)).toBe(true);
     expect(isGuid("SAP-1")).toBe(false);
+  });
+  it("classifies the outcome of one request: idempotent cases pass, a missing RECORD never does", () => {
+    const G = "11111111-2222-3333-4444-555555555555";
+    expect(classifyAssociationOutcome(204, "", false)).toEqual({ status: "ASSOCIATED" });
+    expect(classifyAssociationOutcome(400, "Cannot insert duplicate key.", false)).toMatchObject({ already: true, note: "already associated" });
+    expect(classifyAssociationOutcome(409, "", false)).toMatchObject({ already: true });
+    expect(classifyAssociationOutcome(404, "The relationship does not exist", true)).toMatchObject({ status: "DISASSOCIATED", already: true, note: "was not associated" });
+    // a wrong GUID in the file: the record is missing — an error in both directions
+    expect(classifyAssociationOutcome(404, `systemuser With Id = ${G} Does Not Exist`, true)).toBe(null);
+    expect(classifyAssociationOutcome(404, `team With Id = {${G}} Does Not Exist`, false)).toBe(null);
+    expect(classifyAssociationOutcome(500, "boom", false)).toBe(null);
   });
   it("summarizeAssociation counts done / already / errors", () => {
     expect(summarizeAssociation([{ status: "ASSOCIATED" }, { status: "ASSOCIATED", note: "already associated", already: true }, { status: "ERROR", msg: "x" }])).toEqual({ done: 1, already: 1, errors: 1 });

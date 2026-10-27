@@ -167,7 +167,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed" || action === "batchAssociate";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleMemberIds" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -1190,9 +1190,9 @@ export const bridge = {
     if (!isExtension) { await new Promise(r => setTimeout(r, 150)); return demoWebResourceContents(ids); }
     return callD365("getWebResourceContents", { ids });
   },
-  async updateWebResource(id, content) {
-    if (!isExtension) { await new Promise(r => setTimeout(r, 250)); return demoUpdateWebResource(id, content); }
-    return callD365("updateWebResource", { id, content });
+  async updateWebResource(id, content, etag = null) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 250)); return demoUpdateWebResource(id, content, etag); }
+    return callD365("updateWebResource", { id, content, etag });
   },
   async publishWebResources(ids) {
     if (!isExtension) { await new Promise(r => setTimeout(r, 300)); return { ok: true }; }
@@ -1429,8 +1429,9 @@ export const bridge = {
   // as a Set of lower-case user ids. Roles inherited through a team are not included.
   async getRoleMemberIds(roleName) {
     if (!isExtension) return new Set(Object.keys(DEMO_USER_ROLES).filter(u => DEMO_USER_ROLES[u].some(r => DEMO_ROLE_NAMES[r] === roleName)));
-    const list = await callD365("getRoleUsers", { roleName, cap: 50000 });
-    return new Set((list || []).map(u => String(u.id).toLowerCase()));
+    // every holder, paged to the end (no cap)
+    const list = await callD365("getRoleMemberIds", { roleName });
+    return new Set((list || []).map(id => String(id).toLowerCase()));
   },
 
   // ── Record activity ──
