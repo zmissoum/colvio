@@ -92,3 +92,61 @@ export function uncoveredKey(cols, row) {
   }
   return null;
 }
+
+// ── Column ORDER follows the query, not the payload ──────────────────────────────────────────
+// The Web API lays a row's properties out in ITS order (metadata order, annotations between);
+// the grid and every export must show the columns in the order the QUERY named them — the
+// Builder's SELECT, the FetchXML's attributes, a SQL SELECT list, an OData $select. Columns the
+// query doesn't name (expands, SELECT *) follow in the order the rows show them.
+
+// The columns of a SQL SELECT list: [{ name, keys }] in order. "a.name" → name, keys a.name /
+// name / _name_value; "x AS y" → y; an aggregate without alias has no known key → skipped (it is
+// appended from the rows). SELECT * → [].
+export function sqlSelectColumns(sql) {
+  const s = String(sql || "");
+  const m = s.match(/^\s*select\s+(?:(?:distinct|top\s+\d+)\s+)*([\s\S]*?)\s+from\b/i);
+  if (!m) return [];
+  const items = [];
+  let depth = 0, cur = "";
+  for (const ch of m[1]) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (ch === "," && depth === 0) { items.push(cur); cur = ""; } else cur += ch;
+  }
+  items.push(cur);
+  const out = [];
+  for (const raw of items) {
+    const item = raw.trim();
+    if (!item || item === "*" || /\.\*$/.test(item)) continue;
+    const al = item.match(/\s+as\s+([A-Za-z_]\w*)\s*$/i) || item.match(/^(?:[A-Za-z_][\w.]*|[A-Za-z_]\w*\s*\([^)]*\))\s+([A-Za-z_]\w*)\s*$/i);
+    if (al) { out.push({ name: al[1], keys: [al[1]] }); continue; }
+    const col = item.match(/^([A-Za-z_][\w]*)(?:\.([A-Za-z_]\w*))?$/);
+    if (!col) continue; // an expression without alias: the server names it
+    const last = col[2] || col[1];
+    out.push({ name: last, keys: col[2] ? [item, last, `_${last}_value`] : [last, `_${last}_value`] });
+  }
+  return out;
+}
+
+// The columns an OData query names in $select: [{ name, keys }] (a lookup lands in _x_value).
+export function odataSelectColumns(pathOrUrl) {
+  const sel = ((String(pathOrUrl || "").match(/[?&]\$select=([^&]*)/i) || [])[1] || "");
+  let dec = sel;
+  try { dec = decodeURIComponent(sel); } catch { /* keep as is */ }
+  return dec.split(",").map(x => x.trim()).filter(Boolean).map(n => ({ name: n, keys: [n, `_${n}_value`] }));
+}
+
+// discovered: the column keys found in the rows (in payload order); declared: [{ name, keys }]
+// from the query. Returns the discovered keys, the declared ones first in the query's order (each
+// through the key it actually has in the rows), then the rest as they came.
+export function orderColumns(discovered, declared) {
+  const have = new Set(discovered || []);
+  const out = [];
+  const used = new Set();
+  for (const d of declared || []) {
+    const k = (d.keys || [d.name]).find(x => have.has(x) && !used.has(x));
+    if (k) { out.push(k); used.add(k); }
+  }
+  for (const k of discovered || []) if (!used.has(k)) { out.push(k); used.add(k); }
+  return out;
+}

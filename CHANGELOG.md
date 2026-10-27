@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.11.208] - 2026-10-27
+### Fixed - Explorer: columns in the QUERY's order, in the grid and in every export
+- The Builder and FetchXML already followed the query. **SQL (native) and OData took the payload's order** — the Web API lays a row's properties out in the table's order, so `SELECT revenue, name, accountid` came back as accountid, name, revenue in the grid, in CSV / Excel / JSON and in "To file". The SELECT list (aliases, `a.col` qualifiers, aggregates with an alias) and the `$select` now decide the order; columns the query doesn't name (`SELECT *`, `$expand`, unaliased expressions) follow as the rows show them. Pure `sqlSelectColumns` / `odataSelectColumns` / `orderColumns` in fetchPaging.js + 4 tests (754).
+
 ## [1.11.207] - 2026-10-27
 ### Added - Explorer › SQL completion, intersect (N:N) tables
 - **SQL mode completes what you type**, the way Salesforce Inspector does for SOQL: right after `FROM` / `JOIN` (and `UPDATE`, `DELETE FROM`), the environment's tables whose logical or display name matches; in the `SELECT` list, `WHERE`, `ON`, `GROUP BY`, `HAVING`, `ORDER BY` and `SET`, the columns of the table named after `FROM` — with their display name and type, `alias.` narrowing to one table of a join, alias-prefixed when several tables are in scope. Nothing is offered while there is no table after `FROM`, when that table doesn't exist on the org, inside a string literal or after `TOP`. Tab / Enter inserts, ↑↓ moves, Esc closes; Ctrl+Enter still runs. The columns' metadata is fetched once per table (cached). Pure `sqlComplete.js` + 9 tests (750).

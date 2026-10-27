@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { normalizeODataInput, entityForSet, displayODataPath, looksLikeOData } from "../odataPaste.js";
 import { createSink, cellValue, openOutput } from "../streamExport.js";
-import { cookieFrom, pagedFetchXml, isCookieMismatch, fetchXmlColumns, streamColumns, uncoveredKey } from "../fetchPaging.js";
+import { cookieFrom, pagedFetchXml, isCookieMismatch, fetchXmlColumns, streamColumns, uncoveredKey, sqlSelectColumns, odataSelectColumns, orderColumns } from "../fetchPaging.js";
 import { parseSqlWrite, previewSelect, describeSets, rawForPrepare, updateMetaFor } from "../sqlWrite.js";
 import { prepareUpdate as prepareTypedUpdate } from "../updateUtils.js";
 import { builderToFetchXml, viewFetchXml, layoutColumns, layoutXml } from "../viewSave.js";
@@ -962,7 +962,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         if(stale())return;
         if(stream){
           setLoading(false);addToHistory(sqlEnt,q,qm,0);
-          await streamRun(stream,{declared:[],complete:false,first:first?.records||[],sheetBase:sqlEnt.l,next:first?.nextLink||null,
+          await streamRun(stream,{declared:sqlSelectColumns(sqlText),complete:false,first:first?.records||[],sheetBase:sqlEnt.l,next:first?.nextLink||null,
             getPage:async(nlk)=>{const pd=await bridge.query(nlk,{});return {rows:pd?.records||[],next:pd?.nextLink||null};}});
           return;
         }
@@ -972,8 +972,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         const fieldSet=new Set();
         const collect=(recs,cap)=>recs.slice(0,cap).forEach(r2=>Object.keys(r2).forEach(k=>{if(!k.startsWith("@")&&!k.includes("@")&&k!=="__error")fieldSet.add(k);}));
         collect(allRecords,200);
+        // the SELECT list's order, not the payload's (the grid and every export follow res.fields)
+        const sqlCols=sqlSelectColumns(sqlText);
+        const orderedFields=()=>orderColumns([...fieldSet],sqlCols);
         const odataFieldMap={};[...fieldSet].forEach(f=>{odataFieldMap[f]=f;});
-        setRes({entity:sqlEnt,fields:[...fieldSet],odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`,nextLink:null,fetching:!!first?.nextLink});
+        setRes({entity:sqlEnt,fields:orderedFields(),odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`,nextLink:null,fetching:!!first?.nextLink});
         addToHistory(sqlEnt,q,qm,fieldSet.size);
         setLoading(false);
         let nl=first?.nextLink,page=1;
@@ -988,10 +991,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             collect(pd.records,50);
             nl=pd.nextLink;
             const paint=!nl||page%5===0;
-            setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver,fields:[...fieldSet]}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+            setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver,fields:orderedFields()}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e2){setError(`Page ${page}: ${e2.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;}
         }
-        if(!stale())setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fields:[...fieldSet],fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale())setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fields:orderedFields(),fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         return;
       }catch(e){
         setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
@@ -1246,7 +1249,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               });
             });
             results.sort((a,b)=>{const ak=aggFields[0]?.alias;return ak?(b[ak]||0)-(a[ak]||0):0;});
-            const headerFields=Object.keys(results[0]||{});
+            const headerFields=orderColumns(Object.keys(results[0]||{}),sqlSelectColumns(sqlQ));
             const odataFieldMap={};headerFields.forEach(f=>{odataFieldMap[f]=f;});
             const elapsed=`${((Date.now()-t0b)/1000).toFixed(1)}s`;
             if(stale())return;
@@ -1295,10 +1298,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           return;
         }
         const firstClean=cleanAndFlatten(data.records);
-        // Derive columns from ALL returned rows (not just first — first row may lack expand data)
+        // Derive columns from ALL returned rows (not just first — first row may lack expand data),
+        // in the $select's order (the payload's order is the table's, not the query's)
         const colSet=new Set();
         for(const row of firstClean)for(const k of Object.keys(row))colSet.add(k);
-        const headerFields=[...colSet].filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity"));
+        const headerFields=orderColumns([...colSet].filter(k=>!k.startsWith("@")&&!k.includes("@")&&!k.endsWith("__display")&&!k.endsWith("__entity")),odataSelectColumns(raw));
         const odataFieldMap={};
         headerFields.forEach(f=>{odataFieldMap[f]=f;});
         let allRecords=[...firstClean];
