@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.213] - 2026-10-28
+### Added - Metadata › 🔎 Search result columns
+- **What the global search shows and searches, for every table.** Dataverse search is configured by each table's Quick Find view: its View columns are the columns shown in that table's results (and offered as filters), its Find columns the ones the typed text is matched in; plus the table's own search switch. The new window lists every table (enabled first): the columns shown, the columns searched, the Quick Find view's name, and — when the environment exposes the search service's status — the index's side: rows indexed, last sync, state. Click a table for the columns' display names and types (one cached metadata read).
+- **Honest about the gaps**: a table enabled for search without a Quick Find view (nothing is searched or shown), one with no Find column (no text can match it), one whose Find columns the index doesn't report as searchable yet (a sync pending), tables that can't be enabled; the org's Find-column total against Dataverse's limit of 1,000; the index status unreadable → said so, the views shown alone. Filter, "enabled tables only", CSV / Excel.
+- Set-based reads: the tables' search flags in one metadata read, every Quick Find view in one paged read (`querytype eq 4`), the status in one call (`/api/search/v2.0/status`, the older `searchstatus` function as fallback) — never one request per table. Content action `getSearchConfig` (104); pure `searchConfig.js` (XML parsing, status parsing in its three shapes, the per-table join, summary, export) + demo org + 7 tests (773).
+
 ## [1.11.212] - 2026-10-27
 ### Changed - the content script is modules now
 - **`content.js` (one 3,500-line IIFE holding a 103-case switch) is split into `src/content/`**: `core.js` (validation, the D365 context, the bulk-run abort state, the API meter and pacing, the request layer, counting, `$batch` retries, the privilege catalog), `actions/metadata.js`, `actions/data.js`, `actions/apps.js`, `actions/automation.js`, `actions/security.js` (one async function per action) and `index.js` (the once-per-page guard, the listener, the dispatch table — own properties only, so a message naming `__proto__` can't reach `Object.prototype`). The three actions that assign core state (`getContext`, `resetBatchAbort`, `abortBatch`) live in `core.js`.

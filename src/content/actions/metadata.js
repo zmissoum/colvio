@@ -1,7 +1,7 @@
 // Content script › metadata. Metadata — tables, columns, choices, relationships, keys, dependencies, layers, publishing, columns from a sheet, labels and translations.
 // One async function per action; `params` is what the panel sent. Every request goes through
 // core.js (dvRequest: host lock, pacing, timeouts, 429 back-off).
-import { NO_ANN, dvRequest, validateEntitySet, validateGuid, validateName } from "../core.js";
+import { NO_ANN, d365Context, dvRequest, extractContext, validateEntitySet, validateGuid, validateName } from "../core.js";
 
 const ACTIONS = {
   async getEntities(params) {
@@ -647,6 +647,36 @@ const ACTIONS = {
       entitySet: meta?.EntitySetName || params.logicalName + "s",
       objectTypeCode: meta?.ObjectTypeCode ?? null,
     };
+    return result;
+  },
+  async getSearchConfig(params) {
+    let result;
+    // 🔎 Search result columns: every table's search switch, every Quick Find view (ONE paged read,
+    // not one per table — the view's XML says what is shown and what is searched) and the search
+    // service's own status (what the index holds), when the environment exposes it.
+    const dE = await dvRequest("GET", "EntityDefinitions?$select=LogicalName,DisplayName,EntitySetName,IsCustomEntity,IsIntersect,SyncToExternalSearchIndex,CanEnableSyncToExternalSearchIndex", null, NO_ANN);
+    const entities = (dE.value || []).filter(e => e.IsIntersect !== true).map(e => ({
+      logical: e.LogicalName, display: e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName, set: e.EntitySetName || "",
+      isCustom: !!e.IsCustomEntity, enabled: e.SyncToExternalSearchIndex === true, canEnable: e.CanEnableSyncToExternalSearchIndex?.Value ?? null,
+    }));
+    const views = [];
+    let urlQ = "savedqueries?$select=savedqueryid,name,returnedtypecode,fetchxml,layoutxml,isdefault,ismanaged&$filter=querytype eq 4 and statecode eq 0";
+    while (urlQ) {
+      const dQ = await dvRequest("GET", urlQ, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
+      (dQ.value || []).forEach(v => views.push({ id: v.savedqueryid, name: v.name || "", entity: v.returnedtypecode || "", fetchxml: v.fetchxml || "", layoutxml: v.layoutxml || "", isDefault: !!v.isdefault, managed: !!v.ismanaged }));
+      const nl = dQ["@odata.nextLink"]; urlQ = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+    }
+    // the index's side: the Search API's status endpoint (same host — the host lock applies), else
+    // the older searchstatus function; neither → the panel says so and shows the views alone
+    let status = null, statusError = "";
+    const ctxS = d365Context || extractContext();
+    if (!ctxS) throw new Error("D365 context not found");
+    try { status = await dvRequest("GET", `${ctxS.clientUrl}/api/search/v2.0/status`, null, NO_ANN); }
+    catch (e1) {
+      try { status = await dvRequest("GET", "searchstatus", null, NO_ANN); }
+      catch (e2) { statusError = String(e2?.message || e1?.message || "not available").slice(0, 200); }
+    }
+    result = { entities, views, status, statusError };
     return result;
   },
 };

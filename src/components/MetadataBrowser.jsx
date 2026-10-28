@@ -12,6 +12,7 @@ import { impactRows, groupRows, IMPACT_HEADERS, impactExportRows } from "../dele
 import LayersModal from "./LayersModal.jsx";
 import OptionSetEditor from "./OptionSetEditor.jsx";
 import ColumnsFromFile from "./ColumnsFromFile.jsx";
+import SearchColumns from "./SearchColumns.jsx";
 
 export default function MetadataBrowser({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
@@ -37,6 +38,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   // Solution layers window: { componentName: Entity|Attribute, id, logical, label }
   const[layers,setLayers]=useState(null);
   const[colsFile,setColsFile]=useState(false); // ➕ Columns from file window
+  const[searchCols,setSearchCols]=useState(false); // 🔎 Search result columns window
 
   // Export ALL field metadata for the selected entity as a single CSV.
   // Includes logical/display names, OData column name (for $select), type, required/custom flags.
@@ -232,6 +234,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
             <button onClick={doRefresh} title="Reload the table list from the environment (cached 2h — a table created since the panel opened doesn't show up otherwise)" style={bt(null,{fontSize:11,padding:"3px 8px"})}>↻</button>
           </div>
           <button onClick={()=>setDict({phase:"pick"})} title="Every column of the tables you choose — type, required, custom, description — streamed to a CSV or Excel file" style={{width:"100%",marginTop:6,padding:"5px 10px",fontSize:11.5,border:`1px solid ${C.vi}55`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.vi,fontWeight:600}}>📚 Data dictionary</button>
+          <button onClick={()=>setSearchCols(true)} title="What the global search shows in its results and searches, for every table — from each table's Quick Find view, plus the search index's status" style={{width:"100%",marginTop:6,padding:"5px 10px",fontSize:11.5,border:`1px solid ${C.vi}55`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.vi,fontWeight:600}}>🔎 Search result columns</button>
           <button onClick={()=>setMbPanel("diff")} title={t("schemadiff.title")} style={{width:"100%",marginTop:6,padding:"5px 10px",fontSize:11.5,border:`1px solid ${C.cy}55`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.cy,fontWeight:600}}>⇄ {t("schemadiff.title")}</button>
           <div style={{display:"flex",gap:2,marginTop:6,flexWrap:"wrap"}}>
             <button onClick={()=>setCatFilter("all")} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:catFilter==="all"?C.vi:"transparent",color:catFilter==="all"?"white":C.txd}}>All ({entities.length.toLocaleString()})</button>
@@ -426,6 +429,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
         </div>;
       })()}
       {layers&&<LayersModal target={layers} onClose={()=>setLayers(null)}/>}
+      {searchCols&&<SearchColumns onClose={()=>setSearchCols(false)}/>}
       {colsFile&&selEnt&&<ColumnsFromFile entity={selEnt} fields={fields} entities={entities} isProduction={orgInfo?.isProduction} onClose={()=>setColsFile(false)} onDone={()=>loadFields(selEnt)}/>}
       {dict&&<div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.55)"}} onClick={()=>dict.phase!=="running"&&setDict(null)}>
         <div style={{width:460,maxWidth:"92vw",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:18,boxShadow:"0 16px 48px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>

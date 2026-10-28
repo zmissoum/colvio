@@ -19,6 +19,7 @@ import { demoAccessContext } from "./accessDemo.js";
 import { demoComponentLayers } from "./solutionLayersDemo.js";
 import { demoOptionSetInfo, demoOptionSetChange } from "./optionSetEditDemo.js";
 import { demoWebResources, demoWebResourceContents, demoUpdateWebResource } from "./webResourcesDemo.js";
+import { demoSearchConfig } from "./searchConfigDemo.js";
 import { scriptDemoOrg } from "./scriptDemo.js";
 // One Script Console demo org per page load: a demo run stays written until rollback or reload.
 let scriptDemo = null;
@@ -167,7 +168,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed" || action === "batchAssociate";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleMemberIds" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleMemberIds" || action === "getSearchConfig" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -783,6 +784,13 @@ export const bridge = {
       })) }));
     }
     return callD365("getDictionaryChunk", { logicalNames });
+  },
+
+  // 🔎 Search result columns: tables with their search switch, every Quick Find view, the index's
+  // status — the panel parses and joins them (searchConfig.js).
+  async getSearchConfig() {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 350)); return demoSearchConfig(); }
+    return callD365("getSearchConfig", {});
   },
 
   async getOptionSet(entityName, fieldName, attrType) {
