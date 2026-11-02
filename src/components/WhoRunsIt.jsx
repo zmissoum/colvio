@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, Spin, mono, inp, bt, crd, ths, tds, exportTable } from "../shared.jsx";
-import { buildWhoRunsWhat, parseFlowConnections, kindCounts, KIND, IDENTITY_HEADERS, identityExportRows, CONNECTION_HEADERS, connectionExportRows } from "../identities.js";
+import { buildWhoRunsWhat, kindCounts, KIND, IDENTITY_HEADERS, identityExportRows, CONNECTION_HEADERS, connectionExportRows } from "../identities.js";
 
 const KIND_COLOR = { app: () => C.vi, msapp: () => C.txd, builtin: () => C.txd, noninteractive: () => C.cy, service: () => C.cy, person: () => C.yw, support: () => C.txd, delegated: () => C.or, team: () => C.gn, external: () => C.or, unknown: () => C.txd };
 const Kind = ({ k, label, hint }) => <span title={hint || KIND[k]?.hint} style={{ fontSize: 10.5, padding: "2px 7px", borderRadius: 4, fontWeight: 600, whiteSpace: "nowrap", cursor: "help", background: (KIND_COLOR[k] || KIND_COLOR.unknown)() + "22", color: (KIND_COLOR[k] || KIND_COLOR.unknown)() }}>{label || KIND[k]?.label || k}</span>;
@@ -14,51 +14,33 @@ function useSummary(uses) {
 }
 
 // Automation › 👤 Who runs it — every identity that makes something run, what kind it is, what it runs.
-export default function WhoRunsIt({ steps, procs }) {
-  const [base, setBase] = useState(null);     // { refs, instances, instancesMissing }
+// The connection reads (base) and the flow definitions (flowConns, flowRead) come from the parent:
+// one read each, shared with the Cloud flows tab's Runs as / Sends email as columns.
+export default function WhoRunsIt({ steps, procs, base, baseError, flowConns, flowRead, onStop }) {
   const [users, setUsers] = useState([]);
   const [error, setError] = useState("");
-  const [flowConns, setFlowConns] = useState({});
-  const [flowRead, setFlowRead] = useState({ phase: "idle", done: 0 });
   const [view, setView] = useState("identities");
   const [kind, setKind] = useState("all");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState({});
-  const stop = useRef(false);
 
+  // the users behind the identities, once the connection reads are in
   useEffect(() => {
+    if (!base) return undefined;
     let alive = true;
-    stop.current = false;
     (async () => {
       try {
-        const b = await bridge.getWhoRunsData();
-        if (!alive) return;
-        setBase(b);
         const ids = new Set();
         for (const p of procs || []) if (p.ownerId && p.ownerType !== "team") ids.add(p.ownerId);
         for (const s of steps || []) if (s.runAsId) ids.add(s.runAsId);
-        for (const r of b.refs || []) if (r.ownerId && r.ownerType !== "team") ids.add(r.ownerId);
-        const accounts = [...new Set((b.instances || []).map(i => i.accountName).filter(Boolean))];
+        for (const r of base.refs || []) if (r.ownerId && r.ownerType !== "team") ids.add(r.ownerId);
+        const accounts = [...new Set((base.instances || []).map(i => i.accountName).filter(Boolean))];
         const us = await bridge.getIdentityUsers([...ids], accounts);
-        if (!alive) return;
-        setUsers(us || []);
-        // every cloud flow definition, page by page, for the connections it uses
-        setFlowRead({ phase: "reading", done: 0 });
-        let next = null, done = 0;
-        const acc = {};
-        do {
-          if (stop.current || !alive) break;
-          const page = await bridge.getFlowDefinitionsPage(next);
-          for (const row of page.rows || []) acc[String(row.id).toLowerCase()] = parseFlowConnections(row.clientdata);
-          done += (page.rows || []).length;
-          next = page.next;
-          if (alive) { setFlowConns({ ...acc }); setFlowRead({ phase: "reading", done }); }
-        } while (next);
-        if (alive) setFlowRead({ phase: stop.current ? "stopped" : "done", done });
-      } catch (e) { if (alive) { setError(e.message || String(e)); setFlowRead(f => (f.phase === "reading" ? { ...f, phase: "failed" } : f)); } }
+        if (alive) setUsers(us || []);
+      } catch (e) { if (alive) setError(e.message || String(e)); }
     })();
-    return () => { alive = false; stop.current = true; };
-  }, [steps, procs]);
+    return () => { alive = false; };
+  }, [steps, procs, base]);
 
   const result = useMemo(() => {
     if (!base) return null;
@@ -70,7 +52,7 @@ export default function WhoRunsIt({ steps, procs }) {
     return buildWhoRunsWhat({ procs, steps, refs: base.refs, instances: base.instances, flowConns, users: byId, usersByAccount: byAcc, integrationUsers: users });
   }, [base, users, flowConns, procs, steps]);
 
-  if (error && !result) return <div style={{ ...crd({ padding: 14, borderColor: C.rd + "55" }), color: C.rd, fontSize: 13 }}>Couldn't read who runs what: {error}</div>;
+  if ((baseError || error) && !result) return <div style={{ ...crd({ padding: 14, borderColor: C.rd + "55" }), color: C.rd, fontSize: 13 }}>Couldn't read who runs what: {baseError || error}</div>;
   if (!result) return <div style={{ textAlign: "center", marginTop: 30, color: C.txm, fontSize: 13 }}><Spin s={14} /> Reading connection references, connections and the identities behind them…</div>;
 
   const counts = kindCounts(result.identities);
@@ -89,9 +71,9 @@ export default function WhoRunsIt({ steps, procs }) {
         ))}
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Filter by name, email, flow, connector…" style={inp({ fontSize: 12, maxWidth: 300, padding: "5px 9px" })} />
         <span style={{ flex: 1 }} />
-        {flowRead.phase === "reading" && <span style={{ fontSize: 11.5, color: C.txm }}><Spin s={9} /> reading flow definitions · {flowRead.done} <button onClick={() => { stop.current = true; }} style={bt(null, { fontSize: 10.5, padding: "1px 7px", marginLeft: 4 })}>Stop</button></span>}
+        {flowRead.phase === "reading" && <span style={{ fontSize: 11.5, color: C.txm }}><Spin s={9} /> reading flow definitions · {flowRead.done} <button onClick={onStop} style={bt(null, { fontSize: 10.5, padding: "1px 7px", marginLeft: 4 })}>Stop</button></span>}
         {flowRead.phase === "stopped" && <span style={{ fontSize: 11.5, color: C.yw }}>flow definitions: stopped after {flowRead.done} — the flows-per-connection counts are partial</span>}
-        {flowRead.phase === "failed" && <span style={{ fontSize: 11.5, color: C.rd }}>flow definitions couldn't all be read{error ? `: ${error}` : ""} — the flows-per-connection counts are partial</span>}
+        {flowRead.phase === "failed" && <span style={{ fontSize: 11.5, color: C.rd }}>flow definitions couldn't all be read{flowRead.error ? `: ${flowRead.error}` : ""} — the flows-per-connection counts are partial</span>}
         <button onClick={() => exp("csv")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}>CSV</button>
         <button onClick={() => exp("xlsx")} style={bt(C.cy, { fontSize: 11, padding: "4px 10px" })}>Excel</button>
       </div>

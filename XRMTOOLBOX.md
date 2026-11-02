@@ -35,6 +35,7 @@ Everything below is read-only unless marked **(writes)**; every write is confirm
 
 | In XrmToolBox you use… | In Colvio |
 | --- | --- |
+| Flow / workflow identity reviews | **Automation › Cloud flows, Workflows** — Runs as (the account of each connection, or whoever runs it) and Sends email as (the From of every email action / Send Email step) |
 | Plugin Registration Tool (steps) | **Automation** — every plug-in step and process; enable / disable one or a selection, edit an Update step's filtering attributes **(writes)**. Registering a new assembly or step stays with the Plugin Registration Tool |
 | Plugin Trace Viewer | **System Ops › Plugin traces** (time windows, exceptions first), and **Show All Data › Record activity** — save a record and see the plug-ins it ran (order, duration, cascades, exception, full trace), its system jobs and the flows that fired; "Log every plug-in" for 15–60 minutes, reverted by itself |
 | Async job / system job viewers | **System Ops** — system jobs and flow runs, failures first |
@@ -42,6 +43,7 @@ Everything below is read-only unless marked **(writes)**; every write is confirm
 | Environment Variables Manager | **Env Variables** — definitions, overrides, missing values **(writes)** |
 | Easy Translator | **Translation Manager** — export / import labels **(writes)** |
 | Solution component viewers | **Solutions** — components, compare two solutions of the same org, or the same solution across two orgs through an exported compare file |
+| Solution History / Import Job Viewer | **Solutions › 🚀 Deployments** — every import, export and uninstall with its date, version, duration, result, error and who started it (solution history + import jobs, the import log on demand) |
 | App module component tools | **Apps** — model-driven app inventory, forms, views, the components an app really depends on |
 
 ## Users, security and governance

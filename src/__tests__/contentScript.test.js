@@ -71,6 +71,59 @@ describe("content script - security actions", () => {
   });
 });
 
+describe("content script - automation reads", () => {
+  it("getWorkflowXamlPage: classic workflows, dialogs and actions only, 25 per page, a foreign page link refused", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /workflows\?\$select=workflowid,xaml/, answer: () => reply(200, { value: [{ workflowid: G(21), xaml: "<Activity/>" }, { workflowid: G(22), xaml: null }], "@odata.nextLink": `${ORG}/api/data/v9.2/workflows?$select=workflowid,xaml&$skiptoken=p2` }) });
+    const r = await send("getWorkflowXamlPage", {});
+    expect(r.result.rows).toEqual([{ id: G(21), xaml: "<Activity/>" }, { id: G(22), xaml: "" }]);
+    expect(r.result.next).toContain("$skiptoken=p2");
+    const q = since(n)[0];
+    expect(q.url).toBe(`${ORG}/api/data/v9.2/workflows?$select=workflowid,xaml&$filter=type eq 1 and (category eq 0 or category eq 1 or category eq 3)`);
+    expect(q.headers.Prefer).toBe("odata.maxpagesize=25");
+    const r2 = await send("getWorkflowXamlPage", { next: r.result.next });
+    expect(r2.result).toEqual({ rows: [], next: null });
+    expect(since(n)[1].url).toContain("$skiptoken=p2");
+    expect((await send("getWorkflowXamlPage", { next: `${ORG}/api/data/v9.2/systemusers?$select=domainname` })).error).toMatch(/Invalid page link/);
+  });
+});
+
+describe("content script - solutions reads", () => {
+  it("getSolutionHistory: the history (orderby refused by the virtual table → read without it) and the import jobs, each failing on its own", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /msdyn_solutionhistories\?.*\$orderby=msdyn_starttime%20desc|msdyn_solutionhistories\?.*\$orderby=msdyn_starttime desc/, answer: () => reply(400, { error: { message: "The $orderby option is not supported on this virtual table." } }) });
+    script.push({ method: "GET", re: /msdyn_solutionhistories\?\$select=msdyn_solutionhistoryid/, answer: () => reply(200, { value: [{ msdyn_solutionhistoryid: G(31), msdyn_name: "Contoso", msdyn_solutionversion: "1.0.0.2", msdyn_publishername: "Contoso", msdyn_operation: 0, msdyn_suboperation: 2, msdyn_status: 1, msdyn_result: true, msdyn_starttime: "2026-10-01T10:00:00Z", msdyn_endtime: "2026-10-01T10:04:00Z", msdyn_totaltime: 240, msdyn_ismanaged: true, msdyn_ispatch: false, msdyn_isoverwritecustomizations: false, msdyn_errorcode: null, msdyn_exceptionmessage: null }] }) });
+    script.push({ method: "GET", re: /importjobs\?\$select=importjobid/, answer: () => reply(200, { value: [{ importjobid: G(41), solutionname: "Contoso", name: "Contoso_1_0_0_2.zip", startedon: "2026-10-01T10:00:30Z", completedon: "2026-10-01T10:04:00Z", createdon: "2026-10-01T10:00:30Z", progress: 100, operationcontext: "Default", importcontext: "Import", _createdby_value: G(1), "_createdby_value@OData.Community.Display.V1.FormattedValue": "Zakaria" }] }) });
+    const r = await send("getSolutionHistory", {});
+    expect(r.result.historyError).toBe("");
+    expect(r.result.jobsError).toBe("");
+    expect(r.result.history).toEqual([{ id: G(31), solution: "Contoso", version: "1.0.0.2", publisher: "Contoso", operation: 0, suboperation: 2, status: 1, result: true, start: "2026-10-01T10:00:00Z", end: "2026-10-01T10:04:00Z", seconds: 240, managed: true, patch: false, overwrite: false, errorCode: "", error: "", activityId: "", correlationId: "", solutionId: "", packageName: "", packageVersion: "", description: "" }]);
+    expect(r.result.jobs).toEqual([{ id: G(41), solution: "Contoso", name: "Contoso_1_0_0_2.zip", started: "2026-10-01T10:00:30Z", completed: "2026-10-01T10:04:00Z", created: "2026-10-01T10:00:30Z", progress: 100, context: "Default", importContext: "Import", by: "Zakaria", byId: G(1), onBehalfOf: "" }]);
+    const sent = since(n);
+    expect(sent).toHaveLength(3);
+    expect(sent[0].url).toContain("msdyn_solutionhistories?$select=msdyn_solutionhistoryid,msdyn_name");
+    expect(sent[0].url).toContain("$orderby=msdyn_starttime");
+    expect(sent[1].url).not.toContain("$orderby");
+    expect(sent[2].url).toContain("importjobs?$select=importjobid,solutionname");
+    expect(sent[2].url).not.toMatch(/\$select=[^&]*(^|,)data(,|&|$)/); // the log is never part of the list read
+    expect(sent.every(q => String(q.headers.Prefer).includes("odata.maxpagesize=5000"))).toBe(true); // annotations kept: the job's createdby name
+    // the jobs refused (no privilege) → said, the history still answered
+    script.push({ method: "GET", re: /msdyn_solutionhistories\?/, answer: () => reply(200, { value: [] }) });
+    script.push({ method: "GET", re: /importjobs\?/, answer: () => reply(403, { error: { message: "Principal user is missing prvReadImportJob privilege." } }) });
+    const r2 = await send("getSolutionHistory", {});
+    expect(r2.result.history).toEqual([]);
+    expect(r2.result.jobsError).toMatch(/prvReadImportJob/);
+  });
+  it("getImportJobLog: one job's log by id, the id checked", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /importjobs\(/, answer: () => reply(200, { data: "<importexportxml/>", solutionname: "Contoso", completedon: "2026-10-01T10:04:00Z", progress: 100 }) });
+    const r = await send("getImportJobLog", { id: G(41) });
+    expect(r.result).toEqual({ id: G(41), solution: "Contoso", completed: "2026-10-01T10:04:00Z", progress: 100, data: "<importexportxml/>" });
+    expect(since(n)[0].url).toBe(`${ORG}/api/data/v9.2/importjobs(${G(41)})?$select=data,solutionname,completedon,progress`);
+    expect((await send("getImportJobLog", { id: "not-a-guid" })).error).toBeTruthy();
+  });
+});
+
 describe("content script - writes", () => {
   it("updateWebResource: conditional on the ETag opened, refused with CHANGED_ON_SERVER on 412", async () => {
     const n = requests.length;

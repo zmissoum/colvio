@@ -202,6 +202,49 @@ const ACTIONS = {
     }));
     return result;
   },
+  async getSolutionHistory(params) {
+    let result;
+    // Solutions › 🚀 Deployments: Dataverse's own solution history (msdyn_solutionhistory, a
+    // virtual table — every import / export / uninstall / publish with its timing, result and
+    // error; purged after 180 days) and the import jobs (who started each import; the log is
+    // read apart, per job) — both paged, every row, never one request per solution. Each source
+    // fails on its own: the panel shows what it got and says what it couldn't read.
+    const pageAllS = async (url) => {
+      const out = [];
+      while (url) {
+        const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" });
+        out.push(...(d.value || []));
+        const nl = d["@odata.nextLink"]; url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+      }
+      return out;
+    };
+    const SEL_H = "msdyn_solutionhistoryid,msdyn_name,msdyn_solutionversion,msdyn_publishername,msdyn_operation,msdyn_suboperation,msdyn_status,msdyn_result,msdyn_starttime,msdyn_endtime,msdyn_totaltime,msdyn_ismanaged,msdyn_ispatch,msdyn_isoverwritecustomizations,msdyn_errorcode,msdyn_exceptionmessage,msdyn_activityid,msdyn_correlationid,msdyn_solutionid,msdyn_packagename,msdyn_packageversion,msdyn_solutionhistorydescription";
+    let history = [], historyError = "";
+    try { history = await pageAllS(`msdyn_solutionhistories?$select=${SEL_H}&$orderby=msdyn_starttime desc`); }
+    catch (e1) {
+      // a virtual table may refuse $orderby — the panel sorts anyway
+      try { history = await pageAllS(`msdyn_solutionhistories?$select=${SEL_H}`); }
+      catch (e2) { historyError = String(e2?.message || e1?.message || "not readable").slice(0, 200); }
+    }
+    let jobs = [], jobsError = "";
+    try { jobs = await pageAllS("importjobs?$select=importjobid,solutionname,name,startedon,completedon,createdon,progress,operationcontext,importcontext,_createdby_value,_createdonbehalfby_value&$orderby=createdon desc"); }
+    catch (e) { jobsError = String(e?.message || "not readable").slice(0, 200); }
+    const fvS = (e, f) => e[`${f}@OData.Community.Display.V1.FormattedValue`] || "";
+    result = {
+      history: history.map(h => ({ id: h.msdyn_solutionhistoryid, solution: h.msdyn_name || "", version: h.msdyn_solutionversion || "", publisher: h.msdyn_publishername || "", operation: h.msdyn_operation, suboperation: h.msdyn_suboperation, status: h.msdyn_status, result: h.msdyn_result, start: h.msdyn_starttime || null, end: h.msdyn_endtime || null, seconds: h.msdyn_totaltime, managed: h.msdyn_ismanaged, patch: h.msdyn_ispatch, overwrite: h.msdyn_isoverwritecustomizations, errorCode: h.msdyn_errorcode || "", error: h.msdyn_exceptionmessage || "", activityId: h.msdyn_activityid || "", correlationId: h.msdyn_correlationid || "", solutionId: h.msdyn_solutionid || "", packageName: h.msdyn_packagename || "", packageVersion: h.msdyn_packageversion || "", description: h.msdyn_solutionhistorydescription || "" })),
+      jobs: jobs.map(j => ({ id: j.importjobid, solution: j.solutionname || "", name: j.name || "", started: j.startedon || null, completed: j.completedon || null, created: j.createdon || null, progress: j.progress, context: j.operationcontext || "", importContext: j.importcontext || "", by: fvS(j, "_createdby_value"), byId: j._createdby_value || "", onBehalfOf: fvS(j, "_createdonbehalfby_value") })),
+      historyError, jobsError,
+    };
+    return result;
+  },
+  async getImportJobLog(params) {
+    let result;
+    // One import job's log (importexportxml, can be MBs) — read on demand, for one row only.
+    validateGuid(params.id);
+    const dJ = await dvRequest("GET", `importjobs(${params.id})?$select=data,solutionname,completedon,progress`, null, NO_ANN);
+    result = { id: params.id, solution: dJ.solutionname || "", completed: dJ.completedon || null, progress: dJ.progress, data: dJ.data || "" };
+    return result;
+  },
   async getSolutionComponentCount(params) {
     let result;
     // The badge of the solution list — ONE request per solution ($count annotation, honest

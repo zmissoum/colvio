@@ -4,6 +4,7 @@ import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } fr
 import { t } from "../i18n.js";
 import WhoRunsIt from "./WhoRunsIt.jsx";
 import { workflowRunAs } from "../identities.js";
+import { parseFlowIdentity, flowConnectionAccounts, flowRunsAs, flowEmailSenders, parseWorkflowXaml, workflowEmailSenders, linesText, RUNAS_HINT, ON_BEHALF_HINT } from "../flowIdentity.js";
 import { STEP_SET, STEP_PK, statePatch, statePlan, stateConfirmText, applyStateLocally, canEditFiltering, parseFiltering, formatFiltering, filteringDiff, filterableColumns } from "../stepAdmin.js";
 
 // Automation — the STATIC inventory of everything registered to run in the org: plug-in steps
@@ -39,6 +40,27 @@ const sourceOf = (r, isStep) => {
   if (!isStep && r.managed && MS_NAME.test(r.name || "")) return "microsoft";
   return r.managed ? "isv" : "custom";
 };
+const lcId = (v) => String(v || "").toLowerCase();
+// the categories whose definitions say who they run as / send email as (flowIdentity.js):
+// cloud flows (clientdata), classic workflows / dialogs / actions (xaml)
+const FLOW_CATS = new Set(["5", "who"]), XAML_CATS = new Set(["0", "1", "3"]);
+
+// the progress of a paged definition read (Stop while it runs; partial columns said as such)
+const ReadStatus = ({ read, what, onStop }) => {
+  if (!read || read.phase === "idle") return null;
+  if (read.phase === "reading") return <span style={{ fontSize: 11.5, color: C.txm }}><Spin s={9} /> reading {what} · {read.done} <button onClick={onStop} style={bt(null, { fontSize: 10.5, padding: "1px 7px", marginLeft: 4 })}>Stop</button></span>;
+  if (read.phase === "stopped") return <span style={{ fontSize: 11.5, color: C.yw }}>{what}: stopped after {read.done} — the identity columns are partial</span>;
+  if (read.phase === "failed") return <span style={{ fontSize: 11.5, color: C.rd }}>{what} couldn't all be read{read.error ? `: ${read.error}` : ""} — the identity columns are partial</span>;
+  return null;
+};
+const LINE_COLOR = { invoker: () => C.yw, unbound: () => C.rd, unknown: () => C.txd, runas: () => C.txd, none: () => C.txd, dynamic: () => C.txm, microsoft: () => C.txm, dataverse: () => C.txm, approvals: () => C.txm };
+// the Runs as / Sends email as cell: one line per identity, or what the read is doing
+const IdentityCell = ({ lines, read, empty }) => {
+  if (lines && lines.length) return <>{lines.map((l, i) => <div key={i} style={{ color: (LINE_COLOR[l.kind] || (() => C.tx))(), whiteSpace: "normal", lineHeight: 1.35 }} title={l.kind === "runas" ? RUNAS_HINT : l.onBehalf ? ON_BEHALF_HINT : l.action ? `action: ${l.action}` : l.step ? `step: ${l.step}` : ""}>{l.text}{l.onBehalf ? " ℹ" : ""}</div>)}</>;
+  if (!read || read.phase === "idle" || read.phase === "reading") return <span style={{ color: C.txd }}>…</span>;
+  if (lines) return <span style={{ color: C.txd }}>{empty}</span>;
+  return <span style={{ color: C.txd }} title="This definition wasn't read (the read stopped or failed)">not read</span>;
+};
 
 export default function AutomationInventory({ bp, orgInfo }) {
   const [steps, setSteps] = useState(null);
@@ -56,18 +78,95 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const [msg, setMsg] = useState(null);     // { ok: bool, text }
   const [filt, setFilt] = useState(null);   // { step, cols, picked:Set, search, phase: loading|ready|saving, error }
   const abortRef = useRef(false);
+  // Identity reads shared by the Cloud flows tab (Runs as / Sends email as) and Who runs it —
+  // started on the first tab that needs them, never twice: the connection references and
+  // instances (one read), every cloud flow definition and every classic workflow's XAML (paged,
+  // Stop). A refresh (↻) starts them over.
+  const [whoBase, setWhoBase] = useState(null);   // { refs, instances, instancesMissing }
+  const [whoBaseErr, setWhoBaseErr] = useState("");
+  const [flowDefs, setFlowDefs] = useState({});   // flow id → parseFlowIdentity(clientdata)
+  const [flowRead, setFlowRead] = useState({ phase: "idle", done: 0 });
+  const [xamlDefs, setXamlDefs] = useState({});   // workflow id → parseWorkflowXaml(xaml)
+  const [xamlRead, setXamlRead] = useState({ phase: "idle", done: 0 });
+  const flowStarted = useRef(false), xamlStarted = useRef(false), stopFlows = useRef(false), stopXaml = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
   // tick > 0 = user-requested refresh (↻) — plugin steps/processes aren't cached, a re-fetch is real.
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError("");
+    // the identity reads start over with the inventory (↻ is a real re-read)
+    flowStarted.current = false; xamlStarted.current = false; stopFlows.current = true; stopXaml.current = true;
+    setWhoBase(null); setWhoBaseErr(""); setFlowDefs({}); setFlowRead({ phase: "idle", done: 0 }); setXamlDefs({}); setXamlRead({ phase: "idle", done: 0 });
     Promise.all([bridge.getPluginSteps(), bridge.getProcesses()]).then(([st, pr]) => {
       if (cancelled) return;
       setSteps(st || []); setProcs(pr || []); setLoading(false);
     }).catch(e => { if (!cancelled) { setError(e.message || String(e)); setLoading(false); } });
     return () => { cancelled = true; };
   }, [tick]);
+
+  // the cloud flows' side: connection reads once, then every flow definition, page by page
+  useEffect(() => {
+    if (loading || !FLOW_CATS.has(cat) || flowStarted.current) return;
+    flowStarted.current = true; stopFlows.current = false;
+    const run = tick;
+    const live = () => mounted.current && run === tick && flowStarted.current;
+    (async () => {
+      setFlowRead({ phase: "reading", done: 0 });
+      try { const b = await bridge.getWhoRunsData(); if (live()) setWhoBase(b); } catch (e) { if (live()) setWhoBaseErr(e.message || String(e)); }
+      let next = null, done = 0;
+      const acc = {};
+      try {
+        do {
+          if (stopFlows.current || !live()) break;
+          const page = await bridge.getFlowDefinitionsPage(next);
+          for (const row of page.rows || []) acc[lcId(row.id)] = parseFlowIdentity(row.clientdata);
+          done += (page.rows || []).length;
+          next = page.next;
+          if (live()) { setFlowDefs({ ...acc }); setFlowRead({ phase: "reading", done }); }
+        } while (next);
+        if (live()) setFlowRead({ phase: stopFlows.current ? "stopped" : "done", done });
+      } catch (e) { if (live()) setFlowRead({ phase: "failed", done, error: e.message || String(e) }); }
+    })();
+  }, [cat, loading, tick]);
+  // the classic side: every workflow / dialog / action XAML, page by page
+  useEffect(() => {
+    if (loading || !XAML_CATS.has(cat) || xamlStarted.current) return;
+    xamlStarted.current = true; stopXaml.current = false;
+    const run = tick;
+    const live = () => mounted.current && run === tick && xamlStarted.current;
+    (async () => {
+      setXamlRead({ phase: "reading", done: 0 });
+      let next = null, done = 0;
+      const acc = {};
+      try {
+        do {
+          if (stopXaml.current || !live()) break;
+          const page = await bridge.getWorkflowXamlPage(next);
+          for (const row of page.rows || []) acc[lcId(row.id)] = parseWorkflowXaml(row.xaml);
+          done += (page.rows || []).length;
+          next = page.next;
+          if (live()) { setXamlDefs({ ...acc }); setXamlRead({ phase: "reading", done }); }
+        } while (next);
+        if (live()) setXamlRead({ phase: stopXaml.current ? "stopped" : "done", done });
+      } catch (e) { if (live()) setXamlRead({ phase: "failed", done, error: e.message || String(e) }); }
+    })();
+  }, [cat, loading, tick]);
+  // per flow: the lines of its Runs as / Sends email as; per workflow: its Sends email as
+  const flowView = useMemo(() => {
+    const out = {};
+    for (const [id, fi] of Object.entries(flowDefs)) { const acc = flowConnectionAccounts(fi?.connections, whoBase); out[id] = { runs: flowRunsAs(fi, acc), email: flowEmailSenders(fi, acc) }; }
+    return out;
+  }, [flowDefs, whoBase]);
+  const xamlView = useMemo(() => Object.fromEntries(Object.entries(xamlDefs).map(([id, p]) => [id, workflowEmailSenders(p)])), [xamlDefs]);
+  const flowConns = useMemo(() => Object.fromEntries(Object.entries(flowDefs).map(([id, fi]) => [id, fi?.connections || []])), [flowDefs]);
+  const identityLines = (r, what) => {
+    if (cat === "5") return flowDefs[lcId(r.id)] === undefined ? null : (flowView[lcId(r.id)]?.[what] || []);
+    if (what === "email" && XAML_CATS.has(cat)) return xamlDefs[lcId(r.id)] === undefined ? null : (xamlView[lcId(r.id)] || []);
+    return [];
+  };
 
   const counts = useMemo(() => {
     // Steps count = actual REGISTRATIONS (10/20/40) — the platform's internal stage-30 machinery
@@ -165,8 +264,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
         "automation_plugin_steps", format, "PluginSteps");
     } else {
       exportTable(
-        ["name", "entity", "state", "mode", "triggers", "owner", "source", "managedFlag", "modifiedOn"],
-        rows.map(r => [r.name, r.entity, r.state === 1 ? "Activated" : "Draft", cat === "0" ? (r.mode === 1 ? "Real-time" : "Background") : "", triggersOf(r), r.owner, srcLabel(r, false), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
+        ["name", "entity", "state", "mode", "triggers", "runsAs", "sendsEmailAs", "owner", "source", "managedFlag", "modifiedOn"],
+        rows.map(r => [r.name, r.entity, r.state === 1 ? "Activated" : "Draft", cat === "0" ? (r.mode === 1 ? "Real-time" : "Background") : "", triggersOf(r), cat === "0" ? workflowRunAs(r).label : cat === "5" ? linesText(identityLines(r, "runs")) : "", linesText(identityLines(r, "email")), r.owner, srcLabel(r, false), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
         `automation_${catLabel.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, format, "Automation");
     }
   };
@@ -201,7 +300,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
           ))}
         </div>
 
-        {cat === "who" ? <WhoRunsIt steps={steps} procs={procs} /> : <>
+        {cat === "who" ? <WhoRunsIt steps={steps} procs={procs} base={whoBase} baseError={whoBaseErr} flowConns={flowConns} flowRead={flowRead} onStop={() => { stopFlows.current = true; }} /> : <>
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Filter by name, entity, message, assembly…" style={inp({ fontSize: 12, maxWidth: 320, padding: "6px 10px" })} />
           <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
@@ -222,6 +321,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
             </label>
           )}
           <span style={{ fontSize: 11, color: C.txd, ...mono }}>{rows.length.toLocaleString()} shown</span>
+          {cat === "5" && <ReadStatus read={flowRead} what="flow definitions" onStop={() => { stopFlows.current = true; }} />}
+          {XAML_CATS.has(cat) && <ReadStatus read={xamlRead} what="workflow definitions" onStop={() => { stopXaml.current = true; }} />}
           <div style={{ flex: 1 }} />
           <button onClick={() => setTick(t => t + 1)} disabled={loading} title="Reload plugin steps and processes from the environment" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: loading ? 0.5 : 1 })}>↻ Refresh</button>
           <button onClick={() => exportRows("csv")} disabled={!rows.length} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: rows.length ? 1 : 0.5 })}><I.Download /> CSV</button>
@@ -267,7 +368,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
                 </>
               ) : (
                 <>
-                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}{cat === "0" && <th style={ths()} title="Whose security context it runs in: real-time = its Execute as; background = the owner when an event starts it, the user who starts it on demand">Runs as</th>}<th style={ths()} title={cat === "5" ? "A cloud flow's owner is NOT who its actions run as — each action runs with the account of its connection (see Who runs it)" : "Who owns the process"}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
+                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}{cat === "0" && <th style={ths()} title="Whose security context it runs in: real-time = its Execute as; background = the owner when an event starts it, the user who starts it on demand">Runs as</th>}{cat === "5" && <th style={ths()} title="A cloud flow does not run as its owner: each action runs with the account of ITS connection — read from the flow's definition and the connections Dataverse stores. 'Whoever runs it' = a connection provided by the person who runs the flow.">Runs as</th>}{(cat === "5" || XAML_CATS.has(cat)) && <th style={ths()} title={cat === "5" ? "Where each email action's mail leaves from: a From (Send as) or shared mailbox set in the action, else the account of the action's connection; the Mail connector sends from microsoft@powerapps.com; a Dataverse email activity leaves from its own From." : "The From of each Send Email step: a fixed user or queue, or a value of the row (its owner…). A fixed user needs the Send-as privilege and that user's permission (ℹ)."}>Sends email as</th>}<th style={ths()} title={cat === "5" ? "A cloud flow's owner is NOT who its actions run as — each action runs with the account of its connection (see Who runs it)" : "Who owns the process"}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.id} style={{ borderBottom: `1px solid ${C.bd}22` }}>
@@ -277,6 +378,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
                         {cat === "0" && <td style={tds}><Badge on={r.mode === 1} yes="Real-time" no="Background" colorYes={C.or} colorNo={C.cy} /></td>}
                         {cat === "0" && <td style={{ ...tds, fontSize: 12, color: C.txm }}>{triggersOf(r) || "—"}</td>}
                         {cat === "0" && <td style={{ ...tds, fontSize: 12, color: workflowRunAs(r).who === "owner" ? C.tx : C.txm, maxWidth: 200 }}>{workflowRunAs(r).label}</td>}
+                        {cat === "5" && <td style={{ ...tds, fontSize: 12, maxWidth: 260, whiteSpace: "normal" }}><IdentityCell lines={identityLines(r, "runs")} read={flowRead} empty="—" /></td>}
+                        {(cat === "5" || XAML_CATS.has(cat)) && <td style={{ ...tds, fontSize: 12, maxWidth: 280, whiteSpace: "normal" }}><IdentityCell lines={identityLines(r, "email")} read={cat === "5" ? flowRead : xamlRead} empty="— no email" /></td>}
                         <td style={{ ...tds, color: C.txm, maxWidth: 160 }}>{r.owner}</td>
                         <td style={tds}><SrcBadge r={r} step={false} /></td>
                         <td style={{ ...tds, fontSize: 11, color: C.txd }}>{r.modifiedon ? new Date(r.modifiedon).toLocaleDateString() : ""}</td>

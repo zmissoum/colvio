@@ -140,6 +140,21 @@ const ACTIONS = {
     result = { rows: (dF.value || []).map(w => ({ id: w.workflowid, clientdata: w.clientdata || "" })), next: dF["@odata.nextLink"] || null };
     return result;
   },
+  async getWorkflowXamlPage(params) {
+    let result;
+    // One page of classic workflow / action / dialog definitions (xaml) — 25 at a time, a
+    // definition can be big; the panel reads them all, page by page, for what their Send Email
+    // steps send as (flowIdentity.js). Business rules and BPFs send nothing: not read.
+    let urlX = "workflows?$select=workflowid,xaml&$filter=type eq 1 and (category eq 0 or category eq 1 or category eq 3)";
+    if (params.next) {
+      const rel = String(params.next).replace(/^.*\/api\/data\/v[\d.]+\//, "");
+      if (!/^workflows\?/.test(rel)) throw new Error("Invalid page link.");
+      urlX = rel;
+    }
+    const dX = await dvRequest("GET", urlX, null, { Prefer: "odata.maxpagesize=25", ...NO_ANN });
+    result = { rows: (dX.value || []).map(w => ({ id: w.workflowid, xaml: w.xaml || "" })), next: dX["@odata.nextLink"] || null };
+    return result;
+  },
   async orgFeatures(params) {
     let result;
     // ONE consolidated probe for org-level feature switches that gate Colvio modules:

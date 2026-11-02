@@ -4,6 +4,7 @@ import { C, I, Spin, COMP_TYPES, mono, inp, bt, crd, exportTable, dl, expName } 
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import { compareComponents, compareComponentsCrossOrg, groupByType, compareExportRows, buildCompareFile, parseCompareFile } from "../solutionCompareUtils.js";
+import SolutionDeployments from "./SolutionDeployments.jsx";
 
 export default function SolutionExplorer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
@@ -33,6 +34,7 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
   const[cmpLoading,setCmpLoading]=useState(false);
   const[cmpError,setCmpError]=useState("");
   const[crossOrg,setCrossOrg]=useState(null); // {org, exportedAt} when side B comes from a file
+  const[deploy,setDeploy]=useState(null); // {solution?} — the 🚀 Deployments window (solution history + import jobs)
   const cmpGen=useRef(0);
   const fileInputRef=useRef(null);
 
@@ -143,6 +145,7 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
               <button key={k} onClick={()=>setSolFilter(k)} style={{padding:"4px 10px",fontSize:11,border:`1px solid ${C.bd}`,borderRadius:3,cursor:"pointer",background:solFilter===k?C.vi:"transparent",color:solFilter===k?"white":C.txd}}>{lbl}</button>
             ))}
           </div>
+          <button onClick={()=>setDeploy({})} title="Every solution import, export and uninstall the environment recorded — when, which version, how long, the result and its error, who started it (solution history, 180 days, plus the import jobs)" style={{width:"100%",marginTop:6,padding:"5px 10px",fontSize:11.5,border:`1px solid ${C.vi}55`,borderRadius:4,cursor:"pointer",background:"transparent",color:C.vi,fontWeight:600}}>🚀 Deployments</button>
           {solutions.length>0&&<div style={{fontSize:11,color:C.gn,marginTop:6}}>{filtered.length.toLocaleString()} solution{filtered.length===1?"":"s"}{search?" matching":solFilter!=="all"?` (${solFilter})`:""}</div>}
         </div>
         <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
@@ -173,6 +176,7 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
                 <div style={{fontSize:18,fontWeight:700}}>{selSol.displayName}</div>
                 <div style={{fontSize:13,color:C.txd,...mono}}>{selSol.uniqueName} · v{selSol.version} · {components.length} components</div>
                 {selSol.description&&<div style={{fontSize:13,color:C.txm,marginTop:4}}>{selSol.description}</div>}
+                <button onClick={()=>setDeploy({solution:selSol.uniqueName})} title="This solution's imports, exports and uninstalls — dates, versions, results, who" style={{...bt(C.vi,{fontSize:11.5,padding:"3px 10px"}),marginTop:6}}>🚀 Deployment history</button>
               </div>
               {components.length>0&&(()=>{
                 // Flat export over every group: one row per component with its resolved type label
@@ -291,6 +295,7 @@ export default function SolutionExplorer({bp,orgInfo,theme}){
           </div>
         )}
       </div>
+      {deploy&&<SolutionDeployments initialSolution={deploy.solution||""} onClose={()=>setDeploy(null)}/>}
     </div>
   );
 }
