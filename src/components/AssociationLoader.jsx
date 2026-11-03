@@ -29,12 +29,29 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
   const rows = csvData?.r || [];
   const fileRow = (i) => csvData?.ln?.[i] ?? (i + 2);
   const endEntity = (n) => (n === 1 ? rel?.entity1 : rel?.entity2);
+  // a column's first non-empty value — the first row alone said "GUID" for a column of emails whose
+  // first cell was blank
+  const firstVal = (col) => { if (!col) return ""; for (const r of rows) { const v = String(r?.[col] ?? "").trim(); if (v) return v; } return ""; };
 
   useEffect(() => { onBusy?.(phase === "resolving" || phase === "running"); }, [phase, onBusy]);
+
+  // One end's text columns, for its "match by" picker. A failed read is kept as { error } — the
+  // picker says so and offers a retry — never as an empty list that silently offered only the GUID.
+  const fieldsGen = useRef(0); // bumped on every table change: a read answering for the previous table is dropped
+  const loadFields = (ent) => {
+    const gen = fieldsGen.current;
+    setFields(prev => { const n = { ...prev }; delete n[ent]; return n; }); // "loading" again on a retry
+    (isLive ? bridge.getFields(ent) : Promise.resolve(FLDS)).then(fl => {
+      if (gen !== fieldsGen.current) return;
+      const text = (fl || []).map(f => ({ l: f.logical || f.l, d: f.display || f.d || f.logical || f.l, t: f.type || f.t })).filter(f => f.t === "String" || f.t === "Memo");
+      setFields(prev => ({ ...prev, [ent]: text }));
+    }).catch(e => { if (gen === fieldsGen.current) setFields(prev => ({ ...prev, [ent]: { error: e?.message || String(e) } })); });
+  };
 
   // The relationship behind the table, then each end's text columns for the "match by" pickers.
   useEffect(() => {
     let alive = true;
+    fieldsGen.current++;
     setRel(undefined); setRelErr(""); setResult(null); setLog([]); setError("");
     bridge.getIntersectRelationship(target).then(r => {
       if (!alive) return;
@@ -45,16 +62,10 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
       const h = csvData?.h || [];
       const near = (a, b) => a.includes(b) || (b.length >= 3 && b.includes(a)); // "user" ~ "systemuser", "team" ~ "teamid"
       const guess = (attr, ent) => h.find(x => x.toLowerCase() === attr.toLowerCase()) || h.find(x => near(x.toLowerCase(), ent.toLowerCase())) || "";
-      const byOf = (col) => (col && rows[0] && !isGuid(rows[0][col]) ? "" : "guid"); // "" = pick a column to match by
+      const byOf = (col) => (col && firstVal(col) && !isGuid(firstVal(col)) ? "" : "guid"); // "" = pick a column to match by
       const c1 = guess(r.attr1, r.entity1), c2 = guess(r.attr2, r.entity2);
       setEnds({ 1: { col: c1, by: byOf(c1) }, 2: { col: c2, by: byOf(c2) } });
-      for (const ent of [r.entity1, r.entity2]) {
-        (isLive ? bridge.getFields(ent) : Promise.resolve(FLDS)).then(fl => {
-          if (!alive) return;
-          const text = (fl || []).map(f => ({ l: f.logical || f.l, d: f.display || f.d || f.logical || f.l, t: f.type || f.t })).filter(f => f.t === "String" || f.t === "Memo");
-          setFields(prev => ({ ...prev, [ent]: text }));
-        }).catch(() => { if (alive) setFields(prev => ({ ...prev, [ent]: [] })); });
-      }
+      for (const ent of [r.entity1, r.entity2]) loadFields(ent);
     }).catch(e => { if (alive) { setRel(null); setRelErr(e?.message || String(e)); } });
     return () => { alive = false; };
   }, [target, isLive]);
@@ -162,7 +173,8 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
   const EndPicker = ({ n }) => {
     const ent = endEntity(n);
     const e = ends[n];
-    const fl = fields[ent];
+    const fl = fields[ent]; // undefined = loading, [...] = the text columns, { error } = couldn't be read
+    const list = Array.isArray(fl) ? fl : [];
     return (
       <div style={{ ...crd({ padding: 12 }), flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: C.txm, fontWeight: 600, marginBottom: 6 }}>End {n} — <span style={{ ...mono, color: C.cy }}>{ent}</span> <span style={{ color: C.txd, fontWeight: 400 }}>({entOf(ent)?.d || ent})</span></div>
@@ -176,9 +188,10 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
           <option value="">— choose —</option>
           <option value="guid">the record's GUID</option>
           {fl === undefined && <option disabled>loading columns…</option>}
-          {(fl || []).map(f => <option key={f.l} value={f.l}>a value of {f.d} ({f.l})</option>)}
+          {list.map(f => <option key={f.l} value={f.l}>a value of {f.d} ({f.l})</option>)}
         </select>
-        {e.col && rows[0] && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>e.g. {rows[0][e.col] || "—"}</div>}
+        {fl?.error && <div style={{ fontSize: 11, color: C.rd, marginTop: 4, lineHeight: 1.5 }}>couldn't read {ent}'s text columns ({fl.error}) — only a GUID can be matched until they are <button onClick={() => loadFields(ent)} title="Read this table's columns again" style={{ padding: "0 6px", fontSize: 11, background: "transparent", color: C.rd, border: `1px solid ${C.rd}55`, borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>↻</button></div>}
+        {e.col && rows.length > 0 && <div style={{ fontSize: 11, color: C.txd, marginTop: 6, ...mono, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>e.g. {firstVal(e.col) || "—"}</div>}
       </div>
     );
   };

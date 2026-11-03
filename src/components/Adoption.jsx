@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, exportTable, expName } from "../shared.jsx";
 import { t } from "../i18n.js";
-import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption, buSubtreeIds } from "../adoptionUtils.js";
+import { isServiceAccount, serviceTypeLabel, computeEngagement, weekdayTotals, inactivityDays, buAdoption, buSubtreeIds, ACCESS_SCOPE_NOTE, neverSignedInView } from "../adoptionUtils.js";
 import { buildReportModel, exportAdoptionPptx } from "../adoptionPptx.js";
 
-// Adoption — turns user-access audit rows (action 64) into usage analytics: access events, distinct
+// Adoption — turns user-access audit rows (actions 64 and 65: app sign-in, web-service access) into usage analytics: access events, distinct
 // users, DAU/WAU/MAU + stickiness, the trend, weekday profile, per-BU adoption rates, per-user
 // activity with license & inactivity, and who never signed in — over a configurable window,
 // filterable by security role and business unit. Read-only. Needs "Audit user access" enabled;
@@ -31,6 +31,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   const [scanProg, setScanProg] = useState(null);  // {done,total} while the per-day scan runs
   const [retryKey, setRetryKey] = useState(0);     // bump to re-run the scan (failed-days retry)
   const [users, setUsers] = useState([]);            // getAllUsers → BU + name + disabled map
+  const [usersFailed, setUsersFailed] = useState(false); // the user list couldn't be read: no "never signed in" number, no 🎉, no export
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -99,8 +100,8 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     ]).then(([st, us, rs, bl]) => {
       if (gen.current !== g) return;
       setStats(st || { users: [], failedDays: [] });
-      if (us === "FAILED") setError("The user list couldn't be loaded — scope, never-signed-in and per-BU numbers are UNAVAILABLE for this window (retry by changing the window).");
-      else if (us) setUsers(us);
+      if (us === "FAILED") { setUsersFailed(true); setError("The user list couldn't be loaded — scope, never-signed-in and per-BU numbers are UNAVAILABLE for this window (retry by changing the window)."); }
+      else if (us) { setUsers(us); setUsersFailed(false); }
       if (rs) setRoles(rs);
       if (bl) setBuList(bl);
       setLoading(false); setScanProg(null);
@@ -119,6 +120,9 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
     const rg = ++roleGen.current;
     if (!roleFilter) { setRoleMembers(null); setLoadingMembers(false); return; }
     if (roleMemberCache.current.has(roleFilter)) { setRoleMembers(roleMemberCache.current.get(roleFilter)); setLoadingMembers(false); return; }
+    // Empty scope until the members are known: the PREVIOUS role's set used to stay in place, so
+    // the KPIs, chart, never-signed-in list and exports showed role A's numbers under role B's label.
+    setRoleMembers(new Set());
     setLoadingMembers(true);
     bridge.getRoleMemberIds(roleFilter).then(ids => {
       const set = new Set([...(ids || [])].map(id => String(id).toLowerCase()));
@@ -286,7 +290,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   }, [agg, userSearch, userSort, tableMode, inactFilter, windowRange.days]);
 
   const exportUsers = (format = "csv") => {
-    if (!agg) return;
+    if (!agg || loadingMembers) return; // an empty scope while the role's members load is not a deliverable
     if (tableMode === "all") {
       // Exports the FILTERED view on purpose — "everyone inactive ≥ 60 days" IS the deliverable.
       const rows = shownUsers.map(u => [u.name, u.email, u.bu, u.license, u.logins, u.days, u.last ? new Date(u.last).toLocaleString() : "", u.inact != null ? u.inact : `>${windowRange.days}`]);
@@ -331,7 +335,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   // The never-signed-in list is its own deliverable (license cleanup, onboarding follow-up) —
   // the license type is included on purpose: paid seats that never log in are the finding.
   const exportNever = (format = "csv") => {
-    if (!agg) return;
+    if (!agg || usersFailed || loadingMembers) return; // no user list → an empty "never signed in" file would be a false all-clear
     const rows = agg.never.map(u => [u.fullname || "", u.email || "", u.buName || "", u.calTypeLabel || "", u.id]);
     exportTable(["user", "email", "businessUnit", "licenseType", "userId"], rows, `adoption_never_signed_in_${preset}`, format, "Never signed in");
   };
@@ -339,7 +343,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   // One-click management deck — native (editable) PowerPoint charts, built from what's on screen
   // with the active filters; the pptx library is dynamic-imported so it costs nothing until here.
   const exportPptx = async () => {
-    if (!agg || pptxBusy) return;
+    if (!agg || pptxBusy || loadingMembers) return;
     setPptxBusy(true);
     try {
       const model = buildReportModel({
@@ -407,7 +411,8 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
   return (
     <div style={{ padding: bp.mobile ? 12 : 20, maxWidth: 1400, margin: "0 auto" }}>
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>📈 {t("nav.adoption")}</h2>
-      <p style={{ color: C.txm, fontSize: 14, marginBottom: 12 }}>{t("adoption.subtitle")}</p>
+      <p style={{ color: C.txm, fontSize: 14, marginBottom: 4 }}>{t("adoption.subtitle")}</p>
+      <p style={{ color: C.txd, fontSize: 11.5, marginBottom: 12 }} title="Dataverse's user-access audit: 64 = User Access via Web (a model-driven app), 65 = User Access via Web Services (Excel/Outlook add-ins, Power BI, flow connections, application users)">ℹ {ACCESS_SCOPE_NOTE}</p>
 
       {orgFeatures?.auditEnabled === false && <div style={{ padding: "10px 14px", background: C.yw + "14", border: `1px solid ${C.yw}44`, borderRadius: 8, color: C.yw, fontSize: 13, marginBottom: 14 }}>⚠ {t("featuregate.audit_off")}</div>}
 
@@ -443,9 +448,10 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
         {(loadingMembers || loading) && <Spin s={13} />}
         {loading && scanProg && scanProg.total > 1 && <span style={{ fontSize: 11, color: C.txd, ...mono }}>{scanProg.done}/{scanProg.total} days</span>}
         <div style={{ flex: 1 }} />
-        <button onClick={() => exportUsers("csv")} disabled={!agg} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}><I.Download /> CSV</button>
-        <button onClick={() => exportUsers("xlsx")} disabled={!agg} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}><I.Download /> Excel</button>
-        <button onClick={exportPptx} disabled={!agg || pptxBusy} title="5-slide management deck with NATIVE (editable) PowerPoint charts — KPIs, trend, weekday & per-BU adoption, findings; honors the active filters" style={bt(C.vi, { fontSize: 11, padding: "4px 10px", opacity: agg ? 1 : 0.5 })}>{pptxBusy ? <Spin s={12} /> : <>📊 Report (.pptx)</>}</button>
+        {/* exports wait for the role's members: an empty scope is not a deliverable */}
+        <button onClick={() => exportUsers("csv")} disabled={!agg || loadingMembers} title={loadingMembers ? "Waiting for the role's member list to load" : undefined} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg && !loadingMembers ? 1 : 0.5 })}><I.Download /> CSV</button>
+        <button onClick={() => exportUsers("xlsx")} disabled={!agg || loadingMembers} title={loadingMembers ? "Waiting for the role's member list to load" : undefined} style={bt(C.cy, { fontSize: 11, padding: "4px 10px", opacity: agg && !loadingMembers ? 1 : 0.5 })}><I.Download /> Excel</button>
+        <button onClick={exportPptx} disabled={!agg || pptxBusy || loadingMembers} title={loadingMembers ? "Waiting for the role's member list to load" : "5-slide management deck with NATIVE (editable) PowerPoint charts — KPIs, trend, weekday & per-BU adoption, findings; honors the active filters"} style={bt(C.vi, { fontSize: 11, padding: "4px 10px", opacity: agg && !loadingMembers ? 1 : 0.5 })}>{pptxBusy ? <Spin s={12} /> : <>📊 Report (.pptx)</>}</button>
       </div>
 
       {error && <div style={{ ...crd({ padding: 14, borderColor: C.rd + "55" }), color: C.rd, fontSize: 13, marginBottom: 12 }}>{error}</div>}
@@ -479,16 +485,27 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
             </div>
           );
         })()}
+        {/* While the role's members load, the scope is EMPTY on purpose (see the role effect): a
+            KPI row of zeros under the new role's label would read as a finding, so it is replaced
+            by the wait line and everything below is dimmed until the holders are known. */}
+        {loadingMembers ? (
+          <div style={{ ...crd({ padding: "12px 16px" }), marginBottom: 10, fontSize: 12.5, color: C.txm, display: "flex", alignItems: "center", gap: 8 }}><Spin s={13} /> Reading the members of "{roleFilter}" — the numbers follow once the role's holders are known.</div>
+        ) : (
         <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           <KPI label="Access events" value={agg.total.toLocaleString()} color={C.vi}
             hint={`Dataverse logs ≤1 event / user / ${orgFeatures?.accessInterval ?? 4} h — an activity proxy, not literal logins`}
             extra={cmpValid ? <Delta cur={agg.total} prev={cmp.total} /> : undefined} />
           <KPI label="Distinct users signed in" value={agg.unique.toLocaleString()} color={C.cy}
-            hint={agg.scopeCount ? `of ${agg.scopeCount.toLocaleString()} enabled users in scope` : undefined}
+            hint={usersFailed ? "user list unavailable — no scope to count against" : agg.scopeCount ? `of ${agg.scopeCount.toLocaleString()} enabled users in scope` : undefined}
             extra={cmpValid ? <Delta cur={agg.unique} prev={cmp.unique} /> : undefined} />
           <KPI label="Avg events / active user" value={agg.avg ? agg.avg.toFixed(1) : "0"} />
-          <KPI label="Never signed in (window)" value={agg.never.length.toLocaleString()} color={agg.never.length ? C.rd : C.gn} hint={includeService ? "enabled users, 0 events" : "enabled human users, 0 events (service accounts excluded)"} />
+          {(() => {
+            const nv = neverSignedInView({ usersFailed, loadingMembers, count: agg.never.length });
+            return <KPI label="Never signed in (window)" value={nv.kind === "ok" ? nv.text : <span style={{ fontSize: 13 }}>{nv.text}</span>} color={nv.kind !== "ok" ? C.txd : agg.never.length ? C.rd : C.gn} hint={nv.kind === "unavailable" ? "the user list couldn't be read" : includeService ? "enabled users, 0 events" : "enabled human users, 0 events (service accounts excluded)"} />;
+          })()}
         </div>
+        )}
+        <div style={{ opacity: loadingMembers ? 0.4 : 1, pointerEvents: loadingMembers ? "none" : "auto" }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "stretch" }}>
           <KPI label="Avg daily active users" value={agg.engagement.dauAvg.toFixed(1)} hint="quiet days count as 0" />
           {agg.engagement.wau != null && <KPI label="WAU (last 7 d of window)" value={agg.engagement.wau.toLocaleString()} />}
@@ -550,7 +567,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
                   <div style={{ background: C.sfh, borderRadius: 3, height: 8, overflow: "hidden" }}><div style={{ width: `${r.rate * 100}%`, height: "100%", background: r.rate >= 0.7 ? C.gn : r.rate >= 0.4 ? C.yw : C.rd, opacity: 0.8 }} /></div>
                 </div>
               ))}
-              {agg.buRows.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No users in scope.</div>}
+              {agg.buRows.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>{usersFailed ? "user list unavailable — the per-BU numbers can't be computed" : "No users in scope."}</div>}
             </div>
           </div>
         </div>
@@ -603,27 +620,36 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
           );
         })()}
 
-        {/* Always rendered — the service-account toggle lives here and must stay reachable at 0 */}
-        {(
+        {/* Always rendered — the service-account toggle lives here and must stay reachable at 0.
+            Three honest states (neverSignedInView): user list unavailable → no number, no 🎉, no
+            export (an empty list used to render as a green all-clear on a mere fetch failure);
+            role members loading → wait; otherwise the real count. */}
+        {(() => {
+          const nv = neverSignedInView({ usersFailed, loadingMembers, count: agg.never.length });
+          const expTitle = nv.kind === "unavailable" ? "The user list couldn't be read — there is no never-signed-in list to export" : nv.kind === "loading" ? "Waiting for the role's member list to load" : "Export the full never-signed-in list (name, email, BU, license type)";
+          return (
           <div style={{ ...crd({ padding: "10px 14px" }), marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: agg.never.length ? C.rd : C.gn }}>Never signed in this window ({agg.never.length}) — enabled {includeService ? "" : "human "}users, no access recorded</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: nv.kind !== "ok" ? C.txd : agg.never.length ? C.rd : C.gn }}>Never signed in this window ({nv.text}) — enabled {includeService ? "" : "human "}users, no access recorded</span>
               <label title="Non-Interactive, Support, Delegated Admin and S2S application users never sign in interactively BY DESIGN — including them pollutes this list with false positives" style={{ fontSize: 11, color: C.txm, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
                 <input type="checkbox" checked={includeService} onChange={e => setIncludeService(e.target.checked)} style={{ accentColor: C.yw }} />
                 include service accounts
               </label>
               <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                <button onClick={() => exportNever("csv")} title="Export the full never-signed-in list (name, email, BU, license type)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> CSV</button>
-                <button onClick={() => exportNever("xlsx")} title="Export the full never-signed-in list (name, email, BU, license type)" style={bt(null, { fontSize: 11, padding: "3px 9px" })}><I.Download /> Excel</button>
+                <button onClick={() => exportNever("csv")} disabled={!nv.exportable} title={expTitle} style={bt(null, { fontSize: 11, padding: "3px 9px", opacity: nv.exportable ? 1 : 0.5 })}><I.Download /> CSV</button>
+                <button onClick={() => exportNever("xlsx")} disabled={!nv.exportable} title={expTitle} style={bt(null, { fontSize: 11, padding: "3px 9px", opacity: nv.exportable ? 1 : 0.5 })}><I.Download /> Excel</button>
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 140, overflow: "auto" }}>
-              {agg.never.length === 0 && <span style={{ fontSize: 11.5, color: C.txd }}>Everyone in scope signed in during this window. 🎉</span>}
-              {agg.never.slice(0, 300).map(u => <span key={u.id} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.sfh, color: C.txm }} title={u.buName}>{u.fullname || u.email || u.id}</span>)}
-              {agg.never.length > 300 && <span style={{ fontSize: 11, color: C.txd }}>+{agg.never.length - 300} more — the export has the full list</span>}
+              {nv.kind === "unavailable" && <span style={{ fontSize: 11.5, color: C.rd }}>The user list couldn't be read — who never signed in is unknown for this window.</span>}
+              {nv.kind === "loading" && <span style={{ fontSize: 11.5, color: C.txd }}>{nv.text}</span>}
+              {nv.kind === "ok" && agg.never.length === 0 && <span style={{ fontSize: 11.5, color: C.txd }}>Everyone in scope signed in during this window. 🎉</span>}
+              {nv.kind === "ok" && agg.never.slice(0, 300).map(u => <span key={u.id} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.sfh, color: C.txm }} title={u.buName}>{u.fullname || u.email || u.id}</span>)}
+              {nv.kind === "ok" && agg.never.length > 300 && <span style={{ fontSize: 11, color: C.txd }}>+{agg.never.length - 300} more — the export has the full list</span>}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Service & application accounts — their own section, whatever the human-metrics toggle:
             an integration that STOPPED calling (0 events) is as interesting as one that hammers. */}
@@ -654,6 +680,7 @@ export default function Adoption({ bp, orgInfo, theme, orgFeatures }) {
             </div>
           </div>
         )}
+        </div>
       </>)}
     </div>
   );

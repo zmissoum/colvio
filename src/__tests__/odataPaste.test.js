@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeODataInput, displayODataPath, entityForSet, looksLikeOData } from "../odataPaste.js";
+import { normalizeODataInput, displayODataPath, entityForSet, looksLikeOData, apiRelativePath } from "../odataPaste.js";
 
 const ORG = "https://contoso.crm4.dynamics.com";
 
@@ -47,6 +47,24 @@ describe("helpers", () => {
     expect(looksLikeOData("api/data/v9.2/accounts")).toBe(true);
     expect(looksLikeOData("accounts?$top=1")).toBe(false);
     expect(looksLikeOData("hello")).toBe(false);
+  });
+});
+
+describe("apiRelativePath — the API Tester's request path", () => {
+  it("drops a pasted /api/data/v9.x/ prefix instead of doubling it, and a leading slash", () => {
+    expect(apiRelativePath("/api/data/v9.2/accounts?$top=1")).toEqual({ absolute: false, path: "accounts?$top=1" });
+    expect(apiRelativePath("api/data/v9.0/WhoAmI()")).toEqual({ absolute: false, path: "WhoAmI()" });
+    expect(apiRelativePath("/accounts")).toEqual({ absolute: false, path: "accounts" });
+    expect(apiRelativePath("accounts?$select=name")).toEqual({ absolute: false, path: "accounts?$select=name" });
+  });
+  it("sends an absolute URL as typed, even with leading whitespace", () => {
+    expect(apiRelativePath("  https://contoso.crm4.dynamics.com/api/data/v9.2/accounts?$skiptoken=x ")).toEqual({ absolute: true, path: "https://contoso.crm4.dynamics.com/api/data/v9.2/accounts?$skiptoken=x" });
+    expect(apiRelativePath("HTTP://x.y/z").absolute).toBe(true);
+    expect(apiRelativePath("httpaccounts")).toEqual({ absolute: false, path: "httpaccounts" }); // "http" at the start isn't a URL
+  });
+  it("keeps paths that aren't the API prefix", () => {
+    expect(apiRelativePath("$metadata")).toEqual({ absolute: false, path: "$metadata" });
+    expect(apiRelativePath("")).toEqual({ absolute: false, path: "" });
   });
 });
 

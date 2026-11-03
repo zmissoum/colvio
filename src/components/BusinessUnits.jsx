@@ -516,7 +516,16 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
             // Local truth update: moved users leave this BU's cached list; the target's cache is
             // invalidated (lazy reload); count badges follow.
             setUsersByBu(prev => { const n = { ...prev }; if (n[sel]) n[sel] = n[sel].filter(u => !okIds.has(String(u.id).toLowerCase())); delete n[moveTarget]; return n; });
-            setCountsByBu(prev => ({ ...prev, [sel]: Math.max(0, (prev[sel] || 0) - okIds.size), [moveTarget]: (prev[moveTarget] || 0) + okIds.size }));
+            // Same guard as the INTO flow: a badge only moves when its count is KNOWN. With the
+            // counts aggregate failed the entries are undefined, and "(prev[sel] || 0) - n" fabricated
+            // a 0 for a BU whose members remain. A missing key while the aggregate succeeded is a true
+            // 0 (groupby omits empty BUs), so the target may start from 0 in that case only.
+            setCountsByBu(prev => {
+              const nx = { ...prev };
+              if (nx[sel] != null) nx[sel] = Math.max(0, nx[sel] - okIds.size);
+              if (nx[moveTarget] != null || !countsFailed) nx[moveTarget] = (nx[moveTarget] || 0) + okIds.size;
+              return nx;
+            });
             setMoveResults(res);
             setCheckedUsers(new Set(res.filter(r => !r.ok).map(r => r.id))); // failures stay selected for a retry
             setPasteResult(null); // its counts describe a selection that just left this BU

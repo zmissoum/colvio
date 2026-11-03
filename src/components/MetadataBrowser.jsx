@@ -54,6 +54,10 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   // Export ALL OptionSet values for the selected entity as a single CSV
   const exportAllOptionSets=async(format="csv")=>{
     if(!selEnt||!fields.length||exportingOS)return;
+    // The columns' generation at the click: a table switch (or a column reload) while the read is in
+    // flight bumps it — table A's values must not land in table B's cache (the Values window then
+    // skipped its own fetch and showed A's choices under B's column names).
+    const gen=selGen.current;
     setExportingOS(true);setOsErr("");
     try{
       const osFields=fields.filter(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status");
@@ -62,13 +66,14 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
       const rows=[];
       // every choice column of the table in four reads (one per choice type), not one per column
       const all=await bridge.getAllOptionSets(selEnt.l);
+      if(gen!==selGen.current)return; // superseded — loadFields already reset the export bar
       setOptionSetData(prev=>({...prev,...all}));
       for(const f of osFields){
         for(const o of all[f.l]||[]) rows.push([f.l,f.d,displayType(f.t),o.value,o.label,o.description]);
       }
       if(rows.length) exportTable(headers,rows,`${selEnt.l}_all_optionsets`,format,"OptionSets");
       else setOsErr("No choice value came back — nothing exported.");
-    }catch(e){ setOsErr(`Export failed: ${e.message||String(e)}`); }finally{setExportingOS(false);}
+    }catch(e){ if(gen===selGen.current)setOsErr(`Export failed: ${e.message||String(e)}`); }finally{ if(gen===selGen.current)setExportingOS(false); }
   };
   useEffect(()=>{if(!showPicklist)return;const h=e=>{if(e.key==="Escape")setShowPicklist(null);};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[showPicklist]);
   const dictOpen=!!dict&&dict.phase!=="running";
@@ -88,7 +93,10 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     return ()=>{cancelled=true;};
   },[showPicklist,selEnt?.l]);
   const[copied,setCopied]=useState("");
-  const[entities,setEntities]=useState(ENTS);
+  // Live: empty until the org answers — the demo list used to be the initial state, so a failed
+  // getEntities showed the DEMO tables as the org's. Demo mode is unchanged.
+  const[entities,setEntities]=useState(isLive?[]:ENTS);
+  const[entitiesErr,setEntitiesErr]=useState(""); // getEntities failure — shown with ↻ Retry, never as an empty or demo list
   const[mbPanel,setMbPanel]=useState("browser"); // "browser" | "diff"
   const[fields,setFields]=useState([]);
   const[loadingFields,setLoadingFields]=useState(false);
@@ -99,11 +107,15 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const[tick,setTick]=useState(0);
   useEffect(()=>{
     if(!isLive)return;
+    let cancelled=false; // a ↻ while a read is in flight: the older answer must not paint over the newer
+    setEntitiesErr("");
     bridge.getEntities().then(data=>{
+      if(cancelled)return;
       if(data&&Array.isArray(data)){
         setEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",c:0,cat:(e.isCustom&&isTrulyCustom(e.logical))?"Custom":"Standard",tt:e.tableType||"Standard",mid:e.metadataId||null,cust:!!e.isCustom})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
-    }).catch(()=>{});
+    }).catch(e=>{if(cancelled)return;setEntities(prev=>prev===ENTS?[]:prev);setEntitiesErr(e?.message||String(e));});
+    return()=>{cancelled=true;};
   },[isLive,tick]);
   const doRefresh=async()=>{try{await bridge.clearCache();}catch{}setTick(t2=>t2+1);};
 
@@ -112,6 +124,10 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const loadFields=(e)=>{
     const gen=++selGen.current;
     setFieldsErr("");
+    // The fill rate counted the columns as they were: kept across a reload (columns just created
+    // from a file), the new ones showed as "not countable". An in-flight choice export is dropped too.
+    fillStop.current=true;setFill(null);
+    setExportingOS(false);setOsErr("");
     if(isLive){
       setLoadingFields(true);
       bridge.getFields(e.l).then(data=>{
@@ -127,8 +143,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const handleSelectEntity=(e)=>{
     setSelEnt(e);setFields([]);setShowPicklist(null);setOptionSetData({});setFieldSearch("");
     impactGen.current++;setImpact(null);setLayers(null);setColsFile(false);
-    fillStop.current=true;setFill(null);
-    loadFields(e);
+    loadFields(e); // also resets the fill rate and the choice-export bar
   };
 
   const cats=[...new Set(entities.map(e=>e.cat))];
@@ -244,7 +259,9 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
           {entities.length>0&&<div style={{fontSize:11,color:C.gn,padding:"6px 2px 0"}}>{filtered.length.toLocaleString()} entit{filtered.length===1?"y":"ies"}{search?" matching":catFilter!=="all"?` (${catFilter})`:""}</div>}
         </div>
         <div style={{flex:1,overflow:"auto",padding:"4px 6px"}}>
-          {filtered.length===0&&<div style={{padding:14,color:C.txd,fontSize:12,textAlign:"center"}}>{search?`No table matches “${search}”`:"No tables in this category"}{search&&<div style={{marginTop:4,fontSize:11}}>Search checks display and logical names. Just created the table? ↻ reloads the list.</div>}</div>}
+          {entities.length===0&&entitiesErr&&<div style={{padding:14,color:C.rd,fontSize:12,textAlign:"center"}}>⚠ Couldn't load the tables: {entitiesErr}<div style={{marginTop:6}}><button onClick={doRefresh} style={bt(null,{fontSize:12})}>↻ Retry</button></div></div>}
+          {isLive&&entities.length===0&&!entitiesErr&&<div style={{padding:14,color:C.txd,fontSize:12,textAlign:"center"}}><Spin s={12}/> Loading the tables…</div>}
+          {filtered.length===0&&entities.length>0&&<div style={{padding:14,color:C.txd,fontSize:12,textAlign:"center"}}>{search?`No table matches “${search}”`:"No tables in this category"}{search&&<div style={{marginTop:4,fontSize:11}}>Search checks display and logical names. Just created the table? ↻ reloads the list.</div>}</div>}
           {filtered.map(e=>(
             <button key={e.l} onClick={()=>handleSelectEntity(e)} style={{width:"100%",display:"flex",alignItems:"center",gap:6,padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm}}>
               <span style={{fontSize:15}}>{e.i}</span>
@@ -430,7 +447,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
       })()}
       {layers&&<LayersModal target={layers} onClose={()=>setLayers(null)}/>}
       {searchCols&&<SearchColumns onClose={()=>setSearchCols(false)}/>}
-      {colsFile&&selEnt&&<ColumnsFromFile entity={selEnt} fields={fields} entities={entities} isProduction={orgInfo?.isProduction} onClose={()=>setColsFile(false)} onDone={()=>loadFields(selEnt)}/>}
+      {colsFile&&selEnt&&<ColumnsFromFile entity={selEnt} fields={fields} fieldsLoading={loadingFields} fieldsErr={fieldsErr} entities={entities} isProduction={orgInfo?.isProduction} onClose={()=>setColsFile(false)} onDone={()=>loadFields(selEnt)}/>}
       {dict&&<div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.55)"}} onClick={()=>dict.phase!=="running"&&setDict(null)}>
         <div style={{width:460,maxWidth:"92vw",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,padding:18,boxShadow:"0 16px 48px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
           <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>📚 Data dictionary</div>

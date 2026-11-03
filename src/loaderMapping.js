@@ -97,7 +97,8 @@ const lookupMetaFor = (lookupsMeta, name) => { const n = lc(name); if (!n) retur
 //   prev             the current mapping: a row the user edited by hand (manual) is kept when its
 //                    field exists on the table; everything else — a manual row whose field doesn't,
 //                    included — is matched again from the names
-// A map row: { csv, d365, transform, skip?, isPK?, isLookup?, auto?, manual? }.
+// A map row: { csv, d365, transform, skip?, isPK?, isLookup?, auto?, manual?, matched? } — `matched` is
+// the logical name a system row (auto "system") matched, kept so migration mode can map it.
 export function autoMap({ headers = [], rows = [], fields = [], lookupsMeta = [], target = "", tableDisplay = "", primaryNames = {}, prev = null, keepManual = true } = {}) {
   const idx = fieldIndex(fields);
   const metaKnown = (fields || []).some(f => f && typeof f === "object");
@@ -133,7 +134,9 @@ export function autoMap({ headers = [], rows = [], fields = [], lookupsMeta = []
     // the record's own id: the table's id column, or the export's "(Do Not Modify) <Table>" column
     if ((e && (e.isPrimaryId || e.logical === pk)) || n === pk || (inner && guidCol && tDisp && norm(inner) === tDisp)) { maps.push({ csv: h, d365: "", transform: "", skip: true, isPK: true, auto: "pk" }); continue; }
     const logical = e ? e.logical : n;
-    if (SKIP_FIELDS.has(logical)) { maps.push({ csv: h, d365: "", transform: "", skip: true, auto: "system" }); continue; }
+    // a platform-managed field: skipped, but the field it matched is remembered — migration mode
+    // (migrationMaps) writes createdon / modifiedon / createdby / modifiedby from these very columns
+    if (SKIP_FIELDS.has(logical)) { maps.push({ csv: h, d365: "", transform: "", skip: true, auto: "system", matched: logical }); continue; }
     // the export's bookkeeping columns ("(Do Not Modify) Row Checksum", another table's id) are never data
     if (!e && inner) { maps.push({ csv: h, d365: "", transform: "", skip: true, auto: "export" }); continue; }
     if (logical === "statecode") { maps.push({ csv: h, d365: "statecode", transform: "statecode", auto: r?.how || "logical" }); continue; }
@@ -160,6 +163,46 @@ export function autoMap({ headers = [], rows = [], fields = [], lookupsMeta = []
     maps.push({ csv: h, d365: "", transform: "" });
   }
   return { maps, lookups, ambiguous, fit: mappingFit(maps, lookups, ambiguous) };
+}
+
+// Migration mode (Loader): the audit columns the mapper skipped as system fields — createdon,
+// modifiedon, createdby, modifiedby, overriddencreatedon — are the very columns a migration exists to
+// write. While it is active (`active`: migration mode on AND a pure create) those rows are mapped to
+// the field they matched; when it goes off they are skipped again. A row the user edited by hand is
+// left alone either way. `migrationFields` is the Loader's allowlist. Returns the same array when
+// nothing changes (so a state update is a no-op).
+export function migrationMaps(maps, active, migrationFields) {
+  const allowed = new Set((migrationFields || []).map(lc));
+  let changed = false;
+  const out = (maps || []).map(m => {
+    if (!m || m.manual) return m;
+    // the field the row stands for: what a system row matched, or — a row of no match — its header
+    const matched = lc(m.matched) || (m.auto === "system" ? "" : lc(m.csv));
+    if (!allowed.has(matched)) return m;
+    if (active && m.skip && m.auto === "system") { changed = true; return { ...m, skip: false, d365: matched, migrated: true }; }
+    if (active && !m.skip && !m.d365 && !m.isPK && !m.isLookup) { changed = true; return { ...m, d365: matched, migrated: true }; }
+    if (!active && m.migrated) {
+      changed = true;
+      const rest = { ...m }; delete rest.migrated;
+      return m.auto === "system" ? { ...rest, skip: true, d365: "" } : { ...rest, d365: "" };
+    }
+    return m;
+  });
+  return changed ? out : maps;
+}
+
+// The lookups after the table's metadata arrives: the ones the user set up by hand (`manual` — a
+// template, for instance) are kept when their file column still exists, in the place of the
+// auto-detected lookup on that column; the auto-detected ones cover the other columns. Replacing
+// the list wholesale lost the template's resolve field / target / fallback.
+export function mergeLookups(prev, auto, headers) {
+  const hs = new Set(headers || []);
+  const kept = (prev || []).filter(lk => lk && lk.manual && (!lk.csv || hs.has(lk.csv)));
+  const byCsv = new Map(kept.filter(lk => lk.csv).map(lk => [lk.csv, lk]));
+  const out = (auto || []).map(lk => (lk.csv && byCsv.get(lk.csv)) || lk);
+  const autoCsv = new Set((auto || []).map(lk => lk.csv).filter(Boolean));
+  for (const lk of kept) if (!lk.csv || !autoCsv.has(lk.csv)) out.push(lk);
+  return out;
 }
 
 // How the file fits the table: the columns the table accounts for (mapped, lookups, the record

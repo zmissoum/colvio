@@ -7,7 +7,7 @@ import { isServiceAccount } from "../adoptionUtils.js";
 import { nextWindow, adaptWindow, mergeFound, remaining, finalize, scanLabel, START_WINDOW, DAY } from "../lastLoginScan.js";
 import {
   SETTINGS_TABLES, settingsFor, findSetting, optionsFor, formatValue, buildPatchBody, indexRows, planChange,
-  filterUsers, buOptions, exportRows, runPool, normalizeTimeZones, normalizeCurrencies,
+  filterUsers, buOptions, exportRows, runPool, normalizeTimeZones, normalizeCurrencies, LL_NOTE, scanIncompleteNote,
 } from "../userSettingsCatalog.js";
 
 const DEFAULT_SETTING = { usersettings: "incomingemailfilteringmethod", mailbox: "incomingemaildeliverymethod" };
@@ -18,7 +18,7 @@ const TABLE_NOTES = {
   mailbox: "Each user's mailbox record is PATCHed — Read and Write on the Mailbox table are required. Changing a delivery method doesn't test the mailbox: run Test & Enable Mailbox afterwards from Power Platform admin center › Settings › Email › Mailboxes (an admin action, not a column — Colvio doesn't run it). Queue mailboxes aren't listed.",
 };
 const SOURCE_NAMES = { timezones: "Time zones", languages: "Provisioned languages", currencies: "Currencies" };
-const LL_NOTE = "Last login = the last time the user opened a model-driven app, from the user-access audit (action 64 — the same source as the Users list), read for everyone at once in time windows — never one request per user. \"Never\" = no such event back to the audit's first row; it needs \"Audit user access\" turned on.";
+// LL_NOTE (what "Last login" means) lives in userSettingsCatalog.js, next to the filter it explains.
 // "<org>|<user id>" → { date } (date null = never) or { error }: read once per org and session,
 // kept across view and filter switches.
 const LAST_LOGIN = new Map();
@@ -112,6 +112,10 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
   const shown = useMemo(() => filterUsers(users, { search, buId, status, kind, roleIds, signedIn, lastLogins }), [users, search, buId, status, kind, roleIds, signedIn, lastLogins]);
   const llPending = baseList.filter(u => !LAST_LOGIN.has(llKey(u.id))).length;
   const llErrors = baseList.map(u => LAST_LOGIN.get(llKey(u.id))).filter(v => v?.error);
+  // A "Signed in" / "Never signed in" filter can only list the users whose date is already read:
+  // after a BU switch restarts the scan, the list is a growing partial subset until it ends — not
+  // something Select-all or Apply may write to (review finding). The filter itself stays.
+  const llIncomplete = scanIncompleteNote(signedIn, llPending, baseList.length);
   const bus = useMemo(() => buOptions(users), [users]);
   const writeOpts = useMemo(() => optionsFor(setting, ctx, { forWrite: true }), [setting, ctx]);
   const newOpt = writeOpts.find(o => String(o.value) === newVal) || null;
@@ -125,7 +129,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
 
   const switchTable = (tb) => { setTable(tb); setNewVal(""); };
   const switchSetting = (k) => { setSettingKey(s => ({ ...s, [table]: k })); setNewVal(""); };
-  const toggleAll = () => setChecked(prev => { const n = new Set(prev); if (allShownChecked) shown.forEach(u => n.delete(u.id)); else shown.forEach(u => n.add(u.id)); return n; });
+  const toggleAll = () => { if (llIncomplete) return; setChecked(prev => { const n = new Set(prev); if (allShownChecked) shown.forEach(u => n.delete(u.id)); else shown.forEach(u => n.add(u.id)); return n; }); };
   const toggleOne = (id) => setChecked(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   // Last logins of the users the filters (search aside) list: time windows walked backwards from
@@ -183,7 +187,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
   };
 
   const openConfirm = () => {
-    if (!plan?.write.length || !newOpt) return;
+    if (!plan?.write.length || !newOpt || llIncomplete) return;
     try { setModal({ phase: "confirm", table, setting, opt: newOpt, plan, body: buildPatchBody(setting, newOpt.value) }); }
     catch (e) { setFeedback("⚠ " + (e.message || String(e))); setTimeout(() => setFeedback(""), 4000); }
   };
@@ -286,6 +290,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
         {llErrors.length > 0 && llRun.total === 0 && <div style={{ fontSize: 11.5, color: C.yw, paddingLeft: 104 }}>⚠ {llErrors.length} last login{llErrors.length > 1 ? "s" : ""} couldn't be read ({llErrors[0].error}) — those users match neither "Signed in" nor "Never signed in". <button onClick={retryLastLogins} style={{ ...bt(null, { fontSize: 11, padding: "1px 8px" }), marginLeft: 6 }}>↻ Retry</button></div>}
         {llPartial > 0 && llRun.total === 0 && llErrors.length === 0 && <div style={{ fontSize: 11.5, color: C.txd, paddingLeft: 104 }}>ℹ {llPartial} user{llPartial > 1 ? "s" : ""} with no login found back to the date shown — the scan stopped before the audit's first row, so they aren't counted as "Never signed in". <button onClick={retryLastLogins} style={{ ...bt(null, { fontSize: 11, padding: "1px 8px" }), marginLeft: 6 }}>↻ Scan further</button></div>}
         {roleState.error && <div style={{ fontSize: 11.5, color: C.rd, paddingLeft: 104 }}>⚠ Role members couldn't be loaded — nobody is listed under that role: {roleState.error}</div>}
+        {llIncomplete && <div style={{ fontSize: 11.5, color: C.yw, paddingLeft: 104 }}>⚠ {llIncomplete} — "Select all" and "Apply" wait for it; users can still be ticked one by one.</div>}
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <Step n={3} label="New value" />
@@ -295,7 +300,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
           </select>
           {srcErr && <span style={{ fontSize: 11.5, color: C.rd }}>⚠ {SOURCE_NAMES[setting.source]} couldn't be loaded: {srcErr}</span>}
           <span style={{ fontSize: 12, color: plan?.write.length ? C.txm : C.txd }}>{planText}</span>
-          <button onClick={openConfirm} disabled={!plan?.write.length || cur?.loading} style={bt(C.vi, { fontSize: 12, padding: "5px 14px", marginLeft: "auto", opacity: plan?.write.length && !cur?.loading ? 1 : 0.45 })}>
+          <button onClick={openConfirm} disabled={!plan?.write.length || cur?.loading || !!llIncomplete} title={llIncomplete || undefined} style={bt(C.vi, { fontSize: 12, padding: "5px 14px", marginLeft: "auto", opacity: plan?.write.length && !cur?.loading && !llIncomplete ? 1 : 0.45 })}>
             Apply to {plan?.write.length || 0} user{plan?.write.length === 1 ? "" : "s"}
           </button>
         </div>
@@ -313,7 +318,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
 
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "6px 16px", position: "sticky", top: 0, background: C.sf, borderBottom: `2px solid ${C.bd}`, fontSize: 11, fontWeight: 600, color: C.txd, zIndex: 1, alignItems: "center" }}>
-          <input type="checkbox" checked={allShownChecked} onChange={toggleAll} disabled={!shown.length} title={`Select all ${shown.length} listed users (beyond the ${RENDER_CAP} rendered too)`} style={{ accentColor: C.vi }} />
+          <input type="checkbox" checked={allShownChecked} onChange={toggleAll} disabled={!shown.length || !!llIncomplete} title={llIncomplete || `Select all ${shown.length} listed users (beyond the ${RENDER_CAP} rendered too)`} style={{ accentColor: C.vi }} />
           <span>Name</span><span>Email</span>
           {!bp?.mobile && <><span>Business unit</span><span>Status</span><span>Last login</span><span>Current: {setting.label}</span>{runShown && <span>Last run</span>}</>}
         </div>

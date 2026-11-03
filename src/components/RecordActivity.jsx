@@ -216,8 +216,10 @@ function SaveCard({ save, next, loader, entity, recordId, labels, traceSetting, 
             {data.errors.traces && <div style={{ fontSize: 12, color: C.rd }}>Couldn't read the plug-in traces: {data.errors.traces}</div>}
             {!data.errors.traces && plugins > 0 && !data.exact && <div style={{ fontSize: 11.5, color: C.txd }}>Matched by time on the {entity} table — another {entity} saved at the same second would show here too.</div>}
             {data.flows.some(f => f.run) && <div style={{ fontSize: 11.5, color: C.txd }}>Flow runs are matched by flow and time only (a run isn't tied to a record) — another save of the table in the same window could have produced the one shown.{data.runsTruncated ? " More runs started in this window than were read: this save's own run may be missing." : ""}</div>}
+            {/* traceSetting null = the organization read didn't answer: "no exception" would assert the log is at least on exceptions */}
             {!data.errors.traces && plugins === 0 && traceSetting !== 0 && <div style={{ fontSize: 12, color: C.txd }}>{data.jobs.some(j => j.operationtype === 1)
               ? "No synchronous plug-in ran. The asynchronous ones ran as system jobs (below) — click one for its message, its step and its history."
+              : traceSetting == null ? "No plug-in trace found — the trace-log setting couldn't be read, so this may mean the log is Off."
               : traceSetting === 2 ? "No plug-in ran for this save." : "No plug-in exception for this save."}</div>}
             {data.chains.map(ch => ch.nodes.map(n => (
               <div key={n.id}>
@@ -346,6 +348,7 @@ export default function RecordActivity({ record, orgInfo, orgFeatures }) {
 
   // The org's plug-in trace log setting, and a pending revert after a debugging session.
   const [trace, setTrace] = useState({ setting: orgFeatures?.pluginTraceSetting ?? null, orgId: null });
+  const [traceReadErr, setTraceReadErr] = useState(""); // the organizations read failed (or returned no row): the setting is unknown, say so
   const [traceErr, setTraceErr] = useState("");
   const [traceBusy, setTraceBusy] = useState(false);
   const [revert, setRevert] = useState(null);
@@ -353,8 +356,8 @@ export default function RecordActivity({ record, orgInfo, orgFeatures }) {
   useEffect(() => {
     let alive = true;
     env.query("organizations", { select: "organizationid,plugintracelogsetting", top: "1" })
-      .then(d => { const o = (d?.records || [])[0]; if (alive && o) setTrace({ setting: o.plugintracelogsetting, orgId: o.organizationid }); })
-      .catch(() => {});
+      .then(d => { const o = (d?.records || [])[0]; if (!alive) return; if (o) { setTrace({ setting: o.plugintracelogsetting ?? null, orgId: o.organizationid }); setTraceReadErr(""); } else setTraceReadErr("no organization row returned"); })
+      .catch(e => { if (alive) setTraceReadErr(e.message || String(e)); });
     bridge.getTraceRevert().then(j => { if (alive) setRevert(j); }).catch(() => {});
     return () => { alive = false; };
   }, [env]);
@@ -396,6 +399,7 @@ export default function RecordActivity({ record, orgInfo, orgFeatures }) {
         <span style={{ fontSize: 12, color: C.txd }}>{saves.length ? `${saves.length} save${saves.length > 1 ? "s" : ""} seen` : "no save seen yet"}</span>
         <span style={{ flex: 1 }} />
         {setting != null && pill(setting === 2 ? C.gn : setting === 1 ? C.yw : C.rd, `Trace log: ${TRACE_SETTING[setting] || setting}`, "Organization › plug-in trace log setting")}
+        {setting == null && traceReadErr && pill(C.txd, "Trace log: couldn't be read", `Organization › plug-in trace log setting couldn't be read: ${traceReadErr}`)}
         {revert ? (
           <span style={{ fontSize: 12, color: C.txm, display: "flex", alignItems: "center", gap: 6 }}>
             back to "{TRACE_SETTING[revert.prev]}" at {new Date(revert.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

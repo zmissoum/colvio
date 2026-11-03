@@ -4,6 +4,7 @@ import { C, I, Spin, mono, inp, bt, crd, exportTable } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import BulkUserSettings from "./BulkUserSettings.jsx";
 import { t } from "../i18n.js";
+import { EMPTY_USER_ROLES, normalizeUserRoles, userRolesLabel, noRolesSentence } from "../userRolesUtils.js";
 
 const ACCESS_COLORS = { 0: C.gn, 1: C.vi, 2: C.cy, 3: C.yw, 4: C.txd, 5: C.or };
 
@@ -16,7 +17,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [selUser, setSelUser] = useState(null);
-  const [roles, setRoles] = useState([]);
+  const [roles, setRoles] = useState(EMPTY_USER_ROLES); // { direct, inherited, teamsError, teamsRead } — userRolesUtils.js
   const [lastLogin, setLastLogin] = useState(undefined);
   const [detailErr, setDetailErr] = useState(""); // detail-fetch failure — shown IN the card, never as fake "no data"
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -41,7 +42,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
     setSelUser(user);
     setLoadingDetail(true);
     setDetailErr(""); // a previous user's error must not smear this one (audit finding)
-    setRoles([]);
+    setRoles(EMPTY_USER_ROLES);
     setLastLogin(undefined);
     try {
       const [r, ll] = await Promise.all([
@@ -49,7 +50,7 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
         bridge.getUserLastLogin(user.id),
       ]);
       if (selectGen.current !== gen) return;
-      setRoles(r || []);
+      setRoles(normalizeUserRoles(r)); // live: { direct, inherited, teamsError }; demo: a plain array of direct roles
       setLastLogin(ll);
     } catch (e) {
       // In the DETAIL card, not the global error slot — a failed fetch used to render as a
@@ -205,10 +206,12 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
               </div>
             </div>
 
-            {/* Security Roles */}
+            {/* Security Roles — direct assignments AND the roles inherited through the user's teams
+                (the standard provisioning); a direct-only list said "No security roles assigned" for
+                correctly provisioned users (review finding). A failed team read is said, not hidden. */}
             <div style={{ ...crd({ padding: "12px 16px", marginBottom: 16 }) }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <span>🛡</span> {t("licenses.roles")} {!loadingDetail && <span style={{ fontSize: 12, color: C.txd, fontWeight: 400 }}>({roles.length})</span>}
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span>🛡</span> {t("licenses.roles")} {!loadingDetail && !detailErr && <span style={{ fontSize: 12, color: C.txd, fontWeight: 400 }}>— {userRolesLabel(roles)}</span>}
               </div>
               {loadingDetail && <Spin s={14} />}
               {!loadingDetail && detailErr && (
@@ -217,10 +220,17 @@ export default function UserLicenseMonitor({ bp, orgInfo, theme }) {
                   <button onClick={() => handleSelect(selUser)} style={{ ...bt(null, { fontSize: 11 }), marginLeft: 8 }}>↻ Retry</button>
                 </div>
               )}
-              {!loadingDetail && !detailErr && roles.length === 0 && <div style={{ fontSize: 12, color: C.txd }}>No security roles assigned</div>}
-              {!loadingDetail && roles.map(r => (
+              {!loadingDetail && !detailErr && noRolesSentence(roles) && <div style={{ fontSize: 12, color: C.txd }}>{noRolesSentence(roles)}</div>}
+              {!loadingDetail && roles.direct.map(r => (
                 <div key={r.id} style={{ padding: "3px 0", fontSize: 12, color: C.txm, borderBottom: `1px solid ${C.bd}22`, ...mono }}>{r.name}</div>
               ))}
+              {!loadingDetail && roles.inherited.map((r, i) => (
+                <div key={`${r.id}|${r.team?.id || i}`} style={{ padding: "3px 0", fontSize: 12, color: C.txm, borderBottom: `1px solid ${C.bd}22`, display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <span style={mono}>{r.name}</span>
+                  <span style={{ fontSize: 11, color: C.txd }} title={r.team?.name ? `Inherited through the team "${r.team.name}"` : "Inherited through a team"}>via team {r.team?.name || "?"}</span>
+                </div>
+              ))}
+              {!loadingDetail && !detailErr && roles.teamsError && <div style={{ fontSize: 12, color: C.yw, marginTop: 4 }}>⚠ Roles inherited through teams couldn't be read: {roles.teamsError}</div>}
             </div>
 
             {/* Stats breakdown */}

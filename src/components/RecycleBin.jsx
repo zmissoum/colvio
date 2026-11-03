@@ -44,11 +44,14 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
   const [results, setResults] = useState(null);        // [{id, name, ok, error}]
   const [error, setError] = useState("");
   const [supported, setSupported] = useState(null);    // Set of restore-enabled logical names, or null (= show all)
-  const [recordSearch, setRecordSearch] = useState(""); // server-side name filter for the deleted list
+  const [recordSearch, setRecordSearch] = useState(""); // server-side name filter for the deleted list — as typed
+  const [appliedSearch, setAppliedSearch] = useState(""); // …and as applied (Enter): Prev/Next/Refresh keep THIS one, a half-typed term never slips in
   const [deletedBy, setDeletedBy] = useState(null);     // { objectIdLower: {by, on} } from the audit log
 
+  // The status probe isn't cached when it failed (bridge), so ↻ on the "couldn't be determined" card asks again.
+  const readStatus = () => { setStatus(null); bridge.recycleBinStatus().then(setStatus).catch(() => setStatus({ enabled: false, unknown: true })); };
   useEffect(() => {
-    bridge.recycleBinStatus().then(setStatus);
+    readStatus();
     // getEntities returns {logical, display, entitySet} — map to the {l, d, p} shape this UI uses
     // (same mapping MetadataBrowser applies). Without it, e.l/e.d are undefined → "()" in the
     // picker and "Invalid logicalName: undefined" on query.
@@ -73,7 +76,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
       `recyclebin_${entity?.l || "records"}_p${page}`, format, "Deleted records");
   };
 
-  const loadDeleted = async (ent, pageVal = page, sizeVal = pageSize, searchVal = recordSearch) => {
+  const loadDeleted = async (ent, pageVal = page, sizeVal = pageSize, searchVal = appliedSearch) => {
     setLoading(true); setError(""); setRows(null); setSelected(new Set()); setResults(null); setDeletedBy(null);
     setPage(pageVal);
     try {
@@ -135,7 +138,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
     // Refresh FIRST, report AFTER: loadDeleted clears `results`, so the old order wiped the
     // partial-failure report in the same render batch — "3/5 restored, 2 failed" never showed
     // and the failed records just silently stayed in the bin (audit finding).
-    if (out.some(r => r.ok)) await loadDeleted(entity, page);
+    if (out.some(r => r.ok)) await loadDeleted(entity, page, pageSize, appliedSearch);
     setResults(out);
   };
 
@@ -152,9 +155,9 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
       {status === null && <div style={{ textAlign: "center", marginTop: 40 }}><Spin s={20} /></div>}
 
       {status && !status.enabled && status.unknown && (
-        <div style={{ ...crd({ padding: 16 }) }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.yw, marginBottom: 8 }}>⚠ Recycle-bin status couldn't be determined</div>
-          <div style={{ fontSize: 13, color: C.txm, lineHeight: 1.7 }}>The probe failed or your security roles don't grant access to the recycle-bin configuration — so we can't tell whether it's enabled. This does <b>not</b> mean it's off. Ask an administrator, or check Power Platform admin center → Environment → Settings → Product → Features.</div>
+        <div style={{ ...crd({ padding: 16 }), marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.yw, marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>⚠ Recycle-bin status couldn't be determined <button onClick={readStatus} style={bt(null, { fontSize: 12 })}>↻ Retry</button></div>
+          <div style={{ fontSize: 13, color: C.txm, lineHeight: 1.7 }}>The probe failed or your security roles don't grant access to the recycle-bin configuration — so we can't tell whether it's enabled. This does <b>not</b> mean it's off. Ask an administrator, or check Power Platform admin center → Environment → Settings → Product → Features. The bin itself can still be queried: pick a table below — if the bin is on, its deleted records list and restore as usual.</div>
         </div>
       )}
       {status && !status.enabled && !status.unknown && (
@@ -164,11 +167,12 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
         </div>
       )}
 
-      {status?.enabled && (
+      {/* an undetermined status doesn't gate the module: the bin query answers for itself (its own error maps to a hint below) */}
+      {(status?.enabled || status?.unknown) && (
         <>
-          <div style={{ fontSize: 12, color: C.gn, marginBottom: supported ? 4 : 12 }}>
+          {status.enabled && <div style={{ fontSize: 12, color: C.gn, marginBottom: supported ? 4 : 12 }}>
             ● {t("recyclebin.enabled_label")}{status.retentionDays != null ? ` — ${t("recyclebin.retention")} ${status.retentionDays} ${t("recyclebin.days")}` : ""}
-          </div>
+          </div>}
           {supported && <div style={{ fontSize: 11, color: C.txd, marginBottom: 12 }}>{t("recyclebin.supported_only").replace("{n}", supported.size)}</div>}
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -179,7 +183,7 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
               {pickerOpen && !entity && (
                 <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 6, marginTop: 4, maxHeight: 240, overflow: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.4)" }}>
                   {filtered.slice(0, 50).map(e => (
-                    <button key={e.l} onClick={() => { setEntity(e); setSearch(""); setRecordSearch(""); setPickerOpen(false); loadDeleted(e, 1, pageSize, ""); }}
+                    <button key={e.l} onClick={() => { setEntity(e); setSearch(""); setRecordSearch(""); setAppliedSearch(""); setPickerOpen(false); loadDeleted(e, 1, pageSize, ""); }}
                       style={{ width: "100%", textAlign: "left", padding: "7px 10px", border: "none", cursor: "pointer", background: "transparent", color: C.tx, fontSize: 13 }}
                       onMouseEnter={ev => ev.currentTarget.style.background = C.sfh} onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
                       {e.d || e.l} <span style={{ color: C.txd, ...mono, fontSize: 11 }}>({e.l})</span>
@@ -189,21 +193,23 @@ export default function RecycleBin({ bp, orgInfo, theme }) {
               )}
             </div>
             {entity && <input value={recordSearch} onChange={e => setRecordSearch(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") loadDeleted(entity, 1); }}
+              onKeyDown={e => { if (e.key === "Enter") { const term = recordSearch.trim(); setAppliedSearch(term); loadDeleted(entity, 1, pageSize, term); } }}
+              title="Enter applies the filter (server-side) and goes back to page 1"
               placeholder={t("recyclebin.search_records")} style={inp({ fontSize: 13, maxWidth: 200 })} />}
-            <select value={pageSize} onChange={e => { const v = +e.target.value; setPageSize(v); if (entity) loadDeleted(entity, 1, v); }} style={inp({ width: "auto", fontSize: 13, padding: "6px 10px" })}>
+            {entity && recordSearch.trim() !== appliedSearch && <span style={{ fontSize: 11, color: C.txd }}>Enter to apply</span>}
+            <select value={pageSize} onChange={e => { const v = +e.target.value; setPageSize(v); if (entity) loadDeleted(entity, 1, v, appliedSearch); }} style={inp({ width: "auto", fontSize: 13, padding: "6px 10px" })}>
               <option value={100}>100 {t("recyclebin.per_page")}</option><option value={250}>250 {t("recyclebin.per_page")}</option><option value={500}>500 {t("recyclebin.per_page")}</option><option value={1000}>1000 {t("recyclebin.per_page")}</option>
             </select>
             {entity && rows && !loading && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <button onClick={() => page > 1 && loadDeleted(entity, page - 1)} disabled={page <= 1}
+                <button onClick={() => page > 1 && loadDeleted(entity, page - 1, pageSize, appliedSearch)} disabled={page <= 1}
                   style={bt(null, { fontSize: 12, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? "default" : "pointer" })}>← {t("recyclebin.prev")}</button>
                 <span style={{ fontSize: 12, color: C.txm, fontWeight: 600 }}>{t("recyclebin.page")} {page}</span>
-                <button onClick={() => moreRecords && loadDeleted(entity, page + 1)} disabled={!moreRecords}
+                <button onClick={() => moreRecords && loadDeleted(entity, page + 1, pageSize, appliedSearch)} disabled={!moreRecords}
                   style={bt(null, { fontSize: 12, opacity: !moreRecords ? 0.4 : 1, cursor: !moreRecords ? "default" : "pointer" })}>{t("recyclebin.next")} →</button>
               </span>
             )}
-            {entity && <button onClick={() => loadDeleted(entity, page)} style={bt(null, { fontSize: 12 })}>↻ {t("recyclebin.refresh")}</button>}
+            {entity && <button onClick={() => loadDeleted(entity, page, pageSize, appliedSearch)} style={bt(null, { fontSize: 12 })}>↻ {t("recyclebin.refresh")}</button>}
             {entity && rows?.length > 0 && !loading && <>
               <button onClick={() => exportDeleted("csv")} title="Export the CURRENT page of deleted records (an evidence list before restoring)" style={bt(null, { fontSize: 12 })}><I.Download /> CSV</button>
               <button onClick={() => exportDeleted("xlsx")} title="Export the CURRENT page of deleted records (an evidence list before restoring)" style={bt(null, { fontSize: 12 })}><I.Download /> Excel</button>

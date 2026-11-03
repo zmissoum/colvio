@@ -106,15 +106,22 @@ export const instanceOf = (idx, ref) => (ref ? idx.byRef.get(lc(ref.id)) || (ref
 //   instances: [{ id, name, accountName, internalId, connectorInternalId, status, state, refId, ownerId, owner }]
 //   flowConns: { [flowId]: [parseFlowConnections rows] }
 //   users:   { [systemuserid]: systemuser row }, usersByAccount: { [lower upn/email]: systemuser row }
+//   usersRead: false when the users read failed (every user identity is then "not read")
 // → { identities: [...], connections: [...] }
-export function buildWhoRunsWhat({ procs = [], steps = [], refs = [], instances = [], flowConns = {}, users = {}, usersByAccount = {}, teams = {}, integrationUsers = [] } = {}) {
+export function buildWhoRunsWhat({ procs = [], steps = [], refs = [], instances = [], flowConns = {}, users = {}, usersByAccount = {}, teams = {}, integrationUsers = [], usersRead = true } = {}) {
   const ids = new Map();
   const ident = (id, type, name) => {
     const k = `${type === "team" ? "team" : "user"}|${lc(id)}`;
     if (!ids.has(k)) {
       const u = type === "team" ? null : users[lc(id)];
-      const cls = type === "team" ? { kind: "team", ...KIND.team } : classifyIdentity(u || (name ? { fullname: name } : null));
-      ids.set(k, { key: k, id: lc(id), type: type === "team" ? "team" : "user", name: (u?.fullname) || name || (type === "team" ? teams[lc(id)] : "") || lc(id), email: u?.internalemailaddress || u?.domainname || "", appId: u?.applicationid || "", disabled: !!u?.isdisabled, accessMode: u?.accessmode, ...cls, uses: [] });
+      // A user the read didn't return (the read failed, or this id came back with no row) is NOT a
+      // "Person" and NOT "Enabled" — the old name-only fallback asserted both. Kind "unknown" and
+      // status null ("not read") say what is known; what the identity runs is still listed.
+      const missing = type !== "team" && !u;
+      const cls = type === "team" ? { kind: "team", ...KIND.team }
+        : missing ? { kind: "unknown", label: KIND.unknown.label, hint: usersRead ? "This user record wasn't returned by the users read — kind and status unknown" : "The users read failed — kind and status unknown" }
+        : classifyIdentity(u);
+      ids.set(k, { key: k, id: lc(id), type: type === "team" ? "team" : "user", name: (u?.fullname) || name || (type === "team" ? teams[lc(id)] : "") || lc(id), email: u?.internalemailaddress || u?.domainname || "", appId: u?.applicationid || "", disabled: missing ? null : !!u?.isdisabled, read: !missing, accessMode: u?.accessmode, ...cls, uses: [] });
     }
     return ids.get(k);
   };
@@ -198,7 +205,7 @@ export const IDENTITY_HEADERS = ["Identity", "Email / UPN", "Kind", "Status", "W
 export function identityExportRows(identities) {
   const rows = [];
   for (const i of identities || []) {
-    const base = [i.name, i.email, i.label, i.disabled ? "Disabled" : "Enabled"];
+    const base = [i.name, i.email, i.label, i.disabled == null ? "not read" : i.disabled ? "Disabled" : "Enabled"];
     if (!i.uses.length) rows.push([...base, "", "", "", ""]);
     for (const u of i.uses) rows.push([...base, u.what, u.kind, u.name, u.active === true ? "Yes" : u.active === false ? "No" : ""]);
   }

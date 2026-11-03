@@ -70,4 +70,14 @@ describe("checks on the demo org", () => {
     expect(txt).toMatch(/0 problem\(s\), 7 warning\(s\), 3 note\(s\), 1 OK/);
     expect(txt).not.toMatch(/Not applicable/);
   });
+
+  it("an unreadable organizations row says so — never 'Auditing is on' by default", async () => {
+    const api = demoHealthApi();
+    api.org = {}; // what buildApi hands over when the organizations read failed
+    const res = await runChecks(api, { checks: CHECKS.filter(c => c.id === "audit" || c.id === "trace-log") });
+    expect(res.audit).toEqual({ level: "info", summary: "The auditing setting couldn't be read." });
+    expect(res["trace-log"].summary).toMatch(/couldn't be read/);
+    const off = demoHealthApi(); off.org = { isauditenabled: false };
+    expect((await runChecks(off, { checks: CHECKS.filter(c => c.id === "audit") })).audit.level).toBe("warn");
+  });
 });

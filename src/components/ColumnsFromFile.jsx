@@ -11,7 +11,9 @@ const csvCell = (v) => { const s = String(v ?? ""); return /[",\n;]/.test(s) ? `
 // Metadata › ➕ Columns from file — a sheet describes the columns, every row is checked against the
 // table and the org, then the valid ones are created one by one (Dataverse's own metadata bodies,
 // one request per column — that IS the write), the table published once at the end.
-export default function ColumnsFromFile({ entity, fields, entities, isProduction, onClose, onDone }) {
+// `fieldsLoading` / `fieldsErr` (optional): the table's columns are still being read / couldn't be
+// read — the "already exists" check can't run, so creating is held back instead of failing per column.
+export default function ColumnsFromFile({ entity, fields, entities, isProduction, onClose, onDone, fieldsLoading, fieldsErr }) {
   const [targets, setTargets] = useState(null); // { languageCode, solutions }
   const [solution, setSolution] = useState("");
   const [file, setFile] = useState(null);        // { name, aoa, error }
@@ -30,6 +32,12 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
   const parsed = useMemo(() => (file?.aoa ? parseSpecSheet(file.aoa) : null), [file]);
   const checked = useMemo(() => (parsed && !parsed.error && sol ? validateSpecs(parsed.specs, { prefix: sol.prefix, existingFields: (fields || []).map(f => ({ logical: f.l })), entities: (entities || []).map(e => ({ logical: e.l })), valuePrefix: sol.valuePrefix }) : []), [parsed, sol, fields, entities]);
   const valid = checked.filter(s => !s.errors.length);
+  // "Already exists" is checked against the table's columns: while they load, when the read failed, or
+  // when none came back (a real table always has columns) the check can't run — every row would show
+  // ✓ and each create would fail server-side — so Create waits, and the reason is on screen.
+  const fieldsKnown = !fieldsLoading && !fieldsErr && Array.isArray(fields) && fields.length > 0;
+  const fieldsNote = fieldsLoading ? "checking against the table's columns…" : !fieldsKnown ? `the table's columns couldn't be read${typeof fieldsErr === "string" && fieldsErr ? ` (${fieldsErr})` : ""} — duplicates can't be checked` : "";
+  const canCreate = valid.length > 0 && !!sol && fieldsKnown;
 
   const onFile = (f) => {
     if (!f) return;
@@ -51,7 +59,7 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
   const template = () => dl("﻿" + [TEMPLATE_HEADERS, ...TEMPLATE_ROWS].map(r => r.map(csvCell).join(",")).join("\n"), "text/csv;charset=utf-8", `columns_template_${entity.l}.csv`);
 
   const create = async () => {
-    if (!valid.length || !sol) return;
+    if (!canCreate) return;
     const lines = [`Create ${valid.length} column${valid.length === 1 ? "" : "s"} on ${entity.d} (${entity.l})?`, ""];
     for (const s of valid.slice(0, 10)) lines.push(`• ${s.schema} — ${KIND_LABEL[s.kind]}${s.kind === "lookup" ? ` → ${s.target}` : ""}`);
     if (valid.length > 10) lines.push(`• … and ${valid.length - 10} more`);
@@ -116,6 +124,7 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
               <span style={{ color: C.gn }}>{valid.length} ready</span>
               {checked.length - valid.length > 0 && <span style={{ color: C.rd }}>{checked.length - valid.length} with errors</span>}
               {parsed.unknownHeaders.length > 0 && <span style={{ color: C.yw }} title={parsed.unknownHeaders.join(", ")}>{parsed.unknownHeaders.length} header{parsed.unknownHeaders.length === 1 ? "" : "s"} ignored</span>}
+              {fieldsNote && <span style={{ color: fieldsLoading ? C.yw : C.rd }}>{fieldsLoading && <Spin s={10} />} {fieldsNote}</span>}
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead><tr>{["Row", "Schema name", "Display name", "Kind", "Required", "Details", run ? "Result" : "Check"].map(h => <th key={h} style={{ textAlign: "left", padding: "4px 6px", color: C.txd, fontSize: 11, fontWeight: 600, borderBottom: `1px solid ${C.bd}` }}>{h}</th>)}</tr></thead>
@@ -145,7 +154,7 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
           {run?.phase === "running" && <><Spin s={11} /><span style={{ flex: 1, color: C.txm }}>Creating {run.done} / {run.total}…</span><button onClick={() => { stop.current = true; }} style={bt(C.rd, { fontSize: 12 })}>Stop</button></>}
           {run?.phase === "publishing" && <><Spin s={11} /><span style={{ flex: 1, color: C.txm }}>Publishing {entity.l}…</span></>}
           {run?.phase === "done" && <><span style={{ flex: 1, color: run.stopped || sum.failed ? C.yw : C.gn }}>{run.stopped ? "Stopped — " : ""}{sum.ok} created{sum.failed ? `, ${sum.failed} failed` : ""}{run.notSent ? `, ${run.notSent} not sent` : ""}{sum.skipped - (run.notSent || 0) ? `, ${sum.skipped - (run.notSent || 0)} skipped` : ""}{sum.ok ? " — table published, columns reloaded." : "."}{run.error ? ` ${run.error}` : ""}</span><button onClick={exportResults} style={bt(null, { fontSize: 12 })}>Export results</button><button onClick={onClose} style={bt(null, { fontSize: 12 })}>Close</button></>}
-          {!run && <><span style={{ flex: 1, color: C.txd }}>{valid.length ? `${valid.length} column${valid.length === 1 ? "" : "s"} will be created in ${sol?.name || "…"}; every write is confirmed.` : "Nothing to create yet."}</span><button onClick={onClose} style={bt(null, { fontSize: 12 })}>{t("common.cancel")}</button><button onClick={create} disabled={!valid.length || !sol} style={bt(C.gn, { fontSize: 12, opacity: valid.length && sol ? 1 : .5 })}>Create {valid.length || ""} column{valid.length === 1 ? "" : "s"}</button></>}
+          {!run && <><span style={{ flex: 1, color: fieldsNote && valid.length ? (fieldsLoading ? C.yw : C.rd) : C.txd }}>{fieldsNote && valid.length ? fieldsNote : valid.length ? `${valid.length} column${valid.length === 1 ? "" : "s"} will be created in ${sol?.name || "…"}; every write is confirmed.` : "Nothing to create yet."}</span><button onClick={onClose} style={bt(null, { fontSize: 12 })}>{t("common.cancel")}</button><button onClick={create} disabled={!canCreate} title={fieldsNote || undefined} style={bt(C.gn, { fontSize: 12, opacity: canCreate ? 1 : .5 })}>Create {valid.length || ""} column{valid.length === 1 ? "" : "s"}</button></>}
         </div>
       </div>
     </div>

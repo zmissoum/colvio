@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, copyText, dl, expName, persistList } from "../shared.jsx";
 import { redactApiRequest, scrubApiEntries } from "../historyUtils.js";
+import { apiRelativePath } from "../odataPaste.js";
 import { t } from "../i18n.js";
 
 const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
@@ -60,6 +61,18 @@ export default function ApiTester({ bp, orgInfo, theme }) {
       if (changed) persistList("colvio_api_tester_history", cur => scrubApiEntries(cur.filter(e => e && typeof e === "object")).list);
     });
   }, []);
+  // The stored list is shared: a request sent from another API Tester tab (ApiTesterTabs mounts
+  // one per tab) or another Colvio panel shows up here too, and "Clear history" clears everywhere.
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return undefined;
+    const onChange = (ch, area) => {
+      if (area !== "local" || !ch.colvio_api_tester_history) return;
+      const v = ch.colvio_api_tester_history.newValue;
+      setHistory(Array.isArray(v) ? v.filter(e => e && typeof e === "object") : []);
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => chrome.storage.onChanged.removeListener(onChange);
+  }, []);
 
   // Convert a 0-based character position into a 1-based line number.
   // The native JSON parser reports errors as "at position N" — translating to a
@@ -88,7 +101,8 @@ export default function ApiTester({ bp, orgInfo, theme }) {
   // app.jsx exposes the org base as `orgUrl` in the extension; `clientUrl` only exists on the
   // standalone mock. Fall back through both so the URL preview + cURL export show the real origin.
   const orgBase = orgInfo?.orgUrl || orgInfo?.clientUrl || "";
-  const fullUrl = /^https?:\/\//i.test(path.trim()) ? path.trim() : `${orgBase}${API_PREFIX}${path}`; // absolute URLs (nextLink…) are sent as typed
+  const target = apiRelativePath(path); // absolute URLs (nextLink…) are sent as typed; a pasted /api/data/v9.x/ prefix is dropped, not doubled
+  const fullUrl = target.absolute ? target.path : `${orgBase}${API_PREFIX}${target.path}`;
 
   // Two-step confirmation for DELETE only: first Send (or Ctrl+Enter) arms the button,
   // the second one within 3s actually sends. DELETE is the one irreversible method here
@@ -122,7 +136,8 @@ export default function ApiTester({ bp, orgInfo, theme }) {
       if (h.key && h.key.trim()) headersObj[h.key.trim()] = h.value || "";
     }
     try {
-      const cleanPath = path.startsWith("http") ? path : `${API_PREFIX}${path.replace(/^\//, "")}`;
+      const t = apiRelativePath(path); // the same rule as the preview — what is shown is what is sent
+      const cleanPath = t.absolute ? t.path : `${API_PREFIX}${t.path}`;
       const r = await bridge.customRequest({
         method,
         path: cleanPath,

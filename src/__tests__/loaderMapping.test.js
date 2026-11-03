@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { autoMap, guessTable, mappingFit, matchHeader, fieldIndex, afterParen, columnIsGuid } from "../loaderMapping.js";
+import { autoMap, guessTable, mappingFit, matchHeader, fieldIndex, afterParen, columnIsGuid, migrationMaps, mergeLookups } from "../loaderMapping.js";
 
 // an account table as the Loader sees it live (getFields shape) …
 const ACCOUNT = [
@@ -51,8 +51,8 @@ describe("loaderMapping — logical names (what worked before, kept)", () => {
     expect(m.telephone1.d365).toBe("telephone1");
     expect(m.statecode).toMatchObject({ d365: "statecode", transform: "statecode" });
     expect(m.statuscode).toMatchObject({ d365: "statuscode", transform: "int" }); // numeric values → int
-    expect(m.createdon).toMatchObject({ skip: true, auto: "system" });
-    expect(m.versionnumber.skip).toBe(true);
+    expect(m.createdon).toMatchObject({ skip: true, auto: "system", matched: "createdon" });
+    expect(m.versionnumber).toMatchObject({ skip: true, auto: "system", matched: "versionnumber" });
     expect(m.unknown_col.d365).toBe(""); expect(m.unknown_col.skip).toBeFalsy();
   });
   it("a GUID column of a lookup becomes a direct lookup with the relationship's target and nav", () => {
@@ -110,7 +110,7 @@ describe("loaderMapping — a Dynamics export (display names, hidden columns, na
   it("the export's record id column is the primary key; its bookkeeping columns are skipped", () => {
     expect(m["(Do Not Modify) Account"]).toMatchObject({ skip: true, isPK: true });
     expect(m["(Do Not Modify) Row Checksum"]).toMatchObject({ skip: true, auto: "export" });
-    expect(m["(Do Not Modify) Modified On"]).toMatchObject({ skip: true, auto: "system" });
+    expect(m["(Do Not Modify) Modified On"]).toMatchObject({ skip: true, auto: "system", matched: "modifiedon" });
   });
   it("display names map, whatever the case and spacing; choice labels get the picklist transform", () => {
     expect(m["Account Name"]).toMatchObject({ d365: "name", auto: "display" });
@@ -193,6 +193,86 @@ describe("loaderMapping — matching again when the table changes", () => {
     expect(m["Account Name"].d365).toBe(""); expect(m["Account Name"].manual).toBeFalsy(); // back on account it maps again
     expect(m.Industry).toMatchObject({ d365: "" }); // auto on the old table, nothing on this one
     expect(byCsv(autoMap({ headers, rows, fields: CONTACT, target: "contact", prev, keepManual: false }))["Full Name"].d365).toBe("fullname");
+  });
+});
+
+describe("loaderMapping — migration mode maps the audit columns it exists for", () => {
+  const MIG = ["createdon", "overriddencreatedon", "modifiedon", "createdby", "modifiedby"];
+  const headers = ["name", "createdon", "Created On", "(Do Not Modify) Modified On", "modifiedby", "versionnumber"];
+  const rows = rowsOf(headers, ["ACME", "2024-01-01", "2024-01-01", "2024-02-02", G1, "7"]);
+  const base = autoMap({ headers, rows, fields: ACCOUNT, lookupsMeta: ACCOUNT_LK, target: "account", tableDisplay: "Account" }).maps;
+  const by = (maps) => Object.fromEntries(maps.map(x => [x.csv, x]));
+  it("system rows remember the field they matched — by logical, display or export name", () => {
+    const m = by(base);
+    expect(m.createdon).toMatchObject({ skip: true, auto: "system", matched: "createdon" });
+    expect(m["Created On"]).toMatchObject({ skip: true, auto: "system", matched: "createdon" });
+    expect(m["(Do Not Modify) Modified On"]).toMatchObject({ skip: true, auto: "system", matched: "modifiedon" });
+    expect(m.modifiedby).toMatchObject({ skip: true, auto: "system", matched: "modifiedby" }); // not in the metadata: its name alone
+    expect(m.versionnumber).toMatchObject({ skip: true, auto: "system", matched: "versionnumber" });
+  });
+  it("active: the allowed audit rows are mapped to their field and lose the skip; the other system rows stay", () => {
+    const on = migrationMaps(base, true, MIG);
+    const m = by(on);
+    expect(m.createdon).toMatchObject({ skip: false, d365: "createdon", migrated: true });
+    expect(m["Created On"]).toMatchObject({ skip: false, d365: "createdon" });
+    expect(m["(Do Not Modify) Modified On"]).toMatchObject({ skip: false, d365: "modifiedon" });
+    expect(m.modifiedby).toMatchObject({ skip: false, d365: "modifiedby" });
+    expect(m.versionnumber).toMatchObject({ skip: true, d365: "" });
+    expect(m.name).toMatchObject({ d365: "name" });
+    expect(mappingFit(on)).toMatchObject({ mapped: 5, system: 1 });
+  });
+  it("off again: the rows it mapped are skipped again; a row the user edited by hand is left alone", () => {
+    const on = migrationMaps(base, true, MIG);
+    const edited = on.map(x => x.csv === "modifiedby" ? { ...x, d365: "modifiedby", manual: true } : x);
+    const off = by(migrationMaps(edited, false, MIG));
+    expect(off.createdon).toMatchObject({ skip: true, d365: "", auto: "system" });
+    expect(off.createdon.migrated).toBeUndefined();
+    expect(off["(Do Not Modify) Modified On"]).toMatchObject({ skip: true, d365: "" });
+    expect(off.modifiedby).toMatchObject({ skip: false, d365: "modifiedby", manual: true });
+  });
+  it("returns the same array when nothing changes (a state update that is a no-op)", () => {
+    expect(migrationMaps(base, false, MIG)).toBe(base);
+    const on = migrationMaps(base, true, MIG);
+    expect(migrationMaps(on, true, MIG)).toBe(on);
+    expect(migrationMaps([], true, MIG)).toEqual([]);
+  });
+  it("a row of no match whose header is an audit field is mapped too, and unmapped again when off", () => {
+    const plain = [{ csv: "createdby", d365: "", transform: "" }, { csv: "foo", d365: "", transform: "" }];
+    const on = migrationMaps(plain, true, MIG);
+    expect(on[0]).toMatchObject({ d365: "createdby", migrated: true });
+    expect(on[1].d365).toBe("");
+    const off = migrationMaps(on, false, MIG);
+    expect(off[0].d365).toBe(""); expect(off[0].skip).toBeFalsy(); expect(off[0].migrated).toBeUndefined();
+  });
+  it("matching again while active keeps them mapped (the Loader runs migrationMaps after each autoMap)", () => {
+    const on = migrationMaps(base, true, MIG);
+    const again = migrationMaps(autoMap({ headers, rows, fields: ACCOUNT, lookupsMeta: ACCOUNT_LK, target: "account", tableDisplay: "Account", prev: on }).maps, true, MIG);
+    expect(by(again).createdon).toMatchObject({ skip: false, d365: "createdon" });
+  });
+});
+
+describe("loaderMapping — lookups merged when the table's metadata arrives", () => {
+  const auto = [
+    { src: "", csv: "Primary Contact", entity: "contact", nav: "primarycontactid", d365f: "fullname", fb: "skip", mode: "resolve", byName: true },
+    { src: "", csv: "Owner", entity: "systemuser", nav: "ownerid", d365f: "", fb: "skip", mode: "resolve" },
+  ];
+  const headers = ["Account Name", "Primary Contact", "Owner", "SAP Id"];
+  it("a manual lookup replaces the auto one on its column, auto ones cover the rest, one whose column is gone is dropped", () => {
+    const prev = [
+      { src: "", csv: "Primary Contact", entity: "contact", nav: "primarycontactid", d365f: "emailaddress1", fb: "error", mode: "resolve", manual: true },
+      { src: "", csv: "SAP Id", entity: "account", nav: "parentaccountid", d365f: "accountnumber", fb: "skip", mode: "resolve", manual: true },
+      { src: "", csv: "Gone", entity: "account", nav: "parentaccountid", d365f: "accountnumber", fb: "skip", mode: "resolve", manual: true },
+      { src: "", csv: "Owner", entity: "systemuser", nav: "ownerid", d365f: "", fb: "skip", mode: "direct" }, // not manual: the auto one wins
+    ];
+    expect(mergeLookups(prev, auto, headers).map(l => [l.csv, l.d365f, l.fb, l.mode])).toEqual([
+      ["Primary Contact", "emailaddress1", "error", "resolve"], ["Owner", "", "skip", "resolve"], ["SAP Id", "accountnumber", "skip", "resolve"],
+    ]);
+  });
+  it("no manual lookups: the auto list as is; a manual lookup not yet given a column is kept", () => {
+    expect(mergeLookups([], auto, headers)).toEqual(auto);
+    expect(mergeLookups(null, auto, headers)).toEqual(auto);
+    const blank = { src: "", csv: "", entity: "", nav: "", d365f: "", fb: "skip", mode: "resolve", manual: true };
+    expect(mergeLookups([blank], auto, headers)).toEqual([...auto, blank]);
   });
 });
 

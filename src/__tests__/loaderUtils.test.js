@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, flushNeverSent, coerceForFieldType, valuesToVerifyOneByOne } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, matchKeyColumn, migrationOverridePair, isTransientError, isNullToken, stripHtml, flushNeverSent, coerceForFieldType, valuesToVerifyOneByOne } from "../loaderUtils.js";
 
 describe("coerceForFieldType — Edm string/number 400 killer", () => {
   it("coerces clean dot-decimal strings to JSON numbers for Decimal/Money/Double", () => {
@@ -206,6 +206,27 @@ describe("defaultMatchKey", () => {
   });
   it("handles empty/missing inputs without throwing", () => {
     expect(defaultMatchKey(undefined, "accountid", undefined)).toEqual({ d: "accountid", c: "" });
+    expect(matchKeyColumn("", ["a"], [], "accountid")).toBe("");
+  });
+  // An export's headers are display names and its id column is named after the table: the logical
+  // name paired nothing, although the mapper had matched those very columns.
+  it("pairs the column through the mapping when the header is a display name or the export's id column", () => {
+    const maps = [
+      { csv: "(Do Not Modify) Account", d365: "", transform: "", skip: true, isPK: true, auto: "pk" },
+      { csv: "Account Number", d365: "accountnumber", transform: "", auto: "display" },
+      { csv: "Account Name", d365: "name", transform: "", auto: "display" },
+    ];
+    const headers = maps.map(m => m.csv);
+    expect(defaultMatchKey(["accountnumber"], "accountid", headers, maps)).toEqual({ d: "accountnumber", c: "Account Number" });
+    expect(defaultMatchKey([], "accountid", headers, maps)).toEqual({ d: "accountid", c: "(Do Not Modify) Account" });
+    expect(matchKeyColumn("NAME", headers, maps, "accountid")).toBe("Account Name");
+    expect(matchKeyColumn("new_code", headers, maps, "accountid")).toBe(""); // nothing holds it: no guess, the UI warns
+  });
+  it("a header spelled like the key wins over the mapping; an isPK row pairs the primary key only", () => {
+    const maps = [{ csv: "Id", d365: "", transform: "", skip: true, isPK: true }, { csv: "accountnumber", d365: "name", transform: "", manual: true }];
+    expect(matchKeyColumn("accountnumber", ["Id", "accountnumber"], maps, "accountid")).toBe("accountnumber");
+    expect(matchKeyColumn("accountid", ["Id", "accountnumber"], maps, "accountid")).toBe("Id");
+    expect(matchKeyColumn("accountid", ["Id", "accountnumber"], maps, "contactid")).toBe("");
   });
 });
 

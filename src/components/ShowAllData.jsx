@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
+import { parseRecordInput, resolveRecordTable } from "../recordInput.js";
 import AuditHistory from "./AuditHistory.jsx";
 import RecordActivity from "./RecordActivity.jsx";
 import RecordAccess from "./RecordAccess.jsx";
@@ -26,47 +27,42 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
   const[editMsg,setEditMsg]=useState("");
   const[optionsCache,setOptionsCache]=useState({}); // { fieldLogical: [{value,label}] }
 
+  // The record open in the D365 tab — read on open, when Colvio is opened from another tab of this
+  // environment (colvio:rebound, the panel then follows that tab), and each time the panel comes
+  // back into view or gets the focus: the tab may have moved to another record in between.
+  const detectGen=useRef(0);
+  const detect=()=>{
+    if(!isLive) return Promise.resolve(null);
+    const gen=++detectGen.current;
+    return bridge.getCurrentRecord().then(rec=>{
+      const r=rec&&rec.entityType&&rec.recordId?rec:null;
+      if(gen===detectGen.current) setAutoDetected(r);
+      return r;
+    }).catch(()=>null);
+  };
   useEffect(()=>{
     if(!isLive) return undefined;
-    // the record open in the D365 tab: on open, and again when Colvio is opened from another tab of
-    // this environment (the panel then follows that tab)
-    const detect=()=>bridge.getCurrentRecord().then(rec=>{
-      setAutoDetected(rec && rec.entityType && rec.recordId ? rec : null);
-    }).catch(()=>{});
     detect();
+    const onVisible=()=>{if(!document.hidden)detect();};
     window.addEventListener("colvio:rebound",detect);
-    return()=>window.removeEventListener("colvio:rebound",detect);
+    window.addEventListener("focus",detect);
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{window.removeEventListener("colvio:rebound",detect);window.removeEventListener("focus",detect);document.removeEventListener("visibilitychange",onVisible);};
   },[isLive]);
 
-  const loadDetected=()=>{
-    if(!autoDetected) return;
-    setRecordUrl(`${autoDetected.entityType}/${autoDetected.recordId}`);
-    loadRecordDirect(autoDetected.entityType, autoDetected.recordId);
+  const loadDetected=async()=>{
+    if(loading) return;
+    // read the tab again first: the banner may be older than the record the tab shows now
+    const rec=(await detect())||autoDetected;
+    if(!rec) return;
+    setRecordUrl(`${rec.entityType}/${rec.recordId}`);
+    loadRecordDirect(rec.entityType, rec.recordId);
   };
 
-  const parseInput=(input)=>{
-    const trimmed=input.trim();
-    const guidMatch=trimmed.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-    if(guidMatch) return {id:guidMatch[0],entity:null};
-    const GUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    try {
-      const url=new URL(trimmed);
-      const params=new URLSearchParams(url.search);
-      if(params.get("etn")&&params.get("id")){
-        // Validate the id is a real GUID — like the bare-GUID and slash branches do — so a
-        // garbled URL fails fast with a clear message instead of interpolating junk into the OData path.
-        const id=params.get("id").replace(/[{}]/g,"");
-        if(GUID_RE.test(id)) return {entity:params.get("etn"),id};
-      }
-      const hashMatch=url.hash.match(/\/(\w+)\/([0-9a-f-]{36})/i);
-      if(hashMatch) return {entity:hashMatch[1],id:hashMatch[2]};
-    }catch{}
-    const slashMatch=trimmed.match(/^(\w+)\/([0-9a-f-]{36})$/i);
-    if(slashMatch) return {entity:slashMatch[1],id:slashMatch[2]};
-    return null;
-  };
-
-  const loadRecordDirect=async(entity, id)=>{
+  // The newest load wins: two loads in flight (Enter, then the detected-record banner) could end
+  // with the lookupNavs of record A under record B, or the slower, older record shown last.
+  const loadGen=useRef(0);
+  const loadRecordDirect=async(entity, id, gen=++loadGen.current)=>{
     // A pending edit belongs to the PREVIOUS record — leaving it open would save the old
     // record's text into the new one (audit finding). Options cache cleared too: it's keyed
     // by field name, and "statuscode" on account is not "statuscode" on contact.
@@ -78,8 +74,10 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
         bridge.getEntitySet(entity),
         bridge.getLookups(entity).catch(() => []), // relationship metadata → lookup editing (nav property + target); [] = lookups stay read-only
       ]);
+      if(gen!==loadGen.current) return;
       setLookupNavs(navMeta || []);
       const data=await bridge.query(`${entitySet}(${id})`,{});
+      if(gen!==loadGen.current) return;
       const rec = data?.records?.[0] || data;
       if(!rec || rec.error) throw new Error("Record not found");
       const allFields=(fieldsMeta||[]).map(f=>{
@@ -102,19 +100,30 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
       const name=rec.name||rec.fullname||rec.subject||rec.title||id;
       setRecord({entity,entitySet,entityDisplay:entity,id,name,fields:allFields,loadedAt:new Date().toLocaleTimeString()});
     }catch(e){
+      if(gen!==loadGen.current) return;
       if(e.message?.includes("401")||e.message?.includes("SESSION_EXPIRED")){
         setError("Session expired — refresh D365 (F5) then click ⚡ again");
       } else { setError(e.message); }
     }
-    finally{setLoading(false);}
+    finally{if(gen===loadGen.current)setLoading(false);}
   };
 
   const loadRecord=async()=>{
+    if(loading) return;
     if(isLive){
-      const parsed=parseInput(recordUrl);
-      if(!parsed||!parsed.id){setError("Unrecognized format. Enter a D365 URL or GUID.");return;}
-      if(!parsed.entity){setError("Cannot detect entity. Use format: account/GUID or full D365 URL.");return;}
-      await loadRecordDirect(parsed.entity, parsed.id);
+      const parsed=parseRecordInput(recordUrl);
+      if(!parsed){setError("Unrecognized format. Paste a D365 record URL, a Web API URL (…/api/data/v9.2/accounts(<GUID>)), table/GUID or a GUID.");return;}
+      if(!parsed.name){setError("Cannot detect the table from a GUID alone. Use table/GUID or a full record URL.");return;}
+      const gen=++loadGen.current;
+      setError("");setLoading(true);
+      // the org's table list (cached by the bridge) turns an entity set (accounts) into its table
+      // (account) and catches a typo before the metadata read answers with a raw 404
+      let list=null;
+      try{list=await bridge.getEntities();}catch{/* no list: the name is taken as typed and the metadata read decides */}
+      if(gen!==loadGen.current) return;
+      const r=resolveRecordTable(parsed,list);
+      if(r.error){setError(r.error);setLoading(false);return;}
+      await loadRecordDirect(r.entity, parsed.id, gen);
     } else {
       const allFields=FLDS.map(f=>{const val=ROWS[0][f.l];return{...f,value:val!==undefined?val:null};});
       setRecord({entity:"account",entityDisplay:"Account",id:ROWS[0].accountid,name:ROWS[0].name,fields:allFields,loadedAt:new Date().toLocaleTimeString()});
@@ -213,11 +222,12 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
       <h2 style={{fontSize:16,fontWeight:700,marginBottom:4,display:"flex",alignItems:"center",gap:8}}><I.Eye/> Show All Data</h2>
       <p style={{color:C.txm,fontSize:14,marginBottom:12}}>Paste a D365 record URL or enter entity/GUID.</p>
 
-      {autoDetected&&!record&&(
+      {/* shown until the detected record is the loaded one — after an in-tab navigation it comes back */}
+      {autoDetected&&(!record||String(autoDetected.recordId).toLowerCase()!==String(record.id).toLowerCase()||autoDetected.entityType!==record.entity)&&(
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:`linear-gradient(135deg,${C.vi}15,${C.cy}15)`,border:`1px solid ${C.vi}44`,borderRadius:8,marginBottom:12,cursor:"pointer"}} onClick={loadDetected}>
           <div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${C.vi},${C.cy})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>⚡</div>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:600,color:C.tx}}>Record detected from D365 tab</div>
+            <div style={{fontSize:14,fontWeight:600,color:C.tx}}>{record?"The D365 tab now shows another record":"Record detected from D365 tab"}</div>
             <div style={{fontSize:13,color:C.txd,...mono}}>{autoDetected.entityType} / {autoDetected.recordId.substring(0,20)}…</div>
           </div>
           <button style={{padding:"6px 14px",background:`linear-gradient(135deg,${C.vi},${C.cy})`,border:"none",borderRadius:6,color:"white",fontWeight:600,fontSize:13,cursor:"pointer",flexShrink:0}}>Inspect</button>
@@ -225,7 +235,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
       )}
 
       <div style={{display:"flex",gap:8,marginBottom:16,flexDirection:bp.mobile?"column":"row"}}>
-        <input value={recordUrl} onChange={e=>setRecordUrl(e.target.value)} placeholder={isLive?"D365 URL or entity/GUID (e.g. account/a1b2c3d4-...)":"Anything (demo mode)"} style={inp({flex:1,...mono,fontSize:14})} onKeyDown={e=>{if(e.key==="Enter")loadRecord();}}/>
+        <input value={recordUrl} onChange={e=>setRecordUrl(e.target.value)} placeholder={isLive?"Record URL, Web API URL (…/accounts(GUID)) or table/GUID (e.g. account/a1b2c3d4-...)":"Anything (demo mode)"} style={inp({flex:1,...mono,fontSize:14})} onKeyDown={e=>{if(e.key==="Enter")loadRecord();}}/>
         <button onClick={loadRecord} disabled={loading} style={bt(`linear-gradient(135deg,${C.vi},${C.vil})`,{flexShrink:0})}>{loading?<><Spin s={12}/> Loading...</>:<><I.Eye/> Inspect</>}</button>
       </div>
 

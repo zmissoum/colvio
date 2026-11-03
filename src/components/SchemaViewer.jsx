@@ -27,7 +27,14 @@ const cardH=(fLen,isExpanded,isCollapsed)=>{if(isCollapsed)return HEADER_H+8;con
 export default function SchemaViewer({bp,orgInfo,theme}){
   const isLive=orgInfo?.isExtension;
   const svgRef=useRef(null);
-  const[entities,setEntities]=useState(ENTS);
+  // Live: empty until the org answers — the demo list used to be the initial state, so a failed
+  // getEntities showed the DEMO tables as the org's. Demo mode is unchanged.
+  const[entities,setEntities]=useState(isLive?[]:ENTS);
+  const[entitiesErr,setEntitiesErr]=useState(""); // getEntities failure — shown with ↻ Retry
+  const[entTick,setEntTick]=useState(0); // ↻ Retry re-runs the read
+  // A table whose columns / relationships couldn't be read: { entity, message }. It is NOT put on
+  // canvas — an empty "0 RT" card with no lines looked like the truth and was cached as such.
+  const[addErr,setAddErr]=useState(null);
   const[search,setSearch]=useState("");
   const debouncedSearch=useDebounce(search,150);
   const[selected,setSelected]=useState({});// {logicalName:{entity,fields[],lookups[]}}
@@ -50,8 +57,13 @@ export default function SchemaViewer({bp,orgInfo,theme}){
   },[confirmModal]);
 
   useEffect(()=>{
-    if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l)})))}).catch(()=>{});
-  },[]);
+    if(!isLive)return;
+    let cancelled=false;
+    setEntitiesErr("");
+    bridge.getEntities().then(d=>{if(!cancelled&&d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d,p:e.entitySet||e.p,cust:e.isCustom&&isTrulyCustom(e.logical||e.l)})))})
+      .catch(e=>{if(cancelled)return;setEntities(prev=>prev===ENTS?[]:prev);setEntitiesErr(e?.message||String(e));});
+    return()=>{cancelled=true;};
+  },[entTick]);
 
   const filtered=useMemo(()=>{
     if(!debouncedSearch)return entities;
@@ -66,12 +78,14 @@ export default function SchemaViewer({bp,orgInfo,theme}){
     pending.current.add(e.l);
     setLoadingEntity(e.l);
     try{
+      // A failed read is NOT swallowed into [] any more: the card came up empty ("0 RT", no lines)
+      // and stayed cached that way — the failure is shown instead (addErr), with a retry.
       const[fieldsData,lookupsData,m2mData]=await Promise.all([
-        bridge.getFields(e.l).catch(()=>[]),
+        bridge.getFields(e.l),
         // Demo: per-table relationships. The bridge's demo getLookups / getManyToMany return ONE list
         // for every table (the Relationships demo walk is filmed on it): every card would point at the same targets.
-        isLive?bridge.getLookups(e.l).catch(()=>[]):demoLookups(e.l),
-        isLive?bridge.getManyToManyRelationships(e.l).catch(()=>[]):demoManyToMany(e.l), // N:N edges were never drawn (user-hit: "relations missing" in the ERD)
+        isLive?bridge.getLookups(e.l):demoLookups(e.l),
+        isLive?bridge.getManyToManyRelationships(e.l):demoManyToMany(e.l), // N:N edges were never drawn (user-hit: "relations missing" in the ERD)
       ]);
       const fields=(fieldsData||[]).map(f=>({l:f.logical,d:f.display||f.logical,t:f.type||"String",cust:f.isCustom})).sort((a,b)=>a.l.localeCompare(b.l));
       const lookups=(lookupsData||[]).map(lk=>({field:lk.lookupField,target:lk.targetEntity,nav:lk.navProperty}));
@@ -91,7 +105,7 @@ export default function SchemaViewer({bp,orgInfo,theme}){
         while(taken.has(`${col*GAP_X},${row*GAP_Y}`)){col++;if(col>=cols){col=0;row++;}} // add-after-remove can leave the slot occupied
         return {...prev,[e.l]:{x:col*GAP_X,y:row*GAP_Y}};
       });
-    }catch{}
+    }catch(err){ setAddErr({entity:e,message:err?.message||String(err)}); }
     pending.current.delete(e.l);
     setLoadingEntity(null);
   },[selected]);
@@ -415,6 +429,8 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           <input placeholder={t("common.search")} value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/>
         </div>
         <div style={{flex:1,overflow:"auto",padding:"0 6px"}}>
+          {entities.length===0&&entitiesErr&&<div style={{padding:14,color:C.rd,fontSize:12,textAlign:"center"}}>⚠ Couldn't load the tables: {entitiesErr}<div style={{marginTop:6}}><button onClick={()=>setEntTick(x=>x+1)} style={bt(null,{fontSize:12})}>↻ Retry</button></div></div>}
+          {isLive&&entities.length===0&&!entitiesErr&&<div style={{padding:14,color:C.txd,fontSize:12,textAlign:"center"}}><Spin s={12}/> Loading the tables…</div>}
           {filtered.map(e=>{
             const onCanvas=!!selected[e.l];
             return(
@@ -454,6 +470,13 @@ export default function SchemaViewer({bp,orgInfo,theme}){
           </>}
         </div>
 
+        {addErr&&(
+          <div style={{position:"absolute",top:8,left:8,zIndex:10,maxWidth:"min(560px, 70%)",...crd({padding:"6px 10px",borderColor:C.rd+"55"}),display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.rd}}>
+            <span style={{flex:1}}>⚠ Couldn't read {addErr.entity.d||addErr.entity.l}'s columns / relationships — not added: {addErr.message}</span>
+            <button onClick={()=>{setAddErr(null);doAddEntity(addErr.entity);}} style={bt(null,{fontSize:11,padding:"2px 8px"})}>↻ Retry</button>
+            <button onClick={()=>setAddErr(null)} title="Dismiss" style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:2,fontSize:14}}>✕</button>
+          </div>
+        )}
         {entityCount===0&&(
           <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",color:C.txd}}>
             <div style={{fontSize:48,marginBottom:12}}>🗂</div>

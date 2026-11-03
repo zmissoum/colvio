@@ -421,7 +421,9 @@ export const bridge = {
     if (cached) return cached;
     try {
       const data = await callD365("orgFeatures");
-      if (data) await cacheSet(k, data, 600000);
+      // A failed recycle-bin probe ("unknown") is not a fact worth 10 minutes: Recycle Bin's ↻ retry
+      // and the next caller must probe again, so only a result that answered is cached.
+      if (data && !data.recycleBin?.unknown) await cacheSet(k, data, 600000);
       return data || { auditEnabled: null, pluginTraceSetting: null, recycleBin: { enabled: false, unknown: true } };
     } catch { return { auditEnabled: null, pluginTraceSetting: null, recycleBin: { enabled: false, unknown: true } }; }
   },

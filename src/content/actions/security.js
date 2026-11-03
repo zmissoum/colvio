@@ -6,16 +6,19 @@ import { NO_ANN, SAFE_GUID, countByFilter, d365Context, dvRequest, ensurePrivCat
 const ACTIONS = {
   async searchUsers(params) {
     let result;
-    // Search systemusers by name or email
+    // Search systemusers by name, email or user principal name (domainname): a user whose UPN
+    // differs from the primary email — a renamed or federated account — was unfindable by the
+    // name they actually sign in with, while userResolve.js already matched both (review finding).
     const term = odataStr(typeof params.search === "string" ? params.search.substring(0, 100) : "");
-    const filter = `contains(fullname,${term}) or contains(internalemailaddress,${term})`;
+    const filter = `contains(fullname,${term}) or contains(internalemailaddress,${term}) or contains(domainname,${term})`;
     const data = await dvRequest("GET",
-      `systemusers?$select=systemuserid,fullname,internalemailaddress,isdisabled,title&$filter=${filter}&$top=20&$orderby=fullname asc`
+      `systemusers?$select=systemuserid,fullname,internalemailaddress,domainname,isdisabled,title&$filter=${filter}&$top=20&$orderby=fullname asc`
     );
     result = (data.value || []).map(u => ({
       id: u.systemuserid,
       fullname: u.fullname,
       email: u.internalemailaddress,
+      upn: u.domainname || "",
       disabled: u.isdisabled,
       title: u.title,
     }));
@@ -69,6 +72,10 @@ const ACTIONS = {
     // combine"). A slice that still blows the cap (>50k logins in one day) falls back to a
     // raw paged scan of JUST that slice, aggregated here. Either way only per-user totals
     // cross the bridge — never raw events — so org size stops mattering.
+    // BOTH user-access actions count, the same pair getLastLoginsWindow / getUserLastLogin read:
+    // 64 = via Web (a model-driven app sign-in), 65 = via Web Services (Excel/Outlook add-ins,
+    // Power BI, flow connections, S2S app users). Counting 64 alone labelled API-only users as
+    // silent / never signed in in Adoption and its inactivity export (review finding).
     const ISO_S = /^\d{4}-\d{2}-\d{2}(T[0-9:.]+Z?)?$/; // guards both OData and FetchXML interpolation
     if (!params.from || !ISO_S.test(params.from) || !params.to || !ISO_S.test(params.to)) throw new Error("getLoginStatsSlice: invalid from/to");
     const fromS = params.from, toS = params.to;
@@ -76,7 +83,7 @@ const ACTIONS = {
     // aggregate result is truncated, errors, or blows the 50k AggregateQueryRecordLimit.
     const scanSlice = async () => {
       const byU = new Map();
-      let url = `audits?$select=createdon,_objectid_value&$filter=action eq 64 and createdon ge ${fromS} and createdon lt ${toS}`;
+      let url = `audits?$select=createdon,_objectid_value&$filter=(action eq 64 or action eq 65) and createdon ge ${fromS} and createdon lt ${toS}`;
       while (url) {
         const dL = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" });
         for (const a of (dL.value || [])) {
@@ -95,7 +102,7 @@ const ACTIONS = {
       // without it the aggregate result was silently paged at 500 groups and the chart
       // flat-lined at exactly 500 distinct users/day. <order alias> on the groupby column
       // per the aggregate-data doc.
-      const fx = `<fetch aggregate="true" count="5000"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="auditid" alias="n" aggregate="count"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="eq" value="64"/><condition attribute="createdon" operator="ge" value="${fromS}"/><condition attribute="createdon" operator="lt" value="${toS}"/></filter><order alias="uid"/></entity></fetch>`;
+      const fx = `<fetch aggregate="true" count="5000"><entity name="audit"><attribute name="objectid" alias="uid" groupby="true"/><attribute name="auditid" alias="n" aggregate="count"/><attribute name="createdon" alias="last" aggregate="max"/><filter type="and"><condition attribute="action" operator="in"><value>64</value><value>65</value></condition><condition attribute="createdon" operator="ge" value="${fromS}"/><condition attribute="createdon" operator="lt" value="${toS}"/></filter><order alias="uid"/></entity></fetch>`;
       const d = await dvRequest("GET", `audits?fetchXml=${encodeURIComponent(fx)}`);
       const vals = d.value || [];
       // ANY continuation signal — or a full page — means the aggregate was truncated by
@@ -319,17 +326,30 @@ const ACTIONS = {
     const data = await dvRequest("GET",
       `systemusers(${params.userId})/systemuserroles_association?$select=roleid,name`
     );
-    result = (data.value || []).map(r => ({
+    const direct = (data.value || []).map(r => ({
       id: r.roleid,
       name: r.name,
     }));
+    // The roles the user holds THROUGH their teams, in ONE read: the teams they belong to with
+    // each team's roles expanded (the shape getAccessContext reads). The standard provisioning is
+    // an Entra-group team carrying the roles, so a direct-only list showed "No security roles
+    // assigned" for correctly provisioned users (review finding). One row per role × team, the
+    // team named on each; a failed team read is reported as such — never as "no team roles".
+    let inherited = [], teamsError = "";
+    try {
+      const teamsU = await pageAll(`teams?$select=teamid,name&$filter=teammembership_association/any(m:m/systemuserid eq ${params.userId})&$expand=teamroles_association($select=roleid,name)`);
+      for (const tm of teamsU) for (const r of (tm.teamroles_association || [])) inherited.push({ id: r.roleid, name: r.name, team: { id: tm.teamid, name: tm.name || "" } });
+      inherited.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")) || a.team.name.localeCompare(b.team.name));
+    } catch (e) { teamsError = e?.message || String(e); }
+    result = { direct, inherited, teamsError };
     return result;
   },
   async getAccessAuditFloor(params) {
     let result;
-    // The oldest user-access audit row: the point past which "never signed in" is certain.
+    // The oldest user-access audit row (either access action — the pair getLastLoginsWindow
+    // reads): the point past which "never signed in" is certain.
     try {
-      const d = await dvRequest("GET", "audits?$select=createdon&$filter=action eq 64&$orderby=createdon asc&$top=1", null, NO_ANN);
+      const d = await dvRequest("GET", "audits?$select=createdon&$filter=(action eq 64 or action eq 65)&$orderby=createdon asc&$top=1", null, NO_ANN);
       result = { floor: (d.value || [])[0]?.createdon || null };
     } catch (e) { result = { floor: null, error: e.message }; }
     return result;

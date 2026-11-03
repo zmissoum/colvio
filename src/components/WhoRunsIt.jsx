@@ -18,6 +18,7 @@ function useSummary(uses) {
 // one read each, shared with the Cloud flows tab's Runs as / Sends email as columns.
 export default function WhoRunsIt({ steps, procs, base, baseError, flowConns, flowRead, onStop }) {
   const [users, setUsers] = useState([]);
+  const [usersPhase, setUsersPhase] = useState("reading"); // reading | ok | failed — the table waits for it: with no users yet, every identity would read "Person / Enabled"
   const [error, setError] = useState("");
   const [view, setView] = useState("identities");
   const [kind, setKind] = useState("all");
@@ -28,6 +29,7 @@ export default function WhoRunsIt({ steps, procs, base, baseError, flowConns, fl
   useEffect(() => {
     if (!base) return undefined;
     let alive = true;
+    setUsersPhase("reading"); setError("");
     (async () => {
       try {
         const ids = new Set();
@@ -36,23 +38,25 @@ export default function WhoRunsIt({ steps, procs, base, baseError, flowConns, fl
         for (const r of base.refs || []) if (r.ownerId && r.ownerType !== "team") ids.add(r.ownerId);
         const accounts = [...new Set((base.instances || []).map(i => i.accountName).filter(Boolean))];
         const us = await bridge.getIdentityUsers([...ids], accounts);
-        if (alive) setUsers(us || []);
-      } catch (e) { if (alive) setError(e.message || String(e)); }
+        if (alive) { setUsers(us || []); setUsersPhase("ok"); }
+      } catch (e) { if (alive) { setUsers([]); setError(e.message || String(e)); setUsersPhase("failed"); } }
     })();
     return () => { alive = false; };
   }, [steps, procs, base]);
 
   const result = useMemo(() => {
-    if (!base) return null;
+    if (!base || usersPhase === "reading") return null;
     const byId = {}, byAcc = {};
     for (const u of users) {
       byId[String(u.systemuserid).toLowerCase()] = u;
       for (const a of [u.domainname, u.internalemailaddress]) if (a) byAcc[String(a).toLowerCase()] = u;
     }
-    return buildWhoRunsWhat({ procs, steps, refs: base.refs, instances: base.instances, flowConns, users: byId, usersByAccount: byAcc, integrationUsers: users });
-  }, [base, users, flowConns, procs, steps]);
+    // usersRead false: the join keeps every identity and what it runs, but says "unknown / not read"
+    // instead of guessing "Person / Enabled" from a name
+    return buildWhoRunsWhat({ procs, steps, refs: base.refs, instances: base.instances, flowConns, users: byId, usersByAccount: byAcc, integrationUsers: users, usersRead: usersPhase === "ok" });
+  }, [base, users, usersPhase, flowConns, procs, steps]);
 
-  if ((baseError || error) && !result) return <div style={{ ...crd({ padding: 14, borderColor: C.rd + "55" }), color: C.rd, fontSize: 13 }}>Couldn't read who runs what: {baseError || error}</div>;
+  if (baseError && !result) return <div style={{ ...crd({ padding: 14, borderColor: C.rd + "55" }), color: C.rd, fontSize: 13 }}>Couldn't read who runs what: {baseError}</div>;
   if (!result) return <div style={{ textAlign: "center", marginTop: 30, color: C.txm, fontSize: 13 }}><Spin s={14} /> Reading connection references, connections and the identities behind them…</div>;
 
   const counts = kindCounts(result.identities);
@@ -83,6 +87,7 @@ export default function WhoRunsIt({ steps, procs, base, baseError, flowConns, fl
         {Object.entries(counts).map(([k, n]) => <button key={k} onClick={() => setKind(k)} title={KIND[k]?.hint} style={{ padding: "3px 9px", fontSize: 11.5, border: `1px solid ${kind === k ? (KIND_COLOR[k] || KIND_COLOR.unknown)() : C.bd}`, borderRadius: 4, cursor: "pointer", background: kind === k ? (KIND_COLOR[k] || KIND_COLOR.unknown)() + "22" : "transparent", color: (KIND_COLOR[k] || KIND_COLOR.unknown)() }}>{KIND[k]?.label || k} ({n})</button>)}
       </div>}
 
+      {error && <div style={{ fontSize: 12, color: C.rd, marginBottom: 8 }}>The users behind these identities couldn't be read: {error} — kind and status show as "not read"; what each identity runs is still listed below.</div>}
       {base.instancesMissing && <div style={{ fontSize: 12, color: C.yw, marginBottom: 8 }}>This environment has no connection instances in Dataverse: the account a connection is signed in with isn't visible here (it is in Power Automate › Connections).</div>}
 
       <div style={{ ...crd({ padding: 0, overflow: "hidden" }) }}>
@@ -129,8 +134,8 @@ function IdentityRow({ i, open, toggle }) {
           {i.email && <div style={{ ...mono, fontSize: 11, color: C.txd }}>{i.email}</div>}
           {i.appId && <div style={{ fontSize: 11, color: C.txd }}>app id <span style={mono}>{i.appId}</span> <a href={`https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Overview/appId/${i.appId}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.cy, textDecoration: "none" }}>Entra ↗</a></div>}
         </td>
-        <td style={tds}><Kind k={i.kind} /></td>
-        <td style={{ ...tds, fontSize: 12, color: i.disabled ? C.rd : C.gn }}>{i.type === "team" ? "—" : i.type === "account" ? "" : i.disabled ? "Disabled" : "Enabled"}</td>
+        <td style={tds}><Kind k={i.kind} hint={i.hint} /></td>
+        <td style={{ ...tds, fontSize: 12, color: i.disabled == null ? C.txd : i.disabled ? C.rd : C.gn }}>{i.type === "team" ? "—" : i.type === "account" ? "" : i.disabled == null ? "not read" : i.disabled ? "Disabled" : "Enabled"}</td>
         <td style={{ ...tds, fontSize: 12, color: C.txm }}>{summary.length ? summary.join(" · ") : <span style={{ color: C.txd }}>nothing visible here</span>}</td>
         <td style={{ ...tds, fontSize: 12 }}>{i.flags.map((f, k) => <div key={k} style={{ color: f.level === "error" ? C.rd : f.level === "warn" ? C.yw : C.txd }}>{f.level === "info" ? "ℹ" : "⚠"} {f.text}</div>)}</td>
       </tr>

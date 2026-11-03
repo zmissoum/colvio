@@ -256,6 +256,7 @@ export default {
   "schemadiff.required_mismatch": "Requirement level differs",
   "schemadiff.field_extra": "Column only in current org",
   "schemadiff.entity_extra": "Table only in current org",
+  "schemadiff.fetch_failed": "Columns couldn't be read — not compared",
   "help.schemadiff_title": "Schema snapshot & diff",
   "help.schemadiff_body": "In the Metadata Browser, the ⇄ button exports a JSON snapshot of the schema (custom tables by default) and compares any loaded snapshot against the current org. Typical flow: snapshot DEV, open Colvio on UAT, load the file, Compare — missing tables/columns and type or requirement mismatches come out ranked (high/med/low) with a CSV export for the deployment checklist.",
   "palette.placeholder": "Jump to a module or run an action…  (Ctrl+K)",

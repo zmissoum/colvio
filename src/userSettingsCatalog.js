@@ -248,6 +248,26 @@ export function planChange(selectedIds, byUser, s, newValue) {
 // signedIn: "any" | "yes" | "never", read from lastLogins (Map lower-case id → { date } with date
 // null for never). A user whose last login isn't known (not read yet, or unreadable) matches
 // neither "yes" nor "never" — never assumed.
+// What "Last login" means in Bulk settings — the filter's tooltip and the column's. BOTH
+// user-access actions count, exactly as getLastLoginsWindow reads them: 64 = via Web (a
+// model-driven app sign-in), 65 = via Web Services (Excel/Outlook add-ins, Power BI, flow
+// connections). The note used to say "opened a model-driven app (action 64)" while the reader
+// counted both (review finding).
+export const LL_NOTE = "Last login = the user's most recent app sign-in or web-service (API) access, from the user-access audit (actions 64 and 65 — the same source as the Users list), read for everyone at once in time windows — never one request per user. \"Never\" = no such event back to the audit's first row; it needs \"Audit user access\" turned on.";
+
+/**
+ * While the last-login scan is still running, a "Signed in" / "Never signed in" filter can only
+ * list the users whose date is already known — a growing partial subset that Select-all and Apply
+ * must not write to (review finding). Returns the sentence to show, "" when the list is whole.
+ * @param signedIn  "any" | "yes" | "never"
+ * @param pending   users of the base list whose last login isn't read yet
+ * @param total     users of the base list
+ */
+export function scanIncompleteNote(signedIn, pending, total) {
+  if (signedIn === "any" || !(pending > 0)) return "";
+  return `list incomplete until the last-login scan ends (${Math.max(0, total - pending)} of ${total} read)`;
+}
+
 export function filterUsers(users, { search = "", buId = "", status = "enabled", kind = "people", roleIds = null, signedIn = "any", lastLogins = null } = {}) {
   const q = search.trim().toLowerCase();
   return (users || []).filter(u => {

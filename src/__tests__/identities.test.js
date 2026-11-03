@@ -104,6 +104,24 @@ describe("who runs what", () => {
     expect(svc.flags[0].text).toMatch(/an integration calls the Web API with it from outside/);
     expect(r3.identities.find(i => i.name === "SYSTEM")).toBeUndefined(); // built-in users only when they run something
   });
+  it("a user the read didn't return is unknown and 'not read' — never a Person, never Enabled", () => {
+    // the read failed: nothing is known about any user, what each one runs is still listed
+    const failed = buildWhoRunsWhat({ procs, steps, refs: DEMO_REFS, instances: DEMO_INSTANCES, flowConns, users: {}, usersByAccount: {}, usersRead: false });
+    const paul = failed.identities.find(i => i.name === "Paul Durand");
+    expect(paul).toMatchObject({ kind: "unknown", disabled: null, read: false });
+    expect(paul.hint).toMatch(/users read failed/);
+    expect(paul.uses.length).toBeGreaterThan(0);
+    expect(paul.flags).toEqual([]); // no "Disabled, yet…" and no "A person" guess
+    expect(failed.identities.filter(i => i.type === "user").every(i => i.kind === "unknown" && i.disabled === null)).toBe(true);
+    expect(failed.identities.find(i => i.name === "Integration team")).toMatchObject({ kind: "team" }); // teams need no user row
+    expect(identityExportRows(failed.identities).find(r => r[0] === "Paul Durand")[3]).toBe("not read");
+    expect(kindCounts(failed.identities).person).toBeUndefined();
+    // the read worked but one owner's row is missing: that one alone is unknown
+    const partial = buildWhoRunsWhat({ procs, users: Object.fromEntries(Object.entries(users).filter(([id]) => id !== I.zakaria)) });
+    expect(partial.identities.find(i => i.name === "Zakaria Missoum")).toMatchObject({ kind: "unknown", disabled: null });
+    expect(partial.identities.find(i => i.name === "Zakaria Missoum").hint).toMatch(/wasn't returned/);
+    expect(partial.identities.find(i => i.name === "Paul Durand")).toMatchObject({ kind: "person", disabled: true });
+  });
   it("counts and exports", () => {
     expect(kindCounts(r.identities)).toMatchObject({ person: 3, app: 1, noninteractive: 1, team: 1 });
     expect(identityExportRows(r.identities)[0]).toHaveLength(IDENTITY_HEADERS.length);

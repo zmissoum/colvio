@@ -49,6 +49,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
         setHistory(sortNewestFirst(data.map(normalizeAccessEvent)));
       }
     }catch(e){
+      if(selGen.current!==gen) return; // a slow previous user's timeout must not land under the newly selected user
       if(e.message?.includes("401")||e.message?.includes("SESSION_EXPIRED")){
         setError("Session expired — refresh D365 (F5)");
       } else if(e.message?.includes("404")||e.message?.includes("audits")){
@@ -57,7 +58,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
         setError(e.message);
       }
     }
-    finally{setLoadingHistory(false);}
+    finally{if(selGen.current===gen)setLoadingHistory(false);} // same guard: the stale finally used to drop the new user's spinner
   };
 
   const groupedByDay = useMemo(()=>{
@@ -120,6 +121,8 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
                     {u.disabled&&<span style={{fontSize:11,color:C.rd,background:C.rd+"22",padding:"2px 6px",borderRadius:3}}>Disabled</span>}
                   </div>
                   <div style={{fontSize:13,color:C.txd,...mono}}>{u.email}</div>
+                  {/* the sign-in name (UPN) when it differs from the email — the search matches it too */}
+                  {u.upn&&u.upn.toLowerCase()!==(u.email||"").toLowerCase()&&<div style={{fontSize:12,color:C.txd,...mono}} title="User principal name (sign-in name)">{u.upn}</div>}
                   {u.title&&<div style={{fontSize:12,color:C.txd}}>{u.title}</div>}
                 </div>
               </button>
@@ -140,6 +143,7 @@ export default function LoginHistory({bp,orgInfo,theme,orgFeatures}){
               <div>
                 <div style={{fontWeight:600,fontSize:14}}>{selectedUser.fullname}</div>
                 <div style={{fontSize:13,color:C.txd,...mono}}>{selectedUser.email}</div>
+                {selectedUser.upn&&selectedUser.upn.toLowerCase()!==(selectedUser.email||"").toLowerCase()&&<div style={{fontSize:12,color:C.txd,...mono}} title="User principal name (sign-in name)">{selectedUser.upn}</div>}
               </div>
             </div>
             <div style={{display:"flex",gap:6}}>

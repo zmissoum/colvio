@@ -5,6 +5,10 @@ import { t } from "../i18n.js";
 import { WR_TYPES, isTextType, isImageType, typeLabel, decodeContent, encodeContent, contentBytes, byteSize, filterResources, searchContents, offsetOfLine, changedMessage } from "../webResources.js";
 
 const PACKET = 25;
+// Contents cache key: id + the list's modifiedOn — a ↻ that brings a newer stamp makes the cached
+// text stale on its own, so "Search in contents" re-reads exactly the resources that changed
+// (it used to search the texts read before the refresh, forever).
+const ckey = (r) => `${r.id}|${r.modifiedOn || ""}`;
 const fmtBytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
 
 // Web Resources — list, edit text resources (save, publish), preview images, download anything,
@@ -28,7 +32,13 @@ export default function WebResources({ bp, orgInfo }) {
   useEffect(() => {
     let alive = true;
     setError("");
-    bridge.getWebResources().then(l => { if (alive) setList(l || []); }).catch(e => { if (alive) { setError(e.message || String(e)); setList([]); } });
+    bridge.getWebResources().then(l => {
+      if (!alive) return;
+      const fresh = l || [];
+      const keep = new Set(fresh.map(ckey)); // texts cached under a stamp no longer in the list are dead weight
+      for (const k of [...cache.current.keys()]) if (!keep.has(k)) cache.current.delete(k);
+      setList(fresh);
+    }).catch(e => { if (alive) { setError(e.message || String(e)); setList([]); } });
     return () => { alive = false; };
   }, [tick]);
 
@@ -44,7 +54,7 @@ export default function WebResources({ bp, orgInfo }) {
       if (openGen.current !== my) return;
       if (!c) throw new Error("The web resource couldn't be read.");
       const { text, bom, encoding } = isTextType(r.type) ? decodeContent(c.content) : { text: "", bom: false, encoding: "utf-8" };
-      cache.current.set(r.id, text);
+      cache.current.set(ckey(r), text);
       // the stamp of the copy actually opened (the list's may be minutes old) — what a save is checked against
       setOpen({ ...r, modifiedOn: c.modifiedOn || r.modifiedOn, etag: c.etag || "", loading: false, b64: c.content, text, saved: text, bom, readOnly: encoding !== "utf-8", busy: "", msg: null, description: c.description });
       if (line) setTimeout(() => goToLine(text, line), 50);
@@ -100,12 +110,12 @@ export default function WebResources({ bp, orgInfo }) {
         }
       }
       if (publish) { upd(o => ({ ...o, busy: "Publishing…" })); await bridge.publishWebResources([id]); }
-      cache.current.set(id, open.text);
       // the server's stamp of what was just written — the next save is conditional on its ETag
       let after = written && (written.etag || written.modifiedOn) ? written : null;
       if (dirty && !after?.etag) after = { ...(after || {}), ...((await serverStamp(id).catch(() => null)) || {}) };
       const stamp = dirty ? { modifiedOn: after?.modifiedOn || new Date().toISOString(), modifiedBy: after?.modifiedBy || "you", etag: after?.etag || "" } : {};
       setList(l => (l || []).map(r => (r.id === id && dirty ? { ...r, modifiedOn: stamp.modifiedOn, modifiedBy: stamp.modifiedBy } : r)));
+      cache.current.set(`${id}|${dirty ? stamp.modifiedOn : ((list || []).find(r => r.id === id)?.modifiedOn || "")}`, open.text); // under the stamp the list now carries
       // what was WRITTEN is what's saved — not whatever was typed while the request ran
       upd(o => ({ ...o, b64: dirty ? b64 : o.b64, saved: open.text, ...stamp, busy: "", msg: { ok: true, text: `✓ ${dirty ? "Saved" : ""}${dirty && publish ? " and " : ""}${publish ? "published" : ""}.` } }));
     } catch (e) { upd(o => ({ ...o, busy: "", msg: { ok: false, text: `${what} failed: ${e.message || String(e)}` } })); }
@@ -131,17 +141,18 @@ export default function WebResources({ bp, orgInfo }) {
     const q = cs.query.trim();
     if (!q) return;
     const targets = filterResources(list, { showSystem }).filter(r => isTextType(r.type));
-    const missing = targets.filter(r => !cache.current.has(r.id)).map(r => r.id);
+    const missing = targets.filter(r => !cache.current.has(ckey(r))); // rows, not ids: the text is cached under the row's stamp
+    const rowOf = new Map(missing.map(r => [r.id, r]));
     stop.current = false;
     setCs(x => ({ ...x, phase: "reading", done: targets.length - missing.length, total: targets.length, hits: null }));
     try {
       for (let i = 0; i < missing.length; i += PACKET) {
         if (stop.current) break;
-        const got = await bridge.getWebResourceContents(missing.slice(i, i + PACKET));
-        for (const c of got || []) cache.current.set(c.id, decodeContent(c.content).text);
+        const got = await bridge.getWebResourceContents(missing.slice(i, i + PACKET).map(r => r.id));
+        for (const c of got || []) { const r = rowOf.get(c.id); if (r) cache.current.set(ckey(r), decodeContent(c.content).text); }
         setCs(x => ({ ...x, done: Math.min(x.total, x.done + Math.min(PACKET, missing.length - i)) }));
       }
-      const items = targets.filter(r => cache.current.has(r.id)).map(r => ({ id: r.id, name: r.name, text: cache.current.get(r.id) }));
+      const items = targets.filter(r => cache.current.has(ckey(r))).map(r => ({ id: r.id, name: r.name, text: cache.current.get(ckey(r)) }));
       const hits = searchContents(items, q, { caseSensitive: cs.caseSensitive, wholeWord: cs.wholeWord });
       setCs(x => ({ ...x, phase: "done", hits, stopped: stop.current, scanned: items.length }));
     } catch (e) { setCs(x => ({ ...x, phase: "done", hits: [], scanned: 0, error: e.message || String(e) })); }

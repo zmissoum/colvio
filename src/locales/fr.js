@@ -242,6 +242,7 @@ export default {
   "schemadiff.type_mismatch": "Type différent",
   "schemadiff.required_mismatch": "Niveau d'exigence différent",
   "schemadiff.field_extra": "Colonne présente uniquement dans l'org courante",
+  "schemadiff.fetch_failed": "Colonnes illisibles — non comparées",
   "schemadiff.entity_extra": "Table présente uniquement dans l'org courante",
   "help.schemadiff_title": "Snapshot & diff de schéma",
   "help.schemadiff_body": "Dans le Metadata Browser, le bouton ⇄ exporte un snapshot JSON du schéma (tables custom par défaut) et compare tout snapshot chargé à l'org courante. Flux typique : snapshot sur DEV, ouvrir Colvio sur UAT, charger le fichier, Comparer — tables/colonnes manquantes et écarts de type ou d'exigence ressortent classés (high/med/low) avec export CSV pour la checklist de déploiement.",

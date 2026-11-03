@@ -39,6 +39,15 @@ export function normalizeODataInput(text, orgUrl) {
 // How the OData box shows a path.
 export const displayODataPath = (path) => `GET /api/data/v9.2/${path}`;
 
+// API Tester › where a typed path is sent: an absolute URL as typed (a @odata.nextLink, say);
+// anything else relative to /api/data/v9.2/ — a pasted "/api/data/v9.2/accounts" must not get the
+// prefix twice, and a leading space must not hide an "https://". Used for the request AND the preview.
+export function apiRelativePath(text) {
+  const s = String(text || "").trim();
+  if (/^https?:\/\//i.test(s)) return { absolute: true, path: s };
+  return { absolute: false, path: s.replace(API_RE_START, "").replace(/^\/+/, "") };
+}
+
 // The table behind an entity set name (accounts → account).
 export function entityForSet(entities, set) {
   const s = String(set || "").toLowerCase();

@@ -4,6 +4,7 @@ import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../sha
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import { formatPrivName, searchPrivileges, rolesHolding, holderExportRows, DEPTH_LABEL } from "../rolePrivilegeFilter.js";
+import { holdersCountLabel } from "../userRolesUtils.js";
 import { userLookupFilter, resolveUsers } from "../userResolve.js";
 import { matricesFromGrants, catalogIndex } from "../privilegeMatrix.js";
 
@@ -406,9 +407,14 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
 
   const exportHolders = (format = "csv") => {
     if (!hasPriv || !filteredRoles.length) return;
+    // The export follows the list on screen (Custom/Managed chips + search applied) and SAYS so,
+    // in the file name and the feedback, when that is fewer than every holder — it used to be
+    // announced as "the roles with X" whatever the filters (review finding).
     const shown = filteredRoles.map(r => ({ role: r, depth: holderDepth.get(r.id) || 0 }));
-    exportTable(["role", "type", "privilege", "label", "depth"], holderExportRows(hasPriv, shown), `security_roles_with_${hasPriv.name}`, format, "Roles");
-    setHolderFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${shown.length} role${shown.length > 1 ? "s" : ""})`);
+    const all = holders?.length || 0;
+    const filtered = shown.length !== all;
+    exportTable(["role", "type", "privilege", "label", "depth"], holderExportRows(hasPriv, shown), `security_roles_with_${hasPriv.name}${filtered ? "_filtered" : ""}`, format, "Roles");
+    setHolderFeedback(`${format === "xlsx" ? "Excel" : "CSV"} downloaded (${filtered ? `${shown.length} of ${all} holders — current filters applied` : `${shown.length} role${shown.length > 1 ? "s" : ""}`})`);
     setTimeout(() => setHolderFeedback(""), 2000);
   };
 
@@ -545,9 +551,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
           {!loading && hasPriv && grantsErr && <div style={{ fontSize: 11, color: C.rd, marginTop: 6 }}>Couldn't read who holds it: {grantsErr} <button onClick={() => loadGrants(hasPriv)} style={bt(C.rd, { fontSize: 11, padding: "2px 8px", marginLeft: 4 })}>↻ Retry</button></div>}
           {!loading && hasPriv && privGrants && (
             <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
-              <span style={{ fontSize: 11, color: C.txd, ...mono, flex: 1, minWidth: 0 }}>{filteredRoles.length} of {roles.length} roles hold it{hasPrivDepth > 1 ? ` (${DEPTH_LABEL[hasPrivDepth]}${hasPrivDepth < 8 ? " or wider" : ""})` : ""}</span>
-              <button onClick={() => exportHolders("csv")} disabled={!filteredRoles.length} style={bt(C.cy, { fontSize: 10.5, padding: "2px 7px", opacity: filteredRoles.length ? 1 : 0.5 })}><I.Download /> CSV</button>
-              <button onClick={() => exportHolders("xlsx")} disabled={!filteredRoles.length} style={bt(C.cy, { fontSize: 10.5, padding: "2px 7px", opacity: filteredRoles.length ? 1 : 0.5 })}><I.Download /> Excel</button>
+              {/* every holder is counted; the chips and the search only change what is LISTED */}
+              <span style={{ fontSize: 11, color: C.txd, ...mono, flex: 1, minWidth: 0 }}>{holdersCountLabel(holders?.length || 0, roles.length, filteredRoles.length, hasPrivDepth > 1 ? ` (${DEPTH_LABEL[hasPrivDepth]}${hasPrivDepth < 8 ? " or wider" : ""})` : "")}</span>
+              <button onClick={() => exportHolders("csv")} disabled={!filteredRoles.length} title={filteredRoles.length !== (holders?.length || 0) ? "Exports the roles listed — current filters applied" : "Exports every role holding it"} style={bt(C.cy, { fontSize: 10.5, padding: "2px 7px", opacity: filteredRoles.length ? 1 : 0.5 })}><I.Download /> CSV</button>
+              <button onClick={() => exportHolders("xlsx")} disabled={!filteredRoles.length} title={filteredRoles.length !== (holders?.length || 0) ? "Exports the roles listed — current filters applied" : "Exports every role holding it"} style={bt(C.cy, { fontSize: 10.5, padding: "2px 7px", opacity: filteredRoles.length ? 1 : 0.5 })}><I.Download /> Excel</button>
             </div>
           )}
           {holderFeedback && <div style={{ fontSize: 11, color: C.gn, marginTop: 4 }}>{holderFeedback}</div>}

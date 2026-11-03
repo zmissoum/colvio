@@ -51,6 +51,9 @@ export const CHECKS = [
     id: "audit", area: "Governance", title: "Auditing",
     async run(api) {
       const o = api.org || {};
+      // The organizations read can fail (buildApi then hands an empty org): an absent flag must
+      // not fall through to "Auditing is on" — same honesty as the trace-log check above.
+      if (o.isauditenabled == null) return { level: "info", summary: "The auditing setting couldn't be read." };
       if (o.isauditenabled === false) return { level: "warn", summary: "Auditing is off for the whole organization: no change history, no sign-in history.", fix: "Power Platform admin center › environment › Settings › Audit and logs." };
       const days = Number(o.auditretentionperiodv2);
       if (days === -1) return { level: "info", summary: "Auditing is on and audit rows are kept forever — they count against log storage.", fix: "Set a retention period (admin center › Audit settings) if forever isn't required." };

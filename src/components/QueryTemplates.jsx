@@ -33,8 +33,11 @@ const TEMPLATES=[
 ];
 
 export default function QueryTemplates({entities,onSelect,onClose}){
+  // A template whose table isn't on this org (no Sales app → no opportunity, no Service → no
+  // incident) is shown disabled with the reason — a click used to do nothing at all (review finding).
+  const entOf=(tpl)=>(entities||[]).find(e=>e.l===tpl.entity)||null;
   const apply=(tpl)=>{
-    const ent=entities.find(e=>e.l===tpl.entity);
+    const ent=entOf(tpl);
     if(!ent)return;
     onSelect(ent,tpl.fields,tpl.filters);
     onClose();
@@ -46,16 +49,19 @@ export default function QueryTemplates({entities,onSelect,onClose}){
         <span>{t("templates.title")}</span>
         <button onClick={onClose} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",fontSize:14}}>✕</button>
       </div>
-      {TEMPLATES.map((tpl,i)=>(
-        <button key={i} onClick={()=>apply(tpl)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"8px 10px",border:"none",borderRadius:6,cursor:"pointer",background:"transparent",color:C.tx,textAlign:"left",marginBottom:2}} onMouseEnter={e=>e.currentTarget.style.background=C.sfh} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+      {TEMPLATES.map((tpl,i)=>{
+        const ent=entOf(tpl);
+        return (
+        <button key={i} onClick={()=>apply(tpl)} disabled={!ent} title={ent?undefined:`The table "${tpl.entity}" isn't on this org`} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"8px 10px",border:"none",borderRadius:6,cursor:ent?"pointer":"not-allowed",background:"transparent",color:ent?C.tx:C.txd,textAlign:"left",marginBottom:2,opacity:ent?1:.65}} onMouseEnter={e=>{if(ent)e.currentTarget.style.background=C.sfh;}} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
           <span style={{fontSize:18,flexShrink:0}}>{tpl.icon}</span>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:600}}>{tpl.name()}</div>
-            <div style={{fontSize:11,color:C.txd}}>{tpl.desc()}</div>
+            <div style={{fontSize:11,color:C.txd}}>{ent?tpl.desc():<span style={{color:C.yw}}>table <code style={mono}>{tpl.entity}</code> isn't on this org</span>}</div>
           </div>
           <span style={{fontSize:11,color:C.txd,...mono}}>{tpl.entity}</span>
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }

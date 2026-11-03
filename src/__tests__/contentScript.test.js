@@ -69,6 +69,61 @@ describe("content script - security actions", () => {
     expect(sent[0].url).toContain("systemuserroles_association/any(o:o/name eq 'Basic%20User')"); // odataStr: percent-encoded value
     expect(sent[0].headers.Prefer).toBe("odata.maxpagesize=5000");
   });
+  it("searchUsers matches the sign-in name (domainname) too, and returns it as upn", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /systemusers\?\$select=systemuserid,fullname,internalemailaddress,domainname/, answer: () => reply(200, { value: [{ systemuserid: G(1), fullname: "Alex Baker", internalemailaddress: "alex@contoso.com", domainname: "abaker@contoso.onmicrosoft.com", isdisabled: false, title: "Sales" }] }) });
+    const r = await send("searchUsers", { search: "abaker" });
+    expect(r.result).toEqual([{ id: G(1), fullname: "Alex Baker", email: "alex@contoso.com", upn: "abaker@contoso.onmicrosoft.com", disabled: false, title: "Sales" }]);
+    expect(since(n)[0].url).toContain("$filter=contains(fullname,'abaker') or contains(internalemailaddress,'abaker') or contains(domainname,'abaker')&$top=20");
+  });
+  it("getLoginStatsSlice counts BOTH access actions (64 app, 65 web services) — the aggregate and its raw-scan fallback", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /audits\?fetchXml=/, answer: () => reply(200, { value: [{ uid: G(1), n: 3, last: "2026-10-02T08:00:00Z" }] }) });
+    const r = await send("getLoginStatsSlice", { from: "2026-10-02T00:00:00Z", to: "2026-10-03T00:00:00Z" });
+    expect(r.result).toEqual({ rows: [{ userId: G(1), userName: "", count: 3, last: "2026-10-02T08:00:00Z" }], method: "aggregate" });
+    const fx = decodeURIComponent(since(n)[0].url.split("fetchXml=")[1]);
+    expect(fx).toContain('<condition attribute="action" operator="in"><value>64</value><value>65</value></condition>');
+    expect(fx).not.toContain('value="64"');
+    // a full page (500 groups) means the aggregate was truncated → the exact scan, same two actions
+    script.push({ method: "GET", re: /audits\?fetchXml=/, answer: () => reply(200, { value: Array.from({ length: 500 }, (_, i) => ({ uid: G(i + 1), n: 1, last: "2026-10-02T08:00:00Z" })) }) });
+    script.push({ method: "GET", re: /audits\?\$select=createdon,_objectid_value/, answer: () => reply(200, { value: [{ createdon: "2026-10-02T09:00:00Z", _objectid_value: G(7) }, { createdon: "2026-10-02T10:00:00Z", _objectid_value: G(7) }] }) });
+    const n2 = requests.length;
+    const r2 = await send("getLoginStatsSlice", { from: "2026-10-02T00:00:00Z", to: "2026-10-03T00:00:00Z" });
+    expect(r2.result).toEqual({ rows: [{ userId: G(7), userName: "", count: 2, last: "2026-10-02T10:00:00Z" }], method: "scan" });
+    expect(since(n2)).toHaveLength(2);
+    expect(since(n2)[1].url).toContain("$filter=(action eq 64 or action eq 65) and createdon ge 2026-10-02T00:00:00Z and createdon lt 2026-10-03T00:00:00Z");
+  });
+  it("getAccessAuditFloor: the oldest row of EITHER access action", async () => {
+    const n = requests.length;
+    expect((await send("getAccessAuditFloor", {})).result).toEqual({ floor: null });
+    expect(since(n)[0].url).toContain("audits?$select=createdon&$filter=(action eq 64 or action eq 65)&$orderby=createdon asc&$top=1");
+  });
+  it("getUserRoles: direct roles + the roles of the user's teams in ONE expanded read, the team named on each row", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /systemusers\([^)]+\)\/systemuserroles_association/, answer: () => reply(200, { value: [{ roleid: G(11), name: "Salesperson" }] }) });
+    script.push({ method: "GET", re: /teams\?\$select=teamid,name&\$filter=teammembership_association/, answer: () => reply(200, { value: [
+      { teamid: G(21), name: "Sales EU", teamroles_association: [{ roleid: G(12), name: "Sales Manager" }, { roleid: G(13), name: "Basic User" }] },
+      { teamid: G(22), name: "Everyone", teamroles_association: [] },
+    ] }) });
+    const r = await send("getUserRoles", { userId: G(1) });
+    expect(r.result).toEqual({
+      direct: [{ id: G(11), name: "Salesperson" }],
+      inherited: [{ id: G(13), name: "Basic User", team: { id: G(21), name: "Sales EU" } }, { id: G(12), name: "Sales Manager", team: { id: G(21), name: "Sales EU" } }],
+      teamsError: "",
+    });
+    const sent = since(n);
+    expect(sent).toHaveLength(2);
+    expect(sent[0].url).toBe(`${ORG}/api/data/v9.2/systemusers(${G(1)})/systemuserroles_association?$select=roleid,name`);
+    expect(sent[1].url).toBe(`${ORG}/api/data/v9.2/teams?$select=teamid,name&$filter=teammembership_association/any(m:m/systemuserid eq ${G(1)})&$expand=teamroles_association($select=roleid,name)`);
+    // the team read refused → the direct roles still answer, the failure is SAID (never "no team roles")
+    script.push({ method: "GET", re: /systemusers\([^)]+\)\/systemuserroles_association/, answer: () => reply(200, { value: [{ roleid: G(11), name: "Salesperson" }] }) });
+    script.push({ method: "GET", re: /teams\?\$select=teamid,name&\$filter=teammembership_association/, answer: () => reply(403, { error: { message: "Principal user is missing prvReadTeam privilege." } }) });
+    const r2 = await send("getUserRoles", { userId: G(1) });
+    expect(r2.result.direct).toEqual([{ id: G(11), name: "Salesperson" }]);
+    expect(r2.result.inherited).toEqual([]);
+    expect(r2.result.teamsError).toMatch(/prvReadTeam/);
+    expect((await send("getUserRoles", { userId: "not-a-guid" })).error).toBeTruthy();
+  });
 });
 
 describe("content script - automation reads", () => {

@@ -29,7 +29,7 @@ export default function RecordAccess({ record, orgInfo }) {
       setSearching(true);
       try {
         const list = live
-          ? (await bridge.searchUsers(term) || []).map(u => ({ id: u.id, name: u.fullname || "", email: u.email || "", disabled: !!u.disabled }))
+          ? (await bridge.searchUsers(term) || []).map(u => ({ id: u.id, name: u.fullname || "", email: u.email || "", upn: u.upn || "", disabled: !!u.disabled }))
           : DEMO_ACCESS_USERS.filter(u => `${u.name} ${u.email}`.toLowerCase().includes(term.toLowerCase()));
         if (searchGen.current === my) setFound(list);
       } catch { if (searchGen.current === my) setFound([]); }
@@ -75,7 +75,7 @@ export default function RecordAccess({ record, orgInfo }) {
           {found.length > 0 && <div style={{ position: "absolute", top: "100%", left: 0, right: 60, zIndex: 20, background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 6, marginTop: 2, maxHeight: 260, overflow: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.35)" }}>
             {found.map(u => (
               <div key={u.id} onClick={() => check(u)} style={{ padding: "6px 10px", cursor: "pointer", fontSize: 13, borderBottom: `1px solid ${C.bd}55` }} onMouseEnter={e => e.currentTarget.style.background = C.sfh} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <b>{u.name}</b> <span style={{ color: C.txd, fontSize: 12 }}>{u.email}</span>{u.disabled && <span style={{ color: C.rd, fontSize: 11, marginLeft: 6 }}>disabled</span>}
+                <b>{u.name}</b> <span style={{ color: C.txd, fontSize: 12 }}>{u.email}</span>{u.upn && u.upn.toLowerCase() !== (u.email || "").toLowerCase() && <span style={{ color: C.txd, fontSize: 11, marginLeft: 6 }} title="User principal name (sign-in name) — the search matches it too">{u.upn}</span>}{u.disabled && <span style={{ color: C.rd, fontSize: 11, marginLeft: 6 }}>disabled</span>}
               </div>
             ))}
           </div>}

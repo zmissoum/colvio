@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { bridge } from "../d365-bridge.js";
 import Tooltip from "./Tooltip.jsx";
 import AssociationLoader from "./AssociationLoader.jsx";
-import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES, valuesToVerifyOneByOne } from "../loaderUtils.js";
+import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, matchKeyColumn, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES, valuesToVerifyOneByOne } from "../loaderUtils.js";
 import { createDemoLoaderIO } from "../loaderDemo.js";
 import { decodeBytes } from "../textDecode.js";
-import { autoMap, guessTable, mappingFit } from "../loaderMapping.js";
+import { autoMap, guessTable, mappingFit, migrationMaps, mergeLookups, sampleValues, columnIsGuid, isGuid } from "../loaderMapping.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProd } from "../shared.jsx";
 
 const logStatusColor=(st)=>st==="CREATED"||st==="WOULD CREATE"?C.gn
@@ -43,15 +43,20 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // createdby/modifiedby are systemuser lookups → @odata.bind; createdon → overriddencreatedon (the
   // only writable created-date field); modifiedon is written directly.
   const emitMigrationField=(rec,logical,val)=>{const p=migrationOverridePair(logical,val);rec[p.key]=p.value;};
-  // Turning migration mode ON auto-maps any still-unmapped CSV column whose header matches an
-  // override field, so the user doesn't have to retype it.
-  useEffect(()=>{if(!migrationMode)return;setMaps(prev=>prev.map(m=>{if(m.d365||m.skip)return m;const lc=String(m.csv||"").toLowerCase();return MIGRATION_FIELDS.includes(lc)?{...m,d365:lc}:m;}));},[migrationMode]);
+  // Migration mode active: the audit columns the mapper skipped as system fields (createdon, "Created
+  // On", modifiedby, "(Do Not Modify) Modified On"…) are mapped to the field they matched so the run
+  // sends them; off again (mode off, or a key set): skipped again. Hand-edited rows are left alone.
+  // runAutoMap applies the same rule, so a re-match while active keeps them mapped.
+  useEffect(()=>{setMaps(prev=>migrationMaps(prev,migrationActive,MIGRATION_FIELDS));},[migrationActive]);
 
   // One match of the file's columns against the current table (loaderMapping.js): logical, OData or
   // display name, the export's "(Do Not Modify)" columns told apart. `prev` keeps the rows the user
   // edited by hand when their field still exists on the table; null starts from the names alone.
   const mapsMetaRef=useRef(null); // the field metadata the current mapping was computed against
-  const runAutoMap=(headers,rows,prev)=>autoMap({headers,rows,fields:targetFieldsMeta.length?targetFieldsMeta:targetFields,lookupsMeta:targetLookups,target,tableDisplay:entityList.find(e=>e.l===target)?.d||"",primaryNames:Object.fromEntries(entityList.filter(e=>e.pn).map(e=>[e.l,e.pn])),prev});
+  const runAutoMap=(headers,rows,prev)=>{
+    const am=autoMap({headers,rows,fields:targetFieldsMeta.length?targetFieldsMeta:targetFields,lookupsMeta:targetLookups,target,tableDisplay:entityList.find(e=>e.l===target)?.d||"",primaryNames:Object.fromEntries(entityList.filter(e=>e.pn).map(e=>[e.l,e.pn])),prev});
+    return {...am,maps:migrationMaps(am.maps,migrationActive,MIGRATION_FIELDS)};
+  };
 
   const parseData=(text)=>{
     const sep=detectSep(text);
@@ -248,11 +253,13 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       appliedCols++;
       return {...m,d365:t.d365||"",transform:t.transform||"",skip:!!t.skip,isPK:!!t.isPK,isLookup:!!t.isLookup,manual:true};
     }));
-    // Lookups: keep only those whose source CSV column still exists.
-    const tplLookups=(tpl.lookups||[]).filter(lk=>!lk.csv||headerSet.has(lk.csv));
+    // Lookups: keep only those whose source CSV column still exists — flagged manual so a metadata
+    // read finishing later merges around them (mergeLookups) instead of replacing them.
+    const tplLookups=(tpl.lookups||[]).filter(lk=>!lk.csv||headerSet.has(lk.csv)).map(lk=>({...lk,manual:true}));
     setLookups(tplLookups);
-    // Upsert key: restore D365 side; CSV side only if the column still exists.
-    if(tpl.uKey) setUKey({d:tpl.uKey.d||"",c:headerSet.has(tpl.uKey.c)?tpl.uKey.c:""});
+    // Upsert key: restore D365 side; CSV side only if the column still exists. A template's key is
+    // the user's explicit choice: alternate keys arriving later must not replace it.
+    if(tpl.uKey){setUKey({d:tpl.uKey.d||"",c:headerSet.has(tpl.uKey.c)?tpl.uKey.c:""});setKeyManual(!!tpl.uKey.d);}
     setUpdateOnly(!!tpl.updateOnly);
     if(tpl.batchSize) setBatchSize(Math.max(1,Math.min(1000,tpl.batchSize)));
     if(tpl.threads) setThreads(Math.max(1,Math.min(10,tpl.threads)));
@@ -315,6 +322,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[targetLookups,setTargetLookups]=useState([]);
   const[targetAltKeys,setTargetAltKeys]=useState([]); // alt-keys on the load target entity (single-attribute keys only)
   const[loadingFields,setLoadingFields]=useState(false);
+  const[fieldsErr,setFieldsErr]=useState(""); // the table's columns couldn't be read: the message (nothing is matched — said on screen, with a retry)
+  const[fieldsRetry,setFieldsRetry]=useState(0); // bumped by ↻ to read the table's columns again
+  const[keyManual,setKeyManual]=useState(false); // the user picked the match key (select / template): alternate keys arriving later don't replace it
   const fieldGen=useRef(0); // generation counter to discard stale field fetches
   const prevTargetRef=useRef(target);  // detect a REAL entity switch (vs initial mount / same value)
 
@@ -399,7 +409,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const displayOf=useMemo(()=>new Map(targetFieldsMeta.map(f=>[f.logical||f.l,f.display||f.d||""])),[targetFieldsMeta]); // logical → display name, for the field picker
 
   const sfIdWarnings=useMemo(()=>{
-    if(deleteMode||!csvData.r.length) return [];
+    if(!csvData.r.length) return [];
     const looksSF=(v)=>{const s=String(v).trim();return (s.length===15||s.length===18)&&/^[A-Za-z0-9]+$/.test(s)&&/[A-Za-z]/.test(s)&&/[0-9]/.test(s);};
     const majoritySF=(col)=>{ // sample up to 200 non-empty cells; flag if ≥60% look like SF ids
       if(!col) return false;
@@ -418,6 +428,14 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       for(const r of csvData.r){const v=r[col];if(v==null||String(v).trim()===""||isNullToken(v))continue;seen++;if(!looksGuid(v)){bad++;if(!example)example=String(v).trim();}if(seen>=200)break;}
       return seen>0&&bad/seen>=0.6?{example}:null;
     };
+    // The match key is the table's PRIMARY KEY but its column isn't GUIDs: the key value goes verbatim
+    // into /set(<value>) — UPDATE, DELETE and UPSERT fail every row with "Cannot convert to Edm.Guid".
+    // Same case as a PK mapped as a column (below), checked on the whole column, not its first cell.
+    if(uKey.d&&uKey.c&&uKey.d.toLowerCase()===String(pkLogical||target+"id").toLowerCase()){
+      const ng=majorityNonGuid(uKey.c);
+      if(ng) out.push(`The match key "${uKey.d}" is the table's PRIMARY KEY — a GUID that Dataverse generates — but column "${uKey.c}" holds values like "${ng.example}". No row can be matched: every row will fail with "Cannot convert to Edm.Guid". If that's a business number, match on an alternate key (or a unique field) instead.`);
+    }
+    if(deleteMode) return out; // deleting: only the key is sent
     for(const lk of lookups){ // lookups bound directly as a GUID
       if(lk.mode!=="direct"||!lk.csv) continue;
       if(majoritySF(lk.csv)){ out.push(`Lookup column "${lk.csv}" looks like Salesforce IDs — a direct bind needs a Dataverse GUID. Switch this lookup to "resolve" mode and match on an external-id field instead.`); continue; }
@@ -448,27 +466,29 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
         : `"${m.d365}" is a GUID field but column "${m.csv}" holds values like "${ng.example}" — those rows will fail with "Cannot convert to Edm.Guid".`);
     }
     return out;
-  },[csvData.r,lookups,maps,migrationMode,deleteMode,targetFieldsMeta]);
+  },[csvData.r,lookups,maps,migrationMode,deleteMode,targetFieldsMeta,uKey,pkLogical,target]);
 
   useEffect(()=>{
     // Demo: the account table carries the demo org's own columns (FLDS) and alternate key.
-    if(!isLive||!target){const demoAcc=!isLive&&target==="account";setTargetLookups([]);setTargetAltKeys(demoAcc?["accountnumber"]:[]);setTargetFieldsMeta(demoAcc?FLDS:[]);if(!isLive)setTargetFields(demoAcc?FLDS.map(f=>f.l).sort():D365CF);return;}
+    if(!isLive||!target){const demoAcc=!isLive&&target==="account";setFieldsErr("");setTargetLookups([]);setTargetAltKeys(demoAcc?["accountnumber"]:[]);setTargetFieldsMeta(demoAcc?FLDS:[]);if(!isLive)setTargetFields(demoAcc?FLDS.map(f=>f.l).sort():D365CF);return;}
     const gen=++fieldGen.current;
-    setLoadingFields(true);
+    // Nothing is known about this table until its read answers: the previous table's columns must not
+    // describe it meanwhile (the fit line, field picker, key list and pre-flight checks all read these).
+    setLoadingFields(true);setFieldsErr("");setTargetFields([]);setTargetFieldsMeta([]);setTargetLookups([]);setTargetAltKeys([]);
     Promise.all([
-      bridge.getFields(target).catch(()=>null),
+      bridge.getFields(target).catch(e=>({error:e?.message||String(e)})),
       bridge.getLookups(target).catch(()=>null),
       bridge.getEntityKeys(target).catch(()=>null),
     ]).then(([fieldsData,lookupsData,keysData])=>{
       if(fieldGen.current!==gen)return; // stale: user switched entity
-      if(fieldsData&&Array.isArray(fieldsData)){
+      if(Array.isArray(fieldsData)&&fieldsData.length){ // a real table always has columns: an empty answer is a failed read
         setTargetFields(fieldsData.map(f=>f.logical||f.l).sort());
         setTargetFieldsMeta(fieldsData);
-      }
+      } else setFieldsErr(fieldsData?.error||"no columns came back"); // shown in place of the fit line, with a retry
       setTargetLookups(Array.isArray(lookupsData)?lookupsData:[]);
       setTargetAltKeys(Array.isArray(keysData)?keysData.filter(k=>k.keyAttributes?.length===1).map(k=>k.keyAttributes[0]):[]);
     }).finally(()=>{if(fieldGen.current===gen)setLoadingFields(false);});
-  },[isLive,target]);
+  },[isLive,target,fieldsRetry]);
 
   // Switching the target entity must NOT carry over the previous entity's match key / mode — a stale
   // alternate key (e.g. another entity's fou_sapcustomernumber) would otherwise drive every row to a
@@ -477,7 +497,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   useEffect(()=>{
     if(prevTargetRef.current===target) return; // initial mount / re-selecting the same entity
     prevTargetRef.current=target;
-    setUKey({d:"",c:""});setUpdateOnly(false);setDeltaMode(false);setDeleteMode(false);setDeleteConfirm("");setVerifyExists(false);
+    setUKey({d:"",c:""});setKeyManual(false);setUpdateOnly(false);setDeltaMode(false);setDeleteMode(false);setDeleteConfirm("");setVerifyExists(false);
     setLookups([]); // lookups (nav property + resolve config) belonged to the OLD entity — the new table's metadata rebuilds them (below)
   },[target]);
 
@@ -491,8 +511,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     mapsMetaRef.current=targetFieldsMeta;
     if(isLive&&!targetFieldsMeta.length) return; // not read yet (or unreadable): nothing to match against
     const am=runAutoMap(csvData.h,csvData.r,maps);
-    setMaps(am.maps);setLookups(am.lookups);
+    setMaps(am.maps);setLookups(prev=>mergeLookups(prev,am.lookups,csvData.h)); // a template's lookups (manual) survive the read
   },[targetFieldsMeta]);
+
+  // The alternate keys arrive after the table's columns; a key set before they were known (a retry
+  // after a failed read, the demo) is the default's — moved to the alternate key the default now
+  // prefers, unless the user picked the key explicitly (keyManual).
+  useEffect(()=>{
+    if(!uKey.d||keyManual) return;
+    const k=defaultMatchKey(targetAltKeys,pkLogical||target+"id",csvData.h,maps);
+    if(k.d&&k.d!==uKey.d) setUKey(k);
+  },[targetAltKeys]);
 
 
   // Find lookup metadata matching a CSV column. Handles dot-notation (e.g.
@@ -544,9 +573,12 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(!toFetch.length) return;
     Promise.all(toFetch.map(async (ent)=>{
       const [fields,keys] = await Promise.all([
-        bridge.getFields(ent).catch(()=>[]),
+        bridge.getFields(ent).catch(e=>({error:e?.message||String(e)})),
         bridge.getEntityKeys(ent).catch(()=>[]),
       ]);
+      // a failed read is stored as such, not as "no fields": the Lookups step says it and offers a
+      // retry (↻ drops this entry, so this effect reads again) instead of "loading fields..." forever
+      if(!Array.isArray(fields)||!fields.length) return [ent,{fields:[],altKeys:[],numeric:new Set(),error:fields?.error||"no columns came back"}];
       return [ent, {
         fields: (fields||[]).map(f=>f.logical||f.l).sort(),
         altKeys: (keys||[]).filter(k=>k.keyAttributes?.length===1).map(k=>k.keyAttributes[0]),
@@ -1441,6 +1473,18 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 </div>);
   };
 
+  // A file that didn't parse (header only, an unclosed quote in the header, a corrupt .xlsx) leaves
+  // the wizard on the step it was on — so this is shown on BOTH the file step and the mapping step.
+  const badParseBanner=(withPrev)=>parseInfo?.badParse&&(
+    <div style={{...crd({padding:"10px 14px",background:C.rd+"0c",borderColor:C.rd+"55"}),marginBottom:12,marginTop:withPrev?0:12,fontSize:12.5,lineHeight:1.6,color:C.rd}}>
+      ⚠ <b>{csvFile?.name||"The file"}</b> parsed into {parseInfo.parsedRecords} data row{parseInfo.parsedRecords===1?"":"s"} — <b>nothing was loaded from it</b>.
+      {parseInfo.excelError&&<> Excel read failed: <b>{parseInfo.excelError}</b> — the file may be corrupt, password-protected, or not a real .xlsx.</>}
+      {!parseInfo.excelError&&parseInfo.rawLines>2&&<> The file has {parseInfo.rawLines.toLocaleString()} lines, so a stray <b>unclosed quote (")</b> in the header or first line probably swallowed the rest into one giant cell — fix it in the source file and reload.</>}
+      {!parseInfo.excelError&&parseInfo.rawLines<=2&&<> A file needs a header line and at least one data line.</>}
+      {withPrev&&csvData.r.length>0&&<> The mapping below still shows your <b>previous</b> file's data.</>}
+    </div>
+  );
+
   return(
     <div style={{padding:bp.mobile?12:20,maxWidth:bp.mobile?"100%":1400,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:bp.mobile?14:22,flexWrap:"wrap"}}>
@@ -1479,6 +1523,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               </div>
             </div>
           )}
+          {badParseBanner(false)}
         </div>
       )}
 
@@ -1493,14 +1538,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       )}
       {step===1&&!isIntersectTarget&&(
         <div>
-          {parseInfo?.badParse&&(
-            <div style={{...crd({padding:"10px 14px",background:C.rd+"0c",borderColor:C.rd+"55"}),marginBottom:12,fontSize:12.5,lineHeight:1.6,color:C.rd}}>
-              ⚠ <b>{csvFile?.name||"The file"}</b> parsed into {parseInfo.parsedRecords} data row{parseInfo.parsedRecords===1?"":"s"} — <b>nothing was loaded from it</b>.
-              {parseInfo.excelError&&<> Excel read failed: <b>{parseInfo.excelError}</b> — the file may be corrupt, password-protected, or not a real .xlsx.</>}
-              {!parseInfo.excelError&&parseInfo.rawLines>2&&<> The file has {parseInfo.rawLines.toLocaleString()} lines, so a stray <b>unclosed quote (")</b> in the header or first line probably swallowed the rest into one giant cell — fix it in the source file and reload.</>}
-              {csvData.r.length>0&&<> The mapping below still shows your <b>previous</b> file's data.</>}
-            </div>
-          )}
+          {badParseBanner(true)}
           <div style={{display:"flex",gap:10,marginBottom:12,flexDirection:bp.mobile?"column":"row"}}>
             <div style={{...crd({padding:12}),flex:1}}>
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Target D365 entity</label>
@@ -1517,6 +1555,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 const other=guess&&guess.logical!==target?guess:null;
                 return (<div style={{marginTop:6,fontSize:11.5,lineHeight:1.5,color:C.txm}}>
                   {loadingFields?<span>reading the table's columns…</span>
+                    :fieldsErr?<span style={{color:C.rd}}>This table's columns couldn't be read ({fieldsErr}) — nothing can be matched <button onClick={()=>setFieldsRetry(n=>n+1)} title="Read the table's columns again" style={{padding:"0 6px",fontSize:11,background:"transparent",color:C.rd,border:`1px solid ${C.rd}55`,borderRadius:4,cursor:"pointer",fontWeight:600}}>↻</button></span>
                     :<span><b style={{color:fit.unmatched.length?C.yw:C.gn}}>{fit.matched} of {fit.total} column{fit.total===1?"":"s"}</b> match this table{fit.lookups?` (${fit.lookups} lookup${fit.lookups>1?"s":""}${fit.pk?", the record id":""})`:fit.pk?" (the record id included)":""}{fit.unmatched.length>0&&<> — not matched: <span style={{...mono,fontSize:11,color:C.txd}}>{fit.unmatched.slice(0,6).join(", ")}{fit.unmatched.length>6?` +${fit.unmatched.length-6}`:""}</span></>}{fit.ambiguous.length>0&&<> · {fit.ambiguous.length} header{fit.ambiguous.length>1?"s":""} two fields share ({fit.ambiguous.slice(0,3).join(", ")}) — pick the field by hand</>}</span>}
                   {other&&<div style={{marginTop:3,color:C.cy}}>This file looks like an export of <b>{other.display}</b> ({other.reason}) — <button onClick={()=>setTarget(other.logical)} style={{padding:"1px 8px",fontSize:11,background:"transparent",color:C.cy,border:`1px solid ${C.cy}55`,borderRadius:4,cursor:"pointer",fontWeight:600}}>switch to {other.display}</button></div>}
                 </div>);
@@ -1530,19 +1569,25 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   // alt-key over the PK and only auto-pairs a CSV column when one matches the key
                   // name. It never falls back to the first column (the v1.10.13→1.11.32 trap that
                   // silently matched on the wrong column); an unmatched key leaves c:"" so the UI warns.
-                  const ensureKey=()=>{ if(uKey.d) return; setUKey(defaultMatchKey(targetAltKeys,pkLogical||target+"id",csvData.h)); };
+                  // The column is paired by name or by the mapping (an export's "Account Number" →
+                  // accountnumber, "(Do Not Modify) Account" → the record id). While the table's
+                  // columns are being read the modes are disabled: a key picked against the previous
+                  // table's alternate keys (or none) would be the wrong one.
+                  const ensureKey=()=>{ if(uKey.d) return; setUKey(defaultMatchKey(targetAltKeys,pkLogical||target+"id",csvData.h,maps)); };
+                  const waitT=loadingFields?"waiting for the table's columns…":undefined;
+                  const modeCursor=loadingFields?"wait":"pointer";
                   return (<>
-                    <label style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                      <input type="radio" checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
+                    <label title={waitT} style={{fontSize:12,color:!uKey.d?C.gn:C.txd,cursor:modeCursor,display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" disabled={loadingFields} checked={!uKey.d} onChange={()=>{setUKey({d:"",c:""});setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.gn}}/> CREATE (new records)
                     </label>
-                    <label style={{fontSize:12,color:uKey.d&&!updateOnly&&!deleteMode?C.cy:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                      <input type="radio" checked={!!uKey.d&&!updateOnly&&!deleteMode} onChange={()=>{ensureKey();setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.cy}}/> UPSERT (update or create)
+                    <label title={waitT} style={{fontSize:12,color:uKey.d&&!updateOnly&&!deleteMode?C.cy:C.txd,cursor:modeCursor,display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" disabled={loadingFields} checked={!!uKey.d&&!updateOnly&&!deleteMode} onChange={()=>{ensureKey();setUpdateOnly(false);setDeleteMode(false);}} style={{accentColor:C.cy}}/> UPSERT (update or create)
                     </label>
-                    <label style={{fontSize:12,color:uKey.d&&updateOnly&&!deleteMode?C.or:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                      <input type="radio" checked={!!uKey.d&&updateOnly&&!deleteMode} onChange={()=>{ensureKey();setUpdateOnly(true);setDeleteMode(false);}} style={{accentColor:C.or}}/> UPDATE (existing only)
+                    <label title={waitT} style={{fontSize:12,color:uKey.d&&updateOnly&&!deleteMode?C.or:C.txd,cursor:modeCursor,display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" disabled={loadingFields} checked={!!uKey.d&&updateOnly&&!deleteMode} onChange={()=>{ensureKey();setUpdateOnly(true);setDeleteMode(false);}} style={{accentColor:C.or}}/> UPDATE (existing only)
                     </label>
-                    <label style={{fontSize:12,color:uKey.d&&deleteMode?C.rd:C.txd,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                      <input type="radio" checked={!!uKey.d&&deleteMode} onChange={()=>{ensureKey();setDeleteMode(true);setUpdateOnly(false);setDeleteConfirm("");}} style={{accentColor:C.rd}}/> <span style={{color:uKey.d&&deleteMode?C.rd:C.txd}}>🗑 DELETE (remove records)</span>
+                    <label title={waitT} style={{fontSize:12,color:uKey.d&&deleteMode?C.rd:C.txd,cursor:modeCursor,display:"flex",alignItems:"center",gap:3}}>
+                      <input type="radio" disabled={loadingFields} checked={!!uKey.d&&deleteMode} onChange={()=>{ensureKey();setDeleteMode(true);setUpdateOnly(false);setDeleteConfirm("");}} style={{accentColor:C.rd}}/> <span style={{color:uKey.d&&deleteMode?C.rd:C.txd}}>🗑 DELETE (remove records)</span>
                     </label>
                   </>);
                 })()}
@@ -1563,14 +1608,15 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 const pk=pkLogical||target+"id";
                 const isPK=uKey.d.toLowerCase()===pk.toLowerCase();
                 const isUsingAltKey=targetAltKeys.includes(uKey.d);
-                // Warn if PK is selected but the CSV value doesn't look like a GUID — most likely a misconfig
-                const sampleVal=uKey.c?csvData.r[0]?.[uKey.c]:"";
-                const looksGuid=sampleVal&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sampleVal);
-                const pkMisconfig=isPK&&sampleVal&&!looksGuid;
+                // Warn if PK is selected but the column's values don't look like GUIDs — most likely a
+                // misconfig. The first non-empty values are sampled (loaderMapping.sampleValues), not the
+                // first row alone: a blank or lucky first cell hid the shape of the whole column.
+                const sampleVal=isPK&&uKey.c?(sampleValues(csvData.r,uKey.c).find(v=>!isGuid(v))||""):"";
+                const pkMisconfig=isPK&&!!sampleVal;
                 return (<div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
                     {targetFields.length>0
-                      ?<select value={uKey.d} onChange={e=>{const newKey=e.target.value;const matchingCol=csvData.h.find(h=>h.toLowerCase()===newKey.toLowerCase());setUKey({d:newKey,c:matchingCol||uKey.c});}} style={inp({flex:1,fontSize:13,...mono,color:isUsingAltKey?C.gn:isPK?C.cy:C.tx})}>
+                      ?<select value={uKey.d} onChange={e=>{const newKey=e.target.value;const matchingCol=matchKeyColumn(newKey,csvData.h,maps,pk);setUKey({d:newKey,c:matchingCol||uKey.c});setKeyManual(true);}} style={inp({flex:1,fontSize:13,...mono,color:isUsingAltKey?C.gn:isPK?C.cy:C.tx})}>
                         {targetAltKeys.length>0&&<optgroup label="🔑 Alternate keys (recommended for upsert)">
                           {targetAltKeys.map(f=><option key={f} value={f}>{f}</option>)}
                         </optgroup>}
@@ -1581,7 +1627,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                           {targetFields.filter(f=>!targetAltKeys.includes(f)&&f!==pk).map(f=><option key={f} value={f}>{f}</option>)}
                         </optgroup>
                       </select>
-                      :<input value={uKey.d} onChange={e=>setUKey({...uKey,d:e.target.value})} placeholder="loading fields..." style={inp({flex:1,fontSize:13,...mono})}/>
+                      :<input value={uKey.d} onChange={e=>{setUKey({...uKey,d:e.target.value});setKeyManual(true);}} placeholder={loadingFields?"reading the table's columns…":fieldsErr?"columns couldn't be read — type the field name":"type the field name"} style={inp({flex:1,fontSize:13,...mono})}/>
                     }
                     <span style={{color:C.txd}}>←</span>
                     <select value={uKey.c} onChange={e=>setUKey({...uKey,c:e.target.value})} style={inp({flex:1,fontSize:13})}><option value="">—</option>{csvData.h.map(h=><option key={h}>{h}</option>)}</select>
@@ -1597,7 +1643,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontWeight:600,fontSize:14}}>Mapping</span>
                 <div style={{position:"relative"}}>
-                  <button onClick={()=>setShowTemplates(v=>!v)} style={{padding:"3px 9px",fontSize:11,background:showTemplates?C.vi:"transparent",color:showTemplates?"white":C.cy,border:`1px solid ${showTemplates?C.vi:C.cy+"55"}`,borderRadius:4,cursor:"pointer",fontWeight:600}} title="Load a saved mapping template for this entity">📋 Templates{entityTemplates.length>0?` (${entityTemplates.length})`:""}</button>
+                  <button onClick={()=>setShowTemplates(v=>!v)} disabled={loadingFields} style={{padding:"3px 9px",fontSize:11,background:showTemplates?C.vi:"transparent",color:showTemplates?"white":C.cy,border:`1px solid ${showTemplates?C.vi:C.cy+"55"}`,borderRadius:4,cursor:loadingFields?"wait":"pointer",opacity:loadingFields?.5:1,fontWeight:600}} title={loadingFields?"waiting for the table's columns…":"Load a saved mapping template for this entity"}>📋 Templates{entityTemplates.length>0?` (${entityTemplates.length})`:""}</button>
                   {showTemplates&&(
                     <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,minWidth:280,maxWidth:380,maxHeight:300,overflow:"auto",background:C.sf,border:`1px solid ${C.bd}`,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,.3)",zIndex:50,padding:6}}>
                       {entityTemplates.length===0?(
@@ -1686,7 +1732,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:bp.mobile?"1fr":"1fr 1fr",gap:8}}>
                     <div><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>CSV Column</label>
-                      <select value={lk.csv} onChange={e=>{const u=[...lookups];u[i]={...lk,csv:e.target.value};const sample=csvData.r[0]?.[e.target.value];if(sample&&/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(sample)){u[i].mode="direct";}setLookups(u);}} style={inp({fontSize:13,...mono})}><option value="">—</option>{csvData.h.map(o=><option key={o}>{o}</option>)}</select>
+                      <select value={lk.csv} onChange={e=>{const u=[...lookups];u[i]={...lk,csv:e.target.value};if(columnIsGuid(csvData.r,e.target.value)){u[i].mode="direct";}setLookups(u);}} style={inp({fontSize:13,...mono})}><option value="">—</option>{csvData.h.map(o=><option key={o}>{o}</option>)}</select>
                     </div>
                     {lk.mode==="resolve"&&(()=>{
                       const meta=lookupEntityMeta[lk.entity];
@@ -1707,7 +1753,8 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                             {fields.filter(f=>!altKeys.includes(f)).map(f=><option key={f} value={f}>{f}</option>)}
                           </optgroup>
                         </select>
-                        :<input value={lk.d365f} onChange={e=>{const u=[...lookups];u[i]={...lk,d365f:e.target.value};setLookups(u);}} placeholder={lk.entity?"loading fields...":"set Target entity first"} style={inp({fontSize:13,...mono})}/>
+                        :<><input value={lk.d365f} onChange={e=>{const u=[...lookups];u[i]={...lk,d365f:e.target.value};setLookups(u);}} placeholder={!lk.entity?"set Target entity first":isLive&&!meta?"reading the table's columns…":"type the field name"} style={inp({fontSize:13,...mono})}/>
+                          {meta?.error&&<div style={{fontSize:11,color:C.rd,marginTop:3}}>columns couldn't be read ({meta.error}) — type the field name <button onClick={()=>setLookupEntityMeta(p=>{const n={...p};delete n[lk.entity];return n;})} title="Read this table's columns again" style={{padding:"0 6px",fontSize:11,background:"transparent",color:C.rd,border:`1px solid ${C.rd}55`,borderRadius:4,cursor:"pointer",fontWeight:600}}>↻</button></div>}</>
                       }
                     </div>);})()}
                     <div style={{position:"relative"}}><label style={{fontSize:11,color:C.txm,fontWeight:500,display:"block",marginBottom:2}}>Target entity</label>
@@ -1791,6 +1838,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
           {/* Pre-flight validation — non-blocking warnings, surfaced before Run instead of as mass errors */}
           {(()=>{
             const warnings=[];
+            // The table's columns weren't read: the checks below that need them (required fields, types,
+            // lengths, writability) couldn't run — said, so their silence isn't taken for a pass.
+            if(fieldsErr) warnings.push({k:"fields",t:`This table's columns couldn't be read (${fieldsErr}) — the required-field, type, length and read-only checks couldn't run; values are sent as text.`});
             // Required D365 fields not mapped (exclude PK + system/auto-managed fields)
             const mappedSet=new Set(maps.filter(m=>m.d365&&!m.skip).map(m=>m.d365.toLowerCase()));
             const pk=(target+"id").toLowerCase();

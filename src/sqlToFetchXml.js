@@ -618,7 +618,17 @@ function emitCondition(cond, depth, lines, ast) {
   lines.push(`${ind(depth)}<condition attribute="${escapeXml(attr)}" operator="${cond.operator}"${valAttr}/>`);
 }
 
+// What the FetchXML says differently from the SQL — told to the user instead of changed silently
+// (review finding: TOP 10000 came back as 5,000 rows without a word). One sentence per note.
+export function transpileNotes(ast) {
+  const notes = [];
+  if (ast && Number(ast.top) > 5000) notes.push(`TOP ${Number(ast.top).toLocaleString("en-US")} asked, FetchXML allows 5000 — 5,000 returned; omit TOP to page everything.`);
+  return notes;
+}
+
 // ── Main entry point ─────────────────────────────────────────
+// Returns { fetchXml, error, warnings } — warnings (transpileNotes) only on success; callers that
+// read fetchXml / error alone are unchanged.
 export function sqlToFetchXml(sql) {
   try {
     if (!sql || !sql.trim()) return { fetchXml: "", error: "Query is empty" };
@@ -626,7 +636,7 @@ export function sqlToFetchXml(sql) {
     if (!/^SELECT\b/i.test(trimmed)) return { fetchXml: "", error: "Only SELECT statements are supported" };
     const ast = parseSqlToAst(trimmed);
     const fetchXml = astToFetchXml(ast);
-    return { fetchXml, error: null };
+    return { fetchXml, error: null, warnings: transpileNotes(ast) };
   } catch (e) {
     return { fetchXml: "", error: e.message || "SQL syntax error" };
   }

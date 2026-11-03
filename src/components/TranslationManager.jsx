@@ -3,16 +3,52 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { decodeBytes } from "../textDecode.js";
+import { detectSep } from "../loaderUtils.js";
 
 // The bridge rejects with "Timeout after Ns — action: …" when the panel stops waiting: the server
 // may well still be exporting / importing / publishing. Those must not read as "failed".
 const timedOut=(e)=>/^Timeout after [\d.]+s — action: /.test(e?.message||String(e)); // the bridge's own text — a server-side "SQL timeout" is a real failure
 
+// The "Export CSV" file, back — whatever delimiter Excel re-saved it with (a French Excel writes
+// semicolons, "Unicode Text" writes tabs). Returns { error } with a plain reason, or
+// { sep, logIdx, langCols:[{idx,code}], rows: string[][] } (rows = the data lines, cells split).
+// It used to do NOTHING on a semicolon file or a wrong header. Pure — tested in metadataReview.test.js.
+export function parseTranslationCsv(text){
+  const lines=String(text||"").split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length) return {error:"the file is empty."};
+  const sep=detectSep(lines[0]);
+  // Real CSV cell walk — the old regex emitted an EMPTY match after every comma, shifting every
+  // cell one index to the right: imports queued the wrong column as the label value (audit finding).
+  const parseLine=(line)=>{
+    const cells=[];let cur="";let q=false;
+    for(let ci=0;ci<line.length;ci++){
+      const ch=line[ci];
+      if(q){ if(ch==='"'){ if(line[ci+1]==='"'){cur+='"';ci++;} else q=false; } else cur+=ch; }
+      else if(ch==='"') q=true;
+      else if(ch===sep){cells.push(cur);cur="";}
+      else cur+=ch;
+    }
+    cells.push(cur);
+    return cells;
+  };
+  const headers=parseLine(lines[0]).map(h=>h.trim());
+  const logIdx=headers.indexOf("logical_name");
+  if(logIdx===-1) return {error:`no "logical_name" column in the header (found: ${headers.filter(Boolean).slice(0,6).join(", ")||"nothing"}${headers.length>6?", …":""}) — start from this table's "Export CSV" file.`};
+  const langCols=headers.map((h,i)=>{const m=h.match(/^label_(\d+)$/);return m?{idx:i,code:+m[1]}:null;}).filter(Boolean);
+  if(!langCols.length) return {error:"no label_<language code> column in the header (e.g. label_1033) — nothing to import."};
+  if(lines.length<2) return {error:"no rows under the header — nothing to import."};
+  return {sep,logIdx,langCols,rows:lines.slice(1).map(parseLine)};
+}
+
 export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const isLive=orgInfo?.isExtension;
   // No publish privilege → read-only: browse + export stay, editing/saving/import are hidden.
   const readOnly=canPublish===false;
-  const[entities,setEntities]=useState(ENTS);
+  // Live: empty until the org answers — the demo list used to be the initial state, so a failed
+  // getEntities showed the DEMO tables as the org's. Demo mode is unchanged.
+  const[entities,setEntities]=useState(isLive?[]:ENTS);
+  const[entitiesErr,setEntitiesErr]=useState(""); // getEntities failure — shown with ↻ Retry
+  const[entTick,setEntTick]=useState(0); // ↻ Retry re-runs the read
   const[search,setSearch]=useState("");
   const[selEnt,setSelEnt]=useState(null);
   const[languages,setLanguages]=useState([]);
@@ -44,6 +80,8 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   const[solMsg,setSolMsg]=useState(null);        // {ok, text}
   const[importJob,setImportJob]=useState(null);  // {id, progress, done}
   const[autoPublish,setAutoPublish]=useState(true);
+  const autoPublishRef=useRef(true); // the poll reads the LIVE value: unticking during the run must count, not the value at import start
+  autoPublishRef.current=autoPublish;
   const zipRef=useRef(null);
   const jobPollRef=useRef(null);
   useEffect(()=>{
@@ -106,7 +144,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
         setImportJob(prev=>prev?{...prev,progress:Math.round(j.progress||0),done:!!j.completedon}:prev);
         if(j.completedon){
           clearInterval(jobPollRef.current);jobPollRef.current=null;
-          if(autoPublish){
+          if(autoPublishRef.current){
             setSolBusy("publish");
             try{ await bridge.publishAll(); setSolMsg({ok:true,text:"Translations imported and published — reload D365 forms to see the new labels."}); }
             catch(e2){ setSolMsg({ok:false,text:timedOut(e2)?"Imported — the publish timed out on the panel side; the server may still be publishing. Check a form's labels in a minute before publishing again.":`Imported, but publish failed: ${e2.message} — publish customizations manually.`}); }
@@ -119,8 +157,15 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
 
   useEffect(()=>{
     bridge.getOrgLanguages().then(d=>{if(d){setLanguages(d);setSelLangs(d.map(l=>l.code));}}).catch(()=>{});
-    if(isLive)bridge.getEntities().then(d=>{if(d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d})))}).catch(()=>{});
   },[]);
+  useEffect(()=>{
+    if(!isLive)return;
+    let cancelled=false;
+    setEntitiesErr("");
+    bridge.getEntities().then(d=>{if(!cancelled&&d)setEntities(d.map(e=>({l:e.logical||e.l,d:e.display||e.d})))})
+      .catch(e=>{if(cancelled)return;setEntities(prev=>prev===ENTS?[]:prev);setEntitiesErr(e?.message||String(e));});
+    return()=>{cancelled=true;};
+  },[entTick]);
 
   const doSelectEntity=async(e)=>{
     const gen=++selGen.current;
@@ -179,33 +224,16 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
   };
 
   const handleImport=(text)=>{
-    const lines=text.split("\n").filter(l=>l.trim());
-    if(lines.length<2)return;
-    const headers=lines[0].split(",").map(h=>h.trim().replace(/^"|"$/g,""));
-    const langCols=headers.map((h,i)=>{const m=h.match(/^label_(\d+)$/);return m?{idx:i,code:+m[1]}:null;}).filter(Boolean);
-    const logIdx=headers.indexOf("logical_name");
-    if(logIdx===-1)return;
+    const parsed=parseTranslationCsv(text);
+    if(parsed.error){setSaveMsg(`⚠ Import: ${parsed.error}`);return;}
+    const {logIdx,langCols,rows}=parsed;
     const newEdits={};
-    // Real CSV cell walk — the old regex emitted an EMPTY match after every comma, shifting every
-    // cell one index to the right: imports queued the wrong column as the label value (audit finding).
-    const parseCsvLine=(line)=>{
-      const cells=[];let cur="";let q=false;
-      for(let ci=0;ci<line.length;ci++){
-        const ch=line[ci];
-        if(q){ if(ch==='"'){ if(line[ci+1]==='"'){cur+='"';ci++;} else q=false; } else cur+=ch; }
-        else if(ch==='"') q=true;
-        else if(ch===","){cells.push(cur);cur="";}
-        else cur+=ch;
-      }
-      cells.push(cur);
-      return cells;
-    };
-    for(let i=1;i<lines.length;i++){
-      const cells=parseCsvLine(lines[i]);
+    let unknown=0; // rows naming a column this table doesn't have (another table's export?) — said, not silently dropped
+    for(const cells of rows){
       const logical=cells[logIdx]?.trim();
       if(!logical)continue;
       const attr=attributes.find(a=>a.logical===logical);
-      if(!attr)continue;
+      if(!attr){unknown++;continue;}
       langCols.forEach(({idx,code})=>{
         // Inverse of exportTable's formula guard: a leading ' before =,+,-,@ was added by the
         // export for Excel safety, not typed by the user — strip it so round-trips don't drift.
@@ -217,7 +245,8 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
     }
     setEdits(newEdits);
     const nImported=Object.values(newEdits).reduce((n,o)=>n+Object.keys(o).length,0);
-    setSaveMsg(`Imported ${nImported} label change${nImported===1?"":"s"} from CSV`);
+    const skipped=unknown?` · ${unknown} row${unknown===1?"":"s"} skipped (not a column of ${selEnt?.l||"this table"})`:"";
+    setSaveMsg(nImported?`Imported ${nImported} label change${nImported===1?"":"s"} from CSV${skipped}`:`⚠ Nothing queued — no label in the file differs from the current one${skipped}`);
   };
 
   const filteredAttrs=attributes.filter(a=>!attrSearch||a.logical.includes(attrSearch.toLowerCase())||a.labels.some(l=>l.label.toLowerCase().includes(attrSearch.toLowerCase())));
@@ -229,6 +258,8 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
       <div style={{width:bp.mobile?"100%":260,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:8}}><input placeholder="Search entity..." value={search} onChange={e=>setSearch(e.target.value)} style={inp({fontSize:13})}/></div>
         <div style={{flex:1,overflow:"auto",padding:"0 6px"}}>
+          {entities.length===0&&entitiesErr&&<div style={{padding:14,color:C.rd,fontSize:12,textAlign:"center"}}>⚠ Couldn't load the tables: {entitiesErr}<div style={{marginTop:6}}><button onClick={()=>setEntTick(x=>x+1)} style={bt(null,{fontSize:12})}>↻ Retry</button></div></div>}
+          {isLive&&entities.length===0&&!entitiesErr&&<div style={{padding:14,color:C.txd,fontSize:12,textAlign:"center"}}><Spin s={12}/> Loading the tables…</div>}
           {filtered.map(e=>(
             <button key={e.l} onClick={()=>handleSelect(e)} style={{width:"100%",textAlign:"left",padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",marginBottom:1,background:selEnt?.l===e.l?C.sfa:"transparent",color:selEnt?.l===e.l?C.tx:C.txm,fontSize:13}}>
               <div style={{fontWeight:selEnt?.l===e.l?600:400}}>{e.d||e.l}</div>
@@ -275,7 +306,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
                 <span style={{color:C.txd,marginLeft:8,fontSize:13}}>{attributes.length} attributes · {languages.length} languages</span>
               </div>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                {saveMsg&&<span style={{fontSize:12,color:C.gn}}>{saveMsg}</span>}
+                {saveMsg&&<span style={{fontSize:12,color:/^⚠/.test(saveMsg)?C.rd:C.gn}}>{saveMsg}</span>}
                 <button onClick={exportCSV} style={bt(null,{fontSize:12})}><I.Download/> Export CSV</button>
                 {!readOnly&&<>
                   <input ref={fRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>handleImport(decodeBytes(ev.target.result).text);r.readAsArrayBuffer(f);}e.target.value="";}}/>

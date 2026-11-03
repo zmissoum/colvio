@@ -228,13 +228,27 @@ export function applyTransform(val, transform, optionMap, dateMD = false) {
 
 // Default match key for UPSERT / UPDATE / DELETE. Prefers the first registered alternate key over
 // the primary key. The CSV column is auto-paired ONLY when a header actually matches the key name
-// (case-insensitive) — it must NEVER fall back to the first column: doing so silently matched on the
+// (case-insensitive) or the mapper already matched a column to that field (`maps`, see
+// matchKeyColumn) — it must NEVER fall back to the first column: doing so silently matched on the
 // wrong column, which fails as 404 in UPDATE-only and, far worse, creates mass duplicates in UPSERT
 // (no match on the wrong column → "create"). An unmatched key returns c:"" so the UI warns instead.
-export function defaultMatchKey(altKeys, pkField, headers) {
+export function defaultMatchKey(altKeys, pkField, headers, maps) {
   const d = (altKeys && altKeys[0]) || pkField || "";
-  const c = (headers || []).find(h => String(h).toLowerCase() === String(d).toLowerCase()) || "";
-  return { d, c };
+  return { d, c: matchKeyColumn(d, headers, maps, pkField) };
+}
+
+// The file column that holds the key field `d`: a header spelled like it, else the mapping row the
+// mapper matched to it — an export writes display names ("Account Number" → accountnumber) and
+// names its record-id column after the table ("(Do Not Modify) Account", flagged isPK), so the
+// logical name alone paired nothing on those files. "" when no column holds it (never a guess).
+export function matchKeyColumn(d, headers, maps, pkField) {
+  const dl = String(d || "").toLowerCase();
+  if (!dl) return "";
+  const h = (headers || []).find(x => String(x).toLowerCase() === dl);
+  if (h) return h;
+  const isPK = !!pkField && dl === String(pkField).toLowerCase();
+  const m = (maps || []).find(x => x && x.csv && (String(x.d365 || "").toLowerCase() === dl || (isPK && x.isPK)));
+  return m ? m.csv : "";
 }
 
 // Abstract / polymorphic owner-like targets that can't be bound directly.

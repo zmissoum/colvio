@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { normalizeODataInput, entityForSet, displayODataPath, looksLikeOData } from "../odataPaste.js";
 import { createSink, cellValue, openOutput } from "../streamExport.js";
 import { cookieFrom, pagedFetchXml, isCookieMismatch, fetchXmlColumns, streamColumns, uncoveredKey, sqlSelectColumns, odataSelectColumns, orderColumns } from "../fetchPaging.js";
+import { countLabel, isCountCapped, expandShortfall, pruneOrderBy, splitKnownColumns, unknownColumnsNote, resolveColumn, sqlColumnTracker } from "../explorerUtils.js";
 import { parseSqlWrite, previewSelect, describeSets, rawForPrepare, updateMetaFor } from "../sqlWrite.js";
 import { prepareUpdate as prepareTypedUpdate } from "../updateUtils.js";
 import { builderToFetchXml, viewFetchXml, layoutColumns, layoutXml } from "../viewSave.js";
@@ -137,7 +138,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // saved queries are shared by every Colvio panel (one per environment): one saved in another
     // panel shows up here too
     if(!chrome.storage.onChanged) return undefined;
-    const onChange=(ch,area)=>{ if(area==="local"&&ch.d365_saved_queries) setSavedQueries(Array.isArray(ch.d365_saved_queries.newValue)?ch.d365_saved_queries.newValue:[]); };
+    const onChange=(ch,area)=>{
+      if(area!=="local") return;
+      if(ch.d365_saved_queries) setSavedQueries(Array.isArray(ch.d365_saved_queries.newValue)?ch.d365_saved_queries.newValue:[]);
+      // the history too: it was read once per tab and never again, so a query run in another panel
+      // (or another query tab of this one) never showed up here (review finding)
+      if(ch.d365_query_history) setQueryHistory(Array.isArray(ch.d365_query_history.newValue)?ch.d365_query_history.newValue:[]);
+    };
     chrome.storage.onChanged.addListener(onChange);
     return()=>chrome.storage.onChanged.removeListener(onChange);
   },[]);
@@ -163,13 +170,19 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       // ordering (set callback, then selEnt) let "load query A, click entity B before A's fields
       // resolve" apply A's whole config — including rel filters — onto entity B.
       selEnt(match);
-      afterFields(()=>{
+      afterFields((fl)=>{
         setActiveSaved(q.name);
         setSf(q.fields||[]);
         setFilterGroups(q.filterGroups||[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
         setGroupLogic(q.groupLogic||"and");
         setLim(q.limit ?? 0);   // ?? not || so a saved "All" (0) survives restore instead of snapping back to a number
-        setOrderBy(q.orderBy&&q.orderBy.f?{f:q.orderBy.f,dir:q.orderBy.dir==="desc"?"desc":"asc"}:{f:"",dir:"asc"});
+        // Columns and sort the table no longer has: kept as (red) chips so the user sees what the
+        // saved query asked for, left out of the run, and said up front — run() used to prune them
+        // silently (review finding). fl = the fields just loaded (the `fields` state is older here).
+        const names=new Set((fl||fields).map(f=>f.l));
+        const ob=pruneOrderBy(q.orderBy,names);
+        setOrderBy(ob);
+        setRunNote(unknownColumnsNote(splitKnownColumns(q.fields||[],names).unknown,{source:"saved",orderBy:q.orderBy?.f&&!ob.f?q.orderBy.f:""}));
         // Restore the raw query text for every mode (selEnt cleared them) — OData & SQL were not
         // persisted before, so a saved OData/SQL query came back blank.
         if(q.qm) setQm(q.qm);
@@ -215,7 +228,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setSavedQueries(savedQueries.filter(s=>s.name!==name));
     persistList("d365_saved_queries",cur=>cur.filter(s=>s.name!==name));
   };
-  const[entities,setEntities]=useState(ENTS);
+  // Live: the list starts EMPTY and fills from the org — it used to start as the demo tables, so a
+  // refused or timed-out read showed those as the org's own (review finding). Demo keeps ENTS.
+  const[entities,setEntities]=useState(isLive?[]:ENTS);
+  const[entitiesErr,setEntitiesErr]=useState(""); // why the table list couldn't be read — shown in the sidebar with a Retry
+  const entitiesGen=useRef(0);
   const[fields,setFields]=useState(FLDS);
   const[loading,setLoading]=useState(false);
   const[loadingFields,setLoadingFields]=useState(false);
@@ -237,10 +254,12 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   const debouncedRelSearch = useDebounce(relSearch, 150);
   const[loadingRel,setLoadingRel]=useState("");
 
-  useEffect(()=>{
+  const loadEntities=()=>{
     if(!isLive) return;
-    setLoading(true);
+    const gen=++entitiesGen.current; // a Retry while the first read is still pending: only the last answer counts
+    setLoading(true);setEntitiesErr("");
     bridge.getEntities().then(data=>{
+      if(gen!==entitiesGen.current) return;
       if(data && Array.isArray(data)){
         const mapped = data.map(e=>({
           l:e.logical, d:e.display, p:e.entitySet||e.logical+"s", pk:e.primaryId||null,
@@ -248,9 +267,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           tt:e.isIntersect?"Intersect":(e.tableType||"Standard")
         })).sort((a,b)=>a.d.localeCompare(b.d));
         setEntities(mapped);
-      }
-    }).catch(e=>setError(e.message)).finally(()=>setLoading(false));
-  },[isLive]);
+      } else setEntitiesErr("the table list couldn't be read (unexpected response)");
+    }).catch(e=>{ if(gen===entitiesGen.current) setEntitiesErr(e.message||String(e)); }).finally(()=>{ if(gen===entitiesGen.current) setLoading(false); });
+  };
+  useEffect(()=>{ loadEntities(); },[isLive]);
 
   useEffect(()=>{
     if(!isLive || entities.length < 2) return;
@@ -273,6 +293,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setRelFilters([]);setShowRelPicker(false);setRelSearch(""); // relational filters belonged to the OLD entity
     setRq("");setFxml("");setSqlQ(""); // raw query text belonged to the previous entity — clear it so a switch can't run against the wrong table
     setActiveSaved(null);setRunNote(""); // a saved query / pasted URL belonged to the previous selection
+    setOrderBy({f:"",dir:"asc"}); // the sort column belonged to the OLD table: $orderby=<old column> was a 400 on the new one, and the ORDER select showed blank (review finding)
     if(bp.mobile)setShowList(false);
     if(isLive){
       setLoadingFields(true);setSf([]);setFields([]);
@@ -282,8 +303,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       ]).then(([fieldsData, lookupsData]) => {
         if(selGen.current!==gen)return; // stale: user selected a different entity
         const childRelsData = null;
+        let mapped=[]; // handed to onFieldsReady: a restore checks its columns against THESE fields, not the `fields` state its closure saw
         if(fieldsData && Array.isArray(fieldsData) && fieldsData.length > 0){
-          const mapped=fieldsData.map(f=>({
+          mapped=fieldsData.map(f=>({
             l:f.logical, odata:f.odataName||f.logical, d:f.display||f.logical,
             t:f.type||"String", req:!!f.required, cust:!!(f.isCustom&&isTrulyCustom(f.logical)),
             pk:!!f.isPrimaryId
@@ -306,7 +328,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         const unique=allRels.filter(l=>{if(!l.navProperty||seen.has(l.navProperty))return false;seen.add(l.navProperty);return true;});
         setLookups(unique);
         // Invoke onFieldsReady callback (for loadSavedQuery / templates)
-        if(onFieldsReady.current){const cb=onFieldsReady.current;onFieldsReady.current=null;cb();}
+        if(onFieldsReady.current){const cb=onFieldsReady.current;onFieldsReady.current=null;cb(mapped);}
       }).catch(err=>{if(selGen.current===gen)setError(`${e.l}: ${err.message}`);}).finally(()=>{if(selGen.current===gen)setLoadingFields(false);});
 
       bridge.getEntityCount(e.p).then(c=>{
@@ -400,7 +422,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     // metadata; <table>id when unknown) — the root's too, for child (1:N) joins
     const pkOfEntity=(l)=>entities.find(e=>e.l===l)?.pk||null;
     const withPk=(x)=>({...x,targetPk:pkOfEntity(x.targetEntity)});
-    return builderToFetchXml({entity:ent?.l,attrs:sf,groups:filterGroups,groupLogic,orderBy,fieldTypes:ft,expands:expands.map(withPk),relFilters:relFilters.map(withPk),primaryId:ent?.pk||fields.find(f=>f.pk)?.l||null});
+    // columns / sort column the table doesn't have are left out, as run() leaves them out — a view
+    // with <order attribute="gone"/> fails to open (review finding)
+    return builderToFetchXml({entity:ent?.l,attrs:sf.filter(f=>f in ft),groups:filterGroups,groupLogic,orderBy:pruneOrderBy(orderBy,Object.keys(ft)),fieldTypes:ft,expands:expands.map(withPk),relFilters:relFilters.map(withPk),primaryId:ent?.pk||fields.find(f=>f.pk)?.l||null});
   };
   const openSaveView=()=>{const def=viewDefinition();setViewModal({name:activeSaved||`${ent?.d||ent?.l||"Query"} (Colvio)`,error:def.error||"",saving:false,done:null});};
   const saveView=async()=>{
@@ -433,25 +457,34 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         :{primaryId:`${w.table}id`,primaryName:"name",entitySet:entities.find(e=>e.l===w.table)?.p||`${w.table}s`,displayName:w.table,canBeDeleted:true};
       if(w.kind==="delete"&&meta.canBeDeleted===false) throw new Error(`"${meta.displayName}" doesn't allow deletion (CanBeDeleted = false).`);
       let body=null;
+      let sets=w.sets;
       if(w.kind==="update"){
-        let um;
+        let um,fieldList;
         if(isLive){
           const [fl,lk]=await Promise.all([bridge.getFields(w.table),bridge.getLookups(w.table).catch(()=>[])]);
-          um=updateMetaFor((fl||[]).map(f=>({l:f.logical,odata:f.odataName||f.logical,t:f.type||"String"})),lk,entities);
-        } else um=updateMetaFor(FLDS,[],entities);
+          fieldList=(fl||[]).map(f=>({l:f.logical,odata:f.odataName||f.logical,t:f.type||"String"}));
+          um=updateMetaFor(fieldList,lk,entities);
+        } else { fieldList=FLDS; um=updateMetaFor(FLDS,[],entities); }
+        // SQL names are case-insensitive: "SET Name = …" names the column — matched to the table's
+        // logical name, which the preview text, the PATCH body and the preview SELECT then use.
+        // Refused only when nothing matches in any case (a capital letter used to be refused; review finding).
+        sets=w.sets.map(st=>{
+          const col=resolveColumn(st.col,fieldList);
+          if(isLive&&!col) throw new Error(`"${st.col}" isn't a column of ${w.table}.`);
+          return {...st,col:col||st.col};
+        });
         body={};
-        for(const st of w.sets){
-          if(isLive&&um.fieldTypes[st.col]===undefined) throw new Error(`"${st.col}" isn't a column of ${w.table}.`);
+        for(const st of sets){
           const prep=prepareTypedUpdate({...um,odataFieldMap:{}},st.col,rawForPrepare(st),undefined,{literal:true}); // literal: 'null' in quotes is text — SQL NULL arrives as CLEAR_VALUE
           if(!prep.ok) throw new Error(prep.reason);
           Object.assign(body,prep.body);
         }
       }
-      const plan={kind:w.kind,table:w.table,entitySet:meta.entitySet,pk:meta.primaryId,displayName:meta.displayName,setsText:w.kind==="update"?describeSets(w.sets):"",body,statement:sqlQ.trim()};
+      const plan={kind:w.kind,table:w.table,entitySet:meta.entitySet,pk:meta.primaryId,displayName:meta.displayName,setsText:w.kind==="update"?describeSets(sets):"",body,statement:sqlQ.trim()};
       setLoading(false);
       partialRef.current=false;
       const sg=selGen.current, rg=runGen.current; // run() bumps runGen exactly once, synchronously, at its top
-      await run({sql:previewSelect(w,meta.primaryId,meta.primaryName)});
+      await run({sql:previewSelect({...w,sets},meta.primaryId,meta.primaryName)});
       if(selGen.current!==sg||runGen.current!==rg+1) return; // the table changed, or a later run replaced the preview — its rows aren't this WHERE
       // a preview cut short — a page error, or ■ Stop (the loop exits without marking partial) — must
       // not get an Apply button: the rows shown aren't the WHERE (review finding)
@@ -503,7 +536,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   // Run cb once the selected table's fields are loaded. Live: after the async metadata fetch
   // (onFieldsReady). Demo: selEnt fills the fields synchronously and never fires the callback — so
   // run it now (saved queries and templates used to do nothing in demo mode).
-  const afterFields=(cb)=>{ if(isLive) onFieldsReady.current=cb; else cb(); };
+  // cb receives the table's fields (live: the ones just loaded — fresher than the `fields` state the
+  // callback's closure saw; demo: FLDS), so a restore can check its columns against them.
+  const afterFields=(cb)=>{ if(isLive) onFieldsReady.current=cb; else cb(FLDS); };
 
   // A pasted OData query / URL → OData mode on ITS table (switching table when needed).
   const openODataPath=(n)=>{
@@ -652,7 +687,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     if(exClauses.length)ps.push(`$expand=${exClauses.join(",")}`);
     const gf=buildGroupFilter();
     if(gf) ps.push(`$filter=${gf}`);
-    if(orderBy.f)ps.push(`$orderby=${getOdataName(orderBy.f)} ${orderBy.dir}`);
+    const ob=pruneOrderBy(orderBy,fields.map(f=>f.l)); // the URL shown is the one run() sends: a sort column the table doesn't have is dropped
+    if(ob.f)ps.push(`$orderby=${getOdataName(ob.f)} ${ob.dir}`);
     if(lim>0)ps.push(`$top=${lim}`);
     return ps.length?q+"?"+ps.join("&"):q;
   };
@@ -866,6 +902,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     const my=++runGen.current;
     setError("");
     fetchAbort.current = false;
+    partialRef.current=false; // a page that failed in a PREVIOUS run must not mark this one incomplete (only the UPDATE/DELETE preview reset it)
     // run({ sql }) = run THIS SQL instead of the editor's (the preview of an UPDATE / DELETE).
     // (A click passes an event — only a plain { sql } object counts.)
     const ro=runOpts&&typeof runOpts==="object"&&typeof runOpts.sql==="string"?runOpts:null;
@@ -898,6 +935,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     const stale=()=>selGen.current!==selAt||runGen.current!==my;
     const validFieldNames = new Set(fields.map(f => f.l));
     const validSf = sf.filter(f => validFieldNames.has(f));
+    const orderF = pruneOrderBy(orderBy, validFieldNames).f; // a sort column the table doesn't have is dropped like an unknown SELECT column (it was a 400)
     if(isLive && loadingFields){ setError("Wait for fields to load..."); return; }
 
     const allSelected = validSf.length >= fields.length;
@@ -910,7 +948,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(expandClauses.length)ps.push(`$expand=${expandClauses.join(",")}`);
       const gf2=buildGroupFilter();
       if(gf2) ps.push(`$filter=${gf2}`);
-      if(orderBy.f)ps.push(`$orderby=${getOdataName(orderBy.f)} ${orderBy.dir}`);
+      if(orderF)ps.push(`$orderby=${getOdataName(orderF)} ${orderBy.dir}`);
       if(lim>0)ps.push(`$top=${lim}`);
       return ps.length?q+"?"+ps.join("&"):q;
     };
@@ -923,6 +961,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         if(r.error){setError(r.error);return;}
         sqlGenFxml=r.fetchXml;
         setSqlFx(sqlGenFxml);
+        setRunNote((r.warnings||[]).join(" ")); // what the FetchXML says differently from the SQL (TOP above 5000) — it was clamped silently (review finding)
       }
     }
     const q=qm==="odata"?rq:qm==="fetchxml"?fxml:qm==="sql"?sqlQ:buildQ();
@@ -967,17 +1006,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           return;
         }
         let allRecords=[...(first?.records||[])];
-        // Column discovery must UNION across rows — with a LEFT JOIN, row 1 can miss the
-        // joined columns entirely (they're absent, not null, in the OData payload).
-        const fieldSet=new Set();
-        const collect=(recs,cap)=>recs.slice(0,cap).forEach(r2=>Object.keys(r2).forEach(k=>{if(!k.startsWith("@")&&!k.includes("@")&&k!=="__error")fieldSet.add(k);}));
-        collect(allRecords,200);
-        // the SELECT list's order, not the payload's (the grid and every export follow res.fields)
-        const sqlCols=sqlSelectColumns(sqlText);
-        const orderedFields=()=>orderColumns([...fieldSet],sqlCols);
-        const odataFieldMap={};[...fieldSet].forEach(f=>{odataFieldMap[f]=f;});
-        setRes({entity:sqlEnt,fields:orderedFields(),odataFieldMap,data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`,nextLink:null,fetching:!!first?.nextLink});
-        addToHistory(sqlEnt,q,qm,fieldSet.size);
+        // Columns: the SELECT list first, in its order (a selected column with no value in any row is
+        // still a column — the Web API leaves null properties out, and a 200-row sample used to lose
+        // it from the grid and every export; review finding), then whatever EVERY row of every page
+        // carries that the SELECT didn't name (SELECT *, a LEFT JOIN's columns absent from row 1).
+        // sqlColumnTracker (explorerUtils.js) also points a lookup at its _x_value key.
+        const cols=sqlColumnTracker(sqlSelectColumns(sqlText));
+        cols.add(allRecords);
+        setRes({entity:sqlEnt,fields:cols.fields(),odataFieldMap:cols.fieldMap(),data:allRecords,count:allRecords.length,total:allRecords.length,query:q,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`,nextLink:null,fetching:!!first?.nextLink});
+        addToHistory(sqlEnt,q,qm,cols.size());
         setLoading(false);
         let nl=first?.nextLink,page=1;
         while(nl&&!fetchAbort.current&&!stale()){
@@ -988,17 +1025,19 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             if(!pd?.records?.length)break;
             addRows(allRecords,pd.records);
             if(overMemory(allRecords))return;
-            collect(pd.records,50);
+            const newCols=cols.add(pd.records);
             nl=pd.nextLink;
-            const paint=!nl||page%5===0;
-            setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver,fields:orderedFields()}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
-          }catch(e2){setError(`Page ${page}: ${e2.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;}
+            const paint=!nl||page%5===0||newCols; // a column first seen on this page forces a paint
+            setRes(prev=>({...prev,...(paint?{data:allRecords,dataVersion:++ver,fields:cols.fields(),odataFieldMap:cols.fieldMap()}:{}),count:allRecords.length,total:allRecords.length,fetching:!!nl,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+          }catch(e2){if(stale())return;setError(`Page ${page}: ${e2.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true,partialPage:page}:prev);break;}
         }
-        if(!stale())setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fields:orderedFields(),fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        // stopped = ■ Stop while pages were still due: the footer and the header say so (they read
+        // "loading complete"; review finding). partial (a page failed) stays from the catch above.
+        if(!stale())setRes(prev=>prev?{...prev,data:allRecords,dataVersion:++ver,fields:cols.fields(),odataFieldMap:cols.fieldMap(),fetching:false,stopped:!!(fetchAbort.current&&nl),elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}:prev);
         return;
       }catch(e){
+        if(stale())return; // a LATER run or another table owns `res` now — touching it here would end THAT run's paging or show this run's error over it (review finding)
         setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
-        if(stale())return;
         if(isSqlOptionUnsupported(e.message||"")){
           setNativeSqlDown(true);fellBack=true; // engine toggle shows why; this session stays on the transpiler
         }else{
@@ -1011,6 +1050,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         const r=sqlToFetchXml(sqlText);
         if(r.error){setLoading(false);setError(`Native SQL isn't available on this environment, and the FetchXML fallback couldn't parse the query: ${r.error}`);return;}
         sqlGenFxml=r.fetchXml;setSqlFx(sqlGenFxml);
+        setRunNote((r.warnings||[]).join(" ")); // same TOP note as the transpiled engine
       }
     }
 
@@ -1106,11 +1146,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const paint=!hasMore||page%5===0||newCols;
             setRes(prev=>({...prev,...(newCols?{fields:[...headerFields],odataFieldMap:{...odataFieldMap}}:{}),...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,fetching:hasMore,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(e){
-            setError(`Page ${page}: ${e.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;
+            if(stale())return;
+            setError(`Page ${page}: ${e.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true,partialPage:page}:prev);break;
           }
         }
-        if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale()) setRes(prev=>prev?{...prev,data:allRecords,dataVersion:++ver,fetching:false,stopped:!!(fetchAbort.current&&hasMore),elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}:prev);
       }catch(e){
+        if(stale())return; // a LATER run or another table owns `res` now — touching it here would end THAT run's paging or show this run's error over it (review finding)
         setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
         if(stream){ await streamFail(stream,e.message||String(e)); setLoading(false); return; }
         // ── Client-side aggregation fallback (50k limit) ──
@@ -1200,6 +1242,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
               const pgXml=pg===1?pagedFlatXml:pagedFlatXml.replace(`count="5000"`,`count="5000" page="${pg}"`);
               try{
                 const pgData=await bridge.executeFetchXml(pgXml);
+                if(stale())return; // the table changed (or a later run began) while the page was in flight — its setRes built a `res` without entity or data and Results crashed (review finding)
                 if(!pgData?.records?.length)break;
                 addRows(allRaw,pgData.records); // in place — the spread copy was quadratic over the whole set on every page
                 more=pgData.records.length>=5000;
@@ -1209,7 +1252,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                 const estRemain=more&&speed>0?` · ~${Math.ceil((allRaw.length*0.5)/speed)}s remaining`:"";
                 setRes(prev=>({...prev,count:allRaw.length,total:allRaw.length,elapsed:`${elapsed}s — loading ${allRaw.length.toLocaleString()} records (page ${pg-1})${estRemain}`}));
               }catch(pgErr){
+                if(stale())return;
                 if(pg===2&&pgErr.message.includes("0x80041129")){pg--;more=true;continue;}
+                // a page that couldn't be read: the totals below are computed on fewer rows than the
+                // query matches — say so rather than present them as the table's (review finding)
+                setError(`Page ${pg}: ${pgErr.message} — the totals below cover only the ${allRaw.length.toLocaleString()} rows read, not the whole result.`);partialRef.current=true;
                 break;
               }
             }
@@ -1253,8 +1300,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const odataFieldMap={};headerFields.forEach(f=>{odataFieldMap[f]=f;});
             const elapsed=`${((Date.now()-t0b)/1000).toFixed(1)}s`;
             if(stale())return;
-            setRes({entity:aggEnt,fields:headerFields,odataFieldMap,data:results,count:results.length,total:results.length,query:q,elapsed:`${elapsed} (client-side aggregation on ${allRaw.length} records)`,fetching:false});
+            setRes({entity:aggEnt,fields:headerFields,odataFieldMap,data:results,count:results.length,total:results.length,query:q,elapsed:`${elapsed} (client-side aggregation on ${allRaw.length.toLocaleString()} records${fetchAbort.current&&more?" — stopped by you":partialRef.current?" — a page failed":""})`,fetching:false,stopped:!!(fetchAbort.current&&more),partial:partialRef.current});
           }catch(fallbackErr){
+            if(stale())return;
             setError(`Client-side aggregation failed: ${fallbackErr.message}`);setLoading(false);
           }
         }else{
@@ -1323,6 +1371,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           pageNum++;
           try{
             const pageData=await bridge.query(nextLink,{});
+            if(stale())return; // another table / a later run owns `res` now — this loop's setRes built a `res` without entity or data and Results crashed (review finding)
             if(!pageData?.records?.length)break;
             const pageClean=cleanAndFlatten(pageData.records);
             addRows(allRecords,pageClean);
@@ -1335,11 +1384,13 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
             const paint=!nextLink||pageNum%5===0||newCols; // throttle data re-render; force a paint when columns change
             setRes(prev=>({...prev,fields:headerFields,odataFieldMap,...(paint?{data:allRecords,dataVersion:++ver}:{}),count:allRecords.length,total:allRecords.length,nextLink,fetching:!!nextLink,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
           }catch(pageErr){
-            setError(`Page ${pageNum}: ${pageErr.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true}:prev);break;
+            if(stale())return;
+            setError(`Page ${pageNum}: ${pageErr.message}`);partialRef.current=true;setRes(prev=>prev?{...prev,partial:true,partialPage:pageNum}:prev);break;
           }
         }
-        if(!stale()) setRes(prev=>({...prev,data:allRecords,dataVersion:++ver,fetching:false,nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+        if(!stale()) setRes(prev=>prev?{...prev,data:allRecords,dataVersion:++ver,fetching:false,stopped:!!(fetchAbort.current&&nextLink),nextLink:null,elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}:prev);
       }catch(e){
+        if(stale())return; // a LATER run or another table owns `res` now — touching it here would end THAT run's paging or show this run's error over it (review finding)
         setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
         setError(e.message);setLoading(false);
       }
@@ -1355,7 +1406,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(expandClauses.length)opts.expand=expandClauses.join(",");
       const gf3=buildGroupFilter();
       if(gf3) opts.filter=gf3;
-      if(orderBy.f)opts.orderby=`${getOdataName(orderBy.f)} ${orderBy.dir}`;
+      if(orderF)opts.orderby=`${getOdataName(orderF)} ${orderBy.dir}`;
       if(lim>0)opts.top=String(lim);
       const data=await bridge.query(ent.p,opts);
       if(stale())return;
@@ -1393,6 +1444,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         pageNum++;
         try {
           const pageData = await bridge.query(nextLink, {});
+          if (stale()) return; // another table / a later run owns `res` now — this loop's setRes built a `res` without entity or data and Results crashed (review finding)
           if (!pageData?.records?.length) break;
           const pageClean = pageData.records.map(cleanRecord);
           addRows(allRecords, pageClean);
@@ -1414,21 +1466,24 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           const paint = !nextLink || pageNum%5===0 || newCols; // throttle data re-render; force a paint when columns change
           setRes(prev => ({...prev, fields: headerFields, odataFieldMap, ...(paint?{data:allRecords,dataVersion:++ver}:{}), count: allRecords.length, total: allRecords.length, nextLink, fetching: !!nextLink, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
         } catch (pageErr) {
+          if (stale()) return;
           if (isSessionExpired(pageErr.message)) {
             setError(SESSION_EXPIRED_MSG);
           } else { setError(`Page ${pageNum}: ${pageErr.message}`); }
           partialRef.current=true; // as the other modes do: the grid holds an incomplete result
-          setRes(prev => ({...prev, nextLink: null, fetching: false, partial: true}));
+          setRes(prev => prev ? {...prev, nextLink: null, fetching: false, partial: true, partialPage: pageNum} : prev);
           break;
         }
       }
+      if (stale()) return;
       // Only when nothing else explains a short result: a $filter / REL (both in opts.filter), a
       // $top, ■ Stop or a page error — each used to trigger the warning falsely (review finding).
-      if (hasExpand && ent.c && allRecords.length < ent.c * 0.9 && !opts.filter && !opts.top && !fetchAbort.current && !partialRef.current) {
-        setError(`⚠ ${allRecords.length} records retrieved out of ${ent.c} — D365 limits results with $expand. Remove expand to get all records, then enrich in a second query.`);
-      }
-      if(!stale()) setRes(prev => ({...prev, data: allRecords, dataVersion: ++ver, fetching: false, nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`}));
+      // The table's /$count stops at 5,000: a capped count is never the denominator (explorerUtils.js).
+      const shortfall = expandShortfall({retrieved: allRecords.length, count: ent.c, hasExpand, filtered: !!opts.filter, topped: !!opts.top, stopped: fetchAbort.current, partial: partialRef.current});
+      if (shortfall) setError(shortfall);
+      setRes(prev => prev ? {...prev, data: allRecords, dataVersion: ++ver, fetching: false, stopped: !!(fetchAbort.current && nextLink), nextLink: null, elapsed:`${((Date.now()-t0)/1000).toFixed(1)}s`} : prev);
     } catch(e) {
+        if(stale())return; // a LATER run or another table owns `res` now — touching it here would end THAT run's paging or show this run's error over it (review finding)
         setRes(prev=>prev&&prev.fetching?{...prev,fetching:false}:prev); // a run that dies mid-paging must not leave Execute on "Paging…" (runBusy reads res.fetching)
       if(isSessionExpired(e.message)) {
         setError(SESSION_EXPIRED_MSG);
@@ -1464,6 +1519,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
   // (res.fetching — ■ Stop ends that) or while a file is being written: Ctrl+Enter mid-stream used to
   // open a second sink on the same file, and a second run mid-paging raced the first (review finding).
   const runBusy=loading||loadingFields||!!res?.fetching||streamState?.phase==="running";
+  const fieldNameSet=new Set(fields.map(f=>f.l)); // SELECT chips the table doesn't have are shown red (a saved query / template whose columns are gone)
   useKeyboard("Enter",()=>{if(active&&ent&&!runBusy)run();},[active,ent,sf,filterGroups,groupLogic,lim,qm,rq,fxml,sqlQ,runBusy]);
 
   return(
@@ -1472,14 +1528,15 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
         <div style={{width:bp.mobile?"100%":bp.tablet?200:240,borderRight:bp.mobile?"none":`1px solid ${C.bd}`,display:"flex",flexDirection:"column",flexShrink:0,...(bp.mobile?{maxHeight:"50vh"}:{})}}>
           <div style={{padding:"8px 8px 4px"}}>
             <input value={es} onChange={e=>setEs(e.target.value)} placeholder="Search..." style={inp({fontSize:13,padding:"6px 10px"})}/>
-            {isLive&&<div style={{fontSize:11,color:C.gn,padding:"4px 4px 0"}}>{entities.length} entities loaded</div>}
+            {isLive&&entities.length>0&&<div style={{fontSize:11,color:C.gn,padding:"4px 4px 0"}}>{entities.length} entities loaded</div>}
           </div>
           <div style={{flex:1,overflow:"auto",padding:"0 6px 6px"}}>
             {loading&&!ent ? <div style={{textAlign:"center",padding:20}}><Spin/><p style={{color:C.txd,fontSize:13,marginTop:8}}>Loading entities...</p></div>
+            : entities.length===0&&entitiesErr ? <div style={{padding:"14px 8px",fontSize:12.5,color:C.rd,lineHeight:1.5}}>Couldn't load the tables: {entitiesErr}<div style={{marginTop:8}}><button onClick={loadEntities} style={bt(null,{fontSize:12})}>↻ Retry</button></div></div>
             : filtered.map(e=>(
             <div key={e.l} style={{display:"flex",alignItems:"center",marginBottom:1}}>
               <button onClick={()=>selEnt(e)} style={{flex:1,display:"flex",alignItems:"center",gap:7,padding:"6px 8px",border:"none",borderRadius:5,cursor:"pointer",background:ent?.l===e.l?C.sfa:"transparent",color:ent?.l===e.l?C.tx:C.txm}}>
-                <span style={{fontSize:15}}>{e.i}</span><div style={{flex:1,textAlign:"left",minWidth:0}}><div style={{fontSize:13,fontWeight:ent?.l===e.l?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.d}</div><div style={{fontSize:11,color:C.txd,...mono}}>{e.l}</div></div><TableTypeBadge tt={e.tt}/>{(e.c>0||entityCounts[e.l]>0)&&<span style={{fontSize:10,color:C.txd,background:C.bg,padding:"1px 5px",borderRadius:3,...mono}}>{(e.c||entityCounts[e.l]||0).toLocaleString()}</span>}
+                <span style={{fontSize:15}}>{e.i}</span><div style={{flex:1,textAlign:"left",minWidth:0}}><div style={{fontSize:13,fontWeight:ent?.l===e.l?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.d}</div><div style={{fontSize:11,color:C.txd,...mono}}>{e.l}</div></div><TableTypeBadge tt={e.tt}/>{(e.c>0||entityCounts[e.l]>0)&&<span title={isCountCapped(e.c||entityCounts[e.l])?"Dataverse's count stops at 5,000 — the table holds at least that many":undefined} style={{fontSize:10,color:C.txd,background:C.bg,padding:"1px 5px",borderRadius:3,...mono}}>{countLabel(e.c||entityCounts[e.l]||0)}</span>}
               </button>
               <span onClick={(ev)=>{ev.stopPropagation();toggleBookmark(e.l);}} style={{cursor:"pointer",fontSize:13,padding:"2px 4px",color:bookmarks.includes(e.l)?C.yw:C.txd+"44",flexShrink:0}} title={bookmarks.includes(e.l)?"Remove bookmark":"Bookmark"}>★</span>
             </div>
@@ -1510,7 +1567,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                 {!bp.mobile&&<span style={{fontSize:12,color:C.txd,background:C.bg,padding:"4px 10px",borderRadius:3,...mono}}>{ent.l}</span>}
                 {loadingFields&&<Spin s={12}/>}
                 {!loadingFields&&fields.length>0&&<span style={{fontSize:12,color:C.txd}}>{fields.length} columns</span>}
-                {ent.c>0&&<span style={{fontSize:12,color:C.txd,background:C.bg,padding:"2px 6px",borderRadius:3}}>{ent.c.toLocaleString()} records</span>}
+                {ent.c>0&&<span title={isCountCapped(ent.c)?"Dataverse's count stops at 5,000 — the table holds at least that many":undefined} style={{fontSize:12,color:C.txd,background:C.bg,padding:"2px 6px",borderRadius:3}}>{countLabel(ent.c)} records</span>}
               </div>
               <div style={{display:"flex",gap:3,alignItems:"center"}}>{["builder","odata","fetchxml","sql"].map(m=><button key={m} onClick={()=>setQm(m)} style={{padding:"4px 10px",fontSize:12,border:`1px solid ${C.bd}`,borderRadius:4,cursor:"pointer",background:qm===m?C.vi:"transparent",color:qm===m?"white":C.txm}}>{m==="builder"?"Builder":m==="odata"?"OData":m==="fetchxml"?"FetchXML":"SQL"}</button>)}<Tooltip text={t("help.query_modes")}/></div>
             </div>
@@ -1573,7 +1630,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                     </div>
                   ) : (
                     <div style={{display:"flex",flexWrap:"wrap",gap:3,flex:1,alignItems:"center"}}>
-                      {sf.map(f=><span key={f} style={{display:"inline-flex",alignItems:"center",gap:2,padding:"4px 10px",background:C.vid,borderRadius:3,fontSize:12,color:C.lv}}>{f}<button onClick={(e)=>{e.stopPropagation();setSf(sf.filter(x=>x!==f));}} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,lineHeight:1}}><I.X/></button></span>)}
+                      {sf.map(f=>{const gone=fields.length>0&&!loadingFields&&!fieldNameSet.has(f);return <span key={f} title={gone?`"${f}" isn't a column of this table — left out of the query`:undefined} style={{display:"inline-flex",alignItems:"center",gap:2,padding:"4px 10px",background:gone?C.rd+"22":C.vid,border:gone?`1px solid ${C.rd}66`:"none",borderRadius:3,fontSize:12,color:gone?C.rd:C.lv}}>{f}<button onClick={(e)=>{e.stopPropagation();setSf(sf.filter(x=>x!==f));}} style={{background:"none",border:"none",color:C.txd,cursor:"pointer",padding:0,lineHeight:1}}><I.X/></button></span>;})}
                       <button onClick={(e)=>{e.stopPropagation();setPicker(!picker);}} disabled={loadingFields} style={{padding:"3px 10px",background:picker?C.vi:"transparent",border:`1px ${picker?"solid":"dashed"} ${picker?C.vi:C.bd}`,borderRadius:3,color:picker?"white":C.txd,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:3}}>
                         {loadingFields?<Spin s={10}/>:picker?<I.X/>:<I.Plus/>}{picker?"Close":`Columns (${sf.length}/${fields.length})`}
                       </button>
@@ -1809,7 +1866,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                 </span>}
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowTemplates(!showTemplates);setShowHistory(false);setShowSaved(false);}} style={{padding:"4px 8px",background:showTemplates?C.gn+"33":"transparent",border:`1px solid ${showTemplates?C.gn+"44":C.bd}`,borderRadius:4,color:showTemplates?C.gn:C.txm,cursor:"pointer",fontSize:12}} title="Query templates">📝 Templates</button>
-                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(ent,fields,filters)=>{selEnt(ent);afterFields(()=>{setSf(fields);setFilterGroups(filters);});}} onClose={()=>setShowTemplates(false)}/>}
+                  {showTemplates&&<QueryTemplates entities={entities} onSelect={(tEnt,tFields,filters)=>{selEnt(tEnt);afterFields((fl)=>{setSf(tFields);setFilterGroups(filters);setRunNote(unknownColumnsNote(splitKnownColumns(tFields,(fl||fields).map(f=>f.l)).unknown,{source:"template"}));});}} onClose={()=>setShowTemplates(false)}/>}
                 </div>
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setShowHistory(!showHistory);setShowSaved(false);}} style={{padding:"4px 8px",background:showHistory?C.vi+"33":"transparent",border:`1px solid ${C.bd}`,borderRadius:4,color:C.txm,cursor:"pointer",fontSize:12}} title="Query history">🕐{queryHistory.length>0?` ${queryHistory.length}`:""}</button>
@@ -1823,7 +1880,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                           // PII) and reopen in the BUILDER; pre-snapshot entries and raw modes reopen
                           // as the recorded string, with $filter VALUES redacted to "$filter=...".
                           setShowHistory(false);
-                          const restore=()=>{
+                          const restore=(fl)=>{ // fl = the fields just loaded when the table was switched (undefined on the same table: `fields` is current then)
                             if(h.mode==="builder"&&h.builder){
                               // Entries recorded since the structure snapshot exists reopen in the
                               // BUILDER (user request: a builder query restored as raw OData read as
@@ -1834,7 +1891,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
                               setFilterGroups(b.filterGroups?.length?b.filterGroups:[{logic:"and",conditions:[{field:"",op:"eq",value:""}]}]);
                               setGroupLogic(b.groupLogic||"and");
                               setLim(b.limit??0);
-                              setOrderBy(b.orderBy&&b.orderBy.f?{f:b.orderBy.f,dir:b.orderBy.dir==="desc"?"desc":"asc"}:{f:"",dir:"asc"});
+                              // columns / sort column the table no longer has: red chips + a note, as a saved query gets
+                              const names=new Set((fl||fields).map(f=>f.l));
+                              const ob=pruneOrderBy(b.orderBy,names);
+                              setOrderBy(ob);
+                              setRunNote(unknownColumnsNote(splitKnownColumns(b.fields||[],names).unknown,{source:"recorded",orderBy:b.orderBy?.f&&!ob.f?b.orderBy.f:""}));
                               // REL / EXPAND come back too (structure; their condition values are
                               // among the blanked ones). Entries older than that snapshot only know
                               // the clauses existed: say so.

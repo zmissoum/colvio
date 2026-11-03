@@ -71,7 +71,13 @@ export default function AppInventory({ bp, orgInfo }) {
     }).catch(e => { if (!cancelled) { setError(e.message || String(e)); setLoading(false); } });
     return () => { cancelled = true; };
   }, [tick]);
-  const doRefresh = async () => { try { await bridge.clearCache(); } catch {} setTick(t => t + 1); };
+  const doRefresh = async () => {
+    try { await bridge.clearCache(); } catch {}
+    // What was derived from the OLD inventory goes too — kept, the dependency analysis and the
+    // subgrid lists shown after a refresh were the previous ones, under the reloaded apps.
+    depsCache.current = {}; edgesCache.current = null; setDeps(null); setSubgrids({});
+    setTick(t => t + 1);
+  };
 
   const appList = useMemo(() => (inv?.apps || []).map(a => {
     const entry = inv.byApp[a.uid];

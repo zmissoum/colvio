@@ -132,3 +132,25 @@ export function buAdoption(users) {
     .map(r => ({ ...r, rate: r.enrolled ? r.active / r.enrolled : 0 }))
     .sort((a, b) => b.enrolled - a.enrolled || a.bu.localeCompare(b.bu));
 }
+
+/**
+ * What "access" means everywhere in Adoption — stated on screen so the numbers read right: the
+ * user-access audit logs action 64 (via Web: a model-driven app sign-in) AND 65 (via Web
+ * Services: Excel/Outlook add-ins, Power BI, flow connections, S2S application users). The slice
+ * reader counts both — counting 64 alone labelled API-only users as silent (review finding).
+ */
+export const ACCESS_SCOPE_NOTE = "access = app sign-in or web-service (API) access (audit actions 64 and 65)";
+
+/**
+ * The "Never signed in" KPI and list have THREE honest states, in this order of precedence:
+ * the user list couldn't be read (nothing to count against — no number, no 🎉, no export: an
+ * empty list used to render as a green all-clear on a mere fetch failure), the role's members
+ * are still being read (the previous role's numbers must not show under the new role's label),
+ * or a real count — 0 included, that IS the all-clear.
+ * @returns {kind: "unavailable"|"loading"|"ok", text, exportable}
+ */
+export function neverSignedInView({ usersFailed = false, loadingMembers = false, count = 0 } = {}) {
+  if (usersFailed) return { kind: "unavailable", text: "user list unavailable", exportable: false };
+  if (loadingMembers) return { kind: "loading", text: "reading the role's members…", exportable: false };
+  return { kind: "ok", text: Number(count || 0).toLocaleString(), exportable: true };
+}

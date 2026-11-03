@@ -17,9 +17,11 @@ export default function BpfManager({ entity, recordId, orgInfo }) {
   const [msg, setMsg] = useState("");
   const gen = useRef(0);                            // guards a slow load from a previous record
 
-  const load = () => {
+  // nextMsg: what the reload shows — a mutation's "✓ done" used to be wiped by this same reload's
+  // setMsg("") in the same tick, so no success message ever showed.
+  const load = (nextMsg = "") => {
     const g = ++gen.current;
-    setInstances(null); setErr(""); setMsg(""); setPick({});
+    setInstances(null); setErr(""); setMsg(nextMsg); setPick({});
     bridge.getProcessInstances(entity, recordId).then(list => {
       if (gen.current !== g) return;
       setInstances(list || []);
@@ -41,8 +43,7 @@ export default function BpfManager({ entity, recordId, orgInfo }) {
     setBusy(inst.id); setMsg("");
     try {
       await bridge.update(inst.bpfEntitySet, inst.id, body);
-      setMsg(`✓ ${label} done.`);
-      load();
+      load(`✓ ${label} done.`);
     } catch (e) {
       setMsg(`✗ ${label} failed (${inst.bpfEntitySet || "?"}): ${e.message || e}`);
     } finally { setBusy(""); }
@@ -64,7 +65,7 @@ export default function BpfManager({ entity, recordId, orgInfo }) {
   };
 
   if (instances === null) return (<div style={{ ...crd({ padding: 12 }), marginBottom: 12, fontSize: 13, color: C.txm, display: "flex", alignItems: "center", gap: 8 }}><Spin s={14} /> Loading process flows…</div>);
-  if (err) return (<div style={{ ...crd({ padding: 12, borderColor: C.rd + "55" }), marginBottom: 12, fontSize: 13, color: C.rd }}>BPF: {err} <button onClick={load} style={bt(null, { fontSize: 12, marginLeft: 8 })}>↻ Retry</button></div>);
+  if (err) return (<div style={{ ...crd({ padding: 12, borderColor: C.rd + "55" }), marginBottom: 12, fontSize: 13, color: C.rd }}>BPF: {err} <button onClick={() => load()} style={bt(null, { fontSize: 12, marginLeft: 8 })}>↻ Retry</button></div>);
   if (!instances.length) return (<div style={{ ...crd({ padding: "10px 12px" }), marginBottom: 12, fontSize: 12.5, color: C.txd }}>⚙ No business process flow instance on this record.</div>);
 
   return (

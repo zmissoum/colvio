@@ -6,6 +6,7 @@ import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
 import { findDuplicateGroups } from "../dupUtils.js";
 import { prepareUpdate as prepareUpdateForMeta } from "../updateUtils.js";
+import { completionLabel, isIncomplete } from "../explorerUtils.js";
 
 export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateRecord,onUpdateRecords}){
   const[sortField,setSortField]=useState(null);
@@ -317,9 +318,12 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
   const feedbackTimer=useRef(null);
   const showFeedback=(msg,isError=false)=>{clearTimeout(feedbackTimer.current);setCopyFeedback({msg,isError});feedbackTimer.current=setTimeout(()=>setCopyFeedback(""),isError?8000:2000);};
   const n=sortedData.length;
-  const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows)`);};
-  const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows)`);};
-  const copyJSON=()=>{copyText(toJSON());showFeedback(`${t("results.json_copied")} (${n} rows)`);};
+  // An export of a result that stopped early (■ Stop, a failed page) says so in its confirmation:
+  // a CSV/JSON has no header line to carry the note, and a file that looks complete isn't (review finding).
+  const doneNote=isIncomplete(res)?` — ${completionLabel(res)}`:"";
+  const copyCSV=()=>{copyText(toCSV());showFeedback(`${t("results.csv_copied")} (${n} rows${doneNote})`);};
+  const copyExcel=()=>{copyText(toTSV());showFeedback(`Copied for Excel (${n} rows${doneNote})`);};
+  const copyJSON=()=>{copyText(toJSON());showFeedback(`${t("results.json_copied")} (${n} rows${doneNote})`);};
   // Very large lists go to the file row block by row block (a save dialog, nothing assembled in
   // memory); smaller ones keep the one-click download.
   const STREAM_FROM=100000;
@@ -338,10 +342,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
         })));
       }
       await sink.close();
-      showFeedback(`${format==="xlsx"?"XLSX":"CSV"} written — ${n.toLocaleString()} rows${format==="xlsx"&&sink.sheets>1?` on ${sink.sheets} sheets`:""}`);
+      showFeedback(`${format==="xlsx"?"XLSX":"CSV"} written — ${n.toLocaleString()} rows${format==="xlsx"&&sink.sheets>1?` on ${sink.sheets} sheets`:""}${doneNote}`);
     }catch(e){ try{ sink?await sink.abort():await out.abort?.(); }catch{ /* closed */ } showFeedback("Export failed: "+e.message,true); }
   };
-  const dlCSV=()=>{ if(n>STREAM_FROM) return streamToFile("csv"); dl(toCSV(),"text/csv;charset=utf-8",expName(res.entity.l,"csv"));showFeedback(`CSV downloaded (${n} rows)`);};
+  const dlCSV=()=>{ if(n>STREAM_FROM) return streamToFile("csv"); dl(toCSV(),"text/csv;charset=utf-8",expName(res.entity.l,"csv"));showFeedback(`CSV downloaded (${n} rows${doneNote})`);};
   const dlXLSX=async()=>{
     if(n>STREAM_FROM) return streamToFile("xlsx");
     try{
@@ -360,10 +364,10 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,ws,res.entity.l.substring(0,31));
       XLSX.writeFile(wb,expName(res.entity.l,"xlsx"));
-      showFeedback(`XLSX downloaded (${n} rows)`);
+      showFeedback(`XLSX downloaded (${n} rows${doneNote})`);
     }catch(e){showFeedback("XLSX error: "+e.message);}
   };
-  const dlJSON=()=>{dl(toJSON(),"application/json;charset=utf-8",expName(res.entity.l,"json"));showFeedback(`JSON downloaded (${n} rows)`);};
+  const dlJSON=()=>{dl(toJSON(),"application/json;charset=utf-8",expName(res.entity.l,"json"));showFeedback(`JSON downloaded (${n} rows${doneNote})`);};
 
   // ── Duplicate finder ──
   // Analysis runs over res.data (ALL loaded rows, not the filtered view) on RAW values via rawGet:
@@ -423,6 +427,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
             <span style={{fontSize:13,color:C.gn,fontWeight:600}}>{search.trim()&&filteredData.length!==res.data.length?`${filteredData.length.toLocaleString()} of ${res.data.length.toLocaleString()}`:res.data.length.toLocaleString()} records</span>
             {res.fetching&&<span style={{fontSize:11,color:C.cy,background:C.cy+"22",padding:"2px 8px",borderRadius:3,display:"inline-flex",alignItems:"center",gap:4}}><Spin s={8}/> {res.data.length>=5000?`page ${Math.ceil(res.data.length/5000)+1}...`:"loading..."}</span>}
             {res.fetching&&<button onClick={onStop} style={{padding:"1px 8px",fontSize:11,border:`1px solid ${C.rd}44`,borderRadius:3,cursor:"pointer",background:C.rd+"22",color:C.rd,fontWeight:600}}>■ Stop</button>}
+            {isIncomplete(res)&&<span title="The grid doesn't hold every row the query matches" style={{fontSize:11,color:C.yw,background:C.yw+"22",padding:"2px 8px",borderRadius:3,fontWeight:600}}>⚠ {completionLabel(res)}</span>}
             {!res.fetching&&<span style={{fontSize:11,color:C.txd}}>· {res.elapsed}</span>}
             {res.fetching&&<span style={{fontSize:11,color:C.txd}}>{res.elapsed}</span>}
           </div>
@@ -535,8 +540,8 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
         </div>
       )}
       {!res.fetching && res.data.length > 0 && sortedData.length>0 && (
-        <div style={{padding:"6px 16px",textAlign:"center",color:C.txd,fontSize:12,borderTop:`1px solid ${C.bd}`}}>
-          {search.trim()&&filteredData.length!==res.data.length?`${filteredData.length.toLocaleString()} of ${res.data.length.toLocaleString()} records shown (filtered)`:`${res.data.length.toLocaleString()} records — loading complete`}
+        <div style={{padding:"6px 16px",textAlign:"center",color:isIncomplete(res)?C.yw:C.txd,fontSize:12,borderTop:`1px solid ${C.bd}`}}>
+          {search.trim()&&filteredData.length!==res.data.length?`${filteredData.length.toLocaleString()} of ${res.data.length.toLocaleString()} records shown (filtered)${isIncomplete(res)?` — ${completionLabel(res)}`:""}`:`${res.data.length.toLocaleString()} records — ${completionLabel(res)}`}
         </div>
       )}
 
