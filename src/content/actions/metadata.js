@@ -14,7 +14,7 @@ const ACTIONS = {
     // Intersect (N:N) tables — teammembership, systemuserroles, the custom many-to-many
     // ones — are listed too, flagged isIntersect: they are queryable like any table (the
     // Explorer reads them), only not created through a POST (the Loader leaves them out).
-    const selE = "LogicalName,DisplayName,EntitySetName,PrimaryIdAttribute,IsCustomEntity,IsManaged,MetadataId,IsIntersect";
+    const selE = "LogicalName,DisplayName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute,IsCustomEntity,IsManaged,MetadataId,IsIntersect";
     try { rawE = await dvRequest("GET", `EntityDefinitions?$select=${selE},TableType`); }
     catch { rawE = await dvRequest("GET", `EntityDefinitions?$select=${selE}`); }
     result = (rawE.value || []).map(e => ({
@@ -22,6 +22,8 @@ const ACTIONS = {
       display: e.DisplayName?.UserLocalizedLabel?.Label || e.LogicalName,
       entitySet: e.EntitySetName || (e.LogicalName + "s"),
       primaryId: e.PrimaryIdAttribute || null,
+      // the Loader resolves a lookup column of NAMES (what an export writes) on this field
+      primaryName: e.PrimaryNameAttribute || null,
       isCustom: e.IsCustomEntity || false,
       isManaged: e.IsManaged || false,
       isIntersect: e.IsIntersect === true,

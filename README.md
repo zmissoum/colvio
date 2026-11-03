@@ -135,7 +135,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 - **↩ Rollback** — created GUIDs are captured from the batch responses; one typed confirmation deletes exactly the records a run created
 - **Δ Delta mode** — fetch current org values and send only the fields that changed; unchanged rows skipped entirely
 - **Team-aware owner lookups** — direct `ownerid` GUIDs are probed user-vs-team and bound to the right entity set
-- Smart auto-mapping with metadata-driven lookup detection (auto-skips Lookup-type fields, picks alt-keys over PKs, warns on non-writable fields per mode)
+- **Auto-mapping that follows the table** — columns matched by logical name, OData name or **display name** (a Dynamics export's headers map as they are; Excel's hidden "(Do Not Modify)" columns told apart: the record id becomes the primary key, the checksum is skipped), and matched again whenever the table is picked or its metadata arrives (manual choices kept, lookups rebuilt); a lookup column of names becomes a resolve lookup on the related table's primary name, choice labels get the picklist transform; under the table picker, how many columns the table accounts for and a one-click switch when the headers name another table; lookup-type fields auto-skipped, alt-keys preferred over PKs, non-writable fields warned per mode
 - **Column transforms**: picklist/statecode **label→value** (OptionSet preloaded; unmatched labels reported, never silently dropped), locale-aware dates (`dd/mm/yyyy`, US auto-detect, time + AM/PM), locale-aware numbers (`1,5`, `1.234,56`), booleans EN/FR
 - **Mapping templates** — save and reload a full configuration (mappings, lookups, key, mode) per entity
 - **Tunable performance**: batch size (1-500) × threads (1-10) — default 200×6 for ~3-4k rec/sec
@@ -311,7 +311,7 @@ Colvio brings the same philosophy to the Microsoft ecosystem:
 | Lines of code | ~27,100 |
 | API actions | 107 |
 | React components | 53 |
-| Unit tests | 794 |
+| Unit tests | 813 |
 | Build size | ~1,310 KB panel (+430 KB xlsx & +373 KB pptx chunks on demand) |
 | Languages | EN / FR |
 | Price | Free |

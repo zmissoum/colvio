@@ -5,6 +5,7 @@ import AssociationLoader from "./AssociationLoader.jsx";
 import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual, defaultMatchKey, migrationOverridePair, isTransientError, isNullToken, stripHtml, coerceForFieldType, COERCE_NUMERIC_TYPES, valuesToVerifyOneByOne } from "../loaderUtils.js";
 import { createDemoLoaderIO } from "../loaderDemo.js";
 import { decodeBytes } from "../textDecode.js";
+import { autoMap, guessTable, mappingFit } from "../loaderMapping.js";
 import { C, I, Spin, ENTS, FLDS, ROWS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProd } from "../shared.jsx";
 
 const logStatusColor=(st)=>st==="CREATED"||st==="WOULD CREATE"?C.gn
@@ -45,6 +46,12 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // Turning migration mode ON auto-maps any still-unmapped CSV column whose header matches an
   // override field, so the user doesn't have to retype it.
   useEffect(()=>{if(!migrationMode)return;setMaps(prev=>prev.map(m=>{if(m.d365||m.skip)return m;const lc=String(m.csv||"").toLowerCase();return MIGRATION_FIELDS.includes(lc)?{...m,d365:lc}:m;}));},[migrationMode]);
+
+  // One match of the file's columns against the current table (loaderMapping.js): logical, OData or
+  // display name, the export's "(Do Not Modify)" columns told apart. `prev` keeps the rows the user
+  // edited by hand when their field still exists on the table; null starts from the names alone.
+  const mapsMetaRef=useRef(null); // the field metadata the current mapping was computed against
+  const runAutoMap=(headers,rows,prev)=>autoMap({headers,rows,fields:targetFieldsMeta.length?targetFieldsMeta:targetFields,lookupsMeta:targetLookups,target,tableDisplay:entityList.find(e=>e.l===target)?.d||"",primaryNames:Object.fromEntries(entityList.filter(e=>e.pn).map(e=>[e.l,e.pn])),prev});
 
   const parseData=(text)=>{
     const sep=detectSep(text);
@@ -87,82 +94,11 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     });
     setCsvData({h:headers,r:rows,ln});
 
-    const commonMapping={firstname:"firstname",lastname:"lastname",email:"emailaddress1",phone:"telephone1",title:"jobtitle",mailingstreet:"address1_line1",mailingcity:"address1_city",mailingpostalcode:"address1_postalcode",mailingcountry:"address1_country",name:"name",accountnumber:"accountnumber",description:"description",website:"websiteurl",fax:"fax"};
-    const d365Set=new Set(targetFields);
-
-    const SKIP_FIELDS=new Set(["createdon","modifiedon","createdby","modifiedby","owningbusinessunit","owningteam","owninguser","versionnumber","importsequencenumber","overriddencreatedon","timezoneruleversionnumber","utcconversiontimezonecode"]);
-
-    const GUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const primaryKey=(target+"id").toLowerCase();
-    const lookupCols=new Set();
-    const autoLookups=[];
-
-    headers.filter(h=>!h.includes(".")).forEach(h=>{
-      const low=h.toLowerCase();
-      if(low===primaryKey) return;
-      if(low.endsWith("id") && low!==primaryKey){
-        const sample=rows[0]?.[h];
-        if(sample && GUID_RE.test(sample)){
-          lookupCols.add(h);
-          const meta=findLookupMeta(h);
-          if(meta){
-            autoLookups.push({src:"",csv:h,entity:meta.targetEntity,nav:meta.navProperty,d365f:"",fb:"skip",mode:"direct"});
-          }else{
-            const entName=low.replace(/id$/,"").replace(/^_/,"").replace(/_value$/,"");
-            const knownLookups={"parentaccountid":"account","parentcontactid":"contact","ownerid":"systemuser","owningbusinessunit":"businessunit","transactioncurrencyid":"transactioncurrency","primarycontactid":"contact"};
-            const targetEnt=knownLookups[low]||entName;
-            autoLookups.push({src:"",csv:h,entity:targetEnt,nav:low,d365f:"",fb:"skip",mode:"direct"});
-          }
-        }
-      }
-    });
-
-    // Lookup-type field logical names (can only be set via @odata.bind, never direct).
-    // We capture this here so parseData stays a single source of truth, even though the
-    // retroactive useEffect will also catch fields that load asynchronously after parsing.
-    const lookupTypeFields = new Set(
-      targetFieldsMeta
-        .filter(f => { const t = f.type || f.t; return t === "Lookup" || t === "Customer" || t === "Owner"; })
-        .map(f => (f.logical || f.l || "").toLowerCase())
-    );
-
-    // Dot in a header (e.g. "primarycontactid.emailaddress1") means "resolve this lookup by an
-    // alternate key". But a plain data column can legitimately contain a dot (e.g. "Q1.Revenue")
-    // and must NOT be hijacked into a bogus lookup against a non-existent entity. When target
-    // metadata is loaded we treat a dotted header as a lookup ONLY if its prefix matches a real
-    // lookup field/nav; otherwise it's a normal, mappable column. Before metadata arrives we can't
-    // tell, so we keep the heuristic (the retroactive effect enriches genuine ones once it loads).
-    const metaKnown=targetLookups.length>0;
-    const dotHeaders=headers.filter(h=>h.includes("."));
-    const dotLookupCols=new Set(dotHeaders.filter(col=>!metaKnown||findLookupMeta(col)));
-
-    setMaps(headers.filter(h=>!dotLookupCols.has(h)).map(h=>{
-      const low=h.toLowerCase();
-      if(SKIP_FIELDS.has(low)) return {csv:h,d365:"",transform:"",skip:true};
-      if(low===primaryKey) return {csv:h,d365:"",transform:"",skip:true,isPK:true};
-      if(lookupCols.has(h)) return {csv:h,d365:"",transform:"",skip:true,isLookup:true};
-      if(lookupTypeFields.has(low)) return {csv:h,d365:"",transform:"",skip:true,isLookup:true};
-      if(low==="statecode") return {csv:h,d365:"statecode",transform:"statecode"};
-      if(low==="statuscode") return {csv:h,d365:"statuscode",transform:"int"};
-      if(d365Set.has(low)) return {csv:h,d365:low,transform:""};
-      if(d365Set.has(h)) return {csv:h,d365:h,transform:""};
-      if(commonMapping[low]) return {csv:h,d365:commonMapping[low],transform:""};
-      return {csv:h,d365:"",transform:""};
-    }));
-
-    const parents=new Set();const lks=[...autoLookups];
-    dotHeaders.filter(col=>dotLookupCols.has(col)).forEach(col=>{
-      const p=col.split(".")[0];
-      if(parents.has(p)) return;
-      parents.add(p);
-      const meta=findLookupMeta(col);
-      if(meta){
-        lks.push({src:p+"Id",csv:col,entity:meta.targetEntity,nav:meta.navProperty,d365f:"",fb:"skip",mode:"resolve"});
-      }else{
-        lks.push({src:p+"Id",csv:col,entity:p.toLowerCase(),nav:`parentcustomerid_${p.toLowerCase()}`,d365f:"",fb:"skip",mode:"resolve"});
-      }
-    });
-    setLookups(lks);setTemplateNote("");setShowTemplates(false);setDeleteConfirm("");setStep(1);
+    // the columns matched to the table selected right now — matched again when the table changes
+    // or its metadata arrives (the table is picked on the next step, after the file)
+    const am=runAutoMap(headers,rows,null);
+    mapsMetaRef.current=targetFieldsMeta;
+    setMaps(am.maps);setLookups(am.lookups);setTemplateNote("");setShowTemplates(false);setDeleteConfirm("");setStep(1);
     return true;
   };
 
@@ -310,7 +246,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
       // If the template's target field no longer exists on the entity, skip the d365 part but keep the column.
       if(t.d365 && validFieldSet.size>0 && !validFieldSet.has(t.d365.toLowerCase())){ droppedFields.push(t.d365); return {...m,d365:"",transform:t.transform||""}; }
       appliedCols++;
-      return {...m,d365:t.d365||"",transform:t.transform||"",skip:!!t.skip,isPK:!!t.isPK,isLookup:!!t.isLookup};
+      return {...m,d365:t.d365||"",transform:t.transform||"",skip:!!t.skip,isPK:!!t.isPK,isLookup:!!t.isLookup,manual:true};
     }));
     // Lookups: keep only those whose source CSV column still exists.
     const tplLookups=(tpl.lookups||[]).filter(lk=>!lk.csv||headerSet.has(lk.csv));
@@ -366,7 +302,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     bridge.getEntities().then(data=>{
       if(data&&Array.isArray(data)){
         // intersect (N:N) tables are loaded by association (AssociationLoader) — flagged, badged N:N
-        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",pk:e.primaryId||null,i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",tt:e.isIntersect?"Intersect":(e.tableType||"Standard"),isIntersect:!!e.isIntersect})).sort((a,b)=>a.d.localeCompare(b.d)));
+        setLiveEntities(data.map(e=>({l:e.logical,d:e.display,p:e.entitySet||e.logical+"s",pk:e.primaryId||null,pn:e.primaryName||null,i:(e.isCustom&&isTrulyCustom(e.logical))?"⚙️":"📋",tt:e.isIntersect?"Intersect":(e.tableType||"Standard"),isIntersect:!!e.isIntersect})).sort((a,b)=>a.d.localeCompare(b.d)));
       }
     }).catch(()=>{});
   },[isLive]);
@@ -381,7 +317,6 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   const[loadingFields,setLoadingFields]=useState(false);
   const fieldGen=useRef(0); // generation counter to discard stale field fetches
   const prevTargetRef=useRef(target);  // detect a REAL entity switch (vs initial mount / same value)
-  const remapPendingRef=useRef(false); // re-validate field mappings once the new entity's metadata loads
 
   // Pre-flight length check — flag mapped text fields whose CSV values exceed the column MaxLength
   // (the classic failure when migrating HTML / rich text). Memoized so the row scan only re-runs when
@@ -461,6 +396,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
   // activities). Used to badge it in the mapping picker: its name is often ONE character away
   // from a business field, and mapping a business number onto it is a guaranteed Edm.Guid 400.
   const pkLogical=(()=>{const m0=targetFieldsMeta.find(f=>f.isPrimaryId||f.pk);return m0?(m0.logical||m0.l):(target?target+"id":"");})();
+  const displayOf=useMemo(()=>new Map(targetFieldsMeta.map(f=>[f.logical||f.l,f.display||f.d||""])),[targetFieldsMeta]); // logical → display name, for the field picker
 
   const sfIdWarnings=useMemo(()=>{
     if(deleteMode||!csvData.r.length) return [];
@@ -542,62 +478,22 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(prevTargetRef.current===target) return; // initial mount / re-selecting the same entity
     prevTargetRef.current=target;
     setUKey({d:"",c:""});setUpdateOnly(false);setDeltaMode(false);setDeleteMode(false);setDeleteConfirm("");setVerifyExists(false);
-    setLookups([]); // lookups (nav property + resolve config) belonged to the OLD entity — clear them so they can't bind wrongly on the new one
-    remapPendingRef.current=true;
+    setLookups([]); // lookups (nav property + resolve config) belonged to the OLD entity — the new table's metadata rebuilds them (below)
   },[target]);
 
-  // Lookup-type field logical names — these can ONLY be set via @odata.bind, not direct mapping.
-  // Auto-skipping them prevents Dataverse 400 errors when CSV columns happen to match lookup field names.
-  const lookupFieldSet = useMemo(() => {
-    const s = new Set();
-    for (const f of targetFieldsMeta) {
-      const t = f.type || f.t;
-      if (t === "Lookup" || t === "Customer" || t === "Owner") {
-        s.add((f.logical || f.l || "").toLowerCase());
-      }
-    }
-    return s;
-  }, [targetFieldsMeta]);
-
-  // Retroactive: when metadata arrives after the CSV was parsed, demote any auto-mapped
-  // entries that point to a lookup-type field. Their value belongs in the Parent Lookups
-  // section via @odata.bind, not in the body.
-  useEffect(() => {
-    if (!lookupFieldSet.size) return;
-    setMaps(prev => {
-      let changed = false;
-      const updated = prev.map(m => {
-        if (m.skip) return m;
-        const d365Low = (m.d365 || "").toLowerCase();
-        if (d365Low && lookupFieldSet.has(d365Low)) {
-          changed = true;
-          return { ...m, d365: "", skip: true, isLookup: true };
-        }
-        return m;
-      });
-      return changed ? updated : prev;
-    });
-  }, [targetFieldsMeta]);
-
-  // After an entity switch, drop any field mapping whose target doesn't exist on the new entity (it
-  // belonged to the old one and would 400 per row). Valid mappings (e.g. name→name) survive; the
-  // statecode/statuscode transforms are kept. Runs once, when the new entity's metadata has loaded.
+  // The table is chosen AFTER the file — and its metadata arrives later still — so the mapping
+  // computed when the file was read looked at another table (or at no metadata at all). Each time
+  // this table's metadata arrives, a switch or the first read finishing after the file, every
+  // column is matched again: the choices made by hand are kept when their field exists on the
+  // table, the rest is recomputed, the lookups rebuilt for this table.
   useEffect(()=>{
-    if(!remapPendingRef.current||!targetFieldsMeta.length) return;
-    remapPendingRef.current=false;
-    const valid=new Set(targetFieldsMeta.map(f=>(f.logical||f.l||"").toLowerCase()));
-    setMaps(prev=>{
-      let changed=false;
-      const updated=prev.map(m=>{
-        if(!m.d365||m.skip) return m;
-        const low=m.d365.toLowerCase();
-        if(low==="statecode"||low==="statuscode"||valid.has(low)) return m;
-        changed=true;
-        return {...m,d365:""};
-      });
-      return changed?updated:prev;
-    });
+    if(!csvData.h.length||mapsMetaRef.current===targetFieldsMeta) return;
+    mapsMetaRef.current=targetFieldsMeta;
+    if(isLive&&!targetFieldsMeta.length) return; // not read yet (or unreadable): nothing to match against
+    const am=runAutoMap(csvData.h,csvData.r,maps);
+    setMaps(am.maps);setLookups(am.lookups);
   },[targetFieldsMeta]);
+
 
   // Find lookup metadata matching a CSV column. Handles dot-notation (e.g.
   // "fou_accountextension.fou_sapcustomernumber") and OData _logicalname_value
@@ -1614,6 +1510,17 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   ⚠ <b>Virtual table</b> — its data lives in an external source behind a data provider. Writes (create/update/delete) only work if the provider implements them; most virtual tables are <b>read-only</b> and every row will fail with the provider's error.
                 </div>
               );})()}
+              {csvData.h.length>0&&(()=>{
+                // how the file fits this table (loaderMapping.js), and the table its headers name when it is another one
+                const fit=mappingFit(maps,lookups);
+                const guess=guessTable(csvData.h,csvData.r,entityList);
+                const other=guess&&guess.logical!==target?guess:null;
+                return (<div style={{marginTop:6,fontSize:11.5,lineHeight:1.5,color:C.txm}}>
+                  {loadingFields?<span>reading the table's columns…</span>
+                    :<span><b style={{color:fit.unmatched.length?C.yw:C.gn}}>{fit.matched} of {fit.total} column{fit.total===1?"":"s"}</b> match this table{fit.lookups?` (${fit.lookups} lookup${fit.lookups>1?"s":""}${fit.pk?", the record id":""})`:fit.pk?" (the record id included)":""}{fit.unmatched.length>0&&<> — not matched: <span style={{...mono,fontSize:11,color:C.txd}}>{fit.unmatched.slice(0,6).join(", ")}{fit.unmatched.length>6?` +${fit.unmatched.length-6}`:""}</span></>}{fit.ambiguous.length>0&&<> · {fit.ambiguous.length} header{fit.ambiguous.length>1?"s":""} two fields share ({fit.ambiguous.slice(0,3).join(", ")}) — pick the field by hand</>}</span>}
+                  {other&&<div style={{marginTop:3,color:C.cy}}>This file looks like an export of <b>{other.display}</b> ({other.reason}) — <button onClick={()=>setTarget(other.logical)} style={{padding:"1px 8px",fontSize:11,background:"transparent",color:C.cy,border:`1px solid ${C.cy}55`,borderRadius:4,cursor:"pointer",fontWeight:600}}>switch to {other.display}</button></div>}
+                </div>);
+              })()}
             </div>
             <div style={{...crd({padding:12}),flex:1}}>
               <label style={{fontSize:12,color:C.txm,fontWeight:500,display:"block",marginBottom:4}}>Import mode</label>
@@ -1708,7 +1615,10 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                   )}
                 </div>
               </div>
-              <span style={{fontSize:12,color:C.txd}}>{csvFile?.name} — {csvData.r.length} rows</span>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={()=>{const am=runAutoMap(csvData.h,csvData.r,null);mapsMetaRef.current=targetFieldsMeta;setMaps(am.maps);setLookups(am.lookups);}} title="Match the columns to this table's fields again from their names (logical, OData or display name) — your manual choices are replaced" style={{padding:"3px 9px",fontSize:11,background:"transparent",color:C.cy,border:`1px solid ${C.cy}55`,borderRadius:4,cursor:"pointer",fontWeight:600}}>↻ Auto-map</button>
+                <span style={{fontSize:12,color:C.txd}}>{csvFile?.name} — {csvData.r.length} rows</span>
+              </div>
             </div>
             {/* Parse transparency: when the file has far more LINES than parsed RECORDS, say so —
                 quoted line breaks inside cells (multiline/HTML) are the usual, legitimate reason.
@@ -1732,9 +1642,9 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
                 return (<tr key={i} style={{borderBottom:`1px solid ${C.bd}`,opacity:isSystem?0.4:1}}>
                 <td style={tds}><span style={{color:C.cy,...mono,fontSize:12}}>{m.csv}</span></td>
                 <td style={{...tds,textAlign:"center",color:isSystem?skipColor:isPicklist?C.or:m.d365?C.gn:C.txd}}>{isSystem?"⚠":isPicklist?"⚙":m.d365?<I.Arrow/>:"—"}</td>
-                <td style={tds}>{isSystem?<span style={{fontSize:11,color:skipColor,...mono}}>{skipLabel}</span>:<><input value={m.d365} onChange={e=>{const u=[...maps];u[i]={...m,d365:e.target.value};setMaps(u);}} placeholder="(skip)" list={`dl${i}`} style={inp({fontSize:12,...mono,padding:"4px 10px",color:m.d365?C.tx:C.txd})}/><datalist id={`dl${i}`}>{targetFields.map(f=><option key={f} value={f} label={f===pkLogical?"🔑 PRIMARY KEY — Dataverse generates it":undefined}/>)}</datalist>
+                <td style={tds}>{isSystem?<span style={{fontSize:11,color:skipColor,...mono}}>{skipLabel}</span>:<><input value={m.d365} onChange={e=>{const u=[...maps];u[i]={...m,d365:e.target.value,manual:true};setMaps(u);}} placeholder="(skip)" list={`dl${i}`} style={inp({fontSize:12,...mono,padding:"4px 10px",color:m.d365?C.tx:C.txd})}/><datalist id={`dl${i}`}>{targetFields.map(f=><option key={f} value={f} label={f===pkLogical?"🔑 PRIMARY KEY — Dataverse generates it":(displayOf.get(f)||undefined)}/>)}</datalist>
                   {m.d365===pkLogical&&!m.skip&&<div style={{fontSize:10.5,color:C.yw,marginTop:2}}>🔑 This is the table's PRIMARY KEY (a GUID Dataverse generates) — business numbers belong in a text/number field or the alternate-key match. Watch for a similarly-named field.</div>}</>}</td>
-                <td style={tds}>{!isSystem&&<select value={m.transform} onChange={e=>{const u=[...maps];u[i]={...m,transform:e.target.value};setMaps(u);}} style={inp({width:"auto",fontSize:11,padding:"2px 4px",color:isPicklist&&!m.transform?C.or:C.tx})}>
+                <td style={tds}>{!isSystem&&<select value={m.transform} onChange={e=>{const u=[...maps];u[i]={...m,transform:e.target.value,manual:true};setMaps(u);}} style={inp({width:"auto",fontSize:11,padding:"2px 4px",color:isPicklist&&!m.transform?C.or:C.tx})}>
                   <option value="">{isPicklist?"⚠ choose":"—"}</option>
                   <option value="statecode">statecode (Active→0, Inactive→1)</option>
                   <option value="picklist">picklist (label→int)</option>
@@ -1764,7 +1674,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
             :<div style={{display:"flex",flexDirection:"column",gap:8}}>
               {lookups.map((lk,i)=>(
                 <div key={i} style={{background:C.bg,border:`1px solid ${C.bd}`,borderRadius:7,padding:bp.mobile?10:12}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontWeight:600,fontSize:13,color:C.cy}}>Lookup #{i+1}</span><button onClick={()=>setLookups(lookups.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:C.txd,cursor:"pointer"}}><I.Trash/></button></div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontWeight:600,fontSize:13,color:C.cy}}>Lookup #{i+1}{lk.byName&&<span style={{fontSize:11,color:C.txm,marginLeft:8,fontWeight:400}}>the file holds the related record's <b>name</b>, not its id — resolved on {lk.d365f?<code style={{...mono,fontSize:11,color:C.cy}}>{lk.d365f}</code>:"the field you pick below"}; two records with the same name resolve to the first</span>}</span><button onClick={()=>setLookups(lookups.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:C.txd,cursor:"pointer"}}><I.Trash/></button></div>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
                     <span style={{fontSize:11,color:C.txm}}>Mode:</span>
                     {[{id:"resolve",label:"Resolve (search for GUID)",desc:"CSV value is an identifier to search in D365"},{id:"direct",label:"Direct GUID",desc:"CSV value is already a D365 GUID"}].map(m=>(
