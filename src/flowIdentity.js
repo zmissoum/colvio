@@ -7,7 +7,7 @@
 //  - Classic workflows, actions, dialogs: the XAML. A Send Email step's From is a user or a queue,
 //    fixed in the step or taken from the row (its owner…).
 // Pure: parsing and labelling. The accounts behind the connections come from Who runs it's reads.
-import { parseFlowConnections, connectorName } from "./identities.js";
+import { parseFlowConnections, connectorName, instanceIndex, instanceOf } from "./identities.js";
 
 const lc = (v) => (v == null ? "" : String(v).toLowerCase());
 // "@{variables('x')}", "@triggerOutputs()?['body/emailaddress1']" — a value set at run time
@@ -166,16 +166,18 @@ export function parseFlowIdentity(clientdata) {
 
 // The account each connection of a flow resolves to, from Who runs it's reads: the connection
 // reference (by logical name) → the connection instance Dataverse stores (the account it is
-// signed in as). { [key]: { connector, invoker, refName, connected, account, known } }
+// signed in as). { [key]: { connector, invoker, refName, connected, account, known, unreadable } }
+// base = { refs, instances }, or { error } when those reads failed: then every account is
+// "not readable" — never "not stored in Dataverse", which would be a claim about the org.
 export function flowConnectionAccounts(connections, base) {
+  const unreadable = !!base?.error;
   const refByLogical = new Map((base?.refs || []).map(r => [lc(r.logicalName), r]));
-  const instByRef = new Map(), instByInternal = new Map();
-  for (const i of base?.instances || []) { if (i.refId) instByRef.set(lc(i.refId), i); if (i.internalId) instByInternal.set(lc(i.internalId), i); }
+  const idx = instanceIndex(base?.instances);
   const out = {};
   for (const c of connections || []) {
     const ref = c.refLogicalName ? refByLogical.get(c.refLogicalName) : null;
-    const inst = ref ? (instByRef.get(lc(ref.id)) || (ref.connectionId ? instByInternal.get(lc(ref.connectionId)) : null)) : (c.connectionName ? instByInternal.get(c.connectionName) : null);
-    out[c.key] = { connector: connectorName(c.api), invoker: c.source === "invoker", refName: ref?.name || "", connected: ref ? !!ref.connectionId : null, account: inst?.accountName || "", known: !!inst };
+    const inst = ref ? instanceOf(idx, ref) : (c.connectionName ? idx.byInternal.get(lc(c.connectionName)) : null);
+    out[c.key] = { connector: connectorName(c.api), invoker: c.source === "invoker", refName: ref?.name || "", connected: ref ? !!ref.connectionId : null, account: inst?.accountName || "", known: !!inst, unreadable };
   }
   return out;
 }
@@ -193,6 +195,7 @@ export function flowRunsAs(fi, accounts) {
     if (a.invoker) push("invoker", `whoever runs it (their own ${a.connector} connection)`, a.connector);
     else if (a.account) push("account", a.account, a.connector);
     else if (a.connected === false) push("unbound", `${a.connector}: no connection bound — can't run`, a.connector);
+    else if (a.unreadable) push("unknown", `${a.connector}: connections not readable`, a.connector);
     else push("unknown", `${a.connector}: account not stored in Dataverse`, a.connector);
   }
   if (!out.length) push("none", fi.actionCount ? "no connector — built-in actions only" : "no action");
@@ -217,57 +220,146 @@ export function flowEmailSenders(fi, accounts) {
     else if (e.via === "approvals") push("approvals", "Microsoft, the approval notification", e);
     else if (a?.invoker) push("invoker", `whoever runs it (their ${e.connector} mailbox)`, e);
     else if (a?.account) push("connection", `${a.account}${e.kind === "reply" ? " (reply)" : ""} — the ${e.connector} connection`, e);
+    else if (a?.unreadable) push("unknown", `the ${e.connector} connection's account (connections not readable)`, e);
     else push("unknown", `the ${e.connector} connection's account (not stored in Dataverse)`, e);
   }
   return out;
 }
 
 // ── classic workflows (XAML) ──
+// The designer wrote two shapes over the years, both still found on upgraded orgs:
+//  - activity references: <mxswa:ActivityReference AssemblyQualifiedName="…Activities.SendEmail…">
+//    with an <mxswa:ActivityReference.Arguments> block of <InArgument x:Key="…">value</InArgument>
+//    (a value is text, a variable "[Name]", a VB literal like [New Object() { … }], or a nested
+//    element — a ReferenceLiteral for a type, or another activity whose result IS the value);
+//  - direct elements: <mxswa:GetEntityProperty Attribute="ownerid" Entity="[primaryEntity]" … />
+//    with the arguments as XML attributes.
+// Fixed values come either as a CreateCrmType activity (Type / LogicalName / Id / Name) or as an
+// EvaluateExpression whose Parameters list "WorkflowPropertyType.EntityReference, "systemuser",
+// "id", "name"". Nothing here is verified against every org: what can't be followed is said so.
+const ACT_NAMES = "SendEmail|SetEntityProperty|GetEntityProperty|CreateCrmType|CreateEntity|EvaluateExpression";
+const LEAF_RE = new RegExp(`AssemblyQualifiedName="Microsoft\\.Crm\\.Workflow\\.Activities\\.(${ACT_NAMES})\\b[^"]*"([^>]*)>`, "g");
+const ELEM_RE = new RegExp(`<mxswa:(${ACT_NAMES})(?=[\\s/>])([^>]*?)(/?)>`, "g");
+const ARGS_OPEN = "<mxswa:ActivityReference.Arguments>", ARGS_CLOSE = "</mxswa:ActivityReference.Arguments>";
+const xmlDecode = (s) => String(s || "").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
-const LEAF_RE = /AssemblyQualifiedName="Microsoft\.Crm\.Workflow\.Activities\.(SendEmail|SetEntityProperty|GetEntityProperty|CreateCrmType|CreateEntity)\b[^"]*"([^>]*)>/g;
-const ARG_RE = /<(?:In|Out)Argument\b[^>]*x:Key="([^"]+)"[^>]*?(?:\/>|>([\s\S]*?)<\/(?:In|Out)Argument>)/g;
+// the leaf's own Arguments block (balanced: an argument may hold another activity with its own block)
+function argsBlock(xaml, start) {
+  const o = xaml.indexOf(ARGS_OPEN, start);
+  const nextAct = xaml.indexOf("AssemblyQualifiedName=", start);
+  if (o < 0 || (nextAct >= 0 && nextAct < o)) return null;
+  let depth = 1, i = o + ARGS_OPEN.length;
+  while (depth > 0) {
+    const no = xaml.indexOf(ARGS_OPEN, i), nc = xaml.indexOf(ARGS_CLOSE, i);
+    if (nc < 0) return null;
+    if (no >= 0 && no < nc) { depth++; i = no + ARGS_OPEN.length; } else { depth--; i = nc + ARGS_CLOSE.length; }
+  }
+  return { from: o + ARGS_OPEN.length, to: i - ARGS_CLOSE.length };
+}
 
-// the leaf activities that build and send emails, each with its arguments { key: value }
+// the top-level In/Out arguments of a block: { args, outs, nested } — nested = the arguments whose
+// value is another activity (its result is the argument's value), with their spans in the xaml
+function topArgs(xaml, from, to) {
+  const block = xaml.slice(from, to);
+  const args = {}, outs = [], nested = [];
+  const open = /<(In|Out)Argument(?=[\s/>])([^>]*?)(\/?)>/g;
+  const tag = /<(\/?)(?:In|Out)Argument(?=[\s/>])[^>]*?(\/?)>/g;
+  let m;
+  while ((m = open.exec(block))) {
+    const key = /x:Key="([^"]+)"/.exec(m[2])?.[1] || "";
+    if (m[3] === "/") { if (key) args[key] = ""; continue; }
+    let depth = 1, closeAt = -1, after = -1;
+    tag.lastIndex = open.lastIndex;
+    let n;
+    while ((n = tag.exec(block))) {
+      if (n[1] === "/") { depth--; if (depth === 0) { closeAt = n.index; after = tag.lastIndex; break; } }
+      else if (n[2] !== "/") depth++;
+    }
+    if (closeAt < 0) break;
+    const content = block.slice(open.lastIndex, closeAt);
+    if (key) {
+      args[key] = xmlDecode(content.trim());
+      if (m[1] === "Out") outs.push(args[key]);
+      if (/AssemblyQualifiedName=|<mxswa:(?:SendEmail|SetEntityProperty|GetEntityProperty|CreateCrmType|CreateEntity|EvaluateExpression)(?=[\s/>])/.test(content)) nested.push({ key, from: from + open.lastIndex, to: from + closeAt });
+    }
+    open.lastIndex = after;
+  }
+  return { args, outs, nested };
+}
+
+// the leaf activities that build and send emails, each with its arguments { key: value } and the
+// values it writes (outs) — both shapes; an activity nested in another's argument gets a synthetic
+// variable so the chain still resolves
 function leafActivities(xaml) {
   const out = [];
   LEAF_RE.lastIndex = 0;
   let m;
   while ((m = LEAF_RE.exec(xaml))) {
-    const start = m.index + m[0].length;
-    const end = xaml.indexOf("</mxswa:ActivityReference.Arguments>", start);
-    const next = xaml.indexOf("AssemblyQualifiedName=", start);
+    const b = argsBlock(xaml, m.index + m[0].length);
+    const t = b ? topArgs(xaml, b.from, b.to) : { args: {}, outs: [], nested: [] };
+    out.push({ type: m[1], displayName: /DisplayName="([^"]*)"/.exec(m[2])?.[1] || "", at: m.index, args: t.args, outs: t.outs, nested: t.nested });
+  }
+  ELEM_RE.lastIndex = 0;
+  while ((m = ELEM_RE.exec(xaml))) {
     const args = {};
-    if (end >= 0 && (next < 0 || next > end)) {
-      const slice = xaml.slice(start, end);
-      ARG_RE.lastIndex = 0;
-      let a;
-      while ((a = ARG_RE.exec(slice))) args[a[1]] = (a[2] || "").trim();
+    for (const a of m[2].matchAll(/([\w:.]+)="([^"]*)"/g)) args[a[1]] = xmlDecode(a[2]);
+    const outKey = m[1] === "GetEntityProperty" ? "Value" : "Result";
+    out.push({ type: m[1], displayName: args.DisplayName || "", at: m.index, args, outs: args[outKey] ? [args[outKey]] : [], nested: [] });
+  }
+  out.sort((a, b) => a.at - b.at);
+  let n = 0;
+  for (const a of out) {
+    for (const nest of a.nested) {
+      const inner = out.find(x => x !== a && x.at >= nest.from && x.at < nest.to);
+      if (!inner) continue;
+      const v = `[__nested${++n}]`;
+      a.args[nest.key] = v;
+      inner.outs.push(v);
     }
-    out.push({ type: m[1], displayName: /DisplayName="([^"]*)"/.exec(m[2])?.[1] || "", args });
   }
   return out;
 }
 
+// the variables a value names: "[Name]", or the identifiers of a "[New Object() { a, b }]" list
+function varTokens(v) {
+  const one = varRef(v);
+  if (one) return [one];
+  const list = /^\[\s*New\s+Object\(\)\s*\{([\s\S]*)\}\s*\]$/i.exec(String(v || "").trim());
+  if (!list) return [];
+  return list[1].split(",").map(s => s.trim()).filter(s => /^[A-Za-z_]\w*$/.test(s) && !/^(True|False|Nothing)$/i.test(s));
+}
+
+// a fixed record an activity builds: a CreateCrmType of an EntityReference, or an EvaluateExpression
+// whose parameters spell one out → { logical, id, name }
+function staticRef(a) {
+  const g = a.args;
+  if (/EntityReference$/.test(g.Type || "") && g.LogicalName) return { logical: g.LogicalName, name: g.Name || "", id: g.Id || "" };
+  if (g.Id && g.LogicalName && a.type === "CreateCrmType") return { logical: g.LogicalName, name: g.Name || "", id: g.Id || "" };
+  const p = /WorkflowPropertyType\.EntityReference\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*(?:,\s*"([^"]*)")?/.exec(g.Parameters || "");
+  if (p) return { logical: p[1], name: p[3] || "", id: p[2] };
+  return null;
+}
+
 // what a workflow variable holds, followed through the activities that build it:
-// GetEntityProperty → a value of the row (dynamic); CreateCrmType of an EntityReference → a fixed
-// user / queue / team; a party list → the parties it holds (SetEntityProperty partyid on each).
+// GetEntityProperty → a value of the row (dynamic); a fixed EntityReference → a user / queue / team;
+// anything else (a party, a party list) → the variables it is built from, and the parties set on it
+// (SetEntityProperty partyid).
 function resolveVar(name, acts, depth, seen) {
-  if (!name || depth > 6 || seen.has(name)) return [];
+  if (!name || depth > 8 || seen.has(name)) return [];
   seen.add(name);
   const out = [];
   for (const a of acts) {
-    const res = varRef(a.args.Result) || varRef(a.args.Value && a.type === "GetEntityProperty" ? a.args.Value : "");
-    if (a.type === "GetEntityProperty" && res === name) {
-      out.push({ kind: "dynamic", entity: a.args.EntityName || "", attribute: a.args.Attribute || "" });
-    } else if (a.type === "CreateCrmType" && res === name) {
-      const logical = a.args.LogicalName || "";
-      if (/EntityReference$/.test(a.args.Type || "") || (a.args.Id && logical)) {
-        out.push({ kind: "static", logical, name: a.args.Name || "", id: a.args.Id || "" });
+    if (a.outs.some(v => varRef(v) === name)) {
+      if (a.type === "GetEntityProperty") {
+        out.push({ kind: "dynamic", entity: a.args.EntityName || "", attribute: a.args.Attribute || "" });
       } else {
-        for (const [k, v] of Object.entries(a.args)) { const r = varRef(v); if (k !== "Result" && r) out.push(...resolveVar(r, acts, depth + 1, seen)); }
-        for (const s of acts) if (s.type === "SetEntityProperty" && varRef(s.args.Entity) === name && /^partyid$/i.test(s.args.Attribute || "")) out.push(...resolveVar(varRef(s.args.Value), acts, depth + 1, seen));
+        const st = staticRef(a);
+        if (st) out.push({ kind: "static", ...st });
+        else for (const [k, v] of Object.entries(a.args)) { if (a.outs.includes(v)) continue; for (const r of varTokens(v)) out.push(...resolveVar(r, acts, depth + 1, seen)); }
       }
     }
+    if (a.type === "SetEntityProperty" && varRef(a.args.Entity) === name && /^partyid$/i.test(a.args.Attribute || ""))
+      for (const r of varTokens(a.args.Value)) out.push(...resolveVar(r, acts, depth + 1, seen));
   }
   return out;
 }
@@ -275,7 +367,7 @@ function resolveVar(name, acts, depth, seen) {
 // A classic workflow's XAML → { emailSteps: [{ step, from: [...], template }] } (null: no xaml).
 export function parseWorkflowXaml(xaml) {
   if (!xaml || typeof xaml !== "string") return null;
-  if (!/Activities\.SendEmail\b/.test(xaml)) return { emailSteps: [] };
+  if (!/Activities\.SendEmail\b|<mxswa:SendEmail(?=[\s/>])/.test(xaml)) return { emailSteps: [] };
   const acts = leafActivities(xaml);
   const emailSteps = [];
   for (const a of acts) {
@@ -285,8 +377,7 @@ export function parseWorkflowXaml(xaml) {
     for (const s of acts) {
       if (s.type !== "SetEntityProperty" || /^from$/i.test(s.args.Attribute || "") === false) continue;
       if (ent && varRef(s.args.Entity) !== ent) continue;
-      const v = varRef(s.args.Value);
-      if (v) froms.push(...resolveVar(v, acts, 0, new Set()));
+      for (const v of varTokens(s.args.Value)) froms.push(...resolveVar(v, acts, 0, new Set()));
     }
     emailSteps.push({ step: a.displayName || "Send Email", from: froms, template: /true/i.test(a.args.UseTemplate || "") });
   }

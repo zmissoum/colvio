@@ -1,7 +1,7 @@
 // Content script › apps. Apps and solutions — model-driven apps, forms, views, environment variables, solutions and their components, web resources.
 // One async function per action; `params` is what the panel sent. Every request goes through
 // core.js (dvRequest: host lock, pacing, timeouts, 429 back-off).
-import { NO_ANN, dvRequest, validateGuid } from "../core.js";
+import { NO_ANN, dvRequest, pageAll, validateGuid } from "../core.js";
 
 const ACTIONS = {
   async getAppModules(params) {
@@ -209,25 +209,20 @@ const ACTIONS = {
     // error; purged after 180 days) and the import jobs (who started each import; the log is
     // read apart, per job) — both paged, every row, never one request per solution. Each source
     // fails on its own: the panel shows what it got and says what it couldn't read.
-    const pageAllS = async (url) => {
-      const out = [];
-      while (url) {
-        const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" });
-        out.push(...(d.value || []));
-        const nl = d["@odata.nextLink"]; url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
-      }
-      return out;
-    };
     const SEL_H = "msdyn_solutionhistoryid,msdyn_name,msdyn_solutionversion,msdyn_publishername,msdyn_operation,msdyn_suboperation,msdyn_status,msdyn_result,msdyn_starttime,msdyn_endtime,msdyn_totaltime,msdyn_ismanaged,msdyn_ispatch,msdyn_isoverwritecustomizations,msdyn_errorcode,msdyn_exceptionmessage,msdyn_activityid,msdyn_correlationid,msdyn_solutionid,msdyn_packagename,msdyn_packageversion,msdyn_solutionhistorydescription";
     let history = [], historyError = "";
-    try { history = await pageAllS(`msdyn_solutionhistories?$select=${SEL_H}&$orderby=msdyn_starttime desc`); }
+    try { history = await pageAll(`msdyn_solutionhistories?$select=${SEL_H}&$orderby=msdyn_starttime desc`); }
     catch (e1) {
-      // a virtual table may refuse $orderby — the panel sorts anyway
-      try { history = await pageAllS(`msdyn_solutionhistories?$select=${SEL_H}`); }
-      catch (e2) { historyError = String(e2?.message || e1?.message || "not readable").slice(0, 200); }
+      // a virtual table may refuse the $orderby — a 400, the query itself; the panel sorts anyway.
+      // A 403 / 404 / 429 / timeout would fail the same way twice: no second read for those.
+      if (!/^HTTP 400\b/.test(e1?.message || "")) historyError = String(e1?.message || "not readable").slice(0, 200);
+      else {
+        try { history = await pageAll(`msdyn_solutionhistories?$select=${SEL_H}`); }
+        catch (e2) { historyError = String(e2?.message || "not readable").slice(0, 200); }
+      }
     }
     let jobs = [], jobsError = "";
-    try { jobs = await pageAllS("importjobs?$select=importjobid,solutionname,name,startedon,completedon,createdon,progress,operationcontext,importcontext,_createdby_value,_createdonbehalfby_value&$orderby=createdon desc"); }
+    try { jobs = await pageAll("importjobs?$select=importjobid,solutionname,name,startedon,completedon,createdon,progress,operationcontext,importcontext,_createdby_value,_createdonbehalfby_value&$orderby=createdon desc"); }
     catch (e) { jobsError = String(e?.message || "not readable").slice(0, 200); }
     const fvS = (e, f) => e[`${f}@OData.Community.Display.V1.FormattedValue`] || "";
     result = {

@@ -1,7 +1,7 @@
 // Content script › security. Users and security — users, business units, logins, roles, privileges, access checks.
 // One async function per action; `params` is what the panel sent. Every request goes through
 // core.js (dvRequest: host lock, pacing, timeouts, 429 back-off).
-import { NO_ANN, SAFE_GUID, countByFilter, d365Context, dvRequest, ensurePrivCatalog, extractContext, odataStr, validateEntitySet, validateGuid, validateName } from "../core.js";
+import { NO_ANN, SAFE_GUID, countByFilter, d365Context, dvRequest, ensurePrivCatalog, extractContext, odataStr, pageAll, validateEntitySet, validateGuid, validateName } from "../core.js";
 
 const ACTIONS = {
   async searchUsers(params) {
@@ -235,8 +235,6 @@ const ACTIONS = {
     validateGuid(params.recordId);
     validateGuid(params.userId);
     const uidA = params.userId, ridA = params.recordId;
-    const nl = (d) => d["@odata.nextLink"] || null; // absolute — dvRequest checks it targets this org
-    const pageAll = async (url) => { const out = []; while (url) { const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" }); out.push(...(d.value || [])); url = nl(d); } return out; };
     const fvA = (e, f) => e[`${f}@OData.Community.Display.V1.FormattedValue`] || "";
     const roleOf = (r) => ({ id: r.roleid, name: r.name || "", buId: r._businessunitid_value || "", templateId: r._roletemplateid_value || "", inherited: r.isinherited ?? null });
 
@@ -264,7 +262,7 @@ const ACTIONS = {
         while (url) {
           const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000", ...NO_ANN });
           for (const r of d.value || []) grantsA.push({ roleId: r.roleid, privilegeId: r.privilegeid, mask: r.privilegedepthmask });
-          url = nl(d);
+          url = d["@odata.nextLink"] || null; // absolute — dvRequest checks it targets this org
         }
       }
     }

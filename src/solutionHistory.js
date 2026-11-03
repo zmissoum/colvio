@@ -145,7 +145,7 @@ export function versionLadder(rows) {
     if (!g.publisher && r.publisher) g.publisher = r.publisher;
     if (g.managed == null && r.managed != null) g.managed = r.managed;
     if (r.operation !== 0 && r.operation !== 1) continue;
-    g.entries.push({ id: r.id, operation: r.operation, operationLabel: r.operationLabel, version: r.version, suboperationLabel: r.suboperationLabel, start: r.start, result: r.result, by: r.by, managed: r.managed, patch: r.patch, overwrite: r.overwrite, source: r.source });
+    g.entries.push({ id: r.id, operation: r.operation, operationLabel: r.operationLabel, version: r.version, suboperationLabel: r.suboperationLabel, start: r.start, end: r.end, status: r.status, result: r.result, by: r.by, managed: r.managed, patch: r.patch, overwrite: r.overwrite, source: r.source });
     if (r.operation === 0) { g.imports++; if (r.result === false) g.failures++; }
     const t = ms(r.start);
     if (t != null && (g.last == null || t > g.last)) g.last = t;

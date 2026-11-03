@@ -89,6 +89,10 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const [xamlDefs, setXamlDefs] = useState({});   // workflow id → parseWorkflowXaml(xaml)
   const [xamlRead, setXamlRead] = useState({ phase: "idle", done: 0 });
   const flowStarted = useRef(false), xamlStarted = useRef(false), stopFlows = useRef(false), stopXaml = useRef(false);
+  // each start bumps a generation: a loop whose generation moved on (↻) stops at its next page
+  const flowGen = useRef(0), xamlGen = useRef(0);
+  // the lines of each definition, computed once (per definition, per connection read)
+  const flowCache = useRef({ base: undefined, map: new Map() }), xamlCache = useRef(new Map());
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
@@ -99,6 +103,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
     setLoading(true); setError("");
     // the identity reads start over with the inventory (↻ is a real re-read)
     flowStarted.current = false; xamlStarted.current = false; stopFlows.current = true; stopXaml.current = true;
+    flowGen.current++; xamlGen.current++; flowCache.current = { base: undefined, map: new Map() }; xamlCache.current = new Map();
     setWhoBase(null); setWhoBaseErr(""); setFlowDefs({}); setFlowRead({ phase: "idle", done: 0 }); setXamlDefs({}); setXamlRead({ phase: "idle", done: 0 });
     Promise.all([bridge.getPluginSteps(), bridge.getProcesses()]).then(([st, pr]) => {
       if (cancelled) return;
@@ -111,8 +116,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
   useEffect(() => {
     if (loading || !FLOW_CATS.has(cat) || flowStarted.current) return;
     flowStarted.current = true; stopFlows.current = false;
-    const run = tick;
-    const live = () => mounted.current && run === tick && flowStarted.current;
+    const gen = ++flowGen.current;
+    const live = () => mounted.current && gen === flowGen.current;
     (async () => {
       setFlowRead({ phase: "reading", done: 0 });
       try { const b = await bridge.getWhoRunsData(); if (live()) setWhoBase(b); } catch (e) { if (live()) setWhoBaseErr(e.message || String(e)); }
@@ -135,8 +140,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
   useEffect(() => {
     if (loading || !XAML_CATS.has(cat) || xamlStarted.current) return;
     xamlStarted.current = true; stopXaml.current = false;
-    const run = tick;
-    const live = () => mounted.current && run === tick && xamlStarted.current;
+    const gen = ++xamlGen.current;
+    const live = () => mounted.current && gen === xamlGen.current;
     (async () => {
       setXamlRead({ phase: "reading", done: 0 });
       let next = null, done = 0;
@@ -155,12 +160,28 @@ export default function AutomationInventory({ bp, orgInfo }) {
     })();
   }, [cat, loading, tick]);
   // per flow: the lines of its Runs as / Sends email as; per workflow: its Sends email as
+  // (a page of 25 definitions costs 25 computations, not one per flow already read)
+  const flowBase = useMemo(() => whoBase || (whoBaseErr ? { error: whoBaseErr } : null), [whoBase, whoBaseErr]);
   const flowView = useMemo(() => {
+    const cache = flowCache.current;
+    if (cache.base !== flowBase) { cache.base = flowBase; cache.map.clear(); }
     const out = {};
-    for (const [id, fi] of Object.entries(flowDefs)) { const acc = flowConnectionAccounts(fi?.connections, whoBase); out[id] = { runs: flowRunsAs(fi, acc), email: flowEmailSenders(fi, acc) }; }
+    for (const [id, fi] of Object.entries(flowDefs)) {
+      let c = cache.map.get(id);
+      if (!c || c.fi !== fi) { const acc = flowConnectionAccounts(fi?.connections, flowBase); c = { fi, view: { runs: flowRunsAs(fi, acc), email: flowEmailSenders(fi, acc) } }; cache.map.set(id, c); }
+      out[id] = c.view;
+    }
     return out;
-  }, [flowDefs, whoBase]);
-  const xamlView = useMemo(() => Object.fromEntries(Object.entries(xamlDefs).map(([id, p]) => [id, workflowEmailSenders(p)])), [xamlDefs]);
+  }, [flowDefs, flowBase]);
+  const xamlView = useMemo(() => {
+    const cache = xamlCache.current, out = {};
+    for (const [id, p] of Object.entries(xamlDefs)) {
+      let c = cache.get(id);
+      if (!c || c.p !== p) { c = { p, lines: workflowEmailSenders(p) }; cache.set(id, c); }
+      out[id] = c.lines;
+    }
+    return out;
+  }, [xamlDefs]);
   const flowConns = useMemo(() => Object.fromEntries(Object.entries(flowDefs).map(([id, fi]) => [id, fi?.connections || []])), [flowDefs]);
   const identityLines = (r, what) => {
     if (cat === "5") return flowDefs[lcId(r.id)] === undefined ? null : (flowView[lcId(r.id)]?.[what] || []);
@@ -322,6 +343,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
           )}
           <span style={{ fontSize: 11, color: C.txd, ...mono }}>{rows.length.toLocaleString()} shown</span>
           {cat === "5" && <ReadStatus read={flowRead} what="flow definitions" onStop={() => { stopFlows.current = true; }} />}
+          {cat === "5" && whoBaseErr && <span style={{ fontSize: 11.5, color: C.rd }}>the connections couldn't be read ({whoBaseErr}) — the accounts behind them are unknown</span>}
           {XAML_CATS.has(cat) && <ReadStatus read={xamlRead} what="workflow definitions" onStop={() => { stopXaml.current = true; }} />}
           <div style={{ flex: 1 }} />
           <button onClick={() => setTick(t => t + 1)} disabled={loading} title="Reload plugin steps and processes from the environment" style={bt(null, { fontSize: 11, padding: "4px 10px", opacity: loading ? 0.5 : 1 })}>↻ Refresh</button>

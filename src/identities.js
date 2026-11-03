@@ -86,6 +86,19 @@ export function parseFlowConnections(clientdata) {
 // "/providers/Microsoft.PowerApps/apis/shared_sharepointonline" → "sharepointonline"
 export const connectorName = (id) => String(id || "").split("/").pop().replace(/^shared_/, "") || "";
 
+// The connection instances (the signed-in accounts) indexed by the reference they are bound to and
+// by their internal id, and the instance a reference resolves to: bound by reference id, else the
+// one whose internal id the reference names. Who runs it and the Runs as column resolve alike.
+export function instanceIndex(instances) {
+  const byRef = new Map(), byInternal = new Map();
+  for (const i of instances || []) {
+    if (i.refId) byRef.set(lc(i.refId), i);
+    if (i.internalId) byInternal.set(lc(i.internalId), i);
+  }
+  return { byRef, byInternal };
+}
+export const instanceOf = (idx, ref) => (ref ? idx.byRef.get(lc(ref.id)) || (ref.connectionId ? idx.byInternal.get(lc(ref.connectionId)) : null) || null : null);
+
 // The join. Inputs (all optional):
 //   procs:   [{ id, name, category, state, mode, runAs, ownerId, ownerType, owner, createdById, createdBy }]
 //   steps:   [{ id, name, state, stage, runAsId, runAs }]
@@ -120,11 +133,7 @@ export function buildWhoRunsWhat({ procs = [], steps = [], refs = [], instances 
   }
 
   // connections: reference → instance (account) → flows using it
-  const instByRef = new Map(), instByInternal = new Map();
-  for (const i of instances) {
-    if (i.refId) instByRef.set(lc(i.refId), i);
-    if (i.internalId) instByInternal.set(lc(i.internalId), i);
-  }
+  const instIdx = instanceIndex(instances);
   const flowsByRef = new Map(), flowsByConnName = new Map(), invokerFlows = [];
   const procById = new Map(procs.map(p => [lc(p.id), p]));
   for (const [flowId, conns] of Object.entries(flowConns || {})) {
@@ -137,7 +146,7 @@ export function buildWhoRunsWhat({ procs = [], steps = [], refs = [], instances 
     }
   }
   const connections = refs.map(r => {
-    const inst = instByRef.get(lc(r.id)) || (r.connectionId ? instByInternal.get(lc(r.connectionId)) : null) || null;
+    const inst = instanceOf(instIdx, r);
     const account = inst?.accountName || "";
     const accUser = account ? usersByAccount[lc(account)] : null;
     const flows = flowsByRef.get(lc(r.logicalName)) || [];

@@ -83,6 +83,15 @@ describe("cloud flow identity - who it runs as, who sends its emails", () => {
     expect(inv.shared_office365.invoker).toBe(true);
     expect(flowConnectionAccounts(parsed[I.flowDigest].connections, null).shared_office365).toMatchObject({ account: "", known: false, connected: null });
   });
+  it("when the connection reads failed, says 'not readable' — never 'not stored in Dataverse'", () => {
+    const fi = parsed[I.flowDigest];
+    const acc = flowConnectionAccounts(fi.connections, { error: "HTTP 403: Insufficient privileges" });
+    expect(Object.values(acc).every(a => a.unreadable && !a.known)).toBe(true);
+    expect(flowRunsAs(fi, acc).map(l => l.text)).toEqual(["commondataserviceforapps: connections not readable", "office365: connections not readable"]);
+    const plain = parseFlowIdentity(flow({ Mail: op("office365", "SendEmailV2", { "emailMessage/To": "ops@contoso.example" }) }, undefined, { shared_office365: { runtimeSource: "embedded", connection: { connectionReferenceLogicalName: "contoso_outlook" }, api: { name: "shared_office365" } } }));
+    expect(flowEmailSenders(plain, flowConnectionAccounts(plain.connections, { error: "HTTP 403" })).map(l => l.text)).toEqual(["the office365 connection's account (connections not readable)"]);
+    expect(flowRunsAs(fi, flowConnectionAccounts(fi.connections, null))[0].text).toBe("commondataserviceforapps: account not stored in Dataverse");
+  });
   it("Runs as: one line per identity, invoker connections and an unbound reference said as such, the trigger's Run as noted", () => {
     const digest = flowRunsAs(parsed[I.flowDigest], flowConnectionAccounts(parsed[I.flowDigest].connections, base));
     expect(digest.map(l => [l.kind, l.text])).toEqual([["account", "svc-integration@contoso.example"], ["account", "alex@contoso.example"]]);
@@ -144,5 +153,40 @@ describe("classic workflow identity - the XAML", () => {
     expect(parseWorkflowXaml("<Activity><mxswa:Workflow/></Activity>")).toEqual({ emailSteps: [] });
     expect(parseWorkflowXaml("")).toBe(null);
     expect(workflowEmailSenders(null)).toEqual([]);
+  });
+  it("the designer's other shapes: an EvaluateExpression literal, a nested type literal, a New Object() party list, an activity inside an argument, direct elements", () => {
+    const ref = (type, display, args) => `<mxswa:ActivityReference AssemblyQualifiedName="Microsoft.Crm.Workflow.Activities.${type}, Microsoft.Crm.Workflow, Version=9.0.0.0" DisplayName="${display}"><mxswa:ActivityReference.Arguments>${args}</mxswa:ActivityReference.Arguments></mxswa:ActivityReference>`;
+    const inA = (k, v) => `<InArgument x:Key="${k}" x:TypeArguments="x:Object">${v}</InArgument>`;
+    const outA = (k, v) => `<OutArgument x:Key="${k}" x:TypeArguments="x:Object">${v}</OutArgument>`;
+    const typeLit = `<InArgument x:Key="TargetType" x:TypeArguments="s:Type">
+      <InArgument.Expression><mxswa:ReferenceLiteral x:TypeArguments="s:Type" Value="mxs:EntityReference" /></InArgument.Expression>
+    </InArgument>`;
+    const modern = `<Activity><mxswa:Workflow>
+      ${ref("EvaluateExpression", "EvaluateExpression", inA("ExpressionOperator", "CreateCrmType") + inA("Parameters", "[New Object() { Microsoft.Xrm.Sdk.Workflow.WorkflowPropertyType.EntityReference, &quot;queue&quot;, &quot;11111111-1111-1111-1111-111111111111&quot;, &quot;Support&quot; }]") + typeLit + outA("Result", "[CreateStep2_1]"))}
+      ${ref("CreateCrmType", "CreateCrmType", inA("EntityName", "activityparty") + outA("Result", "[CreateStep2_2]"))}
+      ${ref("SetEntityProperty", "SetEntityProperty", inA("Attribute", "partyid") + inA("Entity", "[CreateStep2_2]") + inA("EntityName", "activityparty") + typeLit + inA("Value", "[CreateStep2_1]"))}
+      ${ref("EvaluateExpression", "EvaluateExpression", inA("ExpressionOperator", "CreateCrmType") + inA("Parameters", "[New Object() { Microsoft.Xrm.Sdk.Workflow.WorkflowPropertyType.EntityCollection, CreateStep2_2 }]") + outA("Result", "[CreateStep2_3]"))}
+      ${ref("SetEntityProperty", "SetEntityProperty", inA("Attribute", "from") + inA("Entity", "[CreateStep2]") + inA("EntityName", "email") + inA("Value", "[CreateStep2_3]"))}
+      ${ref("SendEmail", "Send email: Case created", inA("Entity", "[CreateStep2]") + inA("UseTemplate", "True"))}
+    </mxswa:Workflow></Activity>`;
+    const p = parseWorkflowXaml(modern);
+    expect(p.emailSteps).toEqual([{ step: "Send email: Case created", template: true, from: [{ kind: "static", logical: "queue", id: "11111111-1111-1111-1111-111111111111", name: "Support" }] }]);
+    expect(workflowEmailSenders(p)[0]).toMatchObject({ kind: "static", text: "Support (queue)", onBehalf: false });
+    // an activity nested in another's argument: its result is the argument's value
+    const nested = DEMO_XAML_DEFS[0].xaml.replace('<InArgument x:TypeArguments="x:Object" x:Key="Item1">[CreateStep1_4]</InArgument>',
+      `<InArgument x:TypeArguments="x:Object" x:Key="Item1">${ref("GetEntityProperty", "GetEntityProperty", inA("Attribute", "createdby") + inA("Entity", "[primaryEntity]") + inA("EntityName", "opportunity"))}</InArgument>`);
+    expect(workflowEmailSenders(parseWorkflowXaml(nested)).map(l => l.text)).toEqual(["the opportunity's creator"]);
+    // the older designer wrote the activities as elements with the arguments as attributes
+    const old = `<Activity><mxswa:Workflow>
+      <mxswa:GetEntityProperty Attribute="ownerid" Entity="[primaryEntity]" EntityName="incident" Value="[CreateStep1_1]">
+        <mxswa:GetEntityProperty.TargetType><InArgument x:TypeArguments="s:Type"><mxswa:ReferenceLiteral x:TypeArguments="s:Type" Value="mxs:EntityReference" /></InArgument></mxswa:GetEntityProperty.TargetType>
+      </mxswa:GetEntityProperty>
+      <mxswa:CreateCrmType Type="Microsoft.Xrm.Sdk.Entity" LogicalName="activityparty" Result="[CreateStep1_2]" />
+      <mxswa:SetEntityProperty Attribute="partyid" Entity="[CreateStep1_2]" EntityName="activityparty" Value="[CreateStep1_1]" />
+      <mxswa:CreateCrmType Type="Microsoft.Xrm.Sdk.EntityCollection" Item1="[CreateStep1_2]" Result="[CreateStep1_3]" />
+      <mxswa:SetEntityProperty Attribute="from" Entity="[CreateStep1]" EntityName="email" Value="[CreateStep1_3]" />
+      <mxswa:SendEmail DisplayName="Send email: Old shape" Entity="[CreateStep1]" EntityName="email" UseTemplate="False" />
+    </mxswa:Workflow></Activity>`;
+    expect(workflowEmailSenders(parseWorkflowXaml(old))).toEqual([{ kind: "dynamic", text: "the incident's owner", step: "Send email: Old shape", logical: "", onBehalf: false }]);
   });
 });

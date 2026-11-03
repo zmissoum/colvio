@@ -158,6 +158,19 @@ export const batchOps = (body) => Math.max(1, (String(body || "").match(/Content
 export const ANNOTATIONS = "OData.Community.Display.V1.FormattedValue,Microsoft.Dynamics.CRM.lookuplogicalname,Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords,Microsoft.Dynamics.CRM.totalrecordcount,Microsoft.Dynamics.CRM.totalrecordcountlimitexceeded";
 export const NO_ANN = { "X-Colvio-Annotations": "none" };
 
+// Every row of an OData read: 5,000 per page, the server's nextLink followed to the end (made
+// relative to the API root — dvRequest checks it targets this org). The one pager for the
+// set-based reads (security, automation, solutions): a page-size or nextLink fix lands once.
+export async function pageAll(url, extraHeaders = null) {
+  const out = [];
+  while (url) {
+    const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000", ...(extraHeaders || {}) });
+    out.push(...(d.value || []));
+    const nl = d["@odata.nextLink"]; url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
+  }
+  return out;
+}
+
 export async function dvRequest(method, path, body = null, extraHeaders = null) {
   const ctx = d365Context || extractContext();
   if (!ctx) throw new Error("D365 context not detected");

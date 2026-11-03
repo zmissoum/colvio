@@ -1,7 +1,7 @@
 // Content script › automation. Automation — plug-in steps, processes, flows and their identities, process instances and stages, org features.
 // One async function per action; `params` is what the panel sent. Every request goes through
 // core.js (dvRequest: host lock, pacing, timeouts, 429 back-off).
-import { NO_ANN, SAFE_GUID, dvRequest, validateGuid, validateName } from "../core.js";
+import { NO_ANN, SAFE_GUID, dvRequest, pageAll, validateGuid, validateName } from "../core.js";
 
 const ACTIONS = {
   async getPluginSteps(params) {
@@ -79,21 +79,12 @@ const ACTIONS = {
     // Automation › Who runs it: every connection reference, and every connection instance
     // (the Dataverse copy of a connection, with the ACCOUNT it is signed in as) — paged, all
     // of them. An org without the connectioninstance table says so instead of failing.
-    const pageAllW = async (url) => {
-      const out = [];
-      while (url) {
-        const d = await dvRequest("GET", url, null, { Prefer: "odata.maxpagesize=5000" });
-        out.push(...(d.value || []));
-        const nl = d["@odata.nextLink"]; url = nl ? nl.replace(/^.*\/api\/data\/v[\d.]+\//, "") : null;
-      }
-      return out;
-    };
     const fvW = (e, f) => e[`${f}@OData.Community.Display.V1.FormattedValue`] || "";
-    const refsW = (await pageAllW("connectionreferences?$select=connectionreferenceid,connectionreferencedisplayname,connectionreferencelogicalname,connectorid,connectionid,statecode,_ownerid_value,_createdby_value"))
+    const refsW = (await pageAll("connectionreferences?$select=connectionreferenceid,connectionreferencedisplayname,connectionreferencelogicalname,connectorid,connectionid,statecode,_ownerid_value,_createdby_value"))
       .map(r => ({ id: r.connectionreferenceid, name: r.connectionreferencedisplayname || "", logicalName: r.connectionreferencelogicalname || "", connectorId: r.connectorid || "", connectionId: r.connectionid || "", state: r.statecode, ownerId: r._ownerid_value || null, ownerType: r["_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname"] || "systemuser", owner: fvW(r, "_ownerid_value"), createdBy: fvW(r, "_createdby_value") }));
     let instancesW = [], instancesMissing = false;
     try {
-      instancesW = (await pageAllW("connectioninstances?$select=connectioninstanceid,connectioninstancedisplayname,accountname,connectioninternalid,connectorinternalid,connectionstatus,statecode,_connectionreferenceid_value,_ownerid_value"))
+      instancesW = (await pageAll("connectioninstances?$select=connectioninstanceid,connectioninstancedisplayname,accountname,connectioninternalid,connectorinternalid,connectionstatus,statecode,_connectionreferenceid_value,_ownerid_value"))
         .map(i => ({ id: i.connectioninstanceid, name: i.connectioninstancedisplayname || "", accountName: i.accountname || "", internalId: i.connectioninternalid || "", connectorInternalId: i.connectorinternalid || "", status: i.connectionstatus || "", state: i.statecode, refId: i._connectionreferenceid_value || null, ownerId: i._ownerid_value || null, owner: fvW(i, "_ownerid_value") }));
     } catch (e) {
       if (!/404|not found|could not find|does not exist/i.test(e.message || "")) throw e;

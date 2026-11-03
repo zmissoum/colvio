@@ -64,6 +64,7 @@ describe("solution deployments - summary, ladder, filters, export, the demo", ()
     expect(colvio).toMatchObject({ publisher: "Contoso", current: "1.0.0.5", imports: 8, failures: 1, removed: false });
     expect(colvio.entries.filter(e => e.version).map(e => e.version).slice(0, 4)).toEqual(["1.0.0.5", "1.0.0.5", "1.0.0.4", "1.0.0.3"]);
     expect(colvio.entries.filter(e => e.source === "importjob")).toHaveLength(2);
+    expect(colvio.entries.every(e => "status" in e && "end" in e)).toBe(true); // the Result chip reads the row, not a guess
     const legacy = ladder.find(g => g.solution === "ContosoLegacyReports");
     expect(legacy).toMatchObject({ removed: true, current: "" });
     expect(legacy.entries[0].operationLabel).toBe("Uninstall");

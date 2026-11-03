@@ -18,7 +18,7 @@ const PERIODS = [[0, "All time"], [7, "7 days"], [30, "30 days"], [90, "90 days"
 export default function SolutionDeployments({ initialSolution = "", onClose }) {
   const [st, setSt] = useState({ phase: "loading" });
   const [f, setF] = useState({ q: "", operation: "main", result: "all", days: 0, solution: initialSolution || "" });
-  const [view, setView] = useState(initialSolution ? "timeline" : "timeline");
+  const [view, setView] = useState("timeline");
   const [open, setOpen] = useState({});
   const [logs, setLogs] = useState({}); // job id → { phase, parsed, data, error }
   const gen = useRef(0);
@@ -37,7 +37,9 @@ export default function SolutionDeployments({ initialSolution = "", onClose }) {
 
   const rows = useMemo(() => (st.phase === "done" ? filterDeployments(st.rows, f) : []), [st, f]);
   const sum = useMemo(() => deploymentSummary(rows), [rows]);
-  const ladder = useMemo(() => versionLadder(rows), [rows]);
+  // the ladders describe each solution's whole recorded history: only the solution filter applies
+  const ladderRows = useMemo(() => (st.phase === "done" ? filterDeployments(st.rows, { operation: "all", solution: f.solution }) : []), [st, f.solution]);
+  const ladder = useMemo(() => versionLadder(ladderRows), [ladderRows]);
   const solutions = useMemo(() => (st.phase === "done" ? [...new Set(st.rows.map(r => r.solution).filter(Boolean))].sort((a, b) => a.localeCompare(b)) : []), [st]);
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const exp = (fmt) => exportTable(DEPLOY_HEADERS, deploymentExportRows(rows), "solution_deployments", fmt, "Deployments");
@@ -96,7 +98,8 @@ export default function SolutionDeployments({ initialSolution = "", onClose }) {
               {st.historyError ? <span style={{ color: C.rd }}>Solution history not readable ({st.historyError}) — import jobs only. </span> : <span style={{ color: C.txd }}>Solution history: {st.rows.filter(r => r.source === "history").length} rows (Dataverse keeps 180 days). </span>}
               {st.jobsError ? <span style={{ color: C.rd }}>Import jobs not readable ({st.jobsError}) — no "who". </span> : <span style={{ color: C.txd }}>Import jobs: {st.matched} matched to an import{st.orphanJobs ? `, ${st.orphanJobs} older or unrecorded (shown as import-job rows)` : ""}.</span>}
             </div>
-            {rows.length === 0 && <div style={{ color: C.txd, fontSize: 13 }}>No operation matches.</div>}
+            {(view === "timeline" ? rows : ladder).length === 0 && <div style={{ color: C.txd, fontSize: 13 }}>No operation matches.</div>}
+            {view === "solutions" && ladder.length > 0 && <div style={{ fontSize: 11.5, color: C.txd, marginBottom: 8 }}>Each solution's whole recorded history — the text, operation, result and period filters don't apply here.</div>}
             {view === "timeline" && rows.length > 0 && (
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead><tr>{["When", "Solution", "Version", "Operation", "Result", "By", "Notes"].map(h => <th key={h} style={{ padding: "5px 8px", textAlign: "left", borderBottom: `2px solid ${C.bd}`, color: C.txd, fontWeight: 600, fontSize: 11.5, position: "sticky", top: 0, background: C.sf, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
@@ -134,7 +137,6 @@ export default function SolutionDeployments({ initialSolution = "", onClose }) {
 }
 
 function RowGroup({ r, isOpen, toggle, log, loadLog }) {
-  const warn = r.flags.some(x => x.level === "warn"), err = r.flags.some(x => x.level === "error");
   return (
     <>
       <tr onClick={toggle} style={{ borderBottom: `1px solid ${C.bd}22`, cursor: "pointer", verticalAlign: "top", background: isOpen ? C.bg : "transparent" }} title={isOpen ? "Hide the details" : "Show the details"}>
@@ -144,7 +146,7 @@ function RowGroup({ r, isOpen, toggle, log, loadLog }) {
         <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{r.operationLabel}{r.suboperationLabel ? <span style={{ color: C.txd }}> · {r.suboperationLabel}</span> : ""}</td>
         <td style={{ padding: "5px 8px" }}><Result r={r} /></td>
         <td style={{ padding: "5px 8px" }}>{r.by || <span style={{ color: C.txd }} title={r.operation === 0 ? "No import job matched this import" : "Only imports have a job, hence a who"}>—</span>}</td>
-        <td style={{ padding: "5px 8px", fontSize: 12, lineHeight: 1.4 }}>{r.flags.map((x, i) => <div key={i} style={{ color: x.level === "error" ? C.rd : x.level === "warn" ? C.yw : C.txd }}>{x.level === "info" ? "ℹ " : "⚠ "}{x.text}</div>)}{!r.flags.length && (err || warn ? "" : "")}</td>
+        <td style={{ padding: "5px 8px", fontSize: 12, lineHeight: 1.4 }}>{r.flags.map((x, i) => <div key={i} style={{ color: x.level === "error" ? C.rd : x.level === "warn" ? C.yw : C.txd }}>{x.level === "info" ? "ℹ " : "⚠ "}{x.text}</div>)}</td>
       </tr>
       {isOpen && <tr><td colSpan={7} style={{ padding: "6px 12px 12px 28px", background: C.bg, fontSize: 12, lineHeight: 1.6 }}>
         <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "2px 12px" }}>
@@ -181,7 +183,7 @@ function RowLadder({ e }) {
       <span style={{ color: C.txd, whiteSpace: "nowrap" }}>{day(e.start)}</span>
       <span style={{ whiteSpace: "nowrap" }}>{e.operationLabel}{e.suboperationLabel ? <span style={{ color: C.txd }}> · {e.suboperationLabel}</span> : ""}</span>
       <span style={{ ...mono, whiteSpace: "nowrap" }}>{e.version || <span style={{ color: C.txd }}>—</span>}{e.patch ? " (patch)" : ""}</span>
-      <span><Result r={{ result: e.result, status: e.result == null ? 0 : 1, end: e.result == null ? null : true }} /></span>
+      <span><Result r={e} /></span>
       <span style={{ color: C.txm }}>{e.by || ""}{e.overwrite ? <span style={{ color: C.yw }}> ⚠ overwrote customizations</span> : ""}{e.source === "importjob" ? <span style={{ color: C.txd }}> · import job only</span> : ""}</span>
     </>
   );
