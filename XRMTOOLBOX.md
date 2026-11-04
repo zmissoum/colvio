@@ -36,6 +36,7 @@ Everything below is read-only unless marked **(writes)**; every write is confirm
 | In XrmToolBox you use… | In Colvio |
 | --- | --- |
 | Flow / workflow identity reviews | **Automation › Cloud flows, Workflows** — Runs as (the account of each connection, or whoever runs it) and Sends email as (the From of every email action / Send Email step) |
+| "What fires when this column changes?" (digging through steps, workflows and flows by hand) | **Automation › 🎯 Fires on** — pick a table and a column: every plug-in step, workflow and cloud flow that runs when it changes, "every column" triggers flagged, sync / real-time first |
 | Plugin Registration Tool (steps) | **Automation** — every plug-in step and process; enable / disable one or a selection, edit an Update step's filtering attributes **(writes)**. Registering a new assembly or step stays with the Plugin Registration Tool |
 | Plugin Trace Viewer | **System Ops › Plugin traces** (time windows, exceptions first), and **Show All Data › Record activity** — save a record and see the plug-ins it ran (order, duration, cascades, exception, full trace), its system jobs and the flows that fired; "Log every plug-in" for 15–60 minutes, reverted by itself |
 | Async job / system job viewers | **System Ops** — system jobs and flow runs, failures first |

@@ -20,7 +20,7 @@ describe("cloud flow identity - the definition", () => {
   it("reads the trigger (kind, connector, the Dataverse Run as value) and the connections the actions use", () => {
     const fi = parseFlowIdentity(flow({ Get: op("commondataserviceforapps", "GetItem", { entityName: "accounts" }), Note: op("office365", "SendEmailV2", {}) },
       { When_a_row_changes: { type: "OpenApiConnectionWebhook", inputs: { host: host("commondataserviceforapps", "SubscribeWebhookTrigger"), parameters: { "subscriptionRequest/message": 3, "subscriptionRequest/entityname": "account", "subscriptionRequest/runas": 3 } } } }));
-    expect(fi.trigger).toEqual({ name: "When_a_row_changes", type: "OpenApiConnectionWebhook", kind: "", connector: "commondataserviceforapps", operation: "SubscribeWebhookTrigger", runAs: 3 });
+    expect(fi.trigger).toMatchObject({ name: "When_a_row_changes", type: "OpenApiConnectionWebhook", kind: "", connector: "commondataserviceforapps", operation: "SubscribeWebhookTrigger", runAs: 3, message: 3, entity: "account", columns: [], rowFilter: "" });
     expect(fi.connectionKeys).toEqual(["shared_commondataserviceforapps", "shared_office365"]);
     expect(fi.actionCount).toBe(2);
     const manual = parseFlowIdentity(flow({}));

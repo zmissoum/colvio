@@ -3,6 +3,8 @@ import { bridge } from "../d365-bridge.js";
 import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
 import { t } from "../i18n.js";
 import WhoRunsIt from "./WhoRunsIt.jsx";
+import FiresOn from "./FiresOn.jsx";
+import { flowTriggerText } from "../triggerIndex.js";
 import { workflowRunAs } from "../identities.js";
 import { parseFlowIdentity, flowConnectionAccounts, flowRunsAs, flowEmailSenders, parseWorkflowXaml, workflowEmailSenders, linesText, RUNAS_HINT, ON_BEHALF_HINT } from "../flowIdentity.js";
 import { STEP_SET, STEP_PK, statePatch, statePlan, stateConfirmText, applyStateLocally, canEditFiltering, parseFiltering, formatFiltering, filteringDiff, filterableColumns } from "../stepAdmin.js";
@@ -22,6 +24,7 @@ const CATEGORIES = [
   { key: "4",        label: "BPFs" },
   { key: "1",        label: "Dialogs" },
   { key: "6",        label: "Desktop flows" },
+  { key: "fires",    label: "🎯 Fires on" },
   { key: "who",      label: "👤 Who runs it" },
 ];
 const STAGE_LABEL = { 10: "Pre-validation", 20: "Pre-operation", 40: "Post-operation" };
@@ -43,7 +46,7 @@ const sourceOf = (r, isStep) => {
 const lcId = (v) => String(v || "").toLowerCase();
 // the categories whose definitions say who they run as / send email as (flowIdentity.js):
 // cloud flows (clientdata), classic workflows / dialogs / actions (xaml)
-const FLOW_CATS = new Set(["5", "who"]), XAML_CATS = new Set(["0", "1", "3"]);
+const FLOW_CATS = new Set(["5", "who", "fires"]), XAML_CATS = new Set(["0", "1", "3"]);
 
 // the progress of a paged definition read (Stop while it runs; partial columns said as such)
 const ReadStatus = ({ read, what, onStop }) => {
@@ -286,7 +289,7 @@ export default function AutomationInventory({ bp, orgInfo }) {
     } else {
       exportTable(
         ["name", "entity", "state", "mode", "triggers", "runsAs", "sendsEmailAs", "owner", "source", "managedFlag", "modifiedOn"],
-        rows.map(r => [r.name, r.entity, r.state === 1 ? "Activated" : "Draft", cat === "0" ? (r.mode === 1 ? "Real-time" : "Background") : "", triggersOf(r), cat === "0" ? workflowRunAs(r).label : cat === "5" ? linesText(identityLines(r, "runs")) : "", linesText(identityLines(r, "email")), r.owner, srcLabel(r, false), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
+        rows.map(r => [r.name, r.entity, r.state === 1 ? "Activated" : "Draft", cat === "0" ? (r.mode === 1 ? "Real-time" : "Background") : "", cat === "5" ? (flowTriggerText(flowDefs[lcId(r.id)]?.trigger) || "not read") : triggersOf(r), cat === "0" ? workflowRunAs(r).label : cat === "5" ? linesText(identityLines(r, "runs")) : "", linesText(identityLines(r, "email")), r.owner, srcLabel(r, false), r.managed ? "Managed" : "Unmanaged", r.modifiedon]),
         `automation_${catLabel.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, format, "Automation");
     }
   };
@@ -316,12 +319,13 @@ export default function AutomationInventory({ bp, orgInfo }) {
         <div style={{ display: "flex", gap: 3, marginBottom: 12, flexWrap: "wrap" }}>
           {CATEGORIES.map(c => (
             <button key={c.key} onClick={() => setCat(c.key)} style={{ padding: "5px 11px", fontSize: 12, border: `1px solid ${cat === c.key ? C.vi : C.bd}`, borderRadius: 5, cursor: "pointer", background: cat === c.key ? C.vi + "22" : "transparent", color: cat === c.key ? C.vi : (counts[c.key] ? C.txm : C.txd), fontWeight: cat === c.key ? 600 : 400 }}>
-              {c.label} {c.key !== "who" && <span style={{ ...mono, fontSize: 11 }}>({(counts[c.key] || 0).toLocaleString()})</span>}
+              {c.label} {c.key !== "who" && c.key !== "fires" && <span style={{ ...mono, fontSize: 11 }}>({(counts[c.key] || 0).toLocaleString()})</span>}
             </button>
           ))}
         </div>
 
-        {cat === "who" ? <WhoRunsIt steps={steps} procs={procs} base={whoBase} baseError={whoBaseErr} flowConns={flowConns} flowRead={flowRead} onStop={() => { stopFlows.current = true; }} /> : <>
+        {cat === "fires" ? <FiresOn steps={steps} procs={procs} flowDefs={flowDefs} flowRead={flowRead} onStop={() => { stopFlows.current = true; }} bp={bp} />
+        : cat === "who" ? <WhoRunsIt steps={steps} procs={procs} base={whoBase} baseError={whoBaseErr} flowConns={flowConns} flowRead={flowRead} onStop={() => { stopFlows.current = true; }} /> : <>
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Filter by name, entity, message, assembly…" style={inp({ fontSize: 12, maxWidth: 320, padding: "6px 10px" })} />
           <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>
@@ -390,13 +394,19 @@ export default function AutomationInventory({ bp, orgInfo }) {
                 </>
               ) : (
                 <>
-                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}{cat === "0" && <th style={ths()} title="Whose security context it runs in: real-time = its Execute as; background = the owner when an event starts it, the user who starts it on demand">Runs as</th>}{cat === "5" && <th style={ths()} title="A cloud flow does not run as its owner: each action runs with the account of ITS connection — read from the flow's definition and the connections Dataverse stores. 'Whoever runs it' = a connection provided by the person who runs the flow.">Runs as</th>}{(cat === "5" || XAML_CATS.has(cat)) && <th style={ths()} title={cat === "5" ? "Where each email action's mail leaves from: a From (Send as) or shared mailbox set in the action, else the account of the action's connection; the Mail connector sends from microsoft@powerapps.com; a Dataverse email activity leaves from its own From." : "The From of each Send Email step: a fixed user or queue, or a value of the row (its owner…). A fixed user needs the Send-as privilege and that user's permission (ℹ)."}>Sends email as</th>}<th style={ths()} title={cat === "5" ? "A cloud flow's owner is NOT who its actions run as — each action runs with the account of its connection (see Who runs it)" : "Who owns the process"}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
+                  <thead><tr><th style={ths()}>Name</th><th style={ths()}>Entity</th><th style={ths()}>State</th>{cat === "5" && <th style={ths()} title="What starts the flow — a Dataverse trigger's change type, table, Select columns (none = every column), scope and row filter; else the trigger's kind">Trigger</th>}{cat === "0" && <th style={ths()}>Mode</th>}{(cat === "0") && <th style={ths()}>Triggers</th>}{cat === "0" && <th style={ths()} title="Whose security context it runs in: real-time = its Execute as; background = the owner when an event starts it, the user who starts it on demand">Runs as</th>}{cat === "5" && <th style={ths()} title="A cloud flow does not run as its owner: each action runs with the account of ITS connection — read from the flow's definition and the connections Dataverse stores. 'Whoever runs it' = a connection provided by the person who runs the flow.">Runs as</th>}{(cat === "5" || XAML_CATS.has(cat)) && <th style={ths()} title={cat === "5" ? "Where each email action's mail leaves from: a From (Send as) or shared mailbox set in the action, else the account of the action's connection; the Mail connector sends from microsoft@powerapps.com; a Dataverse email activity leaves from its own From." : "The From of each Send Email step: a fixed user or queue, or a value of the row (its owner…). A fixed user needs the Send-as privilege and that user's permission (ℹ)."}>Sends email as</th>}<th style={ths()} title={cat === "5" ? "A cloud flow's owner is NOT who its actions run as — each action runs with the account of its connection (see Who runs it)" : "Who owns the process"}>Owner</th><th style={ths()}>Source</th><th style={ths()}>Modified</th></tr></thead>
                   <tbody>
                     {rows.map(r => (
                       <tr key={r.id} style={{ borderBottom: `1px solid ${C.bd}22` }}>
                         <td style={{ ...tds, maxWidth: 340 }} title={r.name}>{r.name}</td>
                         <td style={{ ...tds, ...mono, fontSize: 12 }}>{r.entity || <span style={{ color: C.txd }}>—</span>}</td>
                         <td style={tds}><Badge on={r.state === 1} yes="Activated" no="Draft" colorYes={C.gn} colorNo={C.yw} /></td>
+                        {cat === "5" && <td style={{ ...tds, fontSize: 12, color: C.txm, maxWidth: 260, whiteSpace: "normal" }}>{(() => {
+                          const fi = flowDefs[lcId(r.id)];
+                          if (fi !== undefined) return flowTriggerText(fi?.trigger);
+                          const reading = flowRead.phase === "reading" || flowRead.phase === "idle";
+                          return <span style={{ color: C.txd }} title={reading ? "reading the definitions…" : "This definition wasn't read (the read stopped or failed)"}>{reading ? "…" : "not read"}</span>;
+                        })()}</td>}
                         {cat === "0" && <td style={tds}><Badge on={r.mode === 1} yes="Real-time" no="Background" colorYes={C.or} colorNo={C.cy} /></td>}
                         {cat === "0" && <td style={{ ...tds, fontSize: 12, color: C.txm }}>{triggersOf(r) || "—"}</td>}
                         {cat === "0" && <td style={{ ...tds, fontSize: 12, color: workflowRunAs(r).who === "owner" ? C.tx : C.txm, maxWidth: 200 }}>{workflowRunAs(r).label}</td>}

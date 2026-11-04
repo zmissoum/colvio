@@ -134,13 +134,23 @@ function pick(p, key) {
   return undefined;
 }
 
-// the trigger: what starts the flow and, for a Dataverse trigger, its "Run as" setting
+// the trigger: what starts the flow and, for a Dataverse trigger, its settings — "Run as", the
+// change type (SubscriptionRequest.Message: 1 create, 2 delete, 3 update, 4 create or update,
+// 5 create or delete, 6 update or delete, 7 all), the table, "Select columns" (filteringattributes,
+// empty = every column), the row filter and the scope (Automation › 🎯 Fires on reads them)
 function describeTrigger(name, t) {
   const c = connectorAction(t);
-  const out = { name, type: String(t?.type || ""), kind: String(t?.kind || ""), connector: c?.connector || "", operation: c?.operation || "", runAs: null };
-  const ra = c?.params?.["subscriptionRequest/runas"];
-  if (ra != null && ra !== "") out.runAs = Number.isFinite(Number(ra)) ? Number(ra) : String(ra);
-  return out;
+  const p = c?.params || {};
+  const num = (v) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : String(v));
+  return {
+    name, type: String(t?.type || ""), kind: String(t?.kind || ""), connector: c?.connector || "", operation: c?.operation || "",
+    runAs: num(pick(p, "subscriptionRequest/runas")),
+    message: num(pick(p, "subscriptionRequest/message")),
+    entity: lc(pick(p, "subscriptionRequest/entityname") || ""),
+    columns: String(pick(p, "subscriptionRequest/filteringattributes") || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean),
+    rowFilter: String(pick(p, "subscriptionRequest/filterexpression") || ""),
+    scope: num(pick(p, "subscriptionRequest/scope")),
+  };
 }
 
 // A cloud flow's clientdata → { trigger, connections, emails, connectionKeys, actionCount } (null: not parseable).
