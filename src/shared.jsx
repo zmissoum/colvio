@@ -29,7 +29,7 @@ export const C = { ...DARK };
 export function setThemeColors(t) { Object.assign(C, t === "light" ? LIGHT : DARK); }
 
 export const mono={fontFamily:"'DM Mono','Fira Code',monospace"};
-export const displayType=(t)=>t==="Picklist"?"OptionSet":t;
+export const displayType=(t)=>t==="Picklist"?"OptionSet":t==="MultiSelectPicklist"?"OptionSet (multi-select)":t;
 export const inp=(x)=>({width:"100%",padding:"7px 11px",background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,color:C.tx,fontSize:14,outline:"none",boxSizing:"border-box",...x});
 export const bt=(bg,x)=>({padding:"7px 14px",background:bg||C.sfh,border:bg?"none":`1px solid ${C.bd}`,borderRadius:6,color:bg?"white":C.tx,cursor:"pointer",fontSize:13,fontWeight:600,display:"inline-flex",alignItems:"center",gap:5,transition:"all .15s",whiteSpace:"nowrap",...x});
 export const crd=(x)=>({background:C.sf,border:`1px solid ${C.bd}`,borderRadius:10,...x});
@@ -88,6 +88,7 @@ export const FLDS=[
   {l:"accountnumber",d:"Account Number",t:"String",req:false,cust:false},
   {l:"new_sapid",d:"SAP ID",t:"String",req:false,cust:true},
   {l:"new_siretcode",d:"SIRET",t:"String",req:false,cust:true},
+  {l:"new_channels",d:"Preferred Channels",t:"MultiSelectPicklist",req:false,cust:true,opts:[{v:1,l:"Email"},{v:2,l:"Phone"},{v:3,l:"SMS"},{v:4,l:"Post"}]},
   {l:"revenue",d:"Annual Revenue",t:"Money",req:false,cust:false},
   {l:"numberofemployees",d:"Employees",t:"Integer",req:false,cust:false},
   {l:"telephone1",d:"Main Phone",t:"String",req:false,cust:false},

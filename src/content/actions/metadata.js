@@ -186,11 +186,14 @@ const ACTIONS = {
   },
   async getOptionSet(params) {
     let result;
-    // Fetch OptionSet values for a Picklist/State/Status field
+    // Fetch OptionSet values for a Picklist / MultiSelectPicklist / State / Status field. Each
+    // choice type is its own typed metadata cast — a multi-select read through the Picklist cast
+    // 400s, which is why Metadata had no Values for those columns.
     validateName(params.entityName, 'entityName');
     validateName(params.fieldName, 'fieldName');
     const metaType = params.attrType === "State" ? "StateAttributeMetadata"
       : params.attrType === "Status" ? "StatusAttributeMetadata"
+      : params.attrType === "MultiSelectPicklist" ? "MultiSelectPicklistAttributeMetadata"
       : "PicklistAttributeMetadata";
     try {
       const osData = await dvRequest("GET",
@@ -211,7 +214,7 @@ const ACTIONS = {
       // Fallback: try GlobalOptionSet
       try {
         const osData2 = await dvRequest("GET",
-          `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.fieldName}')/Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=GlobalOptionSet($select=Options)`
+          `EntityDefinitions(LogicalName='${params.entityName}')/Attributes(LogicalName='${params.fieldName}')/Microsoft.Dynamics.CRM.${metaType}?$select=LogicalName&$expand=GlobalOptionSet($select=Options)`
         );
         const options2 = osData2?.GlobalOptionSet?.Options || [];
         result = options2.map(o => ({

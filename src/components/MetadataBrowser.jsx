@@ -20,6 +20,9 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const[search,setSearch]=useState("");
   const[catFilter,setCatFilter]=useState("all");
   const[fieldSearch,setFieldSearch]=useState("");
+  // the choice types whose values Dataverse stores as an option set: single and multi-select
+  // choices, the two status columns — each read through its own metadata cast (getOptionSet)
+  const isChoice=(t)=>t==="Picklist"||t==="MultiSelectPicklist"||t==="State"||t==="Status";
   const[showPicklist,setShowPicklist]=useState(null);
   const[osEdit,setOsEdit]=useState(false); // the Values window in edit mode (choice columns)
   useEffect(()=>{setOsEdit(false);},[showPicklist]);
@@ -60,7 +63,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
     const gen=selGen.current;
     setExportingOS(true);setOsErr("");
     try{
-      const osFields=fields.filter(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status");
+      const osFields=fields.filter(f=>isChoice(f.t));
       if(!osFields.length){setExportingOS(false);return;}
       const headers=["Field Logical Name","Field Label","Field Type","Value","Label","Description"];
       const rows=[];
@@ -318,7 +321,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                     <td style={{...tds,textAlign:"center"}}>{f.cust&&<span style={{width:5,height:5,borderRadius:"50%",background:C.or,display:"inline-block"}}/>}</td>
                     <td style={tds}><span style={{color:C.cy,...mono,fontSize:13,cursor:"pointer"}} onClick={()=>cp(f.l,`m-${i}`)}>{f.l}</span>{copied===`m-${i}`&&<span style={{color:C.gn,fontSize:11,marginLeft:3}}>✓</span>}</td>
                     <td style={{...tds,color:C.txm}}>{f.d}</td>
-                    <td style={tds}><span style={{fontSize:12,padding:"2px 6px",borderRadius:3,background:f.t==="Lookup"?C.vid:(f.t==="Picklist"||f.t==="State"||f.t==="Status")?C.gnd:C.sfh,color:f.t==="Lookup"?C.lv:(f.t==="Picklist"||f.t==="State"||f.t==="Status")?C.gn:C.txm}}>{displayType(f.t)}</span></td>
+                    <td style={tds}><span style={{fontSize:12,padding:"2px 6px",borderRadius:3,background:f.t==="Lookup"?C.vid:isChoice(f.t)?C.gnd:C.sfh,color:f.t==="Lookup"?C.lv:isChoice(f.t)?C.gn:C.txm}}>{displayType(f.t)}</span></td>
                     <td style={tds}>{f.req?<span style={{color:C.rd,fontSize:13}}>●</span>:<span style={{color:C.txd}}>—</span>}</td>
                     {fill?.phase==="done"&&fill.entity===selEnt.l&&(()=>{
                       const r=fill.result;
@@ -327,7 +330,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                       const n=r.filled[f.l], ratio=r.total?n/r.total:0;
                       return <td style={tds} title={`${n.toLocaleString()} of ${r.total.toLocaleString()} rows have a value`}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:50,height:6,background:C.bd,borderRadius:3}}><div style={{width:`${Math.round(ratio*100)}%`,height:6,background:n===0?C.rd:ratio<0.05?C.yw:C.gn,borderRadius:3}}/></div><span style={{...mono,fontSize:12,color:n===0?C.rd:C.txm}}>{percent(n,r.total)}</span></div></td>;
                     })()}
-                    <td style={{...tds,whiteSpace:"nowrap"}}>{(f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<button onClick={()=>setShowPicklist(showPicklist===f.l?null:f.l)} style={{...bt(showPicklist===f.l?C.vi:null,{fontSize:12,padding:"3px 10px"}),marginRight:4}}>{showPicklist===f.l?"Close":"Values"}{optionSetData[f.l]?` (${optionSetData[f.l].length})`:""}</button>}<button onClick={()=>runImpact("column",f)} title={f.cust?"What would block deleting this column, or everything that uses it (read-only)":"Everything that uses this column — forms, views, processes, plug-in steps… (read-only)"} style={bt(null,{fontSize:12,padding:"3px 8px"})}>🧨</button><button onClick={()=>setLayers({componentName:"Attribute",id:f.mid,name:f.l,logical:`${selEnt.l}.${f.l}`,label:f.d})} title="Solution layers of this column (read-only)" style={{...bt(null,{fontSize:12,padding:"3px 8px"}),marginLeft:4}}>📑</button></td>
+                    <td style={{...tds,whiteSpace:"nowrap"}}>{isChoice(f.t)&&<button onClick={()=>setShowPicklist(showPicklist===f.l?null:f.l)} style={{...bt(showPicklist===f.l?C.vi:null,{fontSize:12,padding:"3px 10px"}),marginRight:4}}>{showPicklist===f.l?"Close":"Values"}{optionSetData[f.l]?` (${optionSetData[f.l].length})`:""}</button>}<button onClick={()=>runImpact("column",f)} title={f.cust?"What would block deleting this column, or everything that uses it (read-only)":"Everything that uses this column — forms, views, processes, plug-in steps… (read-only)"} style={bt(null,{fontSize:12,padding:"3px 8px"})}>🧨</button><button onClick={()=>setLayers({componentName:"Attribute",id:f.mid,name:f.l,logical:`${selEnt.l}.${f.l}`,label:f.d})} title="Solution layers of this column (read-only)" style={{...bt(null,{fontSize:12,padding:"3px 8px"}),marginLeft:4}}>📑</button></td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -348,6 +351,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
                         <span style={{fontWeight:700,fontSize:16}}>{field.d}</span>
                         <span style={{fontSize:13,color:C.txd,...mono}}>{field.l}</span>
                         <span style={{fontSize:12,color:C.gn,padding:"2px 8px",background:C.gnd,borderRadius:4}}>{displayType(field.t)}</span>
+                        {field.t==="MultiSelectPicklist"&&<span style={{fontSize:12,color:C.txm}} title="A row can hold several of these values at once — stored as a comma-separated list of the value numbers. Adding, renaming or reordering them isn't offered here: use the maker portal.">a row can hold several · read-only here</span>}
                         {opts.length>0&&<span style={{fontSize:12,color:C.txm}}>{opts.length} values</span>}
                       </div>
                       <div style={{display:"flex",gap:6}}>

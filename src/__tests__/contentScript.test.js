@@ -126,6 +126,25 @@ describe("content script - security actions", () => {
   });
 });
 
+describe("content script - metadata reads", () => {
+  it("getOptionSet reads a multi-select choice through its own metadata cast (the Picklist cast 400s on it)", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /MultiSelectPicklistAttributeMetadata\?\$select=LogicalName&\$expand=OptionSet/, answer: () => reply(200, { LogicalName: "new_channels", OptionSet: { Options: [{ Value: 1, Label: { UserLocalizedLabel: { Label: "Email" }, LocalizedLabels: [{ Label: "Email" }, { Label: "Courriel" }] }, Color: null }, { Value: 2, Label: { UserLocalizedLabel: { Label: "Phone" }, LocalizedLabels: [] } }] } }) });
+    const r = await send("getOptionSet", { entityName: "account", fieldName: "new_channels", attrType: "MultiSelectPicklist" });
+    expect(r.result.map(o => [o.value, o.label, o.labels])).toEqual([[1, "Email", ["Email", "Courriel"]], [2, "Phone", []]]);
+    expect(since(n)).toHaveLength(1);
+    expect(since(n)[0].url).toContain("/Attributes(LogicalName='new_channels')/Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata?");
+  });
+  it("getOptionSet's global-option-set fallback keeps the column's own cast", async () => {
+    const n = requests.length;
+    script.push({ method: "GET", re: /StatusAttributeMetadata\?\$select=LogicalName&\$expand=OptionSet/, answer: () => reply(400, { error: { message: "no local set" } }) });
+    script.push({ method: "GET", re: /StatusAttributeMetadata\?\$select=LogicalName&\$expand=GlobalOptionSet/, answer: () => reply(200, { GlobalOptionSet: { Options: [{ Value: 1, Label: { UserLocalizedLabel: { Label: "Active" } } }] } }) });
+    const r = await send("getOptionSet", { entityName: "account", fieldName: "statuscode", attrType: "Status" });
+    expect(r.result.map(o => o.label)).toEqual(["Active"]);
+    expect(since(n).map(q => /Microsoft\.Dynamics\.CRM\.(\w+)\?/.exec(q.url)[1])).toEqual(["StatusAttributeMetadata", "StatusAttributeMetadata"]);
+  });
+});
+
 describe("content script - automation reads", () => {
   it("getWorkflowXamlPage: classic workflows, dialogs and actions only, 25 per page, a foreign page link refused", async () => {
     const n = requests.length;
