@@ -85,8 +85,8 @@ export default {
         await h.hover(h.page.locator("td >> visible=true").filter({ hasText: /^skipped/ }).first()); await h.wait(1600);
       } },
     { key: "live",
-      en: ["5 · Run for real, journaled", "Confirmed against the dry run's plan. Each row is read just before it is written: the Writes tab keeps every change with the operation that undoes it."],
-      fr: ["5 · Exécution réelle, journalisée", "Confirmée face au plan du dry run. Chaque ligne est lue juste avant d'être écrite : l'onglet Writes garde chaque modification avec l'opération qui l'annule."],
+      en: ["5 · Run for real, journaled", "Confirmed against the dry run's plan, with the rollback journal on: the Writes tab lists every change made — 8 of 8 reversible."],
+      fr: ["5 · Exécution réelle, journalisée", "Confirmée face au plan du dry run, journal de rollback activé : l'onglet Writes liste chaque modification faite — 8 sur 8 réversibles."],
       run: async (h) => {
         await confirmed(h, btn(h, /Run for real$/), 3200);
         await h.wait(2200);
