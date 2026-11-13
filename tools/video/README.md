@@ -17,6 +17,10 @@ Uses the **installed Google Chrome** (Playwright `channel: "chrome"`) with a thr
 never your own sessions. (Playwright's downloaded Chromium fails to start on some Windows setups
 with "side-by-side configuration is incorrect".) ffmpeg comes from `ffmpeg-static`.
 
+On Linux / CI without Google Chrome: `COLVIO_VIDEO_CHROMIUM=bundled` uses Playwright's own Chromium
+(or give the path of a Chromium executable), and `FFMPEG_PATH=/usr/bin/ffmpeg` uses a system ffmpeg
+instead of `ffmpeg-static`.
+
 ## Run
 
 ```bash

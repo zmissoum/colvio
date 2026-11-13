@@ -6,8 +6,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import ffmpegPath from "ffmpeg-static";
 import { chromium } from "playwright";
+
+// ffmpeg: the ffmpeg-static binary by default; FFMPEG_PATH points at another one (a system ffmpeg
+// on Linux / CI, where ffmpeg-static's download may be blocked).
+const ffmpegPath = process.env.FFMPEG_PATH || (await import("ffmpeg-static")).default;
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DIST = path.resolve(HERE, "..", "..", "dist");
@@ -32,7 +35,10 @@ export async function openDemo({ url, locale = "en", theme = "dark", viewport = 
   // channel "chrome" = the installed Google Chrome, with Playwright's own throwaway profile (never
   // the user's sessions). Playwright's downloaded Chromium fails to start on some Windows setups
   // ("side-by-side configuration is incorrect").
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  // COLVIO_VIDEO_CHROMIUM overrides it on machines without Google Chrome (Linux / CI): "bundled" =
+  // Playwright's own Chromium, any other value = the path of a Chromium executable.
+  const alt = process.env.COLVIO_VIDEO_CHROMIUM;
+  const browser = await chromium.launch(alt ? { headless: true, ...(alt === "bundled" ? {} : { executablePath: alt }) } : { channel: "chrome", headless: true });
   const context = await browser.newContext({ viewport, deviceScaleFactor });
   await context.addInitScript(([loc, th]) => {
     try {
