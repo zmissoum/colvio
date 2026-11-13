@@ -4,9 +4,11 @@
 
 **Language:** English only — posts, comments and videos (the `_en.mp4` files).
 
-**21 posts, 21 videos:** the tour (2 min 54, 20 modules), then one deep-dive video per module (52 s to 1 min 54) — every module except System Ops. Captions burned in, demo data only.
+**31 posts, 31 videos:** the tour (2 min 54, 20 modules), then one deep-dive video per module (52 s to 1 min 54) — every module except System Ops (Posts 26–46). Then **Posts 48–57**: ten videos on what came after the first series was filmed (1.11.177 → 1.11.219) — three new modules (Health check, Script Console, Web Resources) and the big new capabilities inside the others. Captions burned in, demo data only.
 
 **Start:** J = the first Tuesday after the Chrome Web Store shows **v1.11.176** (or later). The videos show Teams, Storage, Bulk settings, the current Login History and the enriched demos, which older store versions don't have.
+
+**Posts 48–57 need the store at v1.11.219 (or later)**: they show Fires on, Deployments, search result columns and multi-select values (1.11.213–1.11.219), N:N loading (1.11.209), SQL completion (1.11.207) and Script Console (1.11.202). If the store is behind on the date, push the batch back, never post a video of a feature users can't install.
 
 ## Posting rules
 
@@ -23,6 +25,7 @@ Two posts a week for the first month (Tuesday 8:30, Thursday 17:30), then one a 
 **Scheduling in two batches** — LinkedIn schedules at most ~3 months ahead:
 - **Batch 1 — now:** Posts 26 → 39 (Oct 13 → Dec 15), everything up to the holiday break.
 - **Batch 2 — from Nov 16:** Posts 40 → 46 (Jan 5 → Feb 16). On Nov 16 the 3-month window reaches Feb 16, so the seven can be scheduled in one sitting.
+- **Batch 3 — from Jan 27:** Posts 48 → 57 (Feb 23 → Apr 27), one a week on Tuesdays. On Jan 27 the window reaches Apr 27, so the ten fit in one sitting (check the store version first, see Start).
 If the start date moves (store approval), shift both batches by the same number of weeks.
 
 | Post | Week | Slot | Date (example) | Topic | Video (`tools/video/out/…`) | Length | Batch | Posted |
@@ -48,10 +51,20 @@ If the start date moves (store approval), shift both batches by the same number 
 | 44 | 15 | Tue 8:30 | Feb 2 | Teams | `deep/colvio_teams_en.mp4` | 73 s | 2 | ☐ |
 | 45 | 16 | Tue 8:30 | Feb 9 | Translations | `deep/colvio_translations_en.mp4` | 64 s | 2 | ☐ |
 | 46 | 17 | Tue 8:30 | Feb 16 | Login History | `deep/colvio_logins_en.mp4` | 52 s | 2 | ☐ |
+| 48 | 18 | Tue 8:30 | Feb 23 | Record access & Record activity | `deep/colvio_access_en.mp4` | 1 min 41 | 3 | ☐ |
+| 49 | 19 | Tue 8:30 | Mar 2 | Health check | `deep/colvio_health_en.mp4` | 82 s | 3 | ☐ |
+| 50 | 20 | Tue 8:30 | Mar 9 | Data Explorer: SQL, safe writes, saved views | `deep/colvio_sqlpower_en.mp4` | 1 min 42 | 3 | ☐ |
+| 51 | 21 | Tue 8:30 | Mar 16 | Automation: who runs it, what fires | `deep/colvio_whoruns_en.mp4` | 1 min 42 | 3 | ☐ |
+| 52 | 22 | Tue 8:30 | Mar 23 | Script Console | `deep/colvio_script_en.mp4` | 1 min 40 | 3 | ☐ |
+| 53 | 23 | Tue 8:30 | Mar 30 | Metadata: know your data model | `deep/colvio_datamodel_en.mp4` | 95 s | 3 | ☐ |
+| 54 | 24 | Tue 8:30 | Apr 6 | Solutions › Deployments | `deep/colvio_deployments_en.mp4` | 1 min 40 | 3 | ☐ |
+| 55 | 25 | Tue 8:30 | Apr 13 | Web Resources | `deep/colvio_webres_en.mp4` | 79 s | 3 | ☐ |
+| 56 | 26 | Tue 8:30 | Apr 20 | Change the model without XrmToolBox | `deep/colvio_modelwrites_en.mp4` | 1 min 41 | 3 | ☐ |
+| 57 | 27 | Tue 8:30 | Apr 27 | Data Loader: N:N tables by association | `deep/colvio_association_en.mp4` | 84 s | 3 | ☐ |
 
-To re-render a video after a UI change: `node make-deep.mjs --module=<module> --lang=en` or `node make-video.mjs --lang=en --no-clips` in `tools/video` (see its README).
+To re-render a video after a UI change: `node make-deep.mjs --module=<module> --lang=en` or `node make-video.mjs --lang=en --no-clips` in `tools/video` (see its README). Post 47 (`linkedin-posts.md`) is the text-only release post of 1.11.182 → 1.11.202; Posts 48–57 show those features, and the later ones, in motion.
 
-## The 21 posts
+## The 31 posts
 
 ### Post 26 — Colvio in a few minutes (tour) (2 min 54)
 
@@ -508,3 +521,239 @@ Demo data in the video. Free and open source.
 Did you know Dataverse has no sign-out event? 👇
 
 #Dynamics365 #Dataverse #PowerPlatform #D365 #Audit
+
+---
+
+### Post 48 — Record access & Record activity (`access`, 1 min 41)
+
+⏱ 1 min 41 inside Colvio's Show All Data: Record access and Record activity.
+
+"Why can't she see this record?" and "What did that save just trigger?" Two questions people bring to admins every week, answered from the record itself.
+
+1. Pick a user by name or email, right from the record
+2. Dataverse's own yes / no for each right (read, write, append, append to, delete, assign, share), with the role or team role that grants it, at which depth, and where the record sits
+3. For every no, what would fix it: the depth this record needs, a share (they have the privilege, so it would work), or assigning the record to them
+4. Their roles, their teams with the teams' roles, and who the record is already shared with
+5. Same record, another user: the owner gets every right, and the whole check exports to CSV or Excel
+6. Record activity: every save of the record made in this browser, the columns it sent, and the plug-ins it ran, in order, cascades on other tables included
+7. A save that failed: the plug-in's exception in red, and its full trace one click away
+8. An async job failing every time: its last 6 runs, the step behind it, and what a 401 usually means
+9. The cloud flows it triggered, the ones that may trigger, and the ones that won't, with the reason
+
+All on demo data. Read-only, no real org on screen.
+
+Which do you get asked more: "why can't they see it" or "what changed this record"? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #SecurityRoles
+
+---
+
+### Post 49 — Health check (`health`, 82 s)
+
+⏱ 82 s inside Colvio's Health check.
+
+Some problems never throw an error. They sit in your environment until something breaks. One click, one report, worst first:
+
+1. 12 checks in one run: jobs, flows, plug-ins, connections, variables, users, solutions, log tables. Read-only.
+2. Every check rated (warning, note, OK, not applicable) and sorted worst first, each finding with what to do
+3. System jobs failed in the last 7 days, grouped by job name, and the suspended ones still waiting for a retry
+4. Active cloud flows owned by disabled users, and synchronous Update plug-in steps with no filtering attributes
+5. Connection references without a connection, environment variables with neither a value nor a default
+6. Log tables against a threshold: 1,240,300 system jobs flagged, with the bulk-delete fix
+7. The notes: trace log on "All", audit kept forever, enabled users without a role. Unmanaged solutions are only checked in production
+8. Copy the whole report as plain text for a ticket, or export it to CSV / Excel
+
+All on demo data. No real org on screen.
+
+Which of these would you bet your production org has right now? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #Governance
+
+---
+
+### Post 50 — Data Explorer: SQL, safe writes, saved views (`sqlpower`, 1 min 42)
+
+⏱ 1 min 42 inside Colvio's Data Explorer, past the basics: SQL, safe writes and saved views.
+
+The first Explorer video built a query. This one shows what you can do around it, in nine steps:
+
+1. Paste a full Web API URL, even one from another environment: its table opens in OData mode, and Colvio says the query runs here
+2. ⬇ To file: every row streamed to CSV or Excel, page after page, nothing kept in the browser
+3. SQL that completes as you type: after FROM, the tables matching what you typed; Tab inserts
+4. In the SELECT list, the FROM table's columns, with display name and type
+5. UPDATE in SQL: Execute becomes "Preview UPDATE", and a label where an option set needs its number is refused, with the reason
+6. The preview: the WHERE runs as a SELECT and lists every row the statement would touch. Nothing written yet
+7. Apply asks first, repeating the statement and what each record gets
+8. 👁 Save as view: the Builder query (columns, filter, sort) becomes a personal view under My views
+9. ⭐ Save a query, then 💾 Update overwrites it in one click
+
+All on demo data. The update was never applied: the confirmation was cancelled.
+
+Would you run an UPDATE on Dataverse more often if you saw every row it touches first? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #SQL
+
+---
+
+### Post 51 — Automation: who runs it, what fires (`whoruns`, 1 min 42)
+
+⏱ 1 min 42 inside Colvio's Automation module: who runs it, and what fires when a column changes.
+
+A cloud flow doesn't run as its owner. A person behind your automation leaves, and things stop. Here is how to see it before that happens.
+
+1. Every identity behind a cloud flow, workflow or plug-in step, by kind: person, team, app registration, service account, built-in, and what each one runs
+2. Flags first: a disabled user still behind active automation, and people whose flows and workflows break when they leave
+3. Every connection reference: its connector, the account it's signed in with, or "no connection: flows using it can't run"
+4. Cloud flows: who each one runs as (the account of each connection, or whoever runs it) and who it sends email as
+5. Classic workflows too: Runs as (owner or the user who made the change) and the From of each Send Email step
+6. 🎯 Fires on: pick a table and a column, and see every step, workflow and flow that runs when it changes
+7. Switch steps off: filter on an assembly, tick every step shown, Disable
+8. Set a step's filtering attributes: tick the columns it should react to, and save
+9. Ask again: the column now fires the flow and the plug-in step, with its stage and who it runs as
+
+All on demo data. No real org on screen.
+
+When someone leaves your team, how do you find what was running under their name? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #PowerAutomate
+
+---
+
+### Post 52 — Script Console (`script`, 1 min 40)
+
+⏱ 1 min 40 inside Colvio's Script Console.
+
+For what no screen does: JavaScript on the Dataverse Web API, with a dry run before anything is written and a rollback after.
+
+1. Start from a template: here, fill each user's sales code from the sales organization they belong to
+2. The code runs in an isolated sandbox with no network: it reaches your org only through dv (reads, writes, $batch, actions)
+3. Dry run: reads run for real, every write is listed in the Plan and NOT sent (8 lookups here)
+4. The script's own report, row by row: would update, already right, or skipped rather than guessed
+5. Run for real, confirmed against the dry run's plan, with the rollback journal on: 8 writes, 8 reversible
+6. Rollback in one click: inverse operations, last write first, with undone / failed / skipped counts
+7. Dry run again: the same 8 writes are planned, so the rows really are back as they were
+8. Rows from an input file: update accounts by account number, and a number that matches nothing is reported
+9. Saved scripts, a .js download, and the run's journal exported as JSON
+
+All on demo data. No real org on screen.
+
+What's the one data fix you'd script tomorrow if you knew you could undo it? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #JavaScript
+
+---
+
+### Post 53 — Metadata: know your data model (`datamodel`, 95 s)
+
+⏱ 95 s inside Colvio's Metadata module: know your data model before you touch it.
+
+"Can we delete this column?" is really three questions: is it used, what depends on it, and who else changed it.
+
+1. Fill rate: for every column, how many rows actually hold a value, the whole table counted in a couple of requests; never-filled columns show in red
+2. A data dictionary for many tables at once: every column with its type, required level and description, to CSV or Excel
+3. 🧨 What blocks deleting a column: Dataverse's own dependency check, every form, view, business rule, cloud flow, plug-in step and key named, each with how to remove it
+4. Everything that uses a table: lookups, forms and views of other tables, apps, flows, charts, with its own parts set apart
+5. 📑 Solution layers: an unmanaged "Active" layer sitting on a managed solution is flagged, and the values it overrides are struck through
+6. 🔎 What the global search shows and searches, table by table, from each Quick Find view, with rows indexed and last sync
+7. Where search falls short: a table with no Quick Find view, one with no Find column, an index sync still running
+8. Multi-select choice columns: their values, like any other choice
+
+All on demo data. Dependencies, layers and search columns are read-only.
+
+What's the column in your org that nobody dares to delete? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataModel
+
+---
+
+### Post 54 — Solutions › Deployments (`deployments`, 1 min 40)
+
+⏱ 1 min 40 inside Colvio's Solutions › 🚀 Deployments.
+
+"Which version is in this environment, who imported it, and did the last import fail?" One window answers all three:
+
+1. Every solution import, export and uninstall the environment recorded, with the failures and the oldest entry
+2. A timeline, newest first: when, how long, which version (managed, patch), new / upgrade / update, the result and who started it
+3. Flagged: a failed upgrade with its error, an import that overwrote unmanaged customizations, one that never completed
+4. Open a run: error code and message, the activity id for Microsoft support, the import job, then its import log parsed
+5. Filter by text, solution, operation, result and period
+6. Older than 180 days: Dataverse purges its solution history, but the import jobs still show who imported
+7. By solution: each solution's version ladder, its current version, failures and uninstalls
+8. From any solution: its deployment history, already filtered, exportable to CSV or Excel
+
+All on demo data. No real org on screen.
+
+How long did it take you to find out why your last solution import failed? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #ALM
+
+---
+
+### Post 55 — Web Resources (`webres`, 79 s)
+
+⏱ 79 s inside Colvio's Web Resources.
+
+Before you rename or delete a column: which scripts still use it? Dataverse's dependency tracking doesn't look inside JavaScript.
+
+1. Every web resource by kind; Microsoft's own libraries stay hidden until you ask, and M marks a managed solution
+2. Open one in the editor: content decoded, with its kind, display name and size
+3. Search a column name inside every script and page: new_sapid turns up 4 lines in 3 resources
+4. Click a hit: the resource opens with that line selected
+5. Edit in place: a dot marks unsaved changes, Revert brings back the version you opened
+6. Save & publish: asked first, with the new size and what a publish means for every user
+7. A resource from a managed solution says so: your change is an unmanaged layer the next import may overwrite
+8. Download any resource as its file, or open the published version in Dynamics 365
+
+All on demo data. No real org on screen.
+
+Which column would you search for first in your org's scripts? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #PowerApps
+
+---
+
+### Post 56 — Change the model without XrmToolBox (`modelwrites`, 1 min 41)
+
+⏱ 1 min 41 inside Colvio: changing the data model without opening XrmToolBox.
+
+A new choice value or ten new columns shouldn't mean another tool and twenty clicks per column. Every write below asks for confirmation first.
+
+1. Edit a choice column's values, and see what you touch: a global choice changes for every column that uses it
+2. Add an option: the value is optional (Dataverse picks one with your publisher's prefix), published right away
+3. Rename one (rows keep their value, labels in other languages are kept), reorder them with ↑ ↓
+4. Delete one: the rows holding it are counted first, and the confirmation says it can't be undone
+5. Columns from a CSV or Excel file, every row checked before anything is sent: a choice without options, a lookup to a table the org doesn't have, a length out of bounds, a duplicate
+6. Create them in one go, in the unmanaged solution you pick, one request per column, the table published once, rows with errors skipped
+7. A plug-in step's filtering attributes: tick the columns, Save shows the diff before the step is updated
+
+All on demo data. No real org on screen.
+
+Which model change do you still open XrmToolBox for? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #PowerApps
+
+---
+
+### Post 57 — Data Loader: N:N tables by association (`association`, 84 s)
+
+⏱ 84 s inside Colvio's Data Loader, on the tables most loaders skip: many-to-many.
+
+Putting users in their teams isn't creating rows. Each line of the file links two records, and Colvio's Data Loader now does exactly that, in nine steps:
+
+1. Paste two columns from Excel: a user and a team per row, as GUIDs
+2. Team Membership is in the target list, badged N:N
+3. Its rows aren't created: each file row associates one user with one team, and a link that already exists counts as "already", never as an error
+4. One file column per end (user → systemuser, team → team): a GUID, or a value resolved through a text column
+5. A dry run that writes nothing: 5 pairs would be associated; the row without a team and the repeated pair are skipped, each with its reason
+6. Associate: a result card with associated, already linked, skipped and errors, and a log line for every row
+7. Rollback removes only the links this run added, and the log exports to CSV
+8. Back on a normal table: an Excel export of accounts read against Contact, "1 of 11 columns match", and Colvio spots that the file is an Account export
+9. One click to Account and every column is matched again: display names like "Main Phone", "(Do Not Modify) Account" as the record id, checksum and modified-on skipped
+
+All on demo data. No real org on screen.
+
+How do you add a hundred users to their teams today? 👇
+
+#Dynamics365 #Dataverse #PowerPlatform #D365 #DataMigration
+
+---

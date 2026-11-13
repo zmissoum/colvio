@@ -56,9 +56,15 @@ Write the chapters, run `--probe` until every chapter passes and every screensho
 caption claims, then render. Render one module at a time (or a comma list in one run): parallel
 renders compete for the CPU and the screencast drops frames.
 
-Available (20): `explorer`, `loader`, `recyclebin`, `showalldata`, `apitester`, `metadata`,
-`automation`, `apps`, `relationships`, `schema`, `solutions`, `envvars`, `translations`, `licenses`,
-`bu`, `security`, `teams`, `adoption`, `logins`, `storage`. Some chapters feed the page in-memory
+Available (30): one per module — `explorer`, `loader`, `recyclebin`, `showalldata`, `apitester`,
+`metadata`, `automation`, `apps`, `relationships`, `schema`, `solutions`, `envvars`, `translations`,
+`licenses`, `bu`, `security`, `teams`, `adoption`, `logins`, `storage`, `health`, `script`, `webres` —
+and seven on capabilities added inside modules after the first series: `access` (Show All Data ›
+Record access + Record activity), `whoruns` (Automation › who runs it, Fires on, step writes),
+`datamodel` and `modelwrites` (Metadata), `sqlpower` (Explorer › SQL completion, UPDATE preview, Save
+as view), `association` (Data Loader › N:N tables), `deployments` (Solutions › Deployments).
+Native `window.confirm` dialogs don't appear in a screencast: scripts that film a write reproduce
+the dialog on the page with the app's own message, answer Cancel, then click again and accept. Some chapters feed the page in-memory
 files through Playwright's file chooser (a solution-compare file, a schema snapshot, a translations
 CSV) — nothing is downloaded or read from disk, and download buttons are only hovered. The tour's
 Data Loader, Recycle Bin, API Tester and Schema scenes replay the first chapters of these scripts.

@@ -740,9 +740,9 @@ What's the first SQL query you'll throw at Dataverse? 👇
 
 ---
 
-## Feature videos on LinkedIn — Posts 26 → 42
+## Feature videos on LinkedIn — Posts 26 → 46, then 48 → 57
 
-Moved to [`linkedin-plan-videos.md`](linkedin-plan-videos.md): the video-only plan (rules, calendar with a "published" checklist, and the 17 texts in EN + FR).
+Moved to [`linkedin-plan-videos.md`](linkedin-plan-videos.md): the video-only plan (rules, calendar with a "published" checklist, and the texts). Posts 48 → 57 film what came after the first series (1.11.177 → 1.11.219).
 
 ## Post 47 — "Why can't she see this record?" now has a screen (1.11.181 → 1.11.202)
 
