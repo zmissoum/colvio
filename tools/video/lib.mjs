@@ -10,7 +10,7 @@ import { chromium } from "playwright";
 
 // ffmpeg: the ffmpeg-static binary by default; FFMPEG_PATH points at another one (a system ffmpeg
 // on Linux / CI, where ffmpeg-static's download may be blocked).
-const ffmpegPath = process.env.FFMPEG_PATH || (await import("ffmpeg-static")).default;
+export const ffmpegPath = process.env.FFMPEG_PATH || (await import("ffmpeg-static")).default;
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DIST = path.resolve(HERE, "..", "..", "dist");
@@ -40,6 +40,9 @@ export async function openDemo({ url, locale = "en", theme = "dark", viewport = 
   const alt = process.env.COLVIO_VIDEO_CHROMIUM;
   const browser = await chromium.launch(alt ? { headless: true, ...(alt === "bundled" ? {} : { executablePath: alt }) } : { channel: "chrome", headless: true });
   const context = await browser.newContext({ viewport, deviceScaleFactor });
+  // "Copy" buttons write to the clipboard: headless Chromium denies it unless granted (an uncaught
+  // NotAllowedError in the console fails the run)
+  try { await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(url).origin }); } catch { /* browser without these permissions */ }
   await context.addInitScript(([loc, th]) => {
     try {
       localStorage.setItem("colvio_tour_done", "1");   // no onboarding tour over the footage

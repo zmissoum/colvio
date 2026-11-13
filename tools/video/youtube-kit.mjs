@@ -4,6 +4,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { HERE, ffmpeg } from "./lib.mjs";
+import { checkUpload } from "./youtube-check.mjs";
+
+// --res=1440 → the 1440p render (summary_1440.json, colvio_tour_en_1440.mp4): YouTube's sharper encodes
+const RES = process.argv.find(a => a.startsWith("--res="))?.split("=")[1] || "1080";
+const SUFFIX = RES === "1080" ? "" : `_${RES}`;
 
 const NAMES = { explorer: "Data Explorer", loader: "Data Loader", recyclebin: "Recycle Bin", showalldata: "Show All Data", apitester: "API Tester",
   metadata: "Metadata", relationships: "Relationships", schema: "Schema", solutions: "Solutions", automation: "Automation", apps: "Apps",
@@ -12,8 +17,9 @@ const NAMES = { explorer: "Data Explorer", loader: "Data Loader", recyclebin: "R
 const STORE = "https://chromewebstore.google.com/detail/edieednbdaclheikneelkjfbckibhdgl";
 const REPO = "https://github.com/zmissoum/colvio";
 
-const run = JSON.parse(fs.readFileSync(path.join(HERE, "out", "video", "summary.json"), "utf8")).find(s => s.lang === "en");
-if (!run?.sceneStarts) { console.error("render the EN tour first: node make-video.mjs --lang=en --no-clips"); process.exit(2); }
+const sumFile = path.join(HERE, "out", "video", `summary${SUFFIX}.json`);
+const run = fs.existsSync(sumFile) ? JSON.parse(fs.readFileSync(sumFile, "utf8")).find(s => s.lang === "en") : null;
+if (!run?.sceneStarts) { console.error(`render the EN tour first: node make-video.mjs --lang=en --no-clips${SUFFIX ? ` --res=${RES}` : ""}`); process.exit(2); }
 const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 
 export function chapters(scenes, total, min = 10) {
@@ -42,7 +48,7 @@ Colvio in 3 minutes — the free toolkit for Dynamics 365 & Dataverse
 ## Description
 
 \`\`\`text
-Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and Dataverse: 21 modules, right in your browser, on the session you're already signed in with. This tour shows 20 of them on demo data.
+Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and Dataverse: 24 modules, right in your browser, on the session you're already signed in with. This tour shows 20 of them on demo data; every module has its own video on the channel.
 
 Chapters
 ${lines.join("\n")}
@@ -72,7 +78,13 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 // Upload copy: a silent stereo AAC track (YouTube's recommended layout) and its own folder, so a
 // render can't rewrite the file while it uploads.
 fs.mkdirSync(path.join(HERE, "out", "upload"), { recursive: true });
-ffmpeg(["-i", path.join(HERE, "out", "video", "colvio_tour_en.mp4"), "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-map", "0:v", "-map", "1:a",
+ffmpeg(["-i", path.join(HERE, "out", "video", `colvio_tour_en${SUFFIX}.mp4`), "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-map", "0:v", "-map", "1:a",
   "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", path.join(HERE, "out", "upload", "colvio_tour_en.mp4")], "upload copy");
 fs.writeFileSync(path.join(HERE, "..", "..", "store", "youtube-tour.md"), md);
 console.log(`✓ store/youtube-tour.md — ${ch.length} chapters:\n${lines.join("\n")}`);
+// upload pre-flight on what will actually be uploaded: the copy, the kit's own title / description / tags
+const block = (h) => (md.split(`## ${h}`)[1] || "").split("```text\n")[1]?.split("\n```")[0] || "";
+const issues = checkUpload({ file: path.join(HERE, "out", "upload", "colvio_tour_en.mp4"), title: block("Title"), description: block("Description"),
+  tags: block("Tags").split(",").map(t => t.trim()).filter(Boolean), thumbnail: path.join(HERE, "..", "..", "store", "youtube_thumbnail_1280x720.png") });
+console.log(issues.length ? `✗ upload pre-flight:\n  · ${issues.join("\n  · ")}` : "✓ upload pre-flight passed");
+if (issues.length) process.exitCode = 1;

@@ -120,7 +120,24 @@ node youtube-kit.mjs                       # → store/youtube-tour.md: title, d
 ```
 
 YouTube chapters must start at 0:00, be at least 3 and each last 10 s or more, so scenes (~8 s) are grouped.
-Re-run both after the tour changes — the timestamps move.
+Re-run both after the tour changes — the timestamps move. `--res=1440` on both uses the 1440p render.
+
+The module videos get the same treatment:
+
+```bash
+node make-deep.mjs --module=<key>[,…] --lang=en --res=1440   # writes colvio_<key>_en_1440.mp4 + .json (chapter times)
+node youtube-deep.mjs                                         # every 1440p EN deep dive found (--res=1080, --module=a,b)
+```
+
+→ `out/upload/colvio_<key>_en.mp4` (the file to upload: silent stereo AAC track, moov first),
+`out/upload/colvio_<key>_thumb.jpg` (1280×720, the video's title card) and `store/youtube-deep.md` (title,
+description with chapters, tags, settings, playlist order).
+
+Both kits end with an **upload pre-flight** (`youtube-check.mjs`) on the file actually uploaded and the
+text pasted with it: H.264 High, yuv420p, progressive, 24–60 fps, 16:9, a stereo AAC track, moov before
+mdat, ≤ 15 min (unverified channels); title 1–100 characters, description ≤ 5,000 bytes, no `<` or `>`
+in either (YouTube refuses them), tags ≤ 500 characters, chapters from 0:00, at least 3, each ≥ 10 s;
+thumbnail 16:9, ≥ 640 wide, ≤ 2 MB. A failure exits non-zero and names the problem.
 
 ## What's filmed
 
