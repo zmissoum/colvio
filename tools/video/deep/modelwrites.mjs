@@ -59,7 +59,7 @@ const SHEET = [
   ["Risk level", "Choice", "No", "", "Low;High", "", ""],
 ].map(r => r.join(",")).join("\n");
 
-const __def = {
+export default {
   key: "modelwrites",
   label: "Metadata",
   tagline: {
@@ -157,6 +157,3 @@ const __def = {
       } },
   ],
 };
-
-__def.chapters = __def.chapters.map(c => ({ ...c, run: async (h) => { const t = Date.now(); await c.run(h); console.log('T', c.key, Date.now() - t); } }));
-export default __def;
