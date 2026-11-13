@@ -29,10 +29,10 @@ export default {
         const input = h.page.getByPlaceholder(/demo mode|entity\/GUID/).first();
         await h.click(input);
         await input.fill("account/a1b2c3d4-e5f6-7890-abcd-ef1234567890"); await h.wait(800);
-        await h.click(btn(h, /Inspect$/)); await h.wait(1500);
+        await h.click(btn(h, /Inspect$/)); await h.wait(1200);
         await h.click(activityTitle(h)); await h.wait(600);          // folded for now — chapter 7 reopens it
         await h.click(accessTitle(h)); await h.wait(900);
-        await h.type(userSearch(h), "alex"); await h.wait(1600);
+        await h.type(userSearch(h), "alex"); await h.wait(1300);
       } },
     { key: "verdict",
       pos: "top",
@@ -41,8 +41,7 @@ export default {
       run: async (h) => {
         await h.click(pickUser(h, "Alex Martin")); await h.wait(1800);
         await h.hover(text(h, /^📍 Owned by/)); await h.wait(1500);
-        await h.hover(rightRow(h, "Read")); await h.wait(1500);
-        await h.hover(rightRow(h, "Write")); await h.wait(1300);
+        await h.hover(rightRow(h, "Read")); await h.wait(1600);
       } },
     { key: "fix",
       pos: "top",
@@ -78,7 +77,6 @@ export default {
       run: async (h) => {
         await h.click(accessTitle(h)); await h.wait(500);
         await h.click(activityTitle(h)); await h.wait(1800);
-        await h.hover(text(h, /^3 columns sent:/)); await h.wait(1300);
         await h.hover(span(h, /^ContactAddressSync/)); await h.wait(1300);
         await h.hover(span(h, /^SyncToErp/)); await h.wait(1300);
       } },
@@ -89,7 +87,7 @@ export default {
       run: async (h) => {
         await h.click(span(h, /^HTTP 204 · 412 ms/)); await h.wait(700);       // fold the first save
         await h.click(span(h, /^Failed · HTTP 400/)); await h.wait(1800);
-        await h.hover(text(h, /^Revenue can't drop below/)); await h.wait(1200);
+        await h.hover(text(h, /^Revenue can't drop below/)); await h.wait(900);
         await h.click(traceRow(h, /AccountValidate/)); await h.wait(1800);
       } },
     { key: "job",
@@ -99,7 +97,7 @@ export default {
         await h.click(span(h, /^Failed · HTTP 400/)); await h.wait(600);
         await h.click(span(h, /^HTTP 204 · 412 ms/)); await h.wait(1000);
         await h.click(jobRow(h, /SurveySync/)); await h.wait(2200);
-        await h.hover(text(h, /^Failing every time/)); await h.wait(1500);
+        await h.hover(text(h, /^Failing every time/)); await h.wait(1300);
         await h.hover(text(h, /^💡/)); await h.wait(1500);
       } },
     { key: "flows",
@@ -107,8 +105,8 @@ export default {
       fr: ["9 · Les cloud flows déclenchés", "Triggered, avec leur exécution ; May trigger — selon un filtre de ligne ; Won't trigger, avec la raison : aucune de ses colonnes déclencheuses n'a été envoyée."],
       run: async (h) => {
         await h.click(jobRow(h, /SurveySync/)); await h.wait(600);
-        await h.hover(span(h, /^Triggered$/)); await h.wait(1300);
-        await h.hover(span(h, /^May trigger$/)); await h.wait(1300);
+        await h.hover(span(h, /^Triggered$/)); await h.wait(1100);
+        await h.hover(span(h, /^May trigger$/)); await h.wait(1100);
         await h.click(span(h, /^Won't trigger$/)); await h.wait(700);
         await h.scroll(260); await h.wait(1600);
       } },

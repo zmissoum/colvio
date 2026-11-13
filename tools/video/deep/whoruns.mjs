@@ -35,7 +35,6 @@ export default {
         await h.open("Automation");
         await h.wait(1000);
         await h.click(btn(h, /Who runs it/)); await h.wait(1800);
-        await h.hover(cell(h, /^App registration$/)); await h.wait(1200);
         await h.hover(cell(h, /^runs as 1 plug-in step$/)); await h.wait(1400);
       } },
     { key: "flags",
@@ -53,7 +52,6 @@ export default {
       run: async (h) => {
         await h.click(btn(h, /^Connections \(/)); await h.wait(1500);
         await h.hover(cell(h, /^svc-integration@contoso\.example/)); await h.wait(1300);
-        await h.hover(cell(h, /^alex@contoso\.example/)); await h.wait(1200);
         await h.hover(cell(h, /^no connection/)); await h.wait(1500);
       } },
     { key: "flow-runs-as",
@@ -64,7 +62,6 @@ export default {
         await h.click(btn(h, /^Cloud flows/)); await h.wait(1800);
         await h.hover(cell(h, /^svc-integration@contoso\.examplesap: no connection/)); await h.wait(1500);
         await h.hover(cell(h, /^noreply@contoso\.example/)); await h.wait(1500);
-        await h.hover(cell(h, /^whoever runs it \(their own/)); await h.wait(1300);
       } },
     { key: "workflow-runs-as",
       en: ["5 · Classic workflows too", "Runs as: the owner when real-time set to Execute as owner, or when an event starts a background one. Sends email as: each Send Email step's From — the record's owner, a fixed user (ℹ)."],
@@ -72,7 +69,6 @@ export default {
       run: async (h) => {
         await h.click(btn(h, /^Workflows/)); await h.wait(1800);
         await h.hover(cell(h, /^Owner \(Execute as\)$/)); await h.wait(1300);
-        await h.hover(cell(h, /^Owner \(started by an event\)$/)); await h.wait(1300);
         await h.hover(cell(h, /^svc-integration \(user\)/)); await h.wait(1400);
       } },
     { key: "fires-on",
@@ -80,8 +76,8 @@ export default {
       fr: ["6 · 🎯 Ce qui se déclenche quand une colonne change", "Choisissez une table, puis une colonne : chaque step, workflow et flow qui s'exécute quand telephone1 d'account change — ici un seul flow."],
       run: async (h) => {
         await h.click(btn(h, /Fires on/)); await h.wait(1000);
-        await h.type(firesTable(h), "account"); await h.wait(1600);
-        await h.type(firesColumn(h), "telephone1"); await h.wait(1500);
+        await h.type(firesTable(h), "account"); await h.wait(1300);
+        await h.type(firesColumn(h), "telephone1"); await h.wait(1200);
         await h.hover(cell(h, /^CreateUpdatenamenew_sapidtelephone1$/)); await h.wait(1300);
       } },
     { key: "disable",
@@ -89,7 +85,7 @@ export default {
       fr: ["7 · Désactiver des steps", "Filtrez sur une assembly, cochez tous les steps affichés, Disable — avant une migration de données, par exemple. Les lignes affichent Disabled."],
       run: async (h) => {
         await h.click(btn(h, /^Plug-in steps/)); await h.wait(1200);
-        await h.type(filterBox(h), "Contoso.Plugins"); await h.wait(1300);
+        await h.type(filterBox(h), "Contoso.Plugins"); await h.wait(1000);
         await h.click(h.page.locator('th input[type="checkbox"] >> visible=true').first()); await h.wait(1000);
         accept(h);
         await h.click(btn(h, /^Disable$/)); await h.wait(1500);
@@ -112,7 +108,7 @@ export default {
       fr: ["9 · Reposez la question", "telephone1 d'account déclenche maintenant deux enregistrements : le flow, et le step de sync SAP — async, post-opération, exécuté en tant que l'app SAP."],
       run: async (h) => {
         await h.click(btn(h, /Fires on/)); await h.wait(900);
-        await h.type(firesTable(h), "account"); await h.wait(1200);
+        await h.type(firesTable(h), "account"); await h.wait(900);
         await h.type(firesColumn(h), "telephone1"); await h.wait(1500);
         await h.hover(cell(h, /^Contoso\.Integration\.SapSync/)); await h.wait(1500);
       } },

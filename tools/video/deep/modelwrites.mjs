@@ -3,8 +3,9 @@
 // file chooser — nothing read from disk), and a plug-in step's filtering attributes.
 //
 // Every write in Colvio asks window.confirm() first. A native dialog doesn't render in a headless
-// screencast, so the page's confirm() is replaced by an on-page box that shows the app's own
-// message, word for word, and answers OK once the cursor clicks it (the write runs as on an org).
+// screencast, so confirm() is replaced: the click shows the app's own message, word for word, in an
+// on-page box and answers Cancel (nothing is written); once the cursor clicks OK, the same button is
+// pressed again with confirm() answering OK — so the write only happens after OK, as on an org.
 // Every action below was checked against demo mode (make-deep --probe).
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 const fieldRow = (h, logical) => h.page.locator("tbody tr >> visible=true").filter({ has: h.page.locator(`text="${logical}"`) }).first();
@@ -13,6 +14,7 @@ const optRow = (h, value) => h.page.locator(`xpath=//tr[td[1][normalize-space(.)
 const armConfirm = (h) => h.page.evaluate(() => {
   if (window.__cvConfirmArmed) return;
   window.__cvConfirmArmed = true;
+  window.__cvConfirmPass = false;
   const st = document.createElement("style");
   st.textContent = `#cv-confirm{position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.55);display:flex;justify-content:center;align-items:center;padding:175px 0 145px;box-sizing:border-box}
   #cv-confirm .d{width:560px;max-height:100%;overflow:hidden;box-sizing:border-box;background:#292a2d;color:#e8eaed;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6);padding:18px 20px 14px;font:14px/1.5 "Segoe UI",system-ui,sans-serif}
@@ -23,20 +25,24 @@ const armConfirm = (h) => h.page.evaluate(() => {
   #cv-confirm .b .ok{background:#8ab4f8;color:#202124;border-color:#8ab4f8;font-weight:600}`;
   document.head.appendChild(st);
   window.confirm = (msg) => {
+    if (window.__cvConfirmPass) return true;
     document.getElementById("cv-confirm")?.remove();
     const box = document.createElement("div"); box.id = "cv-confirm";
     box.innerHTML = '<div class="d"><div class="h">Confirm</div><div class="m"></div><div class="b"><span class="c">Cancel</span><span class="ok">OK</span></div></div>';
     box.querySelector(".m").textContent = msg;
     box.querySelector(".ok").addEventListener("click", () => box.remove());
     document.body.appendChild(box);
-    return true;
+    return false;
   };
 });
-// Let the confirmation be read, then click its OK.
-const confirmOk = async (h, readMs = 2600) => {
+// Click a write button: its confirmation is read, OK is clicked, then the write runs.
+const confirmed = async (h, loc, readMs = 2600) => {
+  await h.click(loc);
   await h.page.locator("#cv-confirm").waitFor(); await h.wait(readMs);
-  await h.page.screenshot({ path: `/tmp/claude-0/-home-user-colvio/5ca096eb-f8bc-51d7-b4ef-67ab37ed8a0d/scratchpad/mw_confirm_${Date.now()}.png` });
-  await h.click(h.page.locator("#cv-confirm .ok")); await h.wait(700);
+  await h.click(h.page.locator("#cv-confirm .ok"));
+  await h.page.evaluate(() => { window.__cvConfirmPass = true; });
+  try { await loc.click(); } finally { await h.page.evaluate(() => { window.__cvConfirmPass = false; }); }
+  await h.wait(800);
 };
 
 // The sheet: 9 columns for Account, four of them with mistakes that are caught before anything is sent.
@@ -80,8 +86,7 @@ export default {
       fr: ["2 · Ajouter une option", "Un libellé, la valeur en option — Dataverse en choisit une avec le préfixe de votre éditeur. Confirmé d'abord, puis publié : la nouvelle valeur s'affiche."],
       run: async (h) => {
         await h.type(h.page.getByPlaceholder("New option label").first(), "Distributor"); await h.wait(500);
-        await h.click(btn(h, /＋ Add/));
-        await confirmOk(h, 2800);
+        await confirmed(h, btn(h, /＋ Add/), 2800);
         await h.hover(h.page.locator("text=/✓ Add “Distributor”/ >> visible=true").first()); await h.wait(1300);
         await h.hover(optRow(h, 100000000).locator("input")); await h.wait(1300);
       } },
@@ -91,8 +96,7 @@ export default {
       run: async (h) => {
         const inp = optRow(h, 7).locator("input");
         await h.click(inp); await inp.fill(""); await inp.pressSequentially("Press & media", { delay: 80 }); await h.wait(500);
-        await h.click(optRow(h, 7).getByRole("button", { name: "Rename" }));
-        await confirmOk(h, 2800);
+        await confirmed(h, optRow(h, 7).getByRole("button", { name: "Rename" }), 2800);
         await h.hover(h.page.locator("text=/✓ Rename 7/ >> visible=true").first()); await h.wait(1400);
       } },
     { key: "reorder",
@@ -102,8 +106,7 @@ export default {
         await h.click(optRow(h, 3).getByRole("button", { name: "↑" })); await h.wait(500);
         await h.click(optRow(h, 3).getByRole("button", { name: "↑" })); await h.wait(900);
         await h.hover(h.page.locator("text=/The order changed/ >> visible=true").first()); await h.wait(900);
-        await h.click(btn(h, /^Save order$/));
-        await confirmOk(h, 2400);
+        await confirmed(h, btn(h, /^Save order$/), 2400);
         await h.hover(h.page.locator("text=/✓ Save the order/ >> visible=true").first()); await h.wait(1100);
         await h.hover(optRow(h, 3).locator("input")); await h.wait(1100);
       } },
@@ -111,8 +114,7 @@ export default {
       en: ["5 · Delete one — knowing who holds it", "Before a delete, one count of the rows that hold the value. The confirmation says it, says it's a global choice, and that it can't be undone."],
       fr: ["5 · En supprimer une — en sachant qui la porte", "Avant une suppression, un comptage des lignes qui portent la valeur. La confirmation le dit, rappelle que c'est un choix global, et que c'est irréversible."],
       run: async (h) => {
-        await h.click(optRow(h, 6).getByRole("button", { name: "🗑" }));
-        await confirmOk(h, 3600);
+        await confirmed(h, optRow(h, 6).getByRole("button", { name: "🗑" }), 3600);
         await h.hover(h.page.locator("text=/✓ Delete “Influencer”/ >> visible=true").first()); await h.wait(1500);
       } },
     { key: "columns-file",
@@ -133,13 +135,13 @@ export default {
       en: ["7 · …then create them in one go", "Confirmed with the list, in the unmanaged solution you picked (its prefix), one request per column: then the table is published once. Rows with errors are skipped."],
       fr: ["7 · …puis les créer d'un coup", "Confirmé avec la liste, dans la solution unmanaged choisie (son préfixe), une requête par colonne : puis la table est publiée une fois. Les lignes en erreur sont ignorées."],
       run: async (h) => {
-        await h.click(btn(h, /^Create \d+ columns?$/));
-        await confirmOk(h, 3600);
+        await confirmed(h, btn(h, /^Create \d+ columns?$/), 3600);
         await h.page.locator("text=/table published, columns reloaded/ >> visible=true").first().waitFor({ timeout: 8000 });
         await h.wait(600);
         await h.hover(h.page.locator("text=/table published, columns reloaded/ >> visible=true").first()); await h.wait(1800);
       } },
     { key: "step-filtering",
+      pos: "top",
       en: ["8 · A plug-in step's filtering attributes", "Automation: an Update step's Filtering column opens its columns — tick or untick, Save confirms the diff before the step is updated."],
       fr: ["8 · Les attributs de filtrage d'un step", "Automation : la colonne Filtering d'un step Update ouvre ses colonnes — cochez, décochez, Save confirme l'écart avant de mettre le step à jour."],
       run: async (h) => {
@@ -150,8 +152,7 @@ export default {
         const tick = (logical) => h.page.locator("label >> visible=true").filter({ has: h.page.locator(`span:text-is("${logical}")`) }).first();
         await h.click(tick("accountnumber")); await h.wait(500);
         await h.click(tick("name")); await h.wait(700);
-        await h.click(btn(h, /^Save$/));
-        await confirmOk(h, 3000);
+        await confirmed(h, btn(h, /^Save$/), 3000);
         await h.hover(h.page.locator("text=/Filtering attributes of .* saved/ >> visible=true").first()); await h.wait(1600);
       } },
   ],
