@@ -46,10 +46,13 @@ try {
       const probeDir = path.join(HERE, "out", "deep-probe", m);
       const framesDir = path.join(HERE, "out", "deep", `frames_${m}_${lang}${SUFFIX}`);
       if (PROBE) fs.mkdirSync(probeDir, { recursive: true });
-      const rec = PROBE ? null : await record(page, framesDir, { maxWidth: RES.w, maxHeight: RES.h });
-
+      // The title card is fully on screen BEFORE the recording starts: the first frame — the thumbnail
+      // LinkedIn and YouTube pick by default — is the clean card, not the app's "Connecting…" screen
+      // showing through the card's fade-in (seen on a scheduled LinkedIn post).
       await page.evaluate(([t, s, n]) => window.__cv.card(t, s, n), [`Colvio · ${def.label}`, def.tagline[lang], NOTE[lang]]);
-      await h.wait(PROBE ? 300 : 3400);
+      await h.wait(PROBE ? 300 : 700);
+      const rec = PROBE ? null : await record(page, framesDir, { maxWidth: RES.w, maxHeight: RES.h });
+      await h.wait(PROBE ? 0 : 2700);
       await page.evaluate(() => window.__cv.hideCard()); await h.wait(500);
 
       const marks = []; // wall-clock start of each chapter → YouTube chapters (youtube-deep.mjs)

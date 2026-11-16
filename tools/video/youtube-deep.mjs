@@ -96,8 +96,8 @@ for (const key of keys) {
   // moov first; its own folder, so a re-render can't rewrite it mid-upload
   ffmpeg(["-i", src, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-map", "0:v", "-map", "1:a",
     "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", upload], `upload ${key}`);
-  // thumbnail: the title card ("Colvio · <module>", its tagline), fully faded in at ~1.8 s
-  ffmpeg(["-ss", "1.8", "-i", src, "-frames:v", "1", "-vf", "scale=1280:720:flags=lanczos", "-q:v", "3", thumb], `thumbnail ${key}`);
+  // thumbnail: the title card ("Colvio · <module>", its tagline), on screen from the first frame
+  ffmpeg(["-ss", "1.0", "-i", src, "-frames:v", "1", "-vf", "scale=1280:720:flags=lanczos", "-q:v", "3", thumb], `thumbnail ${key}`);
   const chapters = groupChapters(meta.chapters, meta.seconds);
   const title = `${TOPIC[key] || meta.label} | Colvio`;
   const description = [
