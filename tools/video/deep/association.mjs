@@ -1,25 +1,28 @@
 // Deep dive — Data Loader › N:N tables loaded by association (and the mapping that follows the
-// table). Every action below was checked against demo mode (make-deep --probe). The demo org knows
-// the teammembership relationship (systemuser ⟷ team) and answers every association as done, so the
-// file uses GUIDs (a value matched through a text column has no demo records to resolve against).
+// table). Every action below was checked against demo mode (make-deep --probe). The demo org
+// (src/associationDemo.js) knows the teammembership relationship (systemuser ⟷ team), six users
+// with their email and three teams, and two memberships that already exist (Marie in Sales
+// Managers, Sophie in Key Accounts): the file's emails and team names are resolved against them,
+// and the run reports those two pairs as "already linked" — through the live path's own outcome
+// rules. Its state lives for the page load, so the rollback really removes what the run added.
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 const mapRow = (h, csv) => h.page.locator("tr >> visible=true").filter({ has: h.page.locator(`td span:text-is("${csv}")`) }).first();
 const picker = (h) => h.page.getByPlaceholder("Type to search entities…");
 // "Load data" is also the sidebar entry's subtitle: the wizard's button is the last one.
 const loadData = (h) => h.page.locator("button >> visible=true").filter({ hasText: /Load data$/ }).last();
+// an end's "The column holds" picker, found by one of its options
+const holds = (h, option) => h.page.locator("select >> visible=true").filter({ has: h.page.locator(`option[value="${option}"]`) }).first();
 
-const U = ["6f1c2a10-3b4d-4e5f-8a91-0c2d3e4f5a61", "7a2d3b21-4c5e-4f60-9ba2-1d3e4f5a6b72", "8b3e4c32-5d6f-4071-8cb3-2e4f5a6b7c83", "9c4f5d43-6e70-4182-9dc4-3f5a6b7c8d94"];
-const T = ["1e2f3a4b-5c6d-4e7f-8091-a2b3c4d5e6f1", "2f3a4b5c-6d7e-4f80-91a2-b3c4d5e6f7a2"];
-// A user and a team per row: row 5 has no team, row 6 repeats row 3.
+// A user (email) and a team (name) per row: row 5 has no team, row 6 repeats row 3 (in other case).
 const PAIRS = [
   ["user", "team"],
-  [U[0], T[0]],
-  [U[1], T[0]],
-  [U[2], T[1]],
-  [U[3], ""],
-  [U[1], T[0]],
-  [U[3], T[1]],
-  [U[0], T[1]],
+  ["marie@contoso.com", "Sales Managers"],
+  ["alex@contoso.com", "Sales Managers"],
+  ["sophie@contoso.com", "Key Accounts"],
+  ["lucas@contoso.com", ""],
+  ["alex@contoso.com", "sales managers"],
+  ["lucas@contoso.com", "Support Tier 2"],
+  ["marie@contoso.com", "Key Accounts"],
 ].map(r => r.join("\t")).join("\n");
 
 // An "Export to Excel" of accounts, pasted: display-name headers and the export's hidden columns.
@@ -39,8 +42,8 @@ export default {
   },
   chapters: [
     { key: "paste",
-      en: ["1 · Paste the pairs", "Two columns from Excel: a user and a team per row, as GUIDs — one row has no team, and one pair appears twice."],
-      fr: ["1 · Coller les paires", "Deux colonnes depuis Excel : un utilisateur et une équipe par ligne, en GUID — une ligne n'a pas d'équipe, une paire apparaît deux fois."],
+      en: ["1 · Paste the pairs", "Two columns from Excel: a user's email and a team's name per row — one row has no team, and one pair appears twice."],
+      fr: ["1 · Coller les paires", "Deux colonnes depuis Excel : l'email d'un utilisateur et le nom d'une équipe par ligne — une ligne n'a pas d'équipe, une paire apparaît deux fois."],
       run: async (h) => {
         await h.open("Data Loader");
         await h.click(btn(h, /Paste from Excel/)); await h.wait(600);
@@ -63,39 +66,50 @@ export default {
         await h.hover(h.page.getByText("N:N table", { exact: true }).first()); await h.wait(2600);
       } },
     { key: "ends",
-      en: ["4 · One column per end", "The file's columns pair themselves with each end — user → systemuser, team → team — holding a GUID, or a value resolved through a text column."],
-      fr: ["4 · Une colonne par extrémité", "Les colonnes du fichier s'associent seules à chaque extrémité — user → systemuser, team → team — avec un GUID, ou une valeur résolue par une colonne texte."],
+      en: ["4 · One column per end", "The file's columns pair themselves with each end — user → systemuser, team → team. They hold no GUIDs, so each end asks what its column holds."],
+      fr: ["4 · Une colonne par extrémité", "Les colonnes du fichier s'associent seules à chaque extrémité — user → systemuser, team → team. Elles ne contiennent pas de GUID : chaque extrémité demande ce que sa colonne contient."],
       run: async (h) => {
         await h.hover(h.page.getByText("End 1 —").first()); await h.wait(1300);
         await h.hover(h.page.getByText("End 2 —").first()); await h.wait(1300);
-        await h.hover(h.page.locator("label >> visible=true").filter({ hasText: "ASSOCIATE (add the link)" }).first()); await h.wait(1200);
+        await h.hover(holds(h, "internalemailaddress")); await h.wait(1200);
+      } },
+    { key: "match-by",
+      en: ["5 · Matched by email and by name", "Users by their Primary Email, teams by their Team Name: Colvio looks every value up — and a value that matches two records is reported, never picked at random."],
+      fr: ["5 · Rapprochés par email et par nom", "Les utilisateurs par leur Primary Email, les équipes par leur Team Name : Colvio cherche chaque valeur — et une valeur qui correspond à deux enregistrements est signalée, jamais choisie au hasard."],
+      run: async (h) => {
+        await h.select(holds(h, "internalemailaddress"), "internalemailaddress"); await h.wait(900);
+        await h.select(holds(h, "name"), "name"); await h.wait(1300);
+        await h.hover(h.page.locator("label >> visible=true").filter({ hasText: "ASSOCIATE (add the link)" }).first()); await h.wait(1000);
       } },
     { key: "dry-run", pos: "top",
-      en: ["5 · Dry run", "Every pair checked, nothing written: 5 would be associated — the row without a team and the repeated pair are skipped, each with its reason."],
-      fr: ["5 · Simulation", "Chaque paire vérifiée, rien n'est écrit : 5 seraient associées — la ligne sans équipe et la paire répétée sont ignorées, chacune avec sa raison."],
+      en: ["6 · Dry run", "Every value looked up, every pair checked, nothing written: 5 would be associated — the row without a team and the repeated pair are skipped, each with its reason."],
+      fr: ["6 · Simulation", "Chaque valeur cherchée, chaque paire vérifiée, rien n'est écrit : 5 seraient associées — la ligne sans équipe et la paire répétée sont ignorées, chacune avec sa raison."],
       run: async (h) => {
         await h.click(btn(h, /Dry run$/)); await h.wait(1300);
         await h.hover(h.page.getByText("Empty team").first()); await h.wait(1300);
         await h.hover(h.page.getByText(/duplicate of row/).first()); await h.wait(1600);
       } },
     { key: "associate", pos: "top",
-      en: ["6 · Associate", "Then the real run, in batches: the result card counts associated, already linked, skipped and errors — and the log keeps every row."],
-      fr: ["6 · Associer", "Puis le vrai chargement, par lots : la carte de résultat compte associées, déjà liées, ignorées et erreurs — et le journal garde chaque ligne."],
+      en: ["7 · Associate", "Then the real run, in batches: 3 associated, 2 already linked — Marie and Sophie were already in those teams, which counts as \"already\", not as an error. The log keeps every row."],
+      fr: ["7 · Associer", "Puis le vrai chargement, par lots : 3 associées, 2 déjà liées — Marie et Sophie étaient déjà dans ces équipes, ce qui compte comme « already », pas comme une erreur. Le journal garde chaque ligne."],
       run: async (h) => {
         await h.click(btn(h, /🔗 Associate$/)); await h.wait(1500);
-        await h.hover(h.page.getByText("✅ Done", { exact: true }).first()); await h.wait(1300);
-        await h.hover(h.page.getByText("ASSOCIATED", { exact: true }).first()); await h.wait(1300);
+        await h.hover(h.page.getByText("✅ Done", { exact: true }).first()); await h.wait(1100);
+        await h.hover(h.page.getByText(/^Already linked:/).first()); await h.wait(1300);
+        await h.hover(h.page.locator("td >> visible=true").filter({ hasText: /^ASSOCIATED \(already\)$/ }).first()); await h.wait(1400);
       } },
     { key: "rollback", pos: "top",
-      en: ["7 · A way back", "Rollback removes only the links this run added. The whole log exports to CSV."],
-      fr: ["7 · Un retour arrière", "Le rollback ne retire que les liens ajoutés par ce chargement. Tout le journal s'exporte en CSV."],
+      en: ["8 · A way back", "Rollback removes only the links this run added — 3, not the 2 that were already there — after a confirmation. The whole log exports to CSV."],
+      fr: ["8 · Un retour arrière", "Le rollback ne retire que les liens ajoutés par ce chargement — 3, pas les 2 qui existaient déjà — après confirmation. Tout le journal s'exporte en CSV."],
       run: async (h) => {
-        await h.hover(btn(h, /Rollback \(remove what was added\)/)); await h.wait(1800);
-        await h.hover(btn(h, /Log \(CSV\)$/)); await h.wait(1300);
+        await h.confirmed(btn(h, /Rollback \(remove what was added\)/), 2200);
+        await h.wait(800);
+        await h.hover(h.page.getByText(/^Rollback: 3 removed/).first()); await h.wait(1500);
+        await h.hover(btn(h, /Log \(CSV\)$/)); await h.wait(1100);
       } },
     { key: "fit",
-      en: ["8 · Back to a normal table: how the file fits", "An Excel export of accounts read against Contact: 1 column fits — and Colvio recognises the export's table from its headers."],
-      fr: ["8 · Retour à une table classique : l'adéquation du fichier", "Un export Excel de comptes lu contre Contact : 1 colonne correspond — et Colvio reconnaît la table de l'export à ses en-têtes."],
+      en: ["9 · Back to a normal table: how the file fits", "An Excel export of accounts read against Contact: 1 column fits — and Colvio recognises the export's table from its headers."],
+      fr: ["9 · Retour à une table classique : l'adéquation du fichier", "Un export Excel de comptes lu contre Contact : 1 colonne correspond — et Colvio reconnaît la table de l'export à ses en-têtes."],
       run: async (h) => {
         await h.click(btn(h, /^← Back$/)); await h.wait(700);
         const ta = h.page.locator("textarea >> visible=true").first();
@@ -107,8 +121,8 @@ export default {
         await h.hover(btn(h, /^switch to Account$/)); await h.wait(1200);
       } },
     { key: "follows", pos: "top",
-      en: ["9 · The mapping follows the table", "One click to Account and every column is matched again: display names like \"Main Phone\", \"(Do Not Modify) Account\" as the record id, checksum and modified-on skipped."],
-      fr: ["9 · Le mapping suit la table", "Un clic vers Account et chaque colonne est rapprochée à nouveau : noms d'affichage comme « Main Phone », « (Do Not Modify) Account » comme id de l'enregistrement, checksum et date de modification ignorés."],
+      en: ["10 · The mapping follows the table", "One click to Account and every column is matched again: display names like \"Main Phone\", \"(Do Not Modify) Account\" as the record id, checksum and modified-on skipped."],
+      fr: ["10 · Le mapping suit la table", "Un clic vers Account et chaque colonne est rapprochée à nouveau : noms d'affichage comme « Main Phone », « (Do Not Modify) Account » comme id de l'enregistrement, checksum et date de modification ignorés."],
       run: async (h) => {
         await h.click(btn(h, /^switch to Account$/)); await h.wait(1200);
         await h.hover(h.page.getByText(/of 11 columns/).first()); await h.wait(1300);

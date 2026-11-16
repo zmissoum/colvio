@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, mono, inp, bt, crd, ths, tds, dl, expName, confirmProd, FLDS } from "../shared.jsx";
+import { C, Spin, mono, inp, bt, crd, ths, tds, dl, expName, confirmAsk, confirmProdAsk, FLDS } from "../shared.jsx";
 import { readPairs, valuesToResolve, buildAssociationItems, summarizeAssociation, isGuid } from "../associationUtils.js";
+import { demoAssociation } from "../associationDemo.js";
 
 // Loader › association mode — the target is a many-to-many (intersect) table: teammembership,
 // systemuserroles, a custom N:N. Its rows are not created, the two records are ASSOCIATED (or
@@ -41,7 +42,8 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
   const loadFields = (ent) => {
     const gen = fieldsGen.current;
     setFields(prev => { const n = { ...prev }; delete n[ent]; return n; }); // "loading" again on a retry
-    (isLive ? bridge.getFields(ent) : Promise.resolve(FLDS)).then(fl => {
+    // demo: the end's own demo columns (schemaDemo.js — a user's email, a team's name); the account's for a table it has none for
+    (isLive ? bridge.getFields(ent) : bridge.getFields(ent).then(fl => fl || FLDS)).then(fl => {
       if (gen !== fieldsGen.current) return;
       const text = (fl || []).map(f => ({ l: f.logical || f.l, d: f.display || f.d || f.logical || f.l, t: f.type || f.t })).filter(f => f.t === "String" || f.t === "Memo");
       setFields(prev => ({ ...prev, [ent]: text }));
@@ -82,7 +84,8 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
     for (let i = 0; i < values.length; i += 80) {
       const slice = values.slice(i, i + 80);
       const filter = slice.map(v => `${field} eq '${String(v).replace(/'/g, "''")}'`).join(" or ");
-      const data = isLive ? await bridge.query(set, { filter, select: `${field},${pk}`, top: "5000" }) : { records: [] };
+      // demo: the demo org's users and teams (associationDemo.js), matched the way the filter matches
+      const data = isLive ? await bridge.query(set, { filter, select: `${field},${pk}`, top: "5000" }) : { records: demoAssociation().lookup(ent, field, slice) };
       for (const rec of data?.records || []) {
         const kv = String(rec[field] ?? "").trim().toLowerCase(), id = rec[pk];
         if (!kv || !id) continue;
@@ -125,7 +128,7 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
       }
       if (!items.length) { setLog(base); setResult({ pairs: 0, skipped: pre.length, done: 0, already: 0, errors: pre.filter(e => e.status === "ERROR").length }); setPhase("done"); return; }
       const label = `${mode === "remove" ? "Remove" : "Add"} ${items.length} association${items.length > 1 ? "s" : ""} in ${rel.intersect} (${rel.entity1} ⟷ ${rel.entity2})`;
-      if (!confirmProd(orgInfo?.isProduction, label)) { setPhase("idle"); return; }
+      if (!(await confirmProdAsk(orgInfo?.isProduction, label))) { setPhase("idle"); return; }
       setPhase("running");
       setProgress({ done: 0, total: items.length, note: "" });
       sentRef.current = items;
@@ -153,8 +156,8 @@ export default function AssociationLoader({ target, csvData, entityList, isLive,
   const doRollback = async () => {
     const pairs = log.filter(e => e.status === "ASSOCIATED" && !e.already && e.id1).map(e => ({ id1: e.id1, id2: e.id2 }));
     if (!pairs.length) return;
-    if (!window.confirm(`Remove the ${pairs.length} association${pairs.length > 1 ? "s" : ""} this run added?`)) return;
-    if (!confirmProd(orgInfo?.isProduction, `Remove ${pairs.length} associations in ${rel.intersect}`)) return;
+    if (!(await confirmAsk(`Remove the ${pairs.length} association${pairs.length > 1 ? "s" : ""} this run added?`, { title: "Roll back the associations?", ok: "Remove", danger: true }))) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `Remove ${pairs.length} associations in ${rel.intersect}`))) return;
     setRollback({ running: true });
     try {
       const res = await bridge.batchAssociate({ set1: setOf(rel.entity1), nav1: rel.nav1, set2: setOf(rel.entity2) }, pairs, "remove", null, () => false, { chunk: 100, concurrency: 4 });

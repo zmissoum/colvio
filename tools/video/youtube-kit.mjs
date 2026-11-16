@@ -13,7 +13,7 @@ const SUFFIX = RES === "1080" ? "" : `_${RES}`;
 const NAMES = { explorer: "Data Explorer", loader: "Data Loader", recyclebin: "Recycle Bin", showalldata: "Show All Data", apitester: "API Tester",
   metadata: "Metadata", relationships: "Relationships", schema: "Schema", solutions: "Solutions", automation: "Automation", apps: "Apps",
   envvars: "Environment Variables", translations: "Translations", licenses: "Users & Licenses", bu: "Business Units", security: "Security Audit",
-  teams: "Teams", adoption: "Adoption", logins: "Login History", storage: "Storage" };
+  teams: "Teams", adoption: "Adoption", logins: "Login History", storage: "Storage", script: "Script Console", webres: "Web Resources", health: "Health check" };
 const STORE = "https://chromewebstore.google.com/detail/edieednbdaclheikneelkjfbckibhdgl";
 const REPO = "https://github.com/zmissoum/colvio";
 
@@ -48,7 +48,7 @@ Colvio in 3 minutes — the free toolkit for Dynamics 365 & Dataverse
 ## Description
 
 \`\`\`text
-Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and Dataverse: 24 modules, right in your browser, on the session you're already signed in with. This tour shows 20 of them on demo data; every module has its own video on the channel.
+Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and Dataverse: 24 modules, right in your browser, on the session you're already signed in with. This tour shows 23 of them on demo data (System Ops needs a real org); every module has its own video on the channel.
 
 Chapters
 ${lines.join("\n")}

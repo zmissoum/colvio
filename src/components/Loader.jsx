@@ -6,7 +6,7 @@ import { parseDelimited, detectSep, applyTransform, resolveEntitySet, deltaEqual
 import { createDemoLoaderIO } from "../loaderDemo.js";
 import { decodeBytes } from "../textDecode.js";
 import { autoMap, guessTable, mappingFit, migrationMaps, mergeLookups, sampleValues, columnIsGuid, isGuid } from "../loaderMapping.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProd } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, D365CF, mono, inp, bt, crd, ths, tds, dl, expName, isTrulyCustom, TableTypeBadge, confirmProdAsk } from "../shared.jsx";
 
 const logStatusColor=(st)=>st==="CREATED"||st==="WOULD CREATE"?C.gn
   :st==="UPSERTED"||st==="UPDATED"||st==="WOULD UPDATE"||st==="WOULD UPSERT"?C.cy
@@ -853,7 +853,7 @@ export default function Loader({bp,orgInfo,theme,permissions,onBusyChange}){
     if(!dry&&!isRetry&&!opts.autoResume){
       const nRows=csvData.r.length;
       const modeLbl=deleteMode?"DELETE":updateOnly?"UPDATE":uKey.d?"UPSERT":"CREATE";
-      if(!confirmProd(orgInfo?.isProduction,`Run ${modeLbl} on ${nRows.toLocaleString()} row${nRows>1?"s":""} against "${target}".`))return;
+      if(!(await confirmProdAsk(orgInfo?.isProduction,`Run ${modeLbl} on ${nRows.toLocaleString()} row${nRows>1?"s":""} against "${target}".`)))return;
     }
     // Auto-resume banner: the progress bar restarts at 0/REMAINDER on a chained pass, which reads
     // as "it started over from scratch" without this context (user-reported confusion).

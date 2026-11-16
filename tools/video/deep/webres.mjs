@@ -1,48 +1,25 @@
 // Deep dive — Web Resources. The demo org (src/webResourcesDemo.js) holds a handful of Contoso
 // scripts, a style sheet, an HTML page, an SVG, a managed connector and a hidden Microsoft library;
-// edits are kept in memory for the page load. The app's own window.confirm() (save / publish) is
-// shown in an on-screen replica — native dialogs don't render in a screencast: the first click is
-// answered Cancel while the replica shows the real text, then the same button is clicked again and
-// answered OK.
+// edits are kept in memory for the page load. Save / publish is confirmed in the app's own dialog:
+// its text stays on screen, then the cursor clicks OK. One script is shared with a colleague:
+// Alex Baker's save of new_/scripts/opportunity.js lands right before the first save of it in a
+// page load (a deterministic rule of the demo org), so its Save & publish meets the version
+// conflict a live save meets when someone saved meanwhile — refused on the ETag, then reloaded.
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 const res = (h, name) => h.page.locator("button >> visible=true").filter({ hasText: name }).first();
 const kinds = (h) => h.page.locator("select >> visible=true").filter({ has: h.page.locator('option[value="all"]') }).filter({ hasText: "All kinds" }).first();
 const toggle = (h, label) => h.page.locator("label >> visible=true").filter({ hasText: new RegExp(`${label}$`) }).first();
+const editor = (h) => h.page.locator("textarea >> visible=true").first();
+// Put the editor's selection on a piece of its text (as a click / drag would): the cursor after it,
+// or the whole lines from it to the end of the line where `to` starts.
+const caretAfter = (h, piece) => editor(h).evaluate((el, p) => { const i = el.value.indexOf(p) + p.length; el.focus(); el.setSelectionRange(i, i); }, piece);
+const selectLines = (h, from, to) => editor(h).evaluate((el, [a, b]) => {
+  const i = el.value.lastIndexOf("\n", el.value.indexOf(a)) + 1, j = el.value.indexOf("\n", el.value.indexOf(b));
+  el.focus(); el.setSelectionRange(i, j); el.scrollLeft = 0;
+}, [from, to]);
 
-const installConfirm = (h) => h.page.evaluate(() => {
-  if (window.__cvConfirmOn) return;
-  window.__cvConfirmOn = true;
-  const st = document.createElement("style");
-  st.textContent = `#cv-confirm{position:fixed;left:50%;top:196px;transform:translateX(-50%) translateY(-8px);width:460px;background:#1f2430;
-    border:1px solid #3a4256;border-radius:10px;padding:16px 18px 12px;color:#E8EAF0;font:13px/1.5 "Segoe UI",system-ui,sans-serif;
-    z-index:2147483645;opacity:0;transition:opacity .25s,transform .25s;box-shadow:0 14px 50px rgba(0,0,0,.6);pointer-events:none;white-space:pre-wrap}
-  #cv-confirm.on{opacity:1;transform:translateX(-50%) translateY(0)}
-  #cv-confirm .r{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
-  #cv-confirm .r span{padding:5px 16px;border-radius:14px;border:1px solid #3a4256;font-size:12.5px}
-  #cv-confirm .r #cv-ok{background:#8ab4f8;color:#0b0e14;border-color:#8ab4f8;font-weight:600}`;
-  document.head.appendChild(st);
-  const box = document.createElement("div"); box.id = "cv-confirm"; document.body.appendChild(box);
-  window.__cvConfirmMode = "accept";
-  window.confirm = (msg) => {
-    if (window.__cvConfirmMode === "accept") return true;
-    box.textContent = String(msg);
-    const r = document.createElement("div"); r.className = "r";
-    r.innerHTML = '<span>Cancel</span><span id="cv-ok">OK</span>';
-    box.appendChild(r); box.classList.add("on");
-    return false;
-  };
-});
-const confirmed = async (h, loc, hold = 2600) => {
-  await installConfirm(h);
-  await h.page.evaluate(() => { window.__cvConfirmMode = "show"; });
-  await h.click(loc); await h.wait(hold);
-  await h.hover(h.page.locator("#cv-ok"));
-  const b = await h.page.locator("#cv-ok").boundingBox();
-  if (b) await h.page.evaluate(([x, y]) => window.__cv.ripple(x, y), [b.x + b.width / 2, b.y + b.height / 2]);
-  await h.wait(300);
-  await h.page.evaluate(() => { window.__cvConfirmMode = "accept"; document.getElementById("cv-confirm").classList.remove("on"); });
-  await loc.click(); await h.wait(400);
-};
+// Click `loc`, leave the app's confirmation text on screen for `hold` ms, click OK.
+const confirmed = (h, loc, hold = 2600) => h.confirmed(loc, hold);
 
 export default {
   key: "webres",
@@ -56,7 +33,6 @@ export default {
       en: ["1 · Every web resource, by kind", "Scripts, styles, HTML, images — filter by kind. Microsoft's own libraries stay hidden until you ask; M marks a managed solution."],
       fr: ["1 · Chaque web resource, par type", "Scripts, styles, HTML, images — filtrez par type. Les bibliothèques de Microsoft restent masquées jusqu'à ce que vous les demandiez ; M signale une solution managée."],
       run: async (h) => {
-        await installConfirm(h);
         await h.open("Web Resources"); await h.wait(1300);
         await h.select(kinds(h), "3"); await h.wait(1300);
         await h.click(toggle(h, "Microsoft & hidden")); await h.wait(1200);
@@ -84,7 +60,7 @@ export default {
       fr: ["4 · Directement à la ligne", "Cliquez un résultat : la ressource s'ouvre avec cette ligne sélectionnée — ici le script du formulaire contact qui lit new_sapid."],
       run: async (h) => {
         await h.click(h.page.locator("div >> visible=true").filter({ hasText: /^new_\/scripts\/contact\.js :\d+$/ }).first()); await h.wait(1800);
-        await h.hover(h.page.locator("textarea >> visible=true").first()); await h.wait(1200);
+        await h.hover(editor(h)); await h.wait(1200);
       } },
     { key: "edit",
       en: ["5 · Edit", "Change the code in place: a dot marks unsaved changes, and Revert brings back the version you opened."],
@@ -93,7 +69,7 @@ export default {
         await h.press("End");
         await h.page.keyboard.press("Enter");
         await h.page.keyboard.type('      formContext.getAttribute("new_sapid").setValue(a.new_sapid);', { delay: 45 });
-        await h.page.locator("textarea >> visible=true").first().evaluate(el => { el.scrollLeft = 0; });
+        await editor(h).evaluate(el => { el.scrollLeft = 0; });
         await h.wait(800);
         await h.hover(btn(h, /^Revert$/)); await h.wait(1500);
       } },
@@ -106,16 +82,39 @@ export default {
         await h.hover(h.page.getByText(/Saved and published/).first()); await h.wait(1300);
         await h.hover(h.page.getByText(/^JavaScript · Contact form scripts/).first()); await h.wait(1400);
       } },
+    { key: "conflict",
+      en: ["7 · Someone saved it meanwhile", "Every save is conditional on the version you opened. A colleague saved this script while you edited it: Dataverse refuses yours, and Colvio says who and when — nothing is overwritten."],
+      fr: ["7 · Quelqu'un l'a enregistrée entre-temps", "Chaque enregistrement est conditionné à la version ouverte. Un collègue a enregistré ce script pendant votre modification : Dataverse refuse la vôtre, et Colvio dit qui et quand — rien n'est écrasé."],
+      run: async (h) => {
+        await h.click(res(h, "new_/scripts/opportunity.js")); await h.wait(1300);
+        await caretAfter(h, 'setRequiredLevel("required");');
+        await h.page.keyboard.press("Enter");
+        await h.page.keyboard.type('    formContext.getAttribute("closeprobability").setRequiredLevel("recommended");', { delay: 30 });
+        await editor(h).evaluate(el => { el.scrollLeft = 0; });
+        await confirmed(h, btn(h, /^Save & publish$/), 2000);
+        await h.wait(1200);
+        await h.hover(h.page.getByText(/^Not saved: /).first()); await h.wait(2600);
+      } },
+    { key: "reload",
+      en: ["8 · Reload, or overwrite", "↻ Reload opens the server's version — Alex Baker's, with his OnSave rule — to redo your change on top of it. ⚠ Overwrite would replace his version with yours."],
+      fr: ["8 · Recharger, ou écraser", "↻ Reload ouvre la version du serveur — celle d'Alex Baker, avec sa règle OnSave — pour y refaire votre modification. ⚠ Overwrite remplacerait sa version par la vôtre."],
+      run: async (h) => {
+        await h.hover(btn(h, /⚠ Overwrite$/)); await h.wait(1300);
+        await confirmed(h, btn(h, /↻ Reload$/), 1600);                  // reloading discards your edit: asked first
+        await h.wait(1200);
+        await h.hover(h.page.getByText(/^JavaScript · Opportunity form scripts/).first()); await h.wait(1400);
+        await selectLines(h, "// Deals above 1M", "setValue(value > 1000000)"); await h.wait(2000);
+      } },
     { key: "managed",
-      en: ["7 · Managed? You're told", "A resource from a managed solution says so: your change is an unmanaged layer that the solution's next import may overwrite."],
-      fr: ["7 · Managée ? Vous êtes prévenu", "Une ressource issue d'une solution managée le signale : votre modification est une couche non managée que le prochain import de la solution peut écraser."],
+      en: ["9 · Managed? You're told", "A resource from a managed solution says so: your change is an unmanaged layer that the solution's next import may overwrite."],
+      fr: ["9 · Managée ? Vous êtes prévenu", "Une ressource issue d'une solution managée le signale : votre modification est une couche non managée que le prochain import de la solution peut écraser."],
       run: async (h) => {
         await h.click(res(h, "contoso_/sap/connector.js")); await h.wait(1500);
         await h.hover(h.page.getByText(/From a managed solution/).first()); await h.wait(2200);
       } },
     { key: "download",
-      en: ["8 · Download, or open it in D365", "Any resource downloads as its file; Open shows the published version in Dynamics 365."],
-      fr: ["8 · Télécharger, ou ouvrir dans D365", "Chaque ressource se télécharge sous forme de fichier ; Open affiche la version publiée dans Dynamics 365."],
+      en: ["10 · Download, or open it in D365", "Any resource downloads as its file; Open shows the published version in Dynamics 365."],
+      fr: ["10 · Télécharger, ou ouvrir dans D365", "Chaque ressource se télécharge sous forme de fichier ; Open affiche la version publiée dans Dynamics 365."],
       run: async (h) => {
         await h.click(res(h, "new_/css/theme.css")); await h.wait(1300);
         await h.hover(btn(h, /Download$/)); await h.wait(1400);

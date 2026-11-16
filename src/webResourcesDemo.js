@@ -1,5 +1,13 @@
 // Demo org for the Web Resources module: a handful of resources with real-looking contents,
 // edits kept in memory for the session.
+//
+// One deterministic version conflict, to show what a live save does when someone else saved the
+// resource meanwhile: Alex Baker is editing new_/scripts/opportunity.js too. His save lands ONCE
+// per page load, right before the first save of that resource reaches the demo org — so a save
+// conditional on the version you opened (If-Match, the ETag) is refused with CHANGED_ON_SERVER,
+// as Dataverse refuses it (412). ↻ Reload then opens his version; ⚠ Overwrite (no If-Match)
+// replaces it with yours. Reads never trigger it (Search in contents reads every script), and
+// every other resource saves normally.
 import { encodeContent } from "./webResources.js";
 
 const g = (n) => `00000000-0000-4000-b000-${String(n).padStart(12, "0")}`;
@@ -34,6 +42,33 @@ function contactOnLoad(executionContext) {
   }
 }
 `;
+const OPPORTUNITY_JS = `// Contoso — Opportunity form scripts
+var Contoso = Contoso || {};
+Contoso.Opportunity = (function () {
+  function onLoad(executionContext) {
+    var formContext = executionContext.getFormContext();
+    formContext.getAttribute("estimatedclosedate").setRequiredLevel("required");
+  }
+  return { onLoad: onLoad };
+})();
+`;
+// Alex Baker's version of it (the conflict above): an OnSave approval rule.
+const OPPORTUNITY_JS_ALEX = `// Contoso — Opportunity form scripts
+var Contoso = Contoso || {};
+Contoso.Opportunity = (function () {
+  function onLoad(executionContext) {
+    var formContext = executionContext.getFormContext();
+    formContext.getAttribute("estimatedclosedate").setRequiredLevel("required");
+  }
+  // Deals above 1M need a manager's approval (Alex)
+  function onSave(executionContext) {
+    var formContext = executionContext.getFormContext();
+    var value = formContext.getAttribute("estimatedvalue").getValue();
+    formContext.getAttribute("new_approvalrequired").setValue(value > 1000000);
+  }
+  return { onLoad: onLoad, onSave: onSave };
+})();
+`;
 const THEME_CSS = `.contoso-banner { background: #0f3d6e; color: #fff; padding: 8px 12px; }
 .contoso-banner a { color: #9cd3ff; }
 `;
@@ -53,16 +88,30 @@ const store = new Map([
   [g(5), { name: "new_/img/contoso.svg", displayName: "Contoso icon", type: 11, managed: false, content: encodeContent(SVG), modifiedOn: ago(100), modifiedBy: "Alex Baker" }],
   [g(6), { name: "contoso_/sap/connector.js", displayName: "SAP connector (managed)", type: 3, managed: true, content: encodeContent("// managed — ContosoSAP 2.1.0\nvar ContosoSap = { endpoint: 'https://sap.contoso.example/api' };\n"), modifiedOn: ago(60), modifiedBy: "SYSTEM" }],
   [g(7), { name: "msdyn_/Sales/Account/Account_main_library.js", displayName: "", type: 3, managed: true, content: encodeContent("// Microsoft"), modifiedOn: ago(200), modifiedBy: "SYSTEM" }],
+  [g(8), { name: "new_/scripts/opportunity.js", displayName: "Opportunity form scripts", type: 3, managed: false, content: encodeContent(OPPORTUNITY_JS), modifiedOn: ago(5), modifiedBy: "Zakaria Missoum" }],
 ]);
+
+// The conflict described at the top: Alex Baker's save, applied once, just before the first save
+// of his resource.
+export const DEMO_CONFLICT = { name: "new_/scripts/opportunity.js", by: "Alex Baker" };
+const colleague = { id: g(8), content: encodeContent(OPPORTUNITY_JS_ALEX), pending: true };
+function colleagueSaves(id) {
+  if (!colleague.pending || id !== colleague.id) return;
+  colleague.pending = false;
+  const r = store.get(id);
+  r.content = colleague.content; r.modifiedOn = new Date().toISOString(); r.modifiedBy = DEMO_CONFLICT.by; r.v = (r.v || 1) + 1;
+}
 
 export const demoWebResources = () => [...store.entries()].map(([id, r]) => ({ id, name: r.name, displayName: r.displayName, type: r.type, managed: r.managed, hidden: false, customizable: !r.managed, modifiedOn: r.modifiedOn, modifiedBy: r.modifiedBy }));
 // The demo's ETags: a version counter per resource, like Dataverse's W/"<n>".
 const etagOf = (r) => `W/"${r.v || 1}"`;
-export const demoWebResourceContents = (ids) => (ids || []).filter(id => store.has(id)).map(id => { const r = store.get(id); return { id, name: r.name, type: r.type, content: r.content, description: "", modifiedOn: r.modifiedOn, managed: r.managed, etag: etagOf(r) }; });
+// modifiedBy rides along in demo (the live read doesn't carry it): a refused save names who saved.
+export const demoWebResourceContents = (ids) => (ids || []).filter(id => store.has(id)).map(id => { const r = store.get(id); return { id, name: r.name, type: r.type, content: r.content, description: "", modifiedOn: r.modifiedOn, modifiedBy: r.modifiedBy, managed: r.managed, etag: etagOf(r) }; });
 // A save conditional on the ETag opened (null = overwrite): a stale one is refused like Dataverse's 412.
 export function demoUpdateWebResource(id, content, etag = null) {
   const r = store.get(id);
   if (!r) throw new Error("No such web resource.");
+  colleagueSaves(id);
   if (etag && etag !== etagOf(r)) throw new Error("CHANGED_ON_SERVER: the web resource changed on the server since you opened it");
   r.content = content; r.modifiedOn = new Date().toISOString(); r.modifiedBy = "You"; r.v = (r.v || 1) + 1;
   return { ok: true, etag: etagOf(r), modifiedOn: r.modifiedOn, modifiedBy: r.modifiedBy };

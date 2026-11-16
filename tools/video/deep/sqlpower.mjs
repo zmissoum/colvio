@@ -1,8 +1,14 @@
 // Deep dive — Data Explorer, SQL and beyond (the features after the basics filmed in explorer.mjs).
-// Every action below was checked against demo mode (make-deep --probe). Demo mode answers every
-// query with the same six accounts and the Builder's five columns, so each query here is written
-// to match them: the pasted URL selects those five columns, and the UPDATE's WHERE is one all six
-// accounts meet (all created before 2024), so the preview's rows are exactly what that WHERE reads.
+// Every action below was checked against demo mode (make-deep --probe). Demo SQL (src/explorerDemo.js)
+// answers on the demo org's six accounts the way the server would: the columns the SELECT names, in
+// its order and under their alias, with its WHERE, ORDER BY, TOP, DISTINCT and GROUP BY; an unknown
+// column is refused in the server's words (per engine); another table or a JOIN is said to have no
+// demo rows. So the SELECT chapter shows its own four columns, and the UPDATE's preview is its WHERE
+// really run (all six accounts were created before 2024). The pasted URL (OData mode) still gets the
+// Builder's demo rows, so it selects those five columns. Save as view is checked against the demo
+// tables' columns the way the server checks a view (a contact column on a contact join, a link from
+// an existing column); the demo grid doesn't evaluate related-table filters, so the related-tables
+// chapter saves the view without running the query.
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 const selectWithOption = (h, value) => h.page.locator("select >> visible=true").filter({ has: h.page.locator(`option[value="${value}"]`) }).first();
 const sqlBox = (h) => h.page.locator("textarea >> visible=true").first();
@@ -10,6 +16,7 @@ const sqlBox = (h) => h.page.locator("textarea >> visible=true").first();
 const typeSlow = (h, text, delay = 150) => h.page.keyboard.type(text, { delay });
 // Select a piece of the editor's text (as a double-click + drag would) so the next keys replace it.
 const selectInBox = (h, piece) => sqlBox(h).evaluate((el, p) => { const i = el.value.indexOf(p); el.focus(); el.setSelectionRange(i, i + p.length); }, piece);
+const header = (h, name) => h.page.locator("th >> visible=true").filter({ hasText: new RegExp(`^${name}`) }).first();
 
 const PASTED_URL = "https://contoso-dev.crm4.dynamics.com/api/data/v9.2/accounts?$select=name,accountnumber,emailaddress1,address1_city,statecode&$top=50";
 const UPDATE_SQL = "UPDATE account SET statecode = 'Inactive' WHERE createdon < '2024-01-01'";
@@ -65,19 +72,30 @@ export default {
         await h.press("Tab"); await h.wait(300);
         await typeSlow(h, ", accounti", 150); await h.wait(1300);
       } },
-    { key: "sql-refused",
-      en: ["5 · UPDATE in SQL — checked first", "Write an UPDATE and Execute becomes Preview UPDATE. Values are typed first: a label where an option set needs its number is refused, with the reason."],
-      fr: ["5 · UPDATE en SQL — vérifié d'abord", "Écrivez un UPDATE et Execute devient Preview UPDATE. Les valeurs sont typées d'abord : un libellé là où un groupe d'options attend son numéro est refusé, avec la raison."],
+    { key: "sql-select",
+      en: ["5 · Your columns, in your order", "Execute: the grid holds exactly the SELECT's columns, in its order — an alias names its column."],
+      fr: ["5 · Vos colonnes, dans votre ordre", "Execute : la grille reprend exactement les colonnes du SELECT, dans son ordre — un alias nomme sa colonne."],
       run: async (h) => {
-        await h.press("Tab"); await h.wait(1000);                      // accept "accountid"
+        await h.press("Tab"); await h.wait(400);                       // accept "accountid"
+        await typeSlow(h, ", address1_city AS city", 90); await h.wait(500);
+        await h.press("Escape");   // close the suggestions first: the bar collapsing on blur would move the button mid-click
+        await h.click(btn(h, /Execute/)); await h.wait(1500);
+        await h.hover(header(h, "revenue")); await h.wait(900);
+        await h.hover(header(h, "city")); await h.wait(1500);
+      } },
+    { key: "sql-refused",
+      en: ["6 · UPDATE in SQL — checked first", "Write an UPDATE and Execute becomes Preview UPDATE. Values are typed first: a label where an option set needs its number is refused, with the reason."],
+      fr: ["6 · UPDATE en SQL — vérifié d'abord", "Écrivez un UPDATE et Execute devient Preview UPDATE. Les valeurs sont typées d'abord : un libellé là où un groupe d'options attend son numéro est refusé, avec la raison."],
+      run: async (h) => {
+        await h.click(sqlBox(h)); await h.wait(300);
         await h.page.keyboard.press("Control+A");
         await h.page.keyboard.type(UPDATE_SQL, { delay: 28 }); await h.wait(300);
         await h.press("Escape");   // close the suggestions first: the bar collapsing on blur would move the button mid-click
         await h.click(btn(h, /Preview UPDATE/)); await h.wait(1900);
       } },
     { key: "sql-preview",
-      en: ["6 · Every row it would touch", "With the value fixed, the WHERE runs as a SELECT: the six accounts it matches, with their current status. Nothing is written yet."],
-      fr: ["6 · Chaque ligne concernée", "Une fois la valeur corrigée, le WHERE s'exécute comme un SELECT : les six comptes visés, avec leur statut actuel. Rien n'est encore écrit."],
+      en: ["7 · Every row it would touch", "With the value fixed, the WHERE runs as a SELECT: the six accounts it matches, with their current status. Nothing is written yet."],
+      fr: ["7 · Chaque ligne concernée", "Une fois la valeur corrigée, le WHERE s'exécute comme un SELECT : les six comptes visés, avec leur statut actuel. Rien n'est encore écrit."],
       run: async (h) => {
         await selectInBox(h, "'Inactive'"); await h.wait(500);
         await h.page.keyboard.type("1", { delay: 120 }); await h.wait(400);
@@ -86,14 +104,14 @@ export default {
         await h.hover(h.page.getByText("UPDATE preview", { exact: true }).first()); await h.wait(1300);
       } },
     { key: "sql-apply",
-      en: ["7 · Apply asks first", "Apply writes exactly the previewed rows — after a confirmation that repeats the statement and what each record gets."],
-      fr: ["7 · Apply demande d'abord", "Apply écrit exactement les lignes prévisualisées — après une confirmation qui reprend l'instruction et ce que reçoit chaque enregistrement."],
+      en: ["8 · Apply asks first", "Apply writes exactly the previewed rows — after a confirmation that repeats the statement and what each record gets."],
+      fr: ["8 · Apply demande d'abord", "Apply écrit exactement les lignes prévisualisées — après une confirmation qui reprend l'instruction et ce que reçoit chaque enregistrement."],
       run: async (h) => {
         await h.click(btn(h, /^Apply to 6 rows$/)); await h.wait(2300);
       } },
     { key: "save-view",
-      en: ["8 · Save as a personal view", "👁 Save as view: the Builder query — its columns, filters and sort — becomes a personal view of the table, under My views in the app."],
-      fr: ["8 · Enregistrer en vue personnelle", "👁 Save as view : la requête du Builder — colonnes, filtres et tri — devient une vue personnelle de la table, dans Mes vues de l'application."],
+      en: ["9 · Save as a personal view", "👁 Save as view: the Builder query — its columns, filters and sort — becomes a personal view of the table, under My views in the app."],
+      fr: ["9 · Enregistrer en vue personnelle", "👁 Save as view : la requête du Builder — colonnes, filtres et tri — devient une vue personnelle de la table, dans Mes vues de l'application."],
       run: async (h) => {
         await h.click(h.page.getByRole("button", { name: "Cancel", exact: true }).last()); await h.wait(500);
         await h.click(h.page.getByRole("button", { name: "Builder", exact: true })); await h.wait(500);
@@ -107,9 +125,27 @@ export default {
         await h.click(btn(h, /Save as view$/)); await h.wait(1300);   // the name is prefilled: "Account (Colvio)"
         await h.click(btn(h, /^Save view$/)); await h.wait(1800);
       } },
+    { key: "view-related",
+      en: ["10 · …with related tables", "A filter on related records (accounts with at least one contact) and a lookup's columns (the primary contact's) become joins of the view — the confirmation lists them, and shows the FetchXML saved."],
+      fr: ["10 · …avec des tables liées", "Un filtre sur des enregistrements liés (comptes ayant au moins un contact) et les colonnes d'une recherche (celles du contact principal) deviennent des jointures de la vue — la confirmation les liste et montre le FetchXML enregistré."],
+      run: async (h) => {
+        await h.click(btn(h, /^Close$/)); await h.wait(400);
+        await h.click(btn(h, /\+ Relation filter$/)); await h.wait(700);
+        await h.click(btn(h, /^contact\s*←\s*parentcustomerid$/)); await h.wait(900);
+        await h.click(btn(h, /Relations$/)); await h.wait(700);
+        await h.click(btn(h, /^primarycontactid\s*→\s*contact$/)); await h.wait(1200);
+        await h.click(btn(h, /Save as view$/)); await h.wait(700);
+        const name = h.page.getByPlaceholder("View name");
+        await h.click(name); await name.fill(""); await name.pressSequentially("Accounts with contacts", { delay: 60 }); await h.wait(300);
+        await h.click(btn(h, /^Save view$/)); await h.wait(1500);
+        await h.hover(h.page.getByText(/^Related tables:/).first()); await h.wait(1300);
+        await h.click(h.page.getByText("The view's FetchXML", { exact: true }).first()); await h.wait(1300);
+        // down to the two link-entities (the expanded lookup, the related-records filter)
+        await h.page.locator("pre >> visible=true").last().evaluate(el => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })); await h.wait(2200);
+      } },
     { key: "saved-update",
-      en: ["9 · Update a saved query in one click", "⭐ saves the query. Loaded, its name shows next to 💾 Update, which overwrites it with the current query — the saved list marks it as loaded."],
-      fr: ["9 · Mettre à jour une requête en un clic", "⭐ enregistre la requête. Chargée, son nom s'affiche à côté de 💾 Update, qui l'écrase avec la requête actuelle — la liste la marque comme chargée."],
+      en: ["11 · Update a saved query in one click", "⭐ saves the query. Loaded, its name shows next to 💾 Update, which overwrites it with the current query — the saved list marks it as loaded."],
+      fr: ["11 · Mettre à jour une requête en un clic", "⭐ enregistre la requête. Chargée, son nom s'affiche à côté de 💾 Update, qui l'écrase avec la requête actuelle — la liste la marque comme chargée."],
       run: async (h) => {
         await h.click(btn(h, /^Close$/)); await h.wait(400);
         await h.click(btn(h, /^⭐$/)); await h.wait(600);

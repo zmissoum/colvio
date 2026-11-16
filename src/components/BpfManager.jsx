@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, inp, bt, crd, confirmProd } from "../shared.jsx";
+import { C, Spin, inp, bt, crd, confirmProdAsk } from "../shared.jsx";
 
 // Business Process Flow manager — System-Administrator only (gated by the caller). Lists every BPF
 // instance running on the current record and lets an admin do what the form UI won't: move a
@@ -39,7 +39,7 @@ export default function BpfManager({ entity, recordId, orgInfo }) {
 
   const patch = async (inst, body, label) => {
     if (!inst.bpfEntitySet || !inst.id) { setMsg(`✗ Can't resolve the BPF instance to update.`); return; }
-    if (!confirmProd(orgInfo?.isProduction, `${label} — "${inst.processName || inst.name || "BPF"}" on this ${entity}.`)) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `${label} — "${inst.processName || inst.name || "BPF"}" on this ${entity}.`))) return;
     setBusy(inst.id); setMsg("");
     try {
       await bridge.update(inst.bpfEntitySet, inst.id, body);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, mono, inp, bt, confirmProd, dl } from "../shared.jsx";
+import { C, Spin, mono, inp, bt, confirmAsk, confirmProdAsk, dl } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { parseDelimited, detectSep } from "../loaderUtils.js";
 import { decodeBytes } from "../textDecode.js";
@@ -65,8 +65,8 @@ export default function ColumnsFromFile({ entity, fields, entities, isProduction
     if (valid.length > 10) lines.push(`• … and ${valid.length - 10} more`);
     lines.push("", `In solution ${sol.name} (prefix ${sol.prefix}_). One request per column, then the table is published.`, "A column can't be undone from here — delete it in the maker portal if needed.");
     if (checked.length > valid.length) lines.push(`${checked.length - valid.length} row${checked.length - valid.length === 1 ? "" : "s"} with errors are skipped.`);
-    if (!window.confirm(lines.join("\n"))) return;
-    if (!confirmProd(isProduction, `Create ${valid.length} column(s) on ${entity.l}`)) return;
+    if (!(await confirmAsk(lines.join("\n"), { title: `Create ${valid.length} column${valid.length === 1 ? "" : "s"}?`, ok: "Create" }))) return;
+    if (!(await confirmProdAsk(isProduction, `Create ${valid.length} column(s) on ${entity.l}`))) return;
     stop.current = false;
     const results = checked.map(s => ({ row: s.row, schema: s.schema, kind: s.kind, ok: s.errors.length ? null : undefined, msg: s.errors.length ? "skipped: " + s.errors[0] : "" }));
     setRun({ phase: "running", results: [...results], done: 0, total: valid.length });

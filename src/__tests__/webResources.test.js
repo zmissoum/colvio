@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { decodeContent, encodeContent, byteSize, publishXmlFor, filterResources, searchContents, offsetOfLine, isTextType, typeLabel, changedSince, changedMessage } from "../webResources.js";
-import { demoWebResources, demoWebResourceContents, demoUpdateWebResource } from "../webResourcesDemo.js";
+import { demoWebResources, demoWebResourceContents, demoUpdateWebResource, DEMO_CONFLICT } from "../webResourcesDemo.js";
 
 describe("content round trip", () => {
   it("decodes and re-encodes UTF-8 text, keeping a BOM", () => {
@@ -91,5 +91,24 @@ describe("web resources - a save is conditional on the ETag opened (demo org, li
     expect(demoWebResourceContents([id])[0].content).toBe("YQ==");
     expect(demoUpdateWebResource(id, "Yw==", null).ok).toBe(true); // overwrite
     expect(demoWebResourceContents([id])[0]).toMatchObject({ content: "Yw==", etag: `W/"3"` });
+  });
+  it("someone else saves the shared script once, right before your first save of it: refused, reloaded, then saved", () => {
+    const r = demoWebResources().find(x => x.name === DEMO_CONFLICT.name);
+    expect(r).toBeTruthy();
+    const opened = demoWebResourceContents([r.id])[0];
+    expect(demoWebResourceContents([r.id])[0].etag).toBe(opened.etag); // reads never trigger it
+    expect(() => demoUpdateWebResource(r.id, "bWluZQ==", opened.etag)).toThrow(/CHANGED_ON_SERVER/);
+    const now = demoWebResourceContents([r.id])[0];
+    expect(now.etag).not.toBe(opened.etag);
+    expect(now.modifiedBy).toBe("Alex Baker");
+    expect(decodeContent(now.content).text).toMatch(/function onSave/);
+    expect(demoUpdateWebResource(r.id, "bWluZQ==", now.etag).ok).toBe(true); // after a reload, the save goes through
+    expect(() => demoUpdateWebResource(r.id, "YWdhaW4=", now.etag)).toThrow(/CHANGED_ON_SERVER/); // the usual stale-ETag rule
+    expect(demoUpdateWebResource(r.id, "YWdhaW4=", null).ok).toBe(true); // overwrite
+  });
+  it("the other resources never meet the colleague", () => {
+    const r = demoWebResources().find(x => x.name === "new_/scripts/contact.js");
+    const c = demoWebResourceContents([r.id])[0];
+    expect(demoUpdateWebResource(r.id, "eA==", c.etag).ok).toBe(true);
   });
 });

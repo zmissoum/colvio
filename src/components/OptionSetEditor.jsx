@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, mono, inp, bt, confirmProd } from "../shared.jsx";
+import { C, Spin, mono, inp, bt, confirmAsk, confirmProdAsk } from "../shared.jsx";
 import { insertBody, updateBody, deleteBody, orderBody, validateNewOption, validateRename, moveValue, sameOrder, countRowsFetch, deleteConfirmText } from "../optionSetEdit.js";
 
 // Metadata › Values › ✏️ Edit — add, rename, reorder, delete the options of a choice column through
@@ -33,8 +33,8 @@ export default function OptionSetEditor({ entity, field, isProduction, onChanged
 
   // One change: confirm, write, publish, re-read.
   const apply = async (label, op, body, confirmText) => {
-    if (confirmText && !window.confirm(confirmText)) return;
-    if (!confirmProd(isProduction, `${label} (${where})`)) return;
+    if (confirmText && !(await confirmAsk(confirmText, { title: `${label}?`, ok: { insert: "Add", update: "Rename", delete: "Delete", order: "Save" }[op] || "OK", danger: op === "delete" }))) return;
+    if (!(await confirmProdAsk(isProduction, `${label} (${where})`))) return;
     setBusy(label); setNote(""); setErr("");
     let r;
     try { r = await bridge.optionSetChange(op, body); }

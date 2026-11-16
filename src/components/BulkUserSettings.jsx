@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProdAsk } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import { isServiceAccount } from "../adoptionUtils.js";
@@ -196,7 +196,7 @@ export default function BulkUserSettings({ bp, orgInfo, users, usersLoading, use
     const m = modal;
     if (!m || m.phase !== "confirm") return;
     const n = m.plan.write.length;
-    if (!confirmProd(orgInfo?.isProduction, `Set "${m.setting.label}" to "${m.opt.label}" for ${n} user${n > 1 ? "s" : ""} (${SETTINGS_TABLES[m.table].label.toLowerCase()}).`)) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `Set "${m.setting.label}" to "${m.opt.label}" for ${n} user${n > 1 ? "s" : ""} (${SETTINGS_TABLES[m.table].label.toLowerCase()}).`))) return;
     cancelRef.current = false;
     setModal({ ...m, phase: "running", progress: { done: 0, failed: 0, total: n } });
     const out = await runPool(m.plan.write, w => bridge.updateSettingsRow(m.table, w.recordId, m.body), {

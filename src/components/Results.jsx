@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId, confirmProd, exportTable } from "../shared.jsx";
+import { C, I, Spin, mono, bt, dl, expName, copyText, ths, tds, recordId, confirmProdAsk, exportTable } from "../shared.jsx";
 import { createSink, openOutput } from "../streamExport.js";
 import VirtualTable from "./VirtualTable.jsx";
 import { t } from "../i18n.js";
@@ -118,7 +118,7 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     if(!prep.ok){showFeedback(prep.needsTarget?`"${field}" can target several tables \u2014 use bulk Update (checkbox \u2192 Update) to pick the target`:prep.reason,true);return;}
     // Same gesture, same rule: Show All Data's identical inline edit confirms on production \u2014
     // this one silently wrote (functional audit).
-    if(!confirmProd(orgInfo?.isProduction,`Set "${field}" on this ${res.entity?.l} record (direct API write).`))return;
+    if(!(await confirmProdAsk(orgInfo?.isProduction,`Set "${field}" on this ${res.entity?.l} record (direct API write).`)))return;
     try{
       const odataField=res.odataFieldMap?.[field]||field;
       await bridge.update(res.entity.p, id, prep.body);
@@ -230,9 +230,9 @@ export default function Results({res,bp,orgInfo,onStop,onDeleteDone,onUpdateReco
     const ids=res.data.map(getRecordId).filter(Boolean);
     if(!plan||!ids.length) return;
     const verb=plan.kind==="delete"?"Delete":"Update";
-    setConfirmModal({msg:`${prodLine}${verb} ${ids.length.toLocaleString()} ${plan.displayName} record(s)?\n\n${plan.statement}\n\n${plan.kind==="delete"?"Deleting is irreversible (only tables with the recycle bin turned on keep them).":`Each record gets: ${plan.setsText}`}`,onOk:()=>{
+    setConfirmModal({msg:`${prodLine}${verb} ${ids.length.toLocaleString()} ${plan.displayName} record(s)?\n\n${plan.statement}\n\n${plan.kind==="delete"?"Deleting is irreversible (only tables with the recycle bin turned on keep them).":`Each record gets: ${plan.setsText}`}`,onOk:async()=>{
       setConfirmModal(null);
-      if(!confirmProd(orgInfo?.isProduction,`${verb} ${ids.length.toLocaleString()} ${plan.displayName} record(s) — ${plan.statement}`)) return;
+      if(!(await confirmProdAsk(orgInfo?.isProduction,`${verb} ${ids.length.toLocaleString()} ${plan.displayName} record(s) — ${plan.statement}`))) return;
       executePlan(ids);
     }});
   };

@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 // TranslationManager.jsx is a React component module: its UI imports are stubbed so the pure CSV
 // parser it exports can be tested on its own (the bridge touches chrome.* at load, shared.jsx the DOM).
 vi.mock("../d365-bridge.js", () => ({ bridge: {} }));
-vi.mock("../shared.jsx", () => ({ C: {}, I: {}, Spin: () => null, ENTS: [], mono: {}, displayType: (x) => x, inp: () => ({}), bt: () => ({}), crd: () => ({}), ths: () => ({}), tds: {}, exportTable: () => {}, confirmProd: () => true }));
+vi.mock("../shared.jsx", () => ({ C: {}, I: {}, Spin: () => null, ENTS: [], mono: {}, displayType: (x) => x, inp: () => ({}), bt: () => ({}), crd: () => ({}), ths: () => ({}), tds: {}, exportTable: () => {}, confirmAsk: async () => true, confirmProdAsk: async () => true }));
 import { parseTranslationCsv } from "../components/TranslationManager.jsx";
 
 describe("parseTranslationCsv — the Export CSV file, back", () => {

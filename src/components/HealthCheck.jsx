@@ -26,7 +26,7 @@ export default function HealthCheck({ bp, orgInfo }) {
   useEffect(() => () => { stop.current = true; }, []);
 
   const buildApi = async (count) => {
-    if (!live) return demoHealthApi();
+    if (!live) return demoHealthApi({ isProd: !!orgInfo?.isProduction }); // production only with the demo's opt-in flag (demoProduction.js)
     const q = async (fn) => { count(); return fn(); };
     let org = {};
     try { org = (await q(() => bridge.query("organizations", { select: "plugintracelogsetting,isauditenabled,auditretentionperiodv2", top: "1" })))?.records?.[0] || {}; }

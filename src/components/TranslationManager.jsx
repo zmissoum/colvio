@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
+import { C, I, Spin, ENTS, mono, displayType, inp, bt, crd, ths, tds, exportTable, confirmProdAsk } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { decodeBytes } from "../textDecode.js";
 import { detectSep } from "../loaderUtils.js";
@@ -107,7 +107,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
 
   const doImportTranslations=async(file)=>{
     if(!file) return;
-    if(!confirmProd(orgInfo?.isProduction,`Import translations "${file.name}" — labels across forms, views, sitemap and option sets will be overwritten for the languages in the file.`)) return;
+    if(!(await confirmProdAsk(orgInfo?.isProduction,`Import translations "${file.name}" — labels across forms, views, sitemap and option sets will be overwritten for the languages in the file.`))) return;
     setSolBusy("import");setSolMsg(null);setImportJob(null);
     try{
       const buf=await file.arrayBuffer();
@@ -189,7 +189,7 @@ export default function TranslationManager({bp,orgInfo,theme,canPublish=true}){
 
   const handleSave=async()=>{
     if(!selEnt||editCount===0)return;
-    if(!confirmProd(orgInfo?.isProduction,`Save ${editCount} label change${editCount>1?"s":""} and publish ${selEnt.l}.`))return;
+    if(!(await confirmProdAsk(orgInfo?.isProduction,`Save ${editCount} label change${editCount>1?"s":""} and publish ${selEnt.l}.`)))return;
     setSaving(true);setSaveMsg(null);
     let ok=0;
     const failedAttrs={};let firstErr=""; // FAILED edits are KEPT (typed values were discarded — audit finding)

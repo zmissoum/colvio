@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { demoFields, demoLookups, demoManyToMany, DEMO_SCHEMA_TABLES } from "../schemaDemo.js";
+import { demoFields, demoLookups, demoManyToMany, demoChildRelationships, DEMO_SCHEMA_TABLES } from "../schemaDemo.js";
 import { ENTS, FLDS } from "../shared.jsx";
 
 const REF = new Set(["Lookup", "Customer", "Owner"]);
@@ -79,5 +79,12 @@ describe("schemaDemo", () => {
     expect(demoFields("contact")[0].logical).toBe("contactid");
     const l = demoLookups("account"); l.pop();
     expect(demoLookups("account").length).toBe(3);
+  });
+
+  it("child relationships are the lookups that point at the table, from its side", () => {
+    const kids = demoChildRelationships("account");
+    expect(kids).toContainEqual({ lookupField: "parentcustomerid", navProperty: "contact_customer_accounts", targetEntity: "contact", schemaName: "contact_customer_accounts", type: "collection" });
+    expect(kids.every(k => k.type === "collection" && k.targetEntity !== "account")).toBe(true);
+    expect(demoChildRelationships("task")).toEqual([]);
   });
 });

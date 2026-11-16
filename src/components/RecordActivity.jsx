@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, mono, bt, crd, inp, copyText, confirmProd } from "../shared.jsx";
+import { C, Spin, mono, bt, crd, inp, copyText, confirmAsk, confirmProdAsk } from "../shared.jsx";
 import { savesForRecord } from "../saveCapture.js";
 import { createActivityLoader } from "../recordActivityLoader.js";
 import { createActivityDemo } from "../recordActivityDemo.js";
@@ -367,8 +367,8 @@ export default function RecordActivity({ record, orgInfo, orgFeatures }) {
     const prev = trace.setting ?? 0;
     const at = Date.now() + minutes * 60000;
     const back = new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (!window.confirm(`Set the plug-in trace log to "All" for ${minutes} minutes?\n\nEvery plug-in execution in the whole org then writes a trace row, for every user — a performance and storage cost. Colvio sets it back to "${TRACE_SETTING[prev]}" at ${back}, as long as this browser stays open.`)) return;
-    if (!confirmProd(orgInfo?.isProduction, `Plug-in trace log → All for ${minutes} minutes (org-wide setting).`)) return;
+    if (!(await confirmAsk(`Set the plug-in trace log to "All" for ${minutes} minutes?\n\nEvery plug-in execution in the whole org then writes a trace row, for every user — a performance and storage cost. Colvio sets it back to "${TRACE_SETTING[prev]}" at ${back}, as long as this browser stays open.`, { title: "Log every plug-in run?", ok: "Turn on" }))) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `Plug-in trace log → All for ${minutes} minutes (org-wide setting).`))) return;
     setTraceBusy(true); setTraceErr("");
     try {
       if (live) await bridge.update("organizations", trace.orgId, { plugintracelogsetting: 2 });

@@ -1,6 +1,9 @@
 // Deep dive — Health check. Every action below was checked against demo mode (make-deep --probe).
-// Demo org (healthCheckDemo.js): not a production environment, so "Unmanaged solutions in
-// production" answers "Not applicable" there — the caption says so instead of showing a finding.
+// Demo org (healthCheckDemo.js), presented as a PRODUCTION org for this video only: `storage` below
+// sets the demo's opt-in flag (src/demoProduction.js — demo mode only, read where the demo org is
+// built) in localStorage before the page loads. So the env badge reads PROD, "Unmanaged solutions in
+// production" finds the demo's two unmanaged solutions, and the trace log on "All" is a warning.
+// Every other video keeps the default sandbox demo org.
 // The demo answers every check at once: the per-check progress (spinner, request count, Stop) of a
 // live run is not filmed.
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
@@ -16,6 +19,7 @@ const scrollTo = async (h, t, block = "start") => {
 export default {
   key: "health",
   label: "Health check",
+  storage: { colvio_demo_production: "1" },
   tagline: {
     en: "One report on what silently hurts your Dataverse environment — and what to do about each finding",
     fr: "Un seul rapport sur ce qui abîme votre environnement Dataverse en silence — et quoi faire pour chaque point",
@@ -29,11 +33,11 @@ export default {
         await h.click(btn(h, /Run the health check$/)); await h.wait(2400);
       } },
     { key: "severity",
-      en: ["2 · Worst first", "Every check is rated — warning, note, OK, not applicable — and sorted worst first. Each finding says what to do (→)."],
-      fr: ["2 · Le plus grave d'abord", "Chaque contrôle est noté — avertissement, note, OK, non applicable — et trié du plus grave au moins grave. Chaque constat dit quoi faire (→)."],
+      en: ["2 · Worst first", "Every check is rated — warning, note, OK — and sorted worst first. Each finding says what to do (→)."],
+      fr: ["2 · Le plus grave d'abord", "Chaque contrôle est noté — avertissement, note, OK — et trié du plus grave au moins grave. Chaque constat dit quoi faire (→)."],
       run: async (h) => {
-        await h.hover(h.page.getByText(/^⚠ 7 warnings$/).first()); await h.wait(1300);
-        await h.hover(h.page.getByText(/^ℹ 3 notes$/).first()); await h.wait(1000);
+        await h.hover(h.page.getByText(/^⚠ 9 warnings$/).first()); await h.wait(1300);
+        await h.hover(h.page.getByText(/^ℹ 2 notes$/).first()); await h.wait(1000);
         await h.hover(h.page.getByText(/^✓ 1 OK$/).first()); await h.wait(1000);
         await h.hover(h.page.getByText(/^→ System Ops › System jobs/).first()); await h.wait(1800);
       } },
@@ -70,20 +74,32 @@ export default {
         await h.click(items(h, "Log tables size")); await h.wait(1600);
         await h.hover(h.page.locator("td >> visible=true").filter({ hasText: /^1,240,300$/ }).first()); await h.wait(2200);
       } },
-    { key: "notes", pos: "top",
-      en: ["7 · Notes, and what doesn't apply", "Trace log on “All”, audit kept forever, enabled users without a role. Unmanaged solutions are only flagged in production — this demo org isn't one."],
-      fr: ["7 · Les notes, et ce qui ne s'applique pas", "Trace log sur « All », audit conservé indéfiniment, utilisateurs actifs sans rôle. Les solutions unmanaged ne sont signalées qu'en production — ce n'est pas le cas de cette org de démo."],
+    { key: "production",
+      en: ["7 · Production: unmanaged solutions", "On a production org — the PROD badge — unmanaged solutions are flagged: 2 here. Changes made in them drift from your source, and no upgrade removes them."],
+      fr: ["7 · Production : solutions unmanaged", "Sur une org de production — le badge PROD — les solutions unmanaged sont signalées : 2 ici. Les modifications qu'elles portent s'écartent de vos sources, et aucune mise à jour ne les retire."],
       run: async (h) => {
-        await scrollTo(h, "Unmanaged solutions in production", "end");
+        await h.click(items(h, "Log tables size")); await h.wait(300);          // fold the previous list
+        await h.hover(h.page.getByText(/^⚠ PROD$/).first()); await h.wait(1500);
+        await scrollTo(h, "Unmanaged solutions in production");
+        await h.click(items(h, "Unmanaged solutions in production")); await h.wait(1500);
+        await h.hover(h.page.locator("td >> visible=true").filter({ hasText: /^ContosoSales$/ }).first()); await h.wait(1600);
+      } },
+    { key: "notes", pos: "top",
+      en: ["8 · Stricter on production, and the notes", "The trace log on “All” is a warning here — on production it slows every save. Audit kept forever and enabled users without a role stay notes."],
+      fr: ["8 · Plus strict en production, et les notes", "Le trace log sur « All » est ici un avertissement — en production il ralentit chaque enregistrement. Audit conservé indéfiniment et utilisateurs actifs sans rôle restent des notes."],
+      run: async (h) => {
+        await h.click(items(h, "Unmanaged solutions in production")); await h.wait(300);
+        await scrollTo(h, "Plug-in trace log setting", "center");
+        await h.hover(title(h, "Plug-in trace log setting")); await h.wait(1800);
+        await scrollTo(h, "Auditing", "end");
         await h.click(items(h, "Enabled users without a security role")); await h.wait(600);
-        await scrollTo(h, "Unmanaged solutions in production", "end"); await h.wait(600);
-        await h.hover(title(h, "Plug-in trace log setting")); await h.wait(1200);
+        await scrollTo(h, "Auditing", "end"); await h.wait(400);
         await h.hover(title(h, "Auditing")); await h.wait(1200);
-        await h.hover(title(h, "Unmanaged solutions in production")); await h.wait(2000);
+        await h.hover(title(h, "Enabled users without a security role")); await h.wait(1500);
       } },
     { key: "share",
-      en: ["8 · Copy, paste, export", "📋 Copy report: the whole report as plain text, ready to paste in a ticket or a chat. Or take it to CSV / Excel."],
-      fr: ["8 · Copier, coller, exporter", "📋 Copy report : tout le rapport en texte brut, prêt à coller dans un ticket ou un chat. Ou exportez-le en CSV / Excel."],
+      en: ["9 · Copy, paste, export", "📋 Copy report: the whole report as plain text, ready to paste in a ticket or a chat. Or take it to CSV / Excel."],
+      fr: ["9 · Copier, coller, exporter", "📋 Copy report : tout le rapport en texte brut, prêt à coller dans un ticket ou un chat. Ou exportez-le en CSV / Excel."],
       run: async (h) => {
         await h.page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
         await h.page.getByText("Health check", { exact: false }).first().evaluate(() => document.querySelector("h2")?.scrollIntoView({ block: "start", behavior: "smooth" }));

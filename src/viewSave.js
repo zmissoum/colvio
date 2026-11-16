@@ -165,6 +165,45 @@ export function layoutColumns(fx, primaryId) {
   return [...new Set([...cols, ...linkCols])];
 }
 
+// What a saved view holds, for the confirmation: its columns (layoutColumns) and each related
+// table — columns shown from it (an outer join with an alias) or a filter on it (an inner join,
+// Advanced Find's "any" / "not any").
+export function describeView(fx, primaryId) {
+  const columns = layoutColumns(fx, primaryId);
+  const related = [];
+  for (const m of String(fx || "").matchAll(/<link-entity\b([^>]*?)\/?>/gi)) {
+    const attr = (a) => (m[1].match(new RegExp(`\\b${a}\\s*=\\s*"([^"]*)"`, "i")) || [])[1] || "";
+    const table = attr("name"), alias = attr("alias"), type = (attr("link-type") || "inner").toLowerCase();
+    const shown = alias ? columns.filter(c => c.startsWith(`${alias}.`)).length : 0;
+    related.push({ table, alias, kind: type === "any" || type === "not any" ? type : shown ? "columns" : type === "outer" ? "outer" : "inner", columns: shown });
+  }
+  return { columns, related };
+}
+
+// describeView's related tables in words, one per table ("2 columns from contact (primarycontactid)").
+export function viewRelatedText(related) {
+  return (related || []).map(r =>
+    r.kind === "columns" ? `${r.columns} column${r.columns === 1 ? "" : "s"} from ${r.table}${r.alias ? ` (${r.alias})` : ""}`
+      : r.kind === "any" ? `only rows with at least one ${r.table}`
+        : r.kind === "not any" ? `only rows with no ${r.table}`
+          : r.kind === "inner" ? `only rows whose ${r.table} matches its conditions`
+            : "").filter(Boolean);
+}
+
+// One tag per line, indented by depth — to show a FetchXML to a person.
+export function indentXml(xml) {
+  const out = [];
+  let depth = 0;
+  for (const m of String(xml || "").matchAll(/<[^>]+>|[^<]+/g)) {
+    const tok = m[0].trim();
+    if (!tok) continue;
+    if (tok.startsWith("</")) { depth = Math.max(0, depth - 1); out.push(`${"  ".repeat(depth)}${tok}`); continue; }
+    out.push(`${"  ".repeat(depth)}${tok}`);
+    if (tok.startsWith("<") && !tok.endsWith("/>") && !tok.startsWith("<?") && !tok.startsWith("<!")) depth++;
+  }
+  return out.join("\n");
+}
+
 // The view's layout: the grid the app draws (ObjectTypeCode, the name column to open a row by).
 export function layoutXml({ objectTypeCode, primaryId, primaryName, columns }) {
   const cells = (columns || []).map(c => `<cell name="${xmlEsc(c)}" width="150"/>`).join("");

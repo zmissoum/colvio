@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProdAsk } from "../shared.jsx";
 import Tooltip from "./Tooltip.jsx";
 import { t } from "../i18n.js";
 import { formatPrivName, searchPrivileges, rolesHolding, holderExportRows, DEPTH_LABEL } from "../rolePrivilegeFilter.js";
@@ -287,7 +287,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
         if (!u) { report.push({ label: t, ok: false, msg: "no user found with this email / login" }); continue; }
         if (!seen.has(u.id)) { seen.add(u.id); matched.push(u); }
       }
-      if (matched.length && confirmProd(orgInfo?.isProduction, `Assign the role "${selRole.name}" to ${matched.length} user${matched.length > 1 ? "s" : ""}.`)) {
+      if (matched.length && await confirmProdAsk(orgInfo?.isProduction, `Assign the role "${selRole.name}" to ${matched.length} user${matched.length > 1 ? "s" : ""}.`)) {
         const res = await bridge.assignRoleUsers(selRole.name, matched.map(u => u.id), "assign");
         (res || []).forEach(r => {
           const u = matched.find(m => String(m.id).toLowerCase() === String(r.id).toLowerCase());
@@ -304,7 +304,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   // through a team is managed on the team, not here.
   const runRemove = async () => {
     if (!selUsers.size || !selRole) return;
-    if (!confirmProd(orgInfo?.isProduction, `Remove the role "${selRole.name}" from ${selUsers.size} user${selUsers.size > 1 ? "s" : ""}.`)) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `Remove the role "${selRole.name}" from ${selUsers.size} user${selUsers.size > 1 ? "s" : ""}.`))) return;
     const gen = selectGen.current; // captured at START — a mid-flight role switch must not repaint the new role's view
     setAssignBusy(true);
     try {

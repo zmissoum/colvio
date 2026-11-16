@@ -5,12 +5,14 @@ import { cookieFrom, pagedFetchXml, isCookieMismatch, fetchXmlColumns, streamCol
 import { countLabel, isCountCapped, expandShortfall, pruneOrderBy, splitKnownColumns, unknownColumnsNote, resolveColumn, sqlColumnTracker } from "../explorerUtils.js";
 import { parseSqlWrite, previewSelect, describeSets, rawForPrepare, updateMetaFor } from "../sqlWrite.js";
 import { prepareUpdate as prepareTypedUpdate } from "../updateUtils.js";
-import { builderToFetchXml, viewFetchXml, layoutColumns, layoutXml } from "../viewSave.js";
+import { builderToFetchXml, viewFetchXml, layoutColumns, layoutXml, describeView, viewRelatedText, indentXml } from "../viewSave.js";
+import { demoSqlAnswer, demoExpandColumns } from "../explorerDemo.js";
+import { demoLookups, demoChildRelationships } from "../schemaDemo.js";
 import Tooltip from "./Tooltip.jsx";
 import QueryTemplates from "./QueryTemplates.jsx";
 import { t } from "../i18n.js";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge, persistList, confirmProd } from "../shared.jsx";
+import { C, I, Spin, ENTS, FLDS, ROWS, useDebounce, useKeyboard, mono, inp, bt, copyText, isTrulyCustom, dl, expName, recordId, TableTypeBadge, persistList, confirmProdAsk } from "../shared.jsx";
 import { sqlToFetchXml } from "../sqlToFetchXml.js";
 import { sqlContext, suggestTables, columnScope, suggestColumns, applySuggestion } from "../sqlComplete.js";
 import { extractBaseTable, isSqlOptionUnsupported } from "../sqlNative.js";
@@ -337,6 +339,9 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     } else {
       setFields(FLDS);
       setSf(["name","accountnumber","emailaddress1","address1_city","statecode"]);
+      // the table's parent relations from the demo schema (schemaDemo.js) — REL and EXPAND stayed
+      // disabled in demo without them; the child ones come when a picker opens (ensureChildRels)
+      setLookups(demoLookups(e.l).map(l=>({...l,type:"single"})));
     }
   };
 
@@ -440,9 +445,11 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
       if(vf.error) throw new Error(vf.error);
       const cols=layoutColumns(vf.fetchxml,meta.primaryId);
       const layout=layoutXml({objectTypeCode:meta.objectTypeCode,primaryId:meta.primaryId,primaryName:meta.primaryName,columns:cols.length?cols:[meta.primaryName]});
-      if(!confirmProd(orgInfo?.isProduction,`Create the personal view "${name}" on ${vf.entity}`)){ setViewModal(v=>({...v,saving:false})); return; }
+      if(!(await confirmProdAsk(orgInfo?.isProduction,`Create the personal view "${name}" on ${vf.entity}`))){ setViewModal(v=>({...v,saving:false})); return; }
       const r=await bridge.createUserQuery({entity:vf.entity,name,fetchxml:vf.fetchxml,layoutxml:layout});
-      setViewModal(v=>({...v,saving:false,done:{id:r?.id,name,table:meta.displayName||vf.entity,columns:cols}}));
+      // what the view holds, said on screen: its related tables (an expanded lookup's columns, a
+      // related-records filter) and the FetchXML that was saved
+      setViewModal(v=>({...v,saving:false,done:{id:r?.id,name,table:meta.displayName||vf.entity,columns:cols,related:viewRelatedText(describeView(vf.fetchxml,meta.primaryId).related),fetchxml:vf.fetchxml}}));
     }catch(e){ setViewModal(v=>({...v,saving:false,error:e.message||String(e)})); }
   };
 
@@ -587,10 +594,10 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
 
   // Child (1:N) relations are lazy-loaded on first open of either picker (Relations or Rel filter).
   const ensureChildRels = () => {
-    if (childRelsLoaded || !ent || !isLive) return;
+    if (childRelsLoaded || !ent) return;
     setChildRelsLoaded(true);
     const g = selGen.current; // entity A's child relations must never append into entity B's lookups (audit finding)
-    bridge.getChildRelationships(ent.l).then(childRels => {
+    (isLive ? bridge.getChildRelationships(ent.l) : Promise.resolve(demoChildRelationships(ent.l))).then(childRels => {
       if (selGen.current !== g) return;
       if (childRels && Array.isArray(childRels)) {
         setLookups(prev => {
@@ -607,7 +614,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setLoadingExpand(lookup.navProperty);
     const g = selGen.current; // switching entity while target fields load must DROP this add (audit finding)
     try {
-      const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
+      // demo: the related table's own demo columns (schemaDemo.js); the account's for a table it has none for
+      const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : ((await bridge.getFields(lookup.targetEntity)) || FLDS);
       if (selGen.current !== g) { setLoadingExpand(""); return; }
       const mapped = mapTargetFields(targetFields);
       const commonNames = ["name","fullname","title","subject","accountnumber","emailaddress1","internalemailaddress","telephone1","new_sapid","new_externalid"];
@@ -653,7 +661,7 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     setLoadingRel(lookup.navProperty);
     const g = selGen.current; // same stale-add guard as addExpand (audit finding)
     try {
-      const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : FLDS;
+      const targetFields = isLive ? await bridge.getFields(lookup.targetEntity) : ((await bridge.getFields(lookup.targetEntity)) || FLDS);
       if (selGen.current !== g) { setLoadingRel(""); return; }
       // Functional + re-checked: a double-click racing the disabled repaint must not add twice.
       setRelFilters(prev => prev.find(x => x.navProperty === lookup.navProperty) ? prev : [...prev, {
@@ -968,13 +976,27 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
     addHistory(q,qm);
 
     if(!isLive){
-      if(stream){
-        const cols=(sf.length?sf:FLDS.map(f=>f.l)).map(f=>({name:f,keys:[f]}));
-        await streamRun(stream,{declared:cols,complete:true,first:ROWS,sheetBase:ent?.l||"demo",next:null});
+      if(qm==="sql"){
+        // Demo org: the SELECT runs on the demo accounts (explorerDemo.js) — the columns it names, in
+        // its order, under their alias; an unknown column is refused in the server's words, by engine
+        const a=demoSqlAnswer(sqlText,{engine:useNativeSql?"native":"fetchxml",rows:ROWS,fields:FLDS});
+        if(a.error){ if(stream){ await streamFail(stream,a.error); return; } setError(useNativeSql?`Native SQL: ${a.error}`:a.error); return; }
+        const sqlEnt=entities.find(e=>e.l==="account")||ent;
+        if(stream){ await streamRun(stream,{declared:a.fields.map(f=>({name:f,keys:[f]})),complete:true,first:a.data,sheetBase:sqlEnt?.l||"demo",next:null}); return; }
+        setRes({entity:sqlEnt,fields:a.fields,data:a.data,count:a.data.length,total:a.data.length,query:q,elapsed:"mock",nextLink:null,fetching:false});
+        addToHistory(sqlEnt,q,qm,a.fields.length);
         return;
       }
-      setRes({entity:ent,fields:sf.length?sf:FLDS.map(f=>f.l),data:ROWS,count:ROWS.length,total:ROWS.length,query:q,elapsed:"mock",nextLink:null,fetching:false,...buildUpdateMeta()});
-      addToHistory(ent,q,qm,(sf.length?sf:FLDS.map(f=>f.l)).length); // demo parity: history (and its builder-restore) works in demo too
+      // Builder: an expanded lookup's columns follow the root's, as the live grid shows them
+      const exp=demoExpandColumns(ROWS,qm==="builder"?expands:[]);
+      const demoCols=[...(sf.length?sf:FLDS.map(f=>f.l)),...exp.fields];
+      const demoData=exp.fields.length?exp.data:ROWS; // no expand: the demo rows themselves, as before (an inline edit stays for the page load)
+      if(stream){
+        await streamRun(stream,{declared:demoCols.map(f=>({name:f,keys:[f]})),complete:true,first:demoData,sheetBase:ent?.l||"demo",next:null});
+        return;
+      }
+      setRes({entity:ent,fields:demoCols,data:demoData,count:demoData.length,total:demoData.length,query:q,elapsed:"mock",nextLink:null,fetching:false,...buildUpdateMeta()});
+      addToHistory(ent,q,qm,demoCols.length); // demo parity: history (and its builder-restore) works in demo too
       return;
     }
 
@@ -1979,6 +2001,8 @@ export default function Explorer({bp,addHistory,orgInfo,theme,active=true}){
           <div style={{fontSize:15,fontWeight:700,marginBottom:6,color:C.tx}}>👁 Save as a personal view</div>
           {viewModal.done?(<>
             <div style={{fontSize:13,color:C.gn,marginBottom:8}}>✓ “{viewModal.done.name}” is a personal view of {viewModal.done.table}{viewModal.done.columns?.length?` with ${viewModal.done.columns.length} column${viewModal.done.columns.length>1?"s":""}`:""}.</div>
+            {viewModal.done.related?.length>0&&<div style={{fontSize:12,color:C.txm,lineHeight:1.6,marginBottom:8}}>Related tables: {viewModal.done.related.join(" · ")}.</div>}
+            {viewModal.done.fetchxml&&<details style={{marginBottom:10}}><summary style={{fontSize:12,color:C.vi,cursor:"pointer"}}>The view's FetchXML</summary><pre style={{...mono,fontSize:11,lineHeight:1.5,color:C.txm,background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,padding:"8px 10px",margin:"6px 0 0",maxHeight:220,overflow:"auto",whiteSpace:"pre"}}>{indentXml(viewModal.done.fetchxml)}</pre></details>}
             <div style={{fontSize:12,color:C.txm,lineHeight:1.6,marginBottom:12}}>Refresh the Dynamics 365 tab: it's in the view selector of {viewModal.done.table}, under My views. Only you see it — share it from there if others need it.</div>
             <div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={()=>setViewModal(null)} style={bt(null,{fontSize:12})}>Close</button></div>
           </>):(<>

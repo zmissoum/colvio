@@ -2,48 +2,15 @@
 // keeps them in memory), create columns in bulk from a file (fed in memory through Playwright's
 // file chooser — nothing read from disk), and a plug-in step's filtering attributes.
 //
-// Every write in Colvio asks window.confirm() first. A native dialog doesn't render in a headless
-// screencast, so confirm() is replaced: the click shows the app's own message, word for word, in an
-// on-page box and answers Cancel (nothing is written); once the cursor clicks OK, the same button is
-// pressed again with confirm() answering OK — so the write only happens after OK, as on an org.
+// Every write in Colvio asks for a confirmation first, in the app's own dialog: the click shows its
+// message, the cursor clicks OK, then the write runs — as on an org (h.confirmed in lib.mjs).
 // Every action below was checked against demo mode (make-deep --probe).
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 const fieldRow = (h, logical) => h.page.locator("tbody tr >> visible=true").filter({ has: h.page.locator(`text="${logical}"`) }).first();
 const optRow = (h, value) => h.page.locator(`xpath=//tr[td[1][normalize-space(.)='${value}']] >> visible=true`).first();
 
-const armConfirm = (h) => h.page.evaluate(() => {
-  if (window.__cvConfirmArmed) return;
-  window.__cvConfirmArmed = true;
-  window.__cvConfirmPass = false;
-  const st = document.createElement("style");
-  st.textContent = `#cv-confirm{position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.55);display:flex;justify-content:center;align-items:center;padding:175px 0 145px;box-sizing:border-box}
-  #cv-confirm .d{width:560px;max-height:100%;overflow:hidden;box-sizing:border-box;background:#292a2d;color:#e8eaed;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6);padding:18px 20px 14px;font:14px/1.5 "Segoe UI",system-ui,sans-serif}
-  #cv-confirm .h{font-size:15px;font-weight:600;margin-bottom:10px}
-  #cv-confirm .m{white-space:pre-wrap;color:#d6d8dc;font-size:13.5px}
-  #cv-confirm .b{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
-  #cv-confirm .b span{padding:6px 18px;border-radius:16px;font-size:13px;border:1px solid #5f6368;cursor:pointer}
-  #cv-confirm .b .ok{background:#8ab4f8;color:#202124;border-color:#8ab4f8;font-weight:600}`;
-  document.head.appendChild(st);
-  window.confirm = (msg) => {
-    if (window.__cvConfirmPass) return true;
-    document.getElementById("cv-confirm")?.remove();
-    const box = document.createElement("div"); box.id = "cv-confirm";
-    box.innerHTML = '<div class="d"><div class="h">Confirm</div><div class="m"></div><div class="b"><span class="c">Cancel</span><span class="ok">OK</span></div></div>';
-    box.querySelector(".m").textContent = msg;
-    box.querySelector(".ok").addEventListener("click", () => box.remove());
-    document.body.appendChild(box);
-    return false;
-  };
-});
 // Click a write button: its confirmation is read, OK is clicked, then the write runs.
-const confirmed = async (h, loc, readMs = 2600) => {
-  await h.click(loc);
-  await h.page.locator("#cv-confirm").waitFor(); await h.wait(readMs);
-  await h.click(h.page.locator("#cv-confirm .ok"));
-  await h.page.evaluate(() => { window.__cvConfirmPass = true; });
-  try { await loc.click(); } finally { await h.page.evaluate(() => { window.__cvConfirmPass = false; }); }
-  await h.wait(800);
-};
+const confirmed = async (h, loc, readMs = 2600) => { await h.confirmed(loc, readMs); await h.wait(500); };
 
 // The sheet: 9 columns for Account, four of them with mistakes that are caught before anything is sent.
 const SHEET = [
@@ -71,7 +38,6 @@ export default {
       en: ["1 · Edit a choice column's values", "Values › ✏️ Edit values. It says what you touch: here a global choice — a change applies to every column that uses it — and each change is published right away."],
       fr: ["1 · Modifier les valeurs d'une colonne de choix", "Values › ✏️ Edit values. Il dit ce que vous touchez : ici un choix global — le changement vaut pour toutes les colonnes qui l'utilisent — et chaque changement est publié aussitôt."],
       run: async (h) => {
-        await armConfirm(h);
         await h.open("Metadata");
         await h.click(h.vis("Account")); await h.wait(900);
         await h.type(h.page.getByPlaceholder("Filter columns...").first(), "custom"); await h.wait(700);

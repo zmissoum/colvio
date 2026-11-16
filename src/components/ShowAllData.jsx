@@ -5,7 +5,7 @@ import AuditHistory from "./AuditHistory.jsx";
 import RecordActivity from "./RecordActivity.jsx";
 import RecordAccess from "./RecordAccess.jsx";
 import BpfManager from "./BpfManager.jsx";
-import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom, confirmProd } from "../shared.jsx";
+import { C, I, Spin, FLDS, ROWS, mono, displayType, inp, bt, crd, copyText, isTrulyCustom, confirmProdAsk } from "../shared.jsx";
 import { coerceScalarForEdit, prepareUpdate } from "../updateUtils.js";
 
 export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
@@ -176,7 +176,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
           {fieldTypes:{[f.l]:f.t},lookupBinds:{[f.l]:[{nav:b.navProperty,target:b.targetEntity,set}]},odataFieldMap:{}},
           f.l,String(editing.value??"").trim(),b.targetEntity);
         if(!prep.ok){setEditMsg(`✗ ${prep.reason}`);setSavingField(false);return;}
-        if(!confirmProd(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`)){setSavingField(false);return;}
+        if(!(await confirmProdAsk(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`))){setSavingField(false);return;}
         await bridge.update(record.entitySet,record.id,prep.body);
         setEditing(null);
         await loadRecordDirect(record.entity,record.id); // reload to show the fresh formatted value
@@ -187,7 +187,7 @@ export default function ShowAllData({bp,orgInfo,theme,orgFeatures,permissions}){
       setSavingField(false);
       return;
     }
-    if(!confirmProd(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`))return;
+    if(!(await confirmProdAsk(orgInfo?.isProduction,`Set "${f.l}" on this ${record.entity} record (direct API write — bypasses the form).`)))return;
     const s=String(editing.value??"").trim();
     let val=null; // empty = deliberate clear
     if(s!==""){

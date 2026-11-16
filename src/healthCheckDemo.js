@@ -1,9 +1,11 @@
-// Demo org answering the 🩺 Health check's reads (same shapes as live).
+// Demo org answering the 🩺 Health check's reads (same shapes as live). isProd: the demo org is a
+// sandbox unless the opt-in demo production flag is set (demoProduction.js) — then the production-
+// only checks run too: two unmanaged solutions (the Solutions demo's own) are flagged.
 const FV = "@OData.Community.Display.V1.FormattedValue";
 
-export function demoHealthApi() {
+export function demoHealthApi({ isProd = false } = {}) {
   return {
-    isProd: false,
+    isProd: !!isProd,
     org: { plugintracelogsetting: 2, isauditenabled: true, auditretentionperiodv2: -1 },
     async fetchAggregate(xml) {
       if (/statuscode" operator="eq" value="31"/.test(xml)) return [{ name: "SurveySync: Update of account", n: 126 }, { name: "Recalculate territory", n: 9 }];
@@ -23,6 +25,7 @@ export function demoHealthApi() {
       ];
       if (path.startsWith("environmentvariablevalues")) return [{ _environmentvariabledefinitionid_value: "e1" }];
       if (path.startsWith("systemusers")) return [{ fullname: "Nora Petit", internalemailaddress: "nora.petit@contoso.example" }, { fullname: "Training User 3", internalemailaddress: "training3@contoso.example" }];
+      if (path.startsWith("solutions")) return [{ friendlyname: "Colvio Demo Solution", uniquename: "ColvioDemo", version: "1.0.0.0" }, { friendlyname: "Contoso Sales", uniquename: "ContosoSales", version: "1.2.0.0" }];
       return [];
     },
     async counts(names) {

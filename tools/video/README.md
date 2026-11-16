@@ -34,7 +34,7 @@ node recon.mjs                     # screenshot every module's landing screen (d
 
 Outputs land in `tools/video/out/` (git-ignored):
 
-- `video/colvio_tour_en.mp4`, `video/colvio_tour_fr.mp4` — intro card, 20 modules, outro card (~2 min 45 s)
+- `video/colvio_tour_en.mp4`, `video/colvio_tour_fr.mp4` — intro card, 23 modules (every module but System Ops, which needs a real org), outro card (~3 min 15 s)
 - `video/clips_en/NN_<module>.mp4`, `video/clips_fr/…` — one clip per module, for LinkedIn posts
 - `video/summary.json` — duration, scene count and console errors per language
 
@@ -52,6 +52,10 @@ node make-deep.mjs --module=explorer --probe --port=5201  # own port, to probe m
 A module is a file `deep/<key>.mjs` exporting `{ key, label, tagline: {en, fr}, chapters }`, where
 each chapter is `{ key, pos?, en: [title, text], fr: [title, text], run: async (h) => … }`
 (`pos: "top"` moves the caption up when the action happens in the lower half of the screen).
+A module may also export `storage: { key: value }` — localStorage set before the page loads, for a
+demo flag of that video only: `health` sets `colvio_demo_production` (src/demoProduction.js, demo
+mode only) so the demo org is a production one and "Unmanaged solutions in production" has a
+finding; every other video keeps the sandbox demo org.
 Write the chapters, run `--probe` until every chapter passes and every screenshot shows what the
 caption claims, then render. Render one module at a time (or a comma list in one run): parallel
 renders compete for the CPU and the screencast drops frames.
@@ -63,8 +67,9 @@ and seven on capabilities added inside modules after the first series: `access` 
 Record access + Record activity), `whoruns` (Automation › who runs it, Fires on, step writes),
 `datamodel` and `modelwrites` (Metadata), `sqlpower` (Explorer › SQL completion, UPDATE preview, Save
 as view), `association` (Data Loader › N:N tables), `deployments` (Solutions › Deployments).
-Native `window.confirm` dialogs don't appear in a screencast: scripts that film a write reproduce
-the dialog on the page with the app's own message, answer Cancel, then click again and accept. Some chapters feed the page in-memory
+Every write asks for a confirmation in the app's own dialog (no native `window.confirm`, which never
+showed in a screencast): `h.confirmed(button)` clicks the write button, leaves the dialog's text on
+screen, then clicks OK (`h.confirm("cancel")` answers Cancel). Some chapters feed the page in-memory
 files through Playwright's file chooser (a solution-compare file, a schema snapshot, a translations
 CSV) — nothing is downloaded or read from disk, and download buttons are only hovered. The tour's
 Data Loader, Recycle Bin, API Tester and Schema scenes replay the first chapters of these scripts.
@@ -146,7 +151,12 @@ module except System Ops — 20 of 21.
 
 **Not filmed**: System Ops (no system jobs, plug-in traces or flow runs in demo). The Data Loader,
 Recycle Bin, API Tester and Schema demos were enriched for filming (`src/loaderDemo.js`,
-`recycleBinDemo.js`, `apiDemo.js`, `schemaDemo.js`) — demo mode only, live paths untouched.
+`recycleBinDemo.js`, `apiDemo.js`, `schemaDemo.js`) — demo mode only, live paths untouched. So were
+the Explorer's SQL and views (`explorerDemo.js`: a SELECT's own columns, order and aliases on the
+demo accounts; Save as view checked like the server, related tables included), N:N associations
+(`associationDemo.js`: users by email, teams by name, links already there), a web-resource version
+conflict (`webResourcesDemo.js`: a colleague's save lands before your first save of
+`new_/scripts/opportunity.js`) and the Health check on production (`demoProduction.js`, opt-in).
 
 ## Notes
 

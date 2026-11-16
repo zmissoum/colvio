@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd, copyText } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProdAsk, copyText } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { envTypeLabel, effectiveValue, validateEnvValue } from "../envVarUtils.js";
 
@@ -66,7 +66,7 @@ export default function EnvVariables({ bp, orgInfo }) {
     const { v, draft } = edit;
     const check = validateEnvValue(v.type, draft);
     if (!check.ok) { setEdit(p => ({ ...p, err: check.error })); return; }
-    if (!confirmProd(orgInfo?.isProduction, `set environment variable "${v.displayName}"`)) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `set environment variable "${v.displayName}"`))) return;
     setEdit(p => ({ ...p, busy: true, err: "" }));
     try {
       const r = await bridge.setEnvVarValue(v.id, v.valueId, draft.trim());
@@ -76,7 +76,7 @@ export default function EnvVariables({ bp, orgInfo }) {
   };
 
   const clearOverride = async (v) => {
-    if (!confirmProd(orgInfo?.isProduction, `clear the override of "${v.displayName}" (falls back to ${v.defaultValue != null && v.defaultValue !== "" ? "its default" : "NO value at all"})`)) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `clear the override of "${v.displayName}" (falls back to ${v.defaultValue != null && v.defaultValue !== "" ? "its default" : "NO value at all"})`))) return;
     setBusyId(v.id);
     try {
       await bridge.deleteEnvVarValue(v.valueId);

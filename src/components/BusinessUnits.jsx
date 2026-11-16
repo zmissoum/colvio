@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProd } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, exportTable, confirmProdAsk } from "../shared.jsx";
 import { layoutBuTree, visibleBuList, extractEmails, matchUsersByEmails } from "../buTreeUtils.js";
 import { userLookupFilter, resolveUsers } from "../userResolve.js";
 
@@ -268,7 +268,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
   const doInMove = async () => {
     if (!inFound?.movable?.length || moving) return;
     const n = inFound.movable.length;
-    if (!confirmProd(orgInfo?.isProduction, `Move ${n} user${n > 1 ? "s" : ""} INTO "${selBu?.name}" (from their current business units)`)) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `Move ${n} user${n > 1 ? "s" : ""} INTO "${selBu?.name}" (from their current business units)`))) return;
     setMoving(true); setInResults(null);
     try {
       const res = await bridge.moveUsersToBu(sel, inFound.movable.map(u => u.id)) || [];
@@ -508,7 +508,7 @@ export default function BusinessUnits({ bp, orgInfo, theme, permissions, orgFeat
         const targetBu = bus?.find(b => b.id === moveTarget);
         const doMove = async () => {
           if (!moveTarget || moving) return;
-          if (!confirmProd(orgInfo?.isProduction, `Move ${checkedUsers.size} user${checkedUsers.size > 1 ? "s" : ""} to "${targetBu?.name}"`)) return;
+          if (!(await confirmProdAsk(orgInfo?.isProduction, `Move ${checkedUsers.size} user${checkedUsers.size > 1 ? "s" : ""} to "${targetBu?.name}"`))) return;
           setMoving(true); setMoveResults(null);
           try {
             const res = await bridge.moveUsersToBu(moveTarget, [...checkedUsers]) || [];

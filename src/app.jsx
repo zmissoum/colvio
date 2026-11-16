@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { bridge, onSessionExpired, clearSessionExpired } from "./d365-bridge.js";
-import { C, setThemeColors, I, DARK, LIGHT, useBP, useKeyboard, Spin, detectExtension, mono } from "./shared.jsx";
+import { C, setThemeColors, I, DARK, LIGHT, useBP, useKeyboard, Spin, detectExtension, mono, ConfirmHost, confirmAsk } from "./shared.jsx";
 import { t, setLocale, getLocale } from "./i18n.js";
 import { detectEnv } from "./envDetect.js";
+import { demoIsProduction } from "./demoProduction.js";
 
 // ── Components ──
 import ConnScreen from "./components/ConnScreen.jsx";
@@ -209,7 +210,10 @@ export default function App(){
     setConnecting(true);
     setTimeout(() => {
       setConnecting(false);
-      setOrgInfo({ orgUrl: "https://demo.crm4.dynamics.com", orgName: "demo", region: "crm4", isProduction: false, isExtension: false });
+      // a sandbox — unless the demo's opt-in production flag is set (demoProduction.js; never in the extension)
+      let store = null;
+      try { store = window.localStorage; } catch { /* storage blocked: a sandbox */ }
+      setOrgInfo({ orgUrl: "https://demo.crm4.dynamics.com", orgName: "demo", region: "crm4", isProduction: demoIsProduction(bridge.isExtension, store), isExtension: false });
       setPermissions({ canReadAudit: true, canReadSolutions: true, canReadAllUsers: true, canBypassPlugins: true, canPublish: true });
       setPermsConfirmed(true); // demo permissions are final — without this, every "requires" tab stays hidden in demo mode
       setConnected(true);
@@ -276,6 +280,7 @@ export default function App(){
     <div style={{display:"flex",height:"100vh",background:C.bg,color:C.tx,fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",fontSize:15}}>
       <CommandPalette open={showPalette} onClose={()=>setShowPalette(false)} tabs={tabs} onNavigate={setTab} actions={paletteActions}/>
       <WhatsNew/>
+      <ConfirmHost/>
       {expired && (
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:200,background:C.rd,color:"white",padding:"10px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14}}>
           <span>{t("session.expired")}</span>
@@ -389,7 +394,7 @@ export default function App(){
           {/* Script Console stays MOUNTED (like Loader): leaving the tab mid-run must not kill the
               script's sandbox, its streamed output or the journal it is building. */}
           <div style={{display:tab==="script"?"block":"none",height:"100%"}}><ErrorBoundary><ScriptConsole bp={bp} orgInfo={orgInfo}/></ErrorBoundary></div>
-          {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={()=>{if(loaderBusy&&!window.confirm("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?"))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
+          {tab==="help"&&<HelpTab bp={bp} theme={theme} onShowShortcuts={()=>setShowShortcuts(true)} onRestartTour={async()=>{if(loaderBusy&&!(await confirmAsk("A Data Loader import is still running. Restarting the tour reloads Colvio and abandons the import (no result, no rollback). Continue?",{title:"Restart the tour?",ok:"Restart",danger:true})))return;try{localStorage.removeItem("colvio_tour_done");}catch{}window.location.reload();}}/>}
         </div>
       </div>
       <style>{`

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { setConfirmSink } from "./confirmService.js";
 
 // ── Performance: debounced value hook ──
 export function useDebounce(value, delay = 150) {
@@ -184,12 +185,46 @@ export function recordId(r, entityLogical, pkField){
   return null;
 }
 
-// Confirmation gate for a mutating action on a PRODUCTION org. Returns true to proceed. On a
-// non-production environment it proceeds silently. One helper so every destructive action prompts
-// the same way. (Native confirm — blocks reliably and needs no modal state.)
-export function confirmProd(isProduction, actionLabel){
-  if(!isProduction) return true;
-  return window.confirm(`⚠ PRODUCTION environment\n\n${actionLabel}\n\nThis affects live production data. Continue?`);
+// Confirmations — the app's own dialog, never the native one (confirmService.js says why).
+// confirmAsk(text, {title, ok, cancel, danger}) and confirmProdAsk(isProduction, label) both
+// resolve true / false and MUST be awaited: `if (!(await confirmProdAsk(isProd, label))) return;`.
+// confirmProdAsk asks only on a production org, with the same words the native prompt used.
+export { confirmAsk, confirmProdAsk } from "./confirmService.js";
+
+// The dialog itself, mounted once at the app's root (app.jsx): one request at a time, the next ones
+// wait. OK is focused (Enter confirms), except for a dangerous action where Cancel is (Enter backs
+// out). Escape and a click outside cancel; Escape is caught before any other modal's handler, so it
+// closes this dialog only, not the window underneath. data-confirm="ok|cancel" for the product videos.
+export function ConfirmHost(){
+  const[queue,setQueue]=useState([]);
+  const okRef=useRef(null),cancelRef=useRef(null);
+  useEffect(()=>{setConfirmSink(r=>setQueue(q=>[...q,r]));return()=>setConfirmSink(null);},[]);
+  const cur=queue[0]||null;
+  useEffect(()=>{
+    if(!cur) return undefined;
+    (cur.danger?cancelRef:okRef).current?.focus();
+    const h=(e)=>{if(e.key==="Escape"){e.preventDefault();e.stopImmediatePropagation();cur.resolve(false);setQueue(q=>q.slice(1));}};
+    window.addEventListener("keydown",h,true);
+    return()=>window.removeEventListener("keydown",h,true);
+  },[cur]);
+  if(!cur) return null;
+  const answer=(v)=>{cur.resolve(v);setQueue(q=>q.slice(1));};
+  // a message that opens with the title's own question doesn't repeat it under the title
+  const msgLines=cur.message.split("\n");
+  const body=msgLines[0].trim()===String(cur.title).trim()?msgLines.slice(1).join("\n").replace(/^\n+/,""):cur.message;
+  return(
+    <div data-confirm-overlay="" onMouseDown={e=>{if(e.target===e.currentTarget)answer(false);}} style={{position:"fixed",inset:0,zIndex:2147483000,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div role="dialog" aria-modal="true" aria-labelledby="cv-confirm-title" style={{...crd({padding:"18px 20px 14px"}),width:540,maxWidth:"100%",maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 16px 48px rgba(0,0,0,.5)",borderColor:cur.danger?C.rd+"88":C.bd}}>
+        <div id="cv-confirm-title" style={{fontWeight:700,fontSize:15,marginBottom:10,color:cur.danger?C.rd:C.tx}}>{cur.title}</div>
+        <div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.55,color:C.txm,overflow:"auto",minHeight:0}}>{body}</div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+          <button ref={cancelRef} data-confirm="cancel" onClick={()=>answer(false)} style={bt(null,{fontSize:13})}>{cur.cancel}</button>
+          <button ref={okRef} data-confirm="ok" onClick={()=>answer(true)} style={bt(cur.danger?C.rd:C.vi,{fontSize:13})}>{cur.ok}</button>
+        </div>
+        {queue.length>1&&<div style={{fontSize:11,color:C.txd,marginTop:8,textAlign:"right"}}>{queue.length-1} more waiting</div>}
+      </div>
+    </div>
+  );
 }
 
 // Distinguish truly custom fields/entities (created by integrators) from Microsoft solution fields

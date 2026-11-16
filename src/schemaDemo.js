@@ -229,6 +229,19 @@ export function demoLookups(logicalName) {
   }));
 }
 
+// The 1:N relationships a table is the parent of (the Explorer's child relations): every demo
+// lookup that targets it, seen from its side — the relationship's schema name is the collection's
+// navigation property, as Dataverse names it.
+export function demoChildRelationships(logicalName) {
+  const out = [];
+  for (const [child, t] of Object.entries(TABLES)) {
+    for (const [lookupField, targetEntity, schemaName] of t.lookups || []) {
+      if (targetEntity === logicalName) out.push({ lookupField, navProperty: schemaName, targetEntity: child, schemaName, type: "collection" });
+    }
+  }
+  return out;
+}
+
 export function demoManyToMany(logicalName) {
   return MANY_TO_MANY
     .filter(([, e1, e2]) => e1 === logicalName || e2 === logicalName)

@@ -41,7 +41,7 @@ const thumb = fs.existsSync(RAW) && `<html><head><style>${BASE}
   .shot img{display:block;width:100%}
 </style></head><body>
   <div class="txt"><div class="brand"><img src="${ICON}"><span>Colvio</span></div>
-    <div class="h">20 modules<br>in 3 minutes</div><div class="s">Free toolkit for Dynamics 365 &amp; Dataverse</div></div>
+    <div class="h">23 modules<br>in 3 minutes</div><div class="s">Free toolkit for Dynamics 365 &amp; Dataverse</div></div>
   <div class="shot"><img src="data:image/png;base64,${fs.readFileSync(RAW).toString("base64")}"></div>
 </body></html>`;
 

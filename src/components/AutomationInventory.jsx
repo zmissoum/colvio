@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmProd } from "../shared.jsx";
+import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmAsk, confirmProdAsk } from "../shared.jsx";
 import { t } from "../i18n.js";
 import WhoRunsIt from "./WhoRunsIt.jsx";
 import FiresOn from "./FiresOn.jsx";
@@ -223,8 +223,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const setState = async (list, enable) => {
     const plan = statePlan(list, enable);
     if (!plan.items.length) { setMsg({ ok: true, text: `Already ${enable ? "enabled" : "disabled"} — nothing to change.` }); return; }
-    if (!window.confirm(stateConfirmText(plan, enable))) return;
-    if (!confirmProd(orgInfo?.isProduction, `${enable ? "Enable" : "Disable"} ${plan.items.length} plug-in step${plan.items.length === 1 ? "" : "s"}`)) return;
+    if (!(await confirmAsk(stateConfirmText(plan, enable), { title: `${enable ? "Enable" : "Disable"} ${plan.items.length} plug-in step${plan.items.length === 1 ? "" : "s"}?`, ok: enable ? "Enable" : "Disable" }))) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `${enable ? "Enable" : "Disable"} ${plan.items.length} plug-in step${plan.items.length === 1 ? "" : "s"}`))) return;
     abortRef.current = false; setMsg(null); setBusy({ done: 0, total: plan.items.length });
     let errors = [];
     try {
@@ -255,8 +255,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
     const text = value
       ? `Set the filtering attributes of\n${step.name}\nto ${parseFiltering(value).length} column${parseFiltering(value).length === 1 ? "" : "s"}?${d.added.length ? `\n\n+ ${d.added.join(", ")}` : ""}${d.removed.length ? `\n− ${d.removed.join(", ")}` : ""}\n\nThe step will run only when one of them is in the update.`
       : `Clear the filtering attributes of\n${step.name}?\n\nThe step will run on EVERY update of any column of ${step.entity}.`;
-    if (!window.confirm(text)) return;
-    if (!confirmProd(orgInfo?.isProduction, `Change the filtering attributes of ${step.name}`)) return;
+    if (!(await confirmAsk(text, { title: value ? "Change the filtering attributes?" : "Clear the filtering attributes?", ok: value ? "Save" : "Clear" }))) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `Change the filtering attributes of ${step.name}`))) return;
     setFilt(f => ({ ...f, phase: "saving", error: "" }));
     try {
       await bridge.update(STEP_SET, step.id, { filteringattributes: value || null });

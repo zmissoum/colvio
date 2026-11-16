@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, mono, inp, bt, crd, confirmProd } from "../shared.jsx";
+import { C, Spin, mono, inp, bt, crd, confirmAsk, confirmProdAsk } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { WR_TYPES, isTextType, isImageType, typeLabel, decodeContent, encodeContent, contentBytes, byteSize, filterResources, searchContents, offsetOfLine, changedMessage } from "../webResources.js";
 
@@ -28,6 +28,7 @@ export default function WebResources({ bp, orgInfo }) {
   const stop = useRef(false);
   const ta = useRef(null);
   const openGen = useRef(0);
+  const asking = useRef(false); // a confirmation is on screen: Ctrl+S must not queue another save behind it
 
   useEffect(() => {
     let alive = true;
@@ -46,8 +47,13 @@ export default function WebResources({ bp, orgInfo }) {
   const counts = useMemo(() => { const m = {}; for (const r of filterResources(list, { showSystem })) m[r.type] = (m[r.type] || 0) + 1; return m; }, [list, showSystem]);
 
   const openRes = async (r, line) => {
+    if (open && open.text !== open.saved) {
+      asking.current = true;
+      const go = await confirmAsk(`Discard the unsaved changes to ${open.name}?`, { title: "Discard the changes?", ok: "Discard", danger: true }).finally(() => { asking.current = false; });
+      if (!go) return;
+    }
+    // bumped once the user said yes: a cancelled switch leaves a save in flight its generation
     const my = ++openGen.current;
-    if (open && open.text !== open.saved && !window.confirm(`Discard the unsaved changes to ${open.name}?`)) return;
     setOpen({ ...r, loading: true, b64: "", text: "", saved: "", bom: false, busy: "", msg: null });
     try {
       const [c] = await bridge.getWebResourceContents([r.id]);
@@ -55,8 +61,11 @@ export default function WebResources({ bp, orgInfo }) {
       if (!c) throw new Error("The web resource couldn't be read.");
       const { text, bom, encoding } = isTextType(r.type) ? decodeContent(c.content) : { text: "", bom: false, encoding: "utf-8" };
       cache.current.set(ckey(r), text);
-      // the stamp of the copy actually opened (the list's may be minutes old) — what a save is checked against
-      setOpen({ ...r, modifiedOn: c.modifiedOn || r.modifiedOn, etag: c.etag || "", loading: false, b64: c.content, text, saved: text, bom, readOnly: encoding !== "utf-8", busy: "", msg: null, description: c.description });
+      // the stamp of the copy actually opened (the list's may be minutes old) — what a save is checked against.
+      // Who saved it: the read's own answer when it has one (demo); otherwise the list's, unless the
+      // stamp moved since — a ↻ Reload after a refused save showed the OLD author next to the new time.
+      const by = c.modifiedBy != null ? c.modifiedBy : c.modifiedOn && r.modifiedOn && c.modifiedOn !== r.modifiedOn ? "" : r.modifiedBy;
+      setOpen({ ...r, modifiedOn: c.modifiedOn || r.modifiedOn, modifiedBy: by, etag: c.etag || "", loading: false, b64: c.content, text, saved: text, bom, readOnly: encoding !== "utf-8", busy: "", msg: null, description: c.description });
       if (line) setTimeout(() => goToLine(text, line), 50);
     } catch (e) { if (openGen.current === my) setOpen(o => (o ? { ...o, loading: false, failed: true, msg: { ok: false, text: e.message || String(e) } } : o)); }
   };
@@ -74,11 +83,11 @@ export default function WebResources({ bp, orgInfo }) {
     const x = (await bridge.query(`webresourceset(${id})`, { select: "modifiedon,_modifiedby_value" }))?.records?.[0];
     if (x) return { modifiedOn: x.modifiedon || "", modifiedBy: x["_modifiedby_value@OData.Community.Display.V1.FormattedValue"] || "", etag: x["@odata.etag"] || "" };
     const [c] = (await bridge.getWebResourceContents([id])) || [];
-    return c ? { modifiedOn: c.modifiedOn || "", modifiedBy: "", etag: c.etag || "" } : null;
+    return c ? { modifiedOn: c.modifiedOn || "", modifiedBy: c.modifiedBy || "", etag: c.etag || "" } : null;
   };
 
   const save = async (publish, overwrite = false) => {
-    if (!open || open.busy) return;
+    if (!open || open.busy || asking.current) return;
     const { id } = open, my = openGen.current;
     const upd = (f) => setOpen(o => (o && o.id === id ? f(o) : o)); // the user may open another resource while a request runs
     const dirty = open.text !== open.saved;
@@ -89,8 +98,11 @@ export default function WebResources({ bp, orgInfo }) {
     if (publish) lines.push("Every form and page that loads it gets this version at once, for every user."); else if (dirty) lines.push("Saved but not published: users keep the published version until a publish.");
     if (open.managed) lines.push("It comes from a managed solution: the next import of that solution may overwrite this change.");
     if (overwrite) lines.push("It changed on the server since you opened it: YOUR version replaces that one.");
-    if (!window.confirm(lines.join("\n"))) return;
-    if (!confirmProd(orgInfo?.isProduction, `${what} web resource ${open.name}`)) return;
+    asking.current = true;
+    let go = false;
+    try { go = (await confirmAsk(lines.join("\n"), { title: `${what} the web resource?`, ok: what, danger: overwrite })) && (await confirmProdAsk(orgInfo?.isProduction, `${what} web resource ${open.name}`)); }
+    finally { asking.current = false; }
+    if (!go) return;
     upd(o => ({ ...o, busy: dirty ? "Saving…" : "Publishing…", msg: null }));
     try {
       // The PATCH is conditional on the ETag of the version opened here (If-Match): Dataverse itself

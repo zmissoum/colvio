@@ -50,6 +50,13 @@ const SCENES = [
   { key: "apitester", en: ["API Tester", "A Postman for Dataverse on your own session: templates, JSON checked as you type, history, copy as cURL."],
     fr: ["API Tester", "Un Postman pour Dataverse, sur votre propre session : modèles, JSON vérifié à la frappe, historique, copie en cURL."],
     run: fromDeep(apitesterDeep, 1) },
+  { key: "script", en: ["Script Console", "JavaScript on the Web API for what no screen does — a dry run first, every write journaled, rolled back in one click."],
+    fr: ["Script Console", "Du JavaScript sur la Web API pour ce qu'aucun écran ne fait — dry run d'abord, chaque écriture journalisée, annulée en un clic."],
+    run: async (h) => {
+      await h.open("Script Console"); await h.wait(700);
+      await h.select(h.page.locator("select >> visible=true").filter({ has: h.page.locator('option[value="propagate-lookup"]') }).first(), "propagate-lookup"); await h.wait(1300);
+      await h.click(h.page.locator("button >> visible=true").filter({ hasText: /Dry run$/ }).first()); await h.wait(2600);
+    } },
   { key: "metadata", en: ["Metadata", "Tables, fields and option sets, with data-dictionary exports in one click and Virtual / Elastic filters."],
     fr: ["Metadata", "Tables, champs et option sets, avec export du dictionnaire de données en un clic et filtres Virtual / Elastic."],
     run: async (h) => { await h.open("Metadata"); await h.click(h.vis("Account")); await h.wait(2200); await h.click(h.page.locator("button >> visible=true").filter({ hasText: /^Virtual \(/ }).first()); await h.wait(1800); } },
@@ -71,6 +78,12 @@ const SCENES = [
   { key: "envvars", en: ["Environment Variables", "Defaults versus overrides — and the variables with no value at all, the classic post-deployment trap, flagged first."],
     fr: ["Environment Variables", "Valeurs par défaut et overrides — et les variables sans aucune valeur, le piège classique après un déploiement, signalées en premier."],
     run: async (h) => { await h.open("Env Variables"); await h.wait(3600); } },
+  { key: "webres", en: ["Web Resources", "Every script, style and HTML page — read, edited and published in place, with a search inside their contents."],
+    fr: ["Web Resources", "Chaque script, style et page HTML — lus, modifiés et publiés sur place, avec une recherche dans leur contenu."],
+    run: async (h) => {
+      await h.open("Web Resources"); await h.wait(1300);
+      await h.click(h.page.locator("button >> visible=true").filter({ hasText: "new_/scripts/account.js" }).first()); await h.wait(3000);
+    } },
   { key: "translations", en: ["Translations", "Field labels in every language side by side — edit, export, re-import."],
     fr: ["Translations", "Les libellés dans toutes les langues côte à côte — édition, export, réimport."],
     run: async (h) => { await h.open("Translations"); await h.click(h.vis("Account")); await h.wait(3000); } },
@@ -98,6 +111,13 @@ const SCENES = [
   { key: "storage", en: ["Storage", "Where your Dataverse capacity goes: rows per table for the whole org in seconds, and the real file bytes per table."],
     fr: ["Storage", "Où part votre capacité Dataverse : les lignes de chaque table de l'org en quelques secondes, et les vrais octets de fichiers par table."],
     run: async (h) => { await h.open("Storage"); await h.wait(2600); await h.scroll(560); await h.wait(2200); } },
+  { key: "health", en: ["Health check", "One report on what silently hurts the environment — each finding with its fix, nothing changed for you."],
+    fr: ["Health check", "Un rapport sur ce qui abîme l'environnement en silence — chaque constat avec sa correction, rien de modifié à votre place."],
+    run: async (h) => {
+      await h.open("Health check"); await h.wait(800);
+      await h.click(h.page.locator("button >> visible=true").filter({ hasText: /Run the health check$/ }).first()); await h.wait(3400);
+      await h.scroll(420); await h.wait(1800);
+    } },
 ];
 
 const CARDS = {

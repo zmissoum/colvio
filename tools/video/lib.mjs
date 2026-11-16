@@ -31,7 +31,9 @@ export function serveDist(port = 5190) {
 
 // viewport 1280x720 at 1.5x device scale = native 1920x1080 frames, with UI text large enough to
 // read on a phone (LinkedIn). locale: "en" | "fr" (the app's own toggle is localStorage-driven).
-export async function openDemo({ url, locale = "en", theme = "dark", viewport = { width: 1280, height: 720 }, deviceScaleFactor = 1.5 }) {
+// storage: extra localStorage keys set before the page loads — a scenario's demo flags (e.g. the
+// Health check's colvio_demo_production, src/demoProduction.js).
+export async function openDemo({ url, locale = "en", theme = "dark", viewport = { width: 1280, height: 720 }, deviceScaleFactor = 1.5, storage = {} }) {
   // channel "chrome" = the installed Google Chrome, with Playwright's own throwaway profile (never
   // the user's sessions). Playwright's downloaded Chromium fails to start on some Windows setups
   // ("side-by-side configuration is incorrect").
@@ -39,17 +41,20 @@ export async function openDemo({ url, locale = "en", theme = "dark", viewport = 
   // Playwright's own Chromium, any other value = the path of a Chromium executable.
   const alt = process.env.COLVIO_VIDEO_CHROMIUM;
   const browser = await chromium.launch(alt ? { headless: true, ...(alt === "bundled" ? {} : { executablePath: alt }) } : { channel: "chrome", headless: true });
-  const context = await browser.newContext({ viewport, deviceScaleFactor });
+  // locale en-US: the app's UI is English in every video, and numbers / dates formatted with the
+  // browser's own locale follow it (on a French Windows, 1,240,300 came out as "1 240 300")
+  const context = await browser.newContext({ viewport, deviceScaleFactor, locale: "en-US" });
   // "Copy" buttons write to the clipboard: headless Chromium denies it unless granted (an uncaught
   // NotAllowedError in the console fails the run)
   try { await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(url).origin }); } catch { /* browser without these permissions */ }
-  await context.addInitScript(([loc, th]) => {
+  await context.addInitScript(([loc, th, extra]) => {
     try {
       localStorage.setItem("colvio_tour_done", "1");   // no onboarding tour over the footage
       localStorage.setItem("colvio_locale", loc);
       localStorage.setItem("colvio_theme", th);
+      for (const [k, v] of Object.entries(extra || {})) localStorage.setItem(k, String(v));
     } catch { /* storage blocked — the app still runs */ }
-  }, [locale, theme]);
+  }, [locale, theme, storage]);
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", m => { if (m.type() === "error") consoleErrors.push(m.text()); });
@@ -134,6 +139,16 @@ export function helpers(page) {
     // <select>: the cursor travels to it, then the option is picked (native dropdowns don't render in screencasts).
     async select(loc, option) { const p = await moveTo(loc); if (p) await page.evaluate(([x, y]) => window.__cv.ripple(x, y), [p.x, p.y]); await loc.selectOption(option); await wait(600); },
     async press(key) { await page.keyboard.press(key); await wait(400); },
+    // The app's own confirmation dialog (shared.jsx ConfirmHost — no more native window.confirm, so
+    // it shows in the footage): wait for it, leave its text on screen for readMs, then the cursor
+    // clicks OK (or Cancel). confirmed(loc) = click the write button, then answer OK.
+    async confirm(answer = "ok", readMs = 2400) {
+      await page.locator('[role="dialog"][aria-modal="true"] [data-confirm="ok"]').first().waitFor({ timeout: 8000 });
+      await wait(readMs);
+      await this.click(page.locator(`[data-confirm="${answer}"]`).first());
+      await wait(450);
+    },
+    async confirmed(loc, readMs = 2400) { await this.click(loc); await this.confirm("ok", readMs); },
     async scroll(dy) {
       const x = 1000, y = 520;
       await page.evaluate(([x, y]) => window.__cv.cursor(x, y), [x, y]); await wait(400);

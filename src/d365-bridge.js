@@ -10,7 +10,7 @@
  */
 
 import { optionSetsFrom } from "./dataDictionary.js";
-import { FLDS } from "./shared.jsx";
+import { FLDS, ENTS } from "./shared.jsx";
 import { demoApiResponse } from "./apiDemo.js";
 import { demoFields } from "./schemaDemo.js";
 import { normalizeDeps, itemsToResolve } from "./deleteImpact.js";
@@ -22,9 +22,17 @@ import { demoWebResources, demoWebResourceContents, demoUpdateWebResource } from
 import { demoSearchConfig } from "./searchConfigDemo.js";
 import { demoSolutionHistory, demoImportJobLog } from "./solutionHistoryDemo.js";
 import { scriptDemoOrg } from "./scriptDemo.js";
+import { demoAssociation } from "./associationDemo.js";
 // One Script Console demo org per page load: a demo run stays written until rollback or reload.
 let scriptDemo = null;
 const getScriptDemo = () => scriptDemo || (scriptDemo = scriptDemoOrg());
+import { createDemoViews } from "./explorerDemo.js";
+// Explorer › Save as view in demo: each view checked against the demo tables' columns
+// (schemaDemo.js) the way the server checks a userquery, kept for the page load.
+let demoViews = null;
+const getDemoViews = () => demoViews || (demoViews = createDemoViews((table) => demoFields(table)?.map(f => f.logical) || null));
+// ObjectTypeCode of the demo tables (a view's layoutxml carries it).
+const DEMO_OTC = { account: 1, contact: 2, opportunity: 3, lead: 4, incident: 112, systemuser: 8, team: 9, businessunit: 10, list: 4300 };
 import { DEMO_USERS, DEMO_REFS, DEMO_INSTANCES, DEMO_FLOW_DEFS, DEMO_XAML_DEFS, DEMO_IDENT } from "./identitiesDemo.js";
 
 // ── Demo constants shared by several mocks ──
@@ -522,13 +530,14 @@ export const bridge = {
     return callD365("getComponentLayers", { componentName, componentId });
   },
 
+  // Demo: checked against the demo metadata like the server checks it (explorerDemo.js), then a new id.
   async createUserQuery(view) {
-    if (!isExtension) { await new Promise(r => setTimeout(r, 300)); return { id: "00000000-0000-4000-8000-00000000c0de" }; }
+    if (!isExtension) { await new Promise(r => setTimeout(r, 300)); return getDemoViews().create(view); }
     return callD365("createUserQuery", view);
   },
 
   async getEntityMetadata(logicalName, withCanDelete = false) {
-    if (!isExtension) return { canBeDeleted: true, displayName: logicalName, ...demoBinMeta(logicalName) };
+    if (!isExtension) return { canBeDeleted: true, displayName: ENTS.find(e => e.l === logicalName)?.d || logicalName, objectTypeCode: DEMO_OTC[logicalName] || 0, ...demoBinMeta(logicalName) };
     return callD365("getEntityMetadata", { logicalName, withCanDelete });
   },
 
@@ -1092,7 +1101,9 @@ export const bridge = {
   // relationship: items = [{ id1, id2 }] (id1 on set1, reached through nav1; id2 on set2). Same
   // worker pool, per-row log and abort handling as the other bulk writes.
   async batchAssociate({ set1, nav1, set2 }, items, mode, onProgress, shouldAbort, opts = {}) {
-    if (!isExtension) return { done: items.length, already: 0, errors: [], log: items.map((_, i) => ({ row: i + 1, status: mode === "remove" ? "DISASSOCIATED" : "ASSOCIATED" })) };
+    // Demo: the demo org's memberships (associationDemo.js) — a link already there is "already",
+    // a GUID that isn't a demo record is an error, as the live path reports them.
+    if (!isExtension) { await new Promise(r => setTimeout(r, 300)); const r = demoAssociation().associate({ set1, set2 }, items, mode); onProgress?.({ done: items.length, total: items.length, errorCount: r.errors.length, newErrors: r.errors, newLog: r.log }); return r; }
     let runId = null;
     try { runId = (await callD365("resetBatchAbort"))?.runId ?? null; } catch {}
     let abortNotified = false;

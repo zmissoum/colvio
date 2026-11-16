@@ -10,7 +10,7 @@ const cell = (h, re) => h.page.locator("td >> visible=true").filter({ hasText: r
 const filterBox = (h) => h.page.getByPlaceholder(/Filter by name, entity, message/);
 const firesTable = (h) => h.page.getByPlaceholder(/account, contact/);
 const firesColumn = (h) => h.page.getByPlaceholder(/logical name|reading the table|pick a table/);
-const accept = (h) => h.page.once("dialog", d => d.accept());
+
 // sideways wheel over a wide table (its own scroll box), the cursor riding along
 async function hscroll(h, dx) {
   const b = await h.page.locator("table >> visible=true").first().boundingBox();
@@ -87,8 +87,7 @@ export default {
         await h.click(btn(h, /^Plug-in steps/)); await h.wait(1200);
         await h.type(filterBox(h), "Contoso.Plugins"); await h.wait(1000);
         await h.click(h.page.locator('th input[type="checkbox"] >> visible=true').first()); await h.wait(1000);
-        accept(h);
-        await h.click(btn(h, /^Disable$/)); await h.wait(1500);
+        await h.confirmed(btn(h, /^Disable$/), 2200); await h.wait(1100);
         await h.hover(h.page.locator("span >> visible=true").filter({ hasText: /^✓ 2 steps disabled/ }).first()); await h.wait(1500);
       } },
     { key: "filtering",
@@ -100,8 +99,7 @@ export default {
         await h.click(row(h, /SapSync/).locator("button", { hasText: /col\.$/ })); await h.wait(1300);
         await h.type(h.page.getByPlaceholder("Filter columns…"), "telephone"); await h.wait(900);
         await h.click(h.page.locator("label >> visible=true").filter({ hasText: /^telephone1/ }).first()); await h.wait(1300);
-        accept(h);
-        await h.click(btn(h, /^Save$/)); await h.wait(1500);
+        await h.confirmed(btn(h, /^Save$/), 2200); await h.wait(1100);
       } },
     { key: "fires-again",
       en: ["9 · Ask again", "telephone1 of account now fires two registrations: the flow, and the SAP sync step — async, post-operation, running as the SAP app."],

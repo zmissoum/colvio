@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { bridge } from "../d365-bridge.js";
-import { C, Spin, mono, inp, bt, crd, confirmProd, dl, expName, exportTable } from "../shared.jsx";
+import { C, Spin, mono, inp, bt, crd, confirmAsk, confirmProdAsk, dl, expName, exportTable } from "../shared.jsx";
 import { t } from "../i18n.js";
 import { createRuntime, runRollback, summarize, rollbackStats, scriptLine, hashRows, normalizeJournal } from "../scriptRuntime.js";
 import { createJournalStore } from "../scriptJournalStore.js";
@@ -41,7 +41,7 @@ const TABLE_SHOWN = 500;
 // itself runs in the sandbox page (sandbox.js), a fresh iframe per run.
 export default function ScriptConsole({ bp, orgInfo }) {
   const [scripts, setScripts] = useState([]);
-  const [cur, setCur] = useState(() => ({ id: null, name: t(`script.tpl.${SCRIPT_TEMPLATES[0].id}`), code: SCRIPT_TEMPLATES[0].code, saved: null }));
+  const [cur, setCur] = useState(() => ({ id: null, name: t(`script.tpl.${SCRIPT_TEMPLATES[0].id}`), code: SCRIPT_TEMPLATES[0].code, saved: null, base: SCRIPT_TEMPLATES[0].code }));
   const [input, setInput] = useState(null); // { name, rows, hash }
   const [journalOn, setJournalOn] = useState(true);
   const [phase, setPhase] = useState("idle"); // idle | running | rollback
@@ -99,6 +99,10 @@ export default function ScriptConsole({ bp, orgInfo }) {
   }, []);
 
   const dirty = cur.saved !== cur.code;
+  // Work a switch would lose: code that differs from what was saved — or, never saved, from the
+  // template it came from. An untouched template loses nothing (it can be picked again): picking
+  // another one used to ask "Discard the unsaved changes?" right after the module opened.
+  const unsaved = cur.code !== (cur.saved ?? cur.base ?? null);
   // what a dry run vouches for: this code on this input's CONTENT (a re-exported file with the
   // same name and row count but other values needs its own dry run)
   const sig = `${cur.code}\u0000${input ? input.hash : ""}`;
@@ -122,25 +126,25 @@ export default function ScriptConsole({ bp, orgInfo }) {
     mutateScripts(list => [item, ...list.filter(s => s.id !== id)]);
     setCur(c => ({ ...c, id, name, saved: c.code }));
   };
-  const openScript = (s) => {
-    if (dirty && !window.confirm(t("script.discard"))) return;
+  const openScript = async (s) => {
+    if (unsaved && !(await confirmAsk(t("script.discard"), { title: cur.name || t("script.untitled"), ok: t("common.confirm"), cancel: t("common.cancel"), danger: true }))) return;
     setCur({ id: s.id, name: s.name, code: s.code, saved: s.code });
   };
-  const fromTemplate = (id) => {
+  const fromTemplate = async (id) => {
     const tpl = SCRIPT_TEMPLATES.find(x => x.id === id);
-    if (!tpl || (dirty && !window.confirm(t("script.discard")))) return;
-    setCur({ id: null, name: t(`script.tpl.${tpl.id}`), code: tpl.code, saved: null });
+    if (!tpl || (unsaved && !(await confirmAsk(t("script.discard"), { title: cur.name || t("script.untitled"), ok: t("common.confirm"), cancel: t("common.cancel"), danger: true })))) return;
+    setCur({ id: null, name: t(`script.tpl.${tpl.id}`), code: tpl.code, saved: null, base: tpl.code });
     if (!orgInfo?.isExtension && tpl.sampleInput) setInput({ name: "sample.csv", rows: tpl.sampleInput, hash: hashRows(tpl.sampleInput) });
   };
-  const removeScript = () => {
-    if (!cur.id || !window.confirm(t("script.delete_confirm").replace("{name}", cur.name))) return;
+  const removeScript = async () => {
+    if (!cur.id || !(await confirmAsk(t("script.delete_confirm").replace("{name}", cur.name), { title: t("script.delete"), ok: t("script.delete"), cancel: t("common.cancel"), danger: true }))) return;
     const id = cur.id;
     mutateScripts(list => list.filter(s => s.id !== id));
     setCur(c => ({ ...c, id: null, saved: null }));
   };
-  const loadScriptFile = (e) => {
+  const loadScriptFile = async (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
-    if (!f || (dirty && !window.confirm(t("script.discard")))) return;
+    if (!f || (unsaved && !(await confirmAsk(t("script.discard"), { title: cur.name || t("script.untitled"), ok: t("common.confirm"), cancel: t("common.cancel"), danger: true })))) return;
     readTextFile(f).then(code => setCur({ id: null, name: f.name.replace(/\.(js|txt)$/i, ""), code, saved: null }));
   };
 
@@ -236,16 +240,16 @@ export default function ScriptConsole({ bp, orgInfo }) {
     unwatch(rn);
   };
 
-  const start = (m) => {
+  const start = async (m) => {
     if (phase !== "idle" || !cur.code.trim() || (m === "live" && draining)) return;
     if (m === "live") {
       const dryOk = lastDry && lastDry.sig === sig;
       const msg = dryOk
         ? `${t("script.live_confirm_planned").replace("{n}", lastDry.count)}\n\n${lastDry.plan.slice(0, 12).map(p => `  ${p.count} × ${p.label}`).join("\n")}${lastDry.plan.length > 12 ? "\n  …" : ""}\n\n${journalOn ? t("script.live_confirm_journal") : t("script.live_confirm_nojournal")}`
         : `${t("script.live_confirm_nodry")}\n\n${journalOn ? t("script.live_confirm_journal") : t("script.live_confirm_nojournal")}`;
-      if (!window.confirm(msg)) return;
-      if (!confirmProd(orgInfo?.isProduction, `${t("script.run_live")}: ${cur.name}${dryOk ? ` — ${lastDry.count} ${t("script.writes_planned")}` : ""}`)) return;
-      if (journal?.entries?.length && !journal.rolledBack && !window.confirm(t("script.replace_journal"))) return;
+      if (!(await confirmAsk(msg, { title: `${t("script.run_live")} — ${cur.name || t("script.untitled")}`, ok: t("script.run_live"), cancel: t("common.cancel"), danger: !journalOn }))) return;
+      if (!(await confirmProdAsk(orgInfo?.isProduction, `${t("script.run_live")}: ${cur.name}${dryOk ? ` — ${lastDry.count} ${t("script.writes_planned")}` : ""}`))) return;
+      if (journal?.entries?.length && !journal.rolledBack && !(await confirmAsk(t("script.replace_journal"), { title: t("script.journal"), ok: t("common.confirm"), cancel: t("common.cancel"), danger: true }))) return;
     }
     // Each run owns its buffers: a call finishing after Stop can never land in the next run's output.
     const rn = { id: newId(), mode: m, stopped: false, closing: false, t0: Date.now(), sig, frame: null, script: cur.name, inflight: new Set(), calls: 0, lastSave: 0,
@@ -314,8 +318,8 @@ export default function ScriptConsole({ bp, orgInfo }) {
     if (journal.orgUrl !== orgUrl) { window.alert(t("script.journal_other_org").replace("{org}", journal.orgUrl || "?")); return; }
     const s = rollbackStats(journal.entries);
     const msg = t("script.rollback_confirm").replace("{n}", journal.entries.length).replace("{full}", s.full).replace("{partial}", s.partial).replace("{none}", s.none).replace("{ops}", s.ops);
-    if (!window.confirm(msg)) return;
-    if (!confirmProd(orgInfo?.isProduction, `${t("script.rollback")}: ${journal.script} (${s.ops} ops)`)) return;
+    if (!(await confirmAsk(msg, { title: t("script.rollback"), ok: t("script.rollback"), cancel: t("common.cancel"), danger: true }))) return;
+    if (!(await confirmProdAsk(orgInfo?.isProduction, `${t("script.rollback")}: ${journal.script} (${s.ops} ops)`))) return;
     const rn = { stopped: false, lastSave: 0 };
     run.current = rn; setPhase("rollback"); buf.current.progress = { done: 0, total: journal.entries.length, label: t("script.rollback") };
     const out = await runRollback(journal.entries, {
@@ -335,7 +339,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
   const importJournal = (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f || draining) return;
-    readTextFile(f).then(txt => {
+    readTextFile(f).then(async txt => {
       // every inverse a write on a Web API path, the rollback record well-formed (a hand-edited
       // file can't break the view or send anything else)
       let parsed = null; try { parsed = JSON.parse(txt); } catch { /* not JSON */ }
@@ -345,7 +349,7 @@ export default function ScriptConsole({ bp, orgInfo }) {
       if (j.orgUrl !== orgUrl) throw new Error(t("script.journal_other_org").replace("{org}", j.orgUrl || "?"));
       // the import replaces the current journal, like a new live run does: same confirmation, and
       // persisted the same way (an imported journal must survive a reload too)
-      if (journal?.entries?.length && !journal.rolledBack && !window.confirm(t("script.replace_journal"))) return;
+      if (journal?.entries?.length && !journal.rolledBack && !(await confirmAsk(t("script.replace_journal"), { title: t("script.import_journal"), ok: t("common.confirm"), cancel: t("common.cancel"), danger: true }))) return;
       setJournal(j); saveJournal(j); setTab("writes");
     }).catch(err => window.alert(err.message || String(err)));
   };

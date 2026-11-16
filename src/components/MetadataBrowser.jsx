@@ -281,7 +281,9 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
         ):(
           <div style={{padding:bp.mobile?12:16}}>
             {bp.mobile&&<button onClick={()=>setSelEnt(null)} style={{background:"none",border:"none",color:C.txm,cursor:"pointer",marginBottom:8,display:"flex",alignItems:"center",gap:4}}><I.Back/> Back</button>}
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+            {/* the table's actions wrap onto a second line instead of running off the panel (at 1280 px
+                "📑 Layers", "Export All OptionSets" and "➕ Columns from file" were cut) */}
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap",rowGap:6}}>
               <span style={{fontSize:20}}>{selEnt.i}</span>
               <div>
                 <div style={{fontWeight:700,fontSize:16}}>{selEnt.d}</div>
@@ -294,7 +296,7 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
               <button onClick={()=>runImpact("table",selEnt)} title="What would block deleting this table, or everything that uses it — Dataverse's own dependency check, read-only (nothing is deleted)" style={{...bt(C.or,{fontSize:12,padding:"4px 12px"})}}>🧨 Dependencies</button>
               <button onClick={()=>setColsFile(true)} title="Create several columns at once from a CSV / Excel sheet (display name, type, required, options…) — checked before anything is sent, published at the end" style={{...bt(C.gn,{fontSize:12,padding:"4px 12px"})}}>➕ Columns from file</button>
               <button onClick={()=>setLayers({componentName:"Entity",id:selEnt.mid,name:selEnt.l,logical:selEnt.l,label:selEnt.d})} title="The solution layers of this table — which solutions change it, in which order, and whether an unmanaged layer hides a managed one (read-only)" style={{...bt(C.cy,{fontSize:12,padding:"4px 12px"})}}>📑 Layers</button>
-              {!loadingFields&&fields.some(f=>f.t==="Picklist"||f.t==="State"||f.t==="Status")&&<><button onClick={()=>exportAllOptionSets("csv")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><button onClick={()=>exportAllOptionSets("xlsx")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Excel</>}</button><Tooltip text={t("help.optionset_export")}/></>}
+              {!loadingFields&&fields.some(f=>isChoice(f.t))&&<><button onClick={()=>exportAllOptionSets("csv")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Export All OptionSets</>}</button><button onClick={()=>exportAllOptionSets("xlsx")} disabled={exportingOS} style={{...bt(C.gn,{fontSize:12,padding:"4px 12px",opacity:exportingOS?.6:1})}}>{exportingOS?<><Spin s={10}/> Exporting...</>:<><I.Download/> Excel</>}</button><Tooltip text={t("help.optionset_export")}/></>}
             </div>
 
             {osErr&&<div style={{...crd({padding:"8px 12px",borderColor:C.rd+"55"}),marginBottom:10,fontSize:12.5,color:C.rd,display:"flex",gap:10,alignItems:"center"}}><span style={{flex:1}}>{osErr}</span><button onClick={()=>setOsErr("")} style={bt(null,{fontSize:11,padding:"2px 9px"})}>Close</button></div>}

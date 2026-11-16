@@ -9,7 +9,8 @@
 //                                                    state into out/deep-probe/ (to tune actions)
 //
 // Modules live in deep/<key>.mjs and export { key, label, tagline:{en,fr}, chapters:[…] } where a
-// chapter is { key, en:[title, text], fr:[title, text], run: async (h) => … }.
+// chapter is { key, en:[title, text], fr:[title, text], run: async (h) => … }. Optional
+// storage: { key: value } = localStorage set before the page loads (a demo flag of that video only).
 import fs from "node:fs";
 import path from "node:path";
 import { HERE, RESOLUTIONS, serveDist, openDemo, OVERLAY, helpers, record, encode, addMusic } from "./lib.mjs";
@@ -40,7 +41,7 @@ try {
   for (const m of MODULES) {
     const def = (await import(`./deep/${m}.mjs`)).default;
     for (const lang of (PROBE ? ["en"] : LANGS)) {
-      const { browser, page, consoleErrors } = await openDemo({ url, locale: "en", deviceScaleFactor: RES.dsf });
+      const { browser, page, consoleErrors } = await openDemo({ url, locale: "en", deviceScaleFactor: RES.dsf, storage: def.storage || {} });
       await page.evaluate(OVERLAY);
       const h = helpers(page);
       const probeDir = path.join(HERE, "out", "deep-probe", m);

@@ -1,47 +1,13 @@
 // Deep dive — Script Console. The demo org (src/scriptDemo.js) is stateful for the page load: the
 // "Fill a lookup from a pivot table" template dry-runs, runs for real, then rolls back, and a second
-// dry run proves the rows are back. The app's own window.confirm() messages are shown in an
-// on-screen replica (native dialogs don't render in a screencast): the first click is answered
-// Cancel while the replica shows the real text, then the same button is clicked again and answered OK.
+// dry run proves the rows are back. Each write is confirmed in the app's own dialog: its text stays
+// on screen, then the cursor clicks OK (h.confirmed in lib.mjs).
 const btn = (h, re) => h.page.locator("button >> visible=true").filter({ hasText: re }).first();
 const tab = (h, name) => h.page.locator("button >> visible=true").filter({ hasText: new RegExp(`^${name}\\d*$`) }).first();
 const templates = (h) => h.page.locator("select >> visible=true").filter({ has: h.page.locator('option[value="propagate-lookup"]') }).first();
 
-const installConfirm = (h) => h.page.evaluate(() => {
-  if (window.__cvConfirmOn) return;
-  window.__cvConfirmOn = true;
-  const st = document.createElement("style");
-  st.textContent = `#cv-confirm{position:fixed;left:50%;top:196px;transform:translateX(-50%) translateY(-8px);width:460px;background:#1f2430;
-    border:1px solid #3a4256;border-radius:10px;padding:16px 18px 12px;color:#E8EAF0;font:13px/1.5 "Segoe UI",system-ui,sans-serif;
-    z-index:2147483645;opacity:0;transition:opacity .25s,transform .25s;box-shadow:0 14px 50px rgba(0,0,0,.6);pointer-events:none;white-space:pre-wrap}
-  #cv-confirm.on{opacity:1;transform:translateX(-50%) translateY(0)}
-  #cv-confirm .r{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
-  #cv-confirm .r span{padding:5px 16px;border-radius:14px;border:1px solid #3a4256;font-size:12.5px}
-  #cv-confirm .r #cv-ok{background:#8ab4f8;color:#0b0e14;border-color:#8ab4f8;font-weight:600}`;
-  document.head.appendChild(st);
-  const box = document.createElement("div"); box.id = "cv-confirm"; document.body.appendChild(box);
-  window.__cvConfirmMode = "accept";
-  window.confirm = (msg) => {
-    if (window.__cvConfirmMode === "accept") return true;
-    box.textContent = String(msg);
-    const r = document.createElement("div"); r.className = "r";
-    r.innerHTML = '<span>Cancel</span><span id="cv-ok">OK</span>';
-    box.appendChild(r); box.classList.add("on");
-    return false;
-  };
-});
-// Click `loc`, show the app's confirmation text for `hold` ms, "press" OK, then really run it.
-const confirmed = async (h, loc, hold = 2600) => {
-  await installConfirm(h);
-  await h.page.evaluate(() => { window.__cvConfirmMode = "show"; });
-  await h.click(loc); await h.wait(hold);
-  await h.hover(h.page.locator("#cv-ok"));
-  const b = await h.page.locator("#cv-ok").boundingBox();
-  if (b) await h.page.evaluate(([x, y]) => window.__cv.ripple(x, y), [b.x + b.width / 2, b.y + b.height / 2]);
-  await h.wait(300);
-  await h.page.evaluate(() => { window.__cvConfirmMode = "accept"; document.getElementById("cv-confirm").classList.remove("on"); });
-  await loc.click(); await h.wait(400);
-};
+// Click `loc`, leave the app's confirmation text on screen for `hold` ms, click OK.
+const confirmed = (h, loc, hold = 2600) => h.confirmed(loc, hold);
 
 export default {
   key: "script",
@@ -55,7 +21,6 @@ export default {
       en: ["1 · For what no screen does", "JavaScript on the Dataverse Web API. Start from a template — here: fill each user's sales code from the sales organization they belong to."],
       fr: ["1 · Pour ce qu'aucun écran ne fait", "Du JavaScript sur la Web API Dataverse. Partez d'un modèle — ici : renseigner le code commercial de chaque utilisateur d'après son organisation commerciale."],
       run: async (h) => {
-        await installConfirm(h);
         await h.open("Script Console"); await h.wait(800);
         await h.select(templates(h), "propagate-lookup"); await h.wait(1200);
         await h.hover(h.page.locator("textarea >> visible=true").first()); await h.wait(1800);
