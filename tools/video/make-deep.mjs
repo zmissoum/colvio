@@ -46,14 +46,19 @@ try {
       const probeDir = path.join(HERE, "out", "deep-probe", m);
       const framesDir = path.join(HERE, "out", "deep", `frames_${m}_${lang}${SUFFIX}`);
       if (PROBE) fs.mkdirSync(probeDir, { recursive: true });
-      const rec = PROBE ? null : await record(page, framesDir, { maxWidth: RES.w, maxHeight: RES.h });
-
+      // The title card is fully on screen BEFORE the recording starts: the first frame — the thumbnail
+      // LinkedIn and YouTube pick by default — is the clean card, not the app's "Connecting…" screen
+      // showing through the card's fade-in (seen on a scheduled LinkedIn post).
       await page.evaluate(([t, s, n]) => window.__cv.card(t, s, n), [`Colvio · ${def.label}`, def.tagline[lang], NOTE[lang]]);
-      await h.wait(PROBE ? 300 : 3400);
+      await h.wait(PROBE ? 300 : 700);
+      const rec = PROBE ? null : await record(page, framesDir, { maxWidth: RES.w, maxHeight: RES.h });
+      await h.wait(PROBE ? 0 : 2700);
       await page.evaluate(() => window.__cv.hideCard()); await h.wait(500);
 
+      const marks = []; // wall-clock start of each chapter → YouTube chapters (youtube-deep.mjs)
       for (const [i, ch] of def.chapters.entries()) {
         const [title, text] = ch[lang];
+        marks.push({ key: ch.key, title: String(title).replace(/^\d+\s*·\s*/, ""), start: Date.now() / 1000 });
         await page.evaluate(([t, d, pos]) => window.__cv.caption(t, d, pos), [title, text, ch.pos || "bottom"]);
         try { await ch.run(h); }
         catch (e) { failures.push(`${m}/${lang}/${ch.key}`); console.log(`  ⚠ ${m} · ${ch.key} (${lang}): ${String(e).split("\n")[0].slice(0, 150)}`); }
@@ -73,7 +78,12 @@ try {
         encode(framesDir, rec.frames, endTs, out, { width: RES.w, height: RES.h });
         if (MUSIC) addMusic(out, MUSIC, endTs - rec.frames[0].ts);
         fs.rmSync(framesDir, { recursive: true, force: true });
-        summary.push({ module: m, lang, file: out, seconds: +(endTs - rec.frames[0].ts).toFixed(1), consoleErrors: consoleErrors.filter(e => !/ws:\/\/|WebSocket|Failed to load resource/.test(e)) });
+        const seconds = +(endTs - rec.frames[0].ts).toFixed(1);
+        // the screencast's frame timestamps and Date.now() are both epoch seconds: a mark's video time
+        // is its wall-clock time minus the first frame's
+        const chapters = marks.map(k => ({ key: k.key, title: k.title, at: +Math.max(0, k.start - rec.frames[0].ts).toFixed(1) }));
+        fs.writeFileSync(out.replace(/\.mp4$/, ".json"), JSON.stringify({ module: m, label: def.label, tagline: def.tagline[lang], lang, seconds, chapters }, null, 1));
+        summary.push({ module: m, lang, file: out, seconds, consoleErrors: consoleErrors.filter(e => !/ws:\/\/|WebSocket|Failed to load resource/.test(e)) });
       } else {
         await browser.close();
         summary.push({ module: m, lang: "probe", file: probeDir, consoleErrors: consoleErrors.filter(e => !/ws:\/\/|WebSocket|Failed to load resource/.test(e)) });
@@ -81,6 +91,9 @@ try {
     }
   }
 } finally { server.close(); }
-for (const s of summary) console.log(`✓ ${s.module} ${s.lang}: ${s.file}${s.seconds ? ` (${s.seconds} s)` : ""} · console errors: ${s.consoleErrors.length}`);
+for (const s of summary) {
+  console.log(`✓ ${s.module} ${s.lang}: ${s.file}${s.seconds ? ` (${s.seconds} s)` : ""} · console errors: ${s.consoleErrors.length}`);
+  for (const e of s.consoleErrors) console.log(`    · ${String(e).slice(0, 300)}`);
+}
 const errs = summary.reduce((n, s) => n + s.consoleErrors.length, 0);
 if (failures.length || errs) { console.log(`✗ ${failures.length} failed chapter action(s): ${failures.join(", ")} · ${errs} console error(s)`); process.exitCode = 1; }

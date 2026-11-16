@@ -119,12 +119,14 @@ try {
     const h = helpers(page);
     const C = CARDS[lang];
     const framesDir = path.join(OUT, `frames_${lang}${SUFFIX}`);
+    // the intro card is fully on screen before the recording starts: the first frame (the default
+    // thumbnail on LinkedIn and YouTube) is the clean card, not the "Connecting…" screen behind its fade
+    await page.evaluate((c) => window.__cv.card(c.introT, c.introS, c.introN), C);
+    await h.wait(700);
     const rec = await record(page, framesDir, { maxWidth: RES.w, maxHeight: RES.h });
     const t0 = Date.now() / 1000;
     const marks = [];
-
-    await page.evaluate((c) => window.__cv.card(c.introT, c.introS, c.introN), C);
-    await h.wait(3800);
+    await h.wait(3100);
     await page.evaluate(() => window.__cv.hideCard()); await h.wait(600);
 
     for (const s of SCENES) {

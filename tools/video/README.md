@@ -17,6 +17,10 @@ Uses the **installed Google Chrome** (Playwright `channel: "chrome"`) with a thr
 never your own sessions. (Playwright's downloaded Chromium fails to start on some Windows setups
 with "side-by-side configuration is incorrect".) ffmpeg comes from `ffmpeg-static`.
 
+On Linux / CI without Google Chrome: `COLVIO_VIDEO_CHROMIUM=bundled` uses Playwright's own Chromium
+(or give the path of a Chromium executable), and `FFMPEG_PATH=/usr/bin/ffmpeg` uses a system ffmpeg
+instead of `ffmpeg-static`.
+
 ## Run
 
 ```bash
@@ -52,9 +56,15 @@ Write the chapters, run `--probe` until every chapter passes and every screensho
 caption claims, then render. Render one module at a time (or a comma list in one run): parallel
 renders compete for the CPU and the screencast drops frames.
 
-Available (20): `explorer`, `loader`, `recyclebin`, `showalldata`, `apitester`, `metadata`,
-`automation`, `apps`, `relationships`, `schema`, `solutions`, `envvars`, `translations`, `licenses`,
-`bu`, `security`, `teams`, `adoption`, `logins`, `storage`. Some chapters feed the page in-memory
+Available (30): one per module — `explorer`, `loader`, `recyclebin`, `showalldata`, `apitester`,
+`metadata`, `automation`, `apps`, `relationships`, `schema`, `solutions`, `envvars`, `translations`,
+`licenses`, `bu`, `security`, `teams`, `adoption`, `logins`, `storage`, `health`, `script`, `webres` —
+and seven on capabilities added inside modules after the first series: `access` (Show All Data ›
+Record access + Record activity), `whoruns` (Automation › who runs it, Fires on, step writes),
+`datamodel` and `modelwrites` (Metadata), `sqlpower` (Explorer › SQL completion, UPDATE preview, Save
+as view), `association` (Data Loader › N:N tables), `deployments` (Solutions › Deployments).
+Native `window.confirm` dialogs don't appear in a screencast: scripts that film a write reproduce
+the dialog on the page with the app's own message, answer Cancel, then click again and accept. Some chapters feed the page in-memory
 files through Playwright's file chooser (a solution-compare file, a schema snapshot, a translations
 CSV) — nothing is downloaded or read from disk, and download buttons are only hovered. The tour's
 Data Loader, Recycle Bin, API Tester and Schema scenes replay the first chapters of these scripts.
@@ -110,7 +120,24 @@ node youtube-kit.mjs                       # → store/youtube-tour.md: title, d
 ```
 
 YouTube chapters must start at 0:00, be at least 3 and each last 10 s or more, so scenes (~8 s) are grouped.
-Re-run both after the tour changes — the timestamps move.
+Re-run both after the tour changes — the timestamps move. `--res=1440` on both uses the 1440p render.
+
+The module videos get the same treatment:
+
+```bash
+node make-deep.mjs --module=<key>[,…] --lang=en --res=1440   # writes colvio_<key>_en_1440.mp4 + .json (chapter times)
+node youtube-deep.mjs                                         # every 1440p EN deep dive found (--res=1080, --module=a,b)
+```
+
+→ `out/upload/colvio_<key>_en.mp4` (the file to upload: silent stereo AAC track, moov first),
+`out/upload/colvio_<key>_thumb.jpg` (1280×720, the video's title card) and `store/youtube-deep.md` (title,
+description with chapters, tags, settings, playlist order).
+
+Both kits end with an **upload pre-flight** (`youtube-check.mjs`) on the file actually uploaded and the
+text pasted with it: H.264 High, yuv420p, progressive, 24–60 fps, 16:9, a stereo AAC track, moov before
+mdat, ≤ 15 min (unverified channels); title 1–100 characters, description ≤ 5,000 bytes, no `<` or `>`
+in either (YouTube refuses them), tags ≤ 500 characters, chapters from 0:00, at least 3, each ≥ 10 s;
+thumbnail 16:9, ≥ 640 wide, ≤ 2 MB. A failure exits non-zero and names the problem.
 
 ## What's filmed
 
