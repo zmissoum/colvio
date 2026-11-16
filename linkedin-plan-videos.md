@@ -44,22 +44,22 @@ If the start date moves (store approval), shift both batches by the same number 
 | 37 | 8 | Tue 8:30 | Dec 1 | Business Units | `deep/colvio_bu_en.mp4` | 81 s | 1 | ☐ |
 | 38 | 9 | Tue 8:30 | Dec 8 | Solutions | `deep/colvio_solutions_en.mp4` | 70 s | 1 | ☐ |
 | 39 | 10 | Tue 8:30 | Dec 15 | Environment Variables | `deep/colvio_envvars_en.mp4` | 75 s | 1 | ☐ |
-| 40 | 11 | Tue 8:30 | Jan 5 | Automation | `deep/colvio_automation_en.mp4` | 72 s | 2 | ☐ |
+| 40 | 11 | Tue 8:30 | Jan 5 | Automation | `deep/colvio_automation_en.mp4` | 71 s | 2 | ☐ |
 | 41 | 12 | Tue 8:30 | Jan 12 | Metadata | `deep/colvio_metadata_en.mp4` | 83 s | 2 | ☐ |
-| 42 | 13 | Tue 8:30 | Jan 19 | Schema | `deep/colvio_schema_en.mp4` | 76 s | 2 | ☐ |
-| 43 | 14 | Tue 8:30 | Jan 26 | Relationships | `deep/colvio_relationships_en.mp4` | 59 s | 2 | ☐ |
-| 44 | 15 | Tue 8:30 | Feb 2 | Teams | `deep/colvio_teams_en.mp4` | 73 s | 2 | ☐ |
-| 45 | 16 | Tue 8:30 | Feb 9 | Translations | `deep/colvio_translations_en.mp4` | 64 s | 2 | ☐ |
+| 42 | 13 | Tue 8:30 | Jan 19 | Schema | `deep/colvio_schema_en.mp4` | 77 s | 2 | ☐ |
+| 43 | 14 | Tue 8:30 | Jan 26 | Relationships | `deep/colvio_relationships_en.mp4` | 58 s | 2 | ☐ |
+| 44 | 15 | Tue 8:30 | Feb 2 | Teams | `deep/colvio_teams_en.mp4` | 72 s | 2 | ☐ |
+| 45 | 16 | Tue 8:30 | Feb 9 | Translations | `deep/colvio_translations_en.mp4` | 63 s | 2 | ☐ |
 | 46 | 17 | Tue 8:30 | Feb 16 | Login History | `deep/colvio_logins_en.mp4` | 52 s | 2 | ☐ |
-| 48 | 18 | Tue 8:30 | Feb 23 | Record access & Record activity | `deep/colvio_access_en.mp4` | 1 min 41 | 3 | ☐ |
-| 49 | 19 | Tue 8:30 | Mar 2 | Health check | `deep/colvio_health_en.mp4` | 82 s | 3 | ☐ |
-| 50 | 20 | Tue 8:30 | Mar 9 | Data Explorer: SQL, safe writes, saved views | `deep/colvio_sqlpower_en.mp4` | 1 min 42 | 3 | ☐ |
-| 51 | 21 | Tue 8:30 | Mar 16 | Automation: who runs it, what fires | `deep/colvio_whoruns_en.mp4` | 1 min 42 | 3 | ☐ |
-| 52 | 22 | Tue 8:30 | Mar 23 | Script Console | `deep/colvio_script_en.mp4` | 1 min 40 | 3 | ☐ |
-| 53 | 23 | Tue 8:30 | Mar 30 | Metadata: know your data model | `deep/colvio_datamodel_en.mp4` | 95 s | 3 | ☐ |
-| 54 | 24 | Tue 8:30 | Apr 6 | Solutions › Deployments | `deep/colvio_deployments_en.mp4` | 1 min 40 | 3 | ☐ |
-| 55 | 25 | Tue 8:30 | Apr 13 | Web Resources | `deep/colvio_webres_en.mp4` | 79 s | 3 | ☐ |
-| 56 | 26 | Tue 8:30 | Apr 20 | Change the model without XrmToolBox | `deep/colvio_modelwrites_en.mp4` | 1 min 41 | 3 | ☐ |
+| 48 | 18 | Tue 8:30 | Feb 23 | Record access & Record activity | `deep/colvio_access_en.mp4` | 1 min 40 | 3 | ☐ |
+| 49 | 19 | Tue 8:30 | Mar 2 | Health check | `deep/colvio_health_en.mp4` | 81 s | 3 | ☐ |
+| 50 | 20 | Tue 8:30 | Mar 9 | Data Explorer: SQL, safe writes, saved views | `deep/colvio_sqlpower_en.mp4` | 1 min 41 | 3 | ☐ |
+| 51 | 21 | Tue 8:30 | Mar 16 | Automation: who runs it, what fires | `deep/colvio_whoruns_en.mp4` | 1 min 41 | 3 | ☐ |
+| 52 | 22 | Tue 8:30 | Mar 23 | Script Console | `deep/colvio_script_en.mp4` | 98 s | 3 | ☐ |
+| 53 | 23 | Tue 8:30 | Mar 30 | Metadata: know your data model | `deep/colvio_datamodel_en.mp4` | 94 s | 3 | ☐ |
+| 54 | 24 | Tue 8:30 | Apr 6 | Solutions › Deployments | `deep/colvio_deployments_en.mp4` | 99 s | 3 | ☐ |
+| 55 | 25 | Tue 8:30 | Apr 13 | Web Resources | `deep/colvio_webres_en.mp4` | 78 s | 3 | ☐ |
+| 56 | 26 | Tue 8:30 | Apr 20 | Change the model without XrmToolBox | `deep/colvio_modelwrites_en.mp4` | 1 min 40 | 3 | ☐ |
 | 57 | 27 | Tue 8:30 | Apr 27 | Data Loader: N:N tables by association | `deep/colvio_association_en.mp4` | 84 s | 3 | ☐ |
 
 To re-render a video after a UI change: `node make-deep.mjs --module=<module> --lang=en` or `node make-video.mjs --lang=en --no-clips` in `tools/video` (see its README). Post 47 (`linkedin-posts.md`) is the text-only release post of 1.11.182 → 1.11.202; Posts 48–57 show those features, and the later ones, in motion.
@@ -373,13 +373,13 @@ Ever been caught by an empty variable after a deployment? 👇
 
 ---
 
-### Post 40 — Automation (`automation`, 72 s)
+### Post 40 — Automation (`automation`, 71 s)
 
 ⚡ "Why did this field change?"
 
 Before opening the Plugin Registration Tool, look at everything registered to run, on one screen.
 
-▶️ 72 seconds in Colvio's Automation module:
+▶️ 71 seconds in Colvio's Automation module:
 
 → Every plug-in step: plug-in type, message, table, stage, sync or async, state, source
 → Filter by assembly, table or message in seconds
@@ -417,11 +417,11 @@ Do you keep your data dictionary up to date? 👇
 
 ---
 
-### Post 42 — Schema (`schema`, 76 s)
+### Post 42 — Schema (`schema`, 77 s)
 
 🗺 Your Dataverse data model, drawn from the org itself.
 
-▶️ 76 seconds in Colvio's Schema module:
+▶️ 77 seconds in Colvio's Schema module:
 
 → Click tables: each lands on the canvas with its columns and types, lookups first
 → Each lookup curves to its target table; hover one to light it up
@@ -439,11 +439,11 @@ How do you document your data model today? 👇
 
 ---
 
-### Post 43 — Relationships (`relationships`, 59 s)
+### Post 43 — Relationships (`relationships`, 58 s)
 
 🔗 Your data model, one click at a time.
 
-▶️ 59 seconds in Colvio's Relationships module:
+▶️ 58 seconds in Colvio's Relationships module:
 
 → Pick a table: parents on top, N:N in the middle, children below, each box naming its lookup or relationship
 → System links (owner, currency, created by) exist on every table, so they start hidden; one click shows them, and your own lookups to those same tables stay in view
@@ -459,13 +459,13 @@ Which table has the most relationships in your org? 👇
 
 ---
 
-### Post 44 — Teams (`teams`, 73 s)
+### Post 44 — Teams (`teams`, 72 s)
 
 👥 Some of a user's rights never show on their profile.
 
 In Dataverse, a security role held by a team is inherited by every member, and it doesn't appear in the user's own role list. That's usually where "why can this user do that?" ends.
 
-▶️ 73 seconds in Colvio's Teams module:
+▶️ 72 seconds in Colvio's Teams module:
 
 → Every team badged by type (Owner, Entra group, BU default), with one search across name, business unit and administrator
 → An owner team's security roles: the ones its members inherit
@@ -481,11 +481,11 @@ Owner teams or Entra groups: which does your org rely on? 👇
 
 ---
 
-### Post 45 — Translations (`translations`, 64 s)
+### Post 45 — Translations (`translations`, 63 s)
 
 🌍 Fixing one label in four languages shouldn't take an afternoon.
 
-▶️ 64 seconds in Colvio's Translations module:
+▶️ 63 seconds in Colvio's Translations module:
 
 → Every column label of a table, in every language installed on the org, side by side
 → Hide the languages you don't need (the export follows)
@@ -524,9 +524,9 @@ Did you know Dataverse has no sign-out event? 👇
 
 ---
 
-### Post 48 — Record access & Record activity (`access`, 1 min 41)
+### Post 48 — Record access & Record activity (`access`, 1 min 40)
 
-⏱ 1 min 41 inside Colvio's Show All Data: Record access and Record activity.
+⏱ 1 min 40 inside Colvio's Show All Data: Record access and Record activity.
 
 "Why can't she see this record?" and "What did that save just trigger?" Two questions people bring to admins every week, answered from the record itself.
 
@@ -548,9 +548,9 @@ Which do you get asked more: "why can't they see it" or "what changed this recor
 
 ---
 
-### Post 49 — Health check (`health`, 82 s)
+### Post 49 — Health check (`health`, 81 s)
 
-⏱ 82 s inside Colvio's Health check.
+⏱ 81 seconds inside Colvio's Health check.
 
 Some problems never throw an error. They sit in your environment until something breaks. One click, one report, worst first:
 
@@ -571,9 +571,9 @@ Which of these would you bet your production org has right now? 👇
 
 ---
 
-### Post 50 — Data Explorer: SQL, safe writes, saved views (`sqlpower`, 1 min 42)
+### Post 50 — Data Explorer: SQL, safe writes, saved views (`sqlpower`, 1 min 41)
 
-⏱ 1 min 42 inside Colvio's Data Explorer, past the basics: SQL, safe writes and saved views.
+⏱ 1 min 41 inside Colvio's Data Explorer, past the basics: SQL, safe writes and saved views.
 
 The first Explorer video built a query. This one shows what you can do around it, in nine steps:
 
@@ -595,9 +595,9 @@ Would you run an UPDATE on Dataverse more often if you saw every row it touches 
 
 ---
 
-### Post 51 — Automation: who runs it, what fires (`whoruns`, 1 min 42)
+### Post 51 — Automation: who runs it, what fires (`whoruns`, 1 min 41)
 
-⏱ 1 min 42 inside Colvio's Automation module: who runs it, and what fires when a column changes.
+⏱ 1 min 41 inside Colvio's Automation module: who runs it, and what fires when a column changes.
 
 A cloud flow doesn't run as its owner. A person behind your automation leaves, and things stop. Here is how to see it before that happens.
 
@@ -619,9 +619,9 @@ When someone leaves your team, how do you find what was running under their name
 
 ---
 
-### Post 52 — Script Console (`script`, 1 min 40)
+### Post 52 — Script Console (`script`, 98 s)
 
-⏱ 1 min 40 inside Colvio's Script Console.
+⏱ 98 seconds inside Colvio's Script Console.
 
 For what no screen does: JavaScript on the Dataverse Web API, with a dry run before anything is written and a rollback after.
 
@@ -643,9 +643,9 @@ What's the one data fix you'd script tomorrow if you knew you could undo it? �
 
 ---
 
-### Post 53 — Metadata: know your data model (`datamodel`, 95 s)
+### Post 53 — Metadata: know your data model (`datamodel`, 94 s)
 
-⏱ 95 s inside Colvio's Metadata module: know your data model before you touch it.
+⏱ 94 seconds inside Colvio's Metadata module: know your data model before you touch it.
 
 "Can we delete this column?" is really three questions: is it used, what depends on it, and who else changed it.
 
@@ -666,9 +666,9 @@ What's the column in your org that nobody dares to delete? 👇
 
 ---
 
-### Post 54 — Solutions › Deployments (`deployments`, 1 min 40)
+### Post 54 — Solutions › Deployments (`deployments`, 99 s)
 
-⏱ 1 min 40 inside Colvio's Solutions › 🚀 Deployments.
+⏱ 99 seconds inside Colvio's Solutions › 🚀 Deployments.
 
 "Which version is in this environment, who imported it, and did the last import fail?" One window answers all three:
 
@@ -689,9 +689,9 @@ How long did it take you to find out why your last solution import failed? 👇
 
 ---
 
-### Post 55 — Web Resources (`webres`, 79 s)
+### Post 55 — Web Resources (`webres`, 78 s)
 
-⏱ 79 s inside Colvio's Web Resources.
+⏱ 78 seconds inside Colvio's Web Resources.
 
 Before you rename or delete a column: which scripts still use it? Dataverse's dependency tracking doesn't look inside JavaScript.
 
@@ -712,9 +712,9 @@ Which column would you search for first in your org's scripts? 👇
 
 ---
 
-### Post 56 — Change the model without XrmToolBox (`modelwrites`, 1 min 41)
+### Post 56 — Change the model without XrmToolBox (`modelwrites`, 1 min 40)
 
-⏱ 1 min 41 inside Colvio: changing the data model without opening XrmToolBox.
+⏱ 1 min 40 inside Colvio: changing the data model without opening XrmToolBox.
 
 A new choice value or ten new columns shouldn't mean another tool and twenty clicks per column. Every write below asks for confirmation first.
 
@@ -736,7 +736,7 @@ Which model change do you still open XrmToolBox for? 👇
 
 ### Post 57 — Data Loader: N:N tables by association (`association`, 84 s)
 
-⏱ 84 s inside Colvio's Data Loader, on the tables most loaders skip: many-to-many.
+⏱ 84 seconds inside Colvio's Data Loader, on the tables most loaders skip: many-to-many.
 
 Putting users in their teams isn't creating rows. Each line of the file links two records, and Colvio's Data Loader now does exactly that, in nine steps:
 
