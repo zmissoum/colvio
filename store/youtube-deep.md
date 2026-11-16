@@ -13,40 +13,40 @@ Upload the copies in `tools/video/out/upload/` — not `out/deep/`, which every 
 
 | # | Video | Length | Upload file |
 |---|---|---|---|
-| 1 | Data Explorer | 1:35 | `out/upload/colvio_explorer_en.mp4` |
-| 2 | Data Loader | 1:35 | `out/upload/colvio_loader_en.mp4` |
-| 3 | Recycle Bin | 1:20 | `out/upload/colvio_recyclebin_en.mp4` |
-| 4 | Show All Data | 1:08 | `out/upload/colvio_showalldata_en.mp4` |
-| 5 | API Tester | 1:54 | `out/upload/colvio_apitester_en.mp4` |
-| 6 | Script Console | 1:39 | `out/upload/colvio_script_en.mp4` |
-| 7 | Metadata | 1:23 | `out/upload/colvio_metadata_en.mp4` |
-| 8 | Automation | 1:11 | `out/upload/colvio_automation_en.mp4` |
-| 9 | Apps | 1:08 | `out/upload/colvio_apps_en.mp4` |
-| 10 | Relationships | 0:59 | `out/upload/colvio_relationships_en.mp4` |
-| 11 | Schema | 1:17 | `out/upload/colvio_schema_en.mp4` |
-| 12 | Solutions | 1:09 | `out/upload/colvio_solutions_en.mp4` |
-| 13 | Environment Variables | 1:14 | `out/upload/colvio_envvars_en.mp4` |
-| 14 | Web Resources | 1:18 | `out/upload/colvio_webres_en.mp4` |
-| 15 | Translations | 1:03 | `out/upload/colvio_translations_en.mp4` |
-| 16 | Users & Licenses | 1:53 | `out/upload/colvio_licenses_en.mp4` |
-| 17 | Business Units | 1:20 | `out/upload/colvio_bu_en.mp4` |
-| 18 | Security Audit | 1:30 | `out/upload/colvio_security_en.mp4` |
+| 1 | Data Explorer | 1:33 | `out/upload/colvio_explorer_en.mp4` |
+| 2 | Data Loader | 1:34 | `out/upload/colvio_loader_en.mp4` |
+| 3 | Recycle Bin | 1:18 | `out/upload/colvio_recyclebin_en.mp4` |
+| 4 | Show All Data | 1:06 | `out/upload/colvio_showalldata_en.mp4` |
+| 5 | API Tester | 1:52 | `out/upload/colvio_apitester_en.mp4` |
+| 6 | Script Console | 1:38 | `out/upload/colvio_script_en.mp4` |
+| 7 | Metadata | 1:22 | `out/upload/colvio_metadata_en.mp4` |
+| 8 | Automation | 1:10 | `out/upload/colvio_automation_en.mp4` |
+| 9 | Apps | 1:07 | `out/upload/colvio_apps_en.mp4` |
+| 10 | Relationships | 0:57 | `out/upload/colvio_relationships_en.mp4` |
+| 11 | Schema | 1:15 | `out/upload/colvio_schema_en.mp4` |
+| 12 | Solutions | 1:08 | `out/upload/colvio_solutions_en.mp4` |
+| 13 | Environment Variables | 1:13 | `out/upload/colvio_envvars_en.mp4` |
+| 14 | Web Resources | 1:46 | `out/upload/colvio_webres_en.mp4` |
+| 15 | Translations | 1:02 | `out/upload/colvio_translations_en.mp4` |
+| 16 | Users & Licenses | 1:51 | `out/upload/colvio_licenses_en.mp4` |
+| 17 | Business Units | 1:19 | `out/upload/colvio_bu_en.mp4` |
+| 18 | Security Audit | 1:29 | `out/upload/colvio_security_en.mp4` |
 | 19 | Teams | 1:12 | `out/upload/colvio_teams_en.mp4` |
-| 20 | Adoption | 1:27 | `out/upload/colvio_adoption_en.mp4` |
-| 21 | Login History | 0:52 | `out/upload/colvio_logins_en.mp4` |
-| 22 | Storage | 1:02 | `out/upload/colvio_storage_en.mp4` |
-| 23 | Health check | 1:21 | `out/upload/colvio_health_en.mp4` |
-| 24 | Record access | 1:40 | `out/upload/colvio_access_en.mp4` |
-| 25 | Data Explorer, SQL and beyond | 1:42 | `out/upload/colvio_sqlpower_en.mp4` |
-| 26 | Who runs it | 1:42 | `out/upload/colvio_whoruns_en.mp4` |
-| 27 | Metadata | 1:34 | `out/upload/colvio_datamodel_en.mp4` |
-| 28 | Metadata · Automation | 1:40 | `out/upload/colvio_modelwrites_en.mp4` |
-| 29 | Deployments | 1:40 | `out/upload/colvio_deployments_en.mp4` |
-| 30 | Data Loader · N:N tables | 1:24 | `out/upload/colvio_association_en.mp4` |
+| 20 | Adoption | 1:26 | `out/upload/colvio_adoption_en.mp4` |
+| 21 | Login History | 0:51 | `out/upload/colvio_logins_en.mp4` |
+| 22 | Storage | 1:01 | `out/upload/colvio_storage_en.mp4` |
+| 23 | Health check | 1:33 | `out/upload/colvio_health_en.mp4` |
+| 24 | Record access | 1:38 | `out/upload/colvio_access_en.mp4` |
+| 25 | Data Explorer, SQL and beyond | 2:17 | `out/upload/colvio_sqlpower_en.mp4` |
+| 26 | Who runs it | 1:47 | `out/upload/colvio_whoruns_en.mp4` |
+| 27 | Metadata | 1:33 | `out/upload/colvio_datamodel_en.mp4` |
+| 28 | Metadata · Automation | 1:38 | `out/upload/colvio_modelwrites_en.mp4` |
+| 29 | Deployments | 1:38 | `out/upload/colvio_deployments_en.mp4` |
+| 30 | Data Loader · N:N tables | 1:37 | `out/upload/colvio_association_en.mp4` |
 
 ---
 
-## 1. Data Explorer (`explorer`, 1:35)
+## 1. Data Explorer (`explorer`, 1:33)
 
 Files: `tools/video/out/upload/colvio_explorer_en.mp4` · thumbnail `tools/video/out/upload/colvio_explorer_thumb.jpg`
 
@@ -65,11 +65,11 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Pick a table and its columns
-0:14 Filter visually · Run, sort, narrow down
-0:31 Four query languages
-0:48 Edit in place · Bulk update
-1:07 Find duplicates
-1:18 Tabs, history, exports
+0:13 Filter visually · Run, sort, narrow down
+0:30 Four query languages
+0:47 Edit in place · Bulk update
+1:06 Find duplicates
+1:17 Tabs, history, exports
 
 Demo data only: no real organization on screen.
 
@@ -87,7 +87,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 2. Data Loader (`loader`, 1:35)
+## 2. Data Loader (`loader`, 1:34)
 
 Files: `tools/video/out/upload/colvio_loader_en.mp4` · thumbnail `tools/video/out/upload/colvio_loader_thumb.jpg`
 
@@ -106,11 +106,11 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Paste from Excel
-0:14 Target table and mapping
-0:25 Four import modes
-0:36 Checked before anything is sent · Transforms
-0:55 Dry run · Load, row by row
-1:15 Every row accounted for · Rollback
+0:13 Target table and mapping
+0:24 Four import modes
+0:35 Checked before anything is sent · Transforms
+0:54 Dry run · Load, row by row
+1:14 Every row accounted for · Rollback
 
 Demo data only: no real organization on screen.
 
@@ -128,7 +128,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 3. Recycle Bin (`recyclebin`, 1:20)
+## 3. Recycle Bin (`recyclebin`, 1:18)
 
 Files: `tools/video/out/upload/colvio_recyclebin_en.mp4` · thumbnail `tools/video/out/upload/colvio_recyclebin_thumb.jpg`
 
@@ -147,11 +147,11 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Only restorable tables
-0:14 Who deleted what, and when
-0:24 Page through a mass delete
-0:36 Find a record by name · Export before you restore
-0:50 Restore, server-side · Failures, explained
-1:10 Microsoft's limits, spelled out
+0:13 Who deleted what, and when
+0:23 Page through a mass delete
+0:35 Find a record by name · Export before you restore
+0:49 Restore, server-side · Failures, explained
+1:08 Microsoft's limits, spelled out
 
 Demo data only: no real organization on screen.
 
@@ -169,7 +169,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 4. Show All Data (`showalldata`, 1:08)
+## 4. Show All Data (`showalldata`, 1:06)
 
 Files: `tools/video/out/upload/colvio_showalldata_en.mp4` · thumbnail `tools/video/out/upload/colvio_showalldata_thumb.jpg`
 
@@ -189,9 +189,9 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 Chapters
 0:00 Inspect any record
 0:16 Find a column · Show the empty columns too
-0:32 Labels, not codes
-0:42 Custom columns only
-0:53 Copy anything
+0:31 Labels, not codes
+0:41 Custom columns only
+0:52 Copy anything
 
 Demo data only: no real organization on screen.
 
@@ -209,7 +209,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 5. API Tester (`apitester`, 1:54)
+## 5. API Tester (`apitester`, 1:52)
 
 Files: `tools/video/out/upload/colvio_apitester_en.mp4` · thumbnail `tools/video/out/upload/colvio_apitester_thumb.jpg`
 
@@ -228,12 +228,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Start from a template
-0:15 Write any query · Headers, sent and received
-0:38 A JSON editor that checks as you type
-0:51 Create a record
-1:06 DELETE asks twice
-1:18 Your org, and nothing else · History, values blanked
-1:35 Tabs and cURL
+0:14 Write any query · Headers, sent and received
+0:37 A JSON editor that checks as you type
+0:50 Create a record
+1:05 DELETE asks twice
+1:16 Your org, and nothing else · History, values blanked
+1:33 Tabs and cURL
 
 Demo data only: no real organization on screen.
 
@@ -251,7 +251,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 6. Script Console (`script`, 1:39)
+## 6. Script Console (`script`, 1:38)
 
 Files: `tools/video/out/upload/colvio_script_en.mp4` · thumbnail `tools/video/out/upload/colvio_script_thumb.jpg`
 
@@ -270,10 +270,11 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 For what no screen does
-0:12 Isolated, and only through dv · Dry run: reads real, writes listed
-0:30 A report per row · Run for real, journaled
+0:11 Isolated, and only through dv
+0:21 Dry run: reads real, writes listed · A report per row
+0:38 Run for real, journaled
 0:52 Rollback
-1:03 Back as before · Rows from a file
+1:02 Back as before · Rows from a file
 1:23 Saved scripts, exported journal
 
 Demo data only: no real organization on screen.
@@ -292,7 +293,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 7. Metadata (`metadata`, 1:23)
+## 7. Metadata (`metadata`, 1:22)
 
 Files: `tools/video/out/upload/colvio_metadata_en.mp4` · thumbnail `tools/video/out/upload/colvio_metadata_thumb.jpg`
 
@@ -311,10 +312,10 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Every table, filtered your way
-0:14 Open a table
+0:13 Open a table
 0:26 Filter the columns · Read option set values
-0:43 Copy logical names
-0:54 Export the data dictionary · Snapshot & compare schemas
+0:42 Copy logical names
+0:53 Export the data dictionary · Snapshot & compare schemas
 
 Demo data only: no real organization on screen.
 
@@ -332,7 +333,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 8. Automation (`automation`, 1:11)
+## 8. Automation (`automation`, 1:10)
 
 Files: `tools/video/out/upload/colvio_automation_en.mp4` · thumbnail `tools/video/out/upload/colvio_automation_thumb.jpg`
 
@@ -351,11 +352,10 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Every plug-in step
-0:13 Find a step in seconds · Spot what's switched off
-0:26 Custom, managed or Microsoft
-0:36 Classic workflows and their triggers
-0:46 Every process type
-0:57 Export for the audit
+0:12 Find a step in seconds · Spot what's switched off
+0:25 Custom, managed or Microsoft
+0:36 Classic workflows and their triggers · Every process type
+0:56 Export for the audit
 
 Demo data only: no real organization on screen.
 
@@ -373,7 +373,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 9. Apps (`apps`, 1:08)
+## 9. Apps (`apps`, 1:07)
 
 Files: `tools/video/out/upload/colvio_apps_en.mp4` · thumbnail `tools/video/out/upload/colvio_apps_thumb.jpg`
 
@@ -392,9 +392,9 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Inside an app
-0:14 Include-all, made visible · Modern commands
+0:13 Include-all, made visible · Modern commands
 0:28 A form's subgrids · Inspect a view
-0:45 Reverse lens · Straight to the Data Explorer
+0:44 Reverse lens · Straight to the Data Explorer
 
 Demo data only: no real organization on screen.
 
@@ -412,7 +412,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 10. Relationships (`relationships`, 0:59)
+## 10. Relationships (`relationships`, 0:57)
 
 Files: `tools/video/out/upload/colvio_relationships_en.mp4` · thumbnail `tools/video/out/upload/colvio_relationships_thumb.jpg`
 
@@ -431,9 +431,9 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Find a table
-0:12 Read the map · System links, on demand
-0:30 Click to walk the model · Go two levels deep
-0:47 Always up to date
+0:11 Read the map · System links, on demand
+0:29 Click to walk the model · Go two levels deep
+0:46 Always up to date
 
 Demo data only: no real organization on screen.
 
@@ -451,7 +451,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 11. Schema (`schema`, 1:17)
+## 11. Schema (`schema`, 1:15)
 
 Files: `tools/video/out/upload/colvio_schema_en.mp4` · thumbnail `tools/video/out/upload/colvio_schema_thumb.jpg`
 
@@ -470,10 +470,10 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Pick your tables
-0:14 Follow the lookups · N:N relationships too
-0:30 Add related tables · Arrange the cards
-0:46 Zoom and pan
-0:56 Choose the level of detail · Export the diagram
+0:13 Follow the lookups · N:N relationships too
+0:29 Add related tables · Arrange the cards
+0:44 Zoom and pan
+0:54 Choose the level of detail · Export the diagram
 
 Demo data only: no real organization on screen.
 
@@ -491,7 +491,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 12. Solutions (`solutions`, 1:09)
+## 12. Solutions (`solutions`, 1:08)
 
 Files: `tools/video/out/upload/colvio_solutions_en.mp4` · thumbnail `tools/video/out/upload/colvio_solutions_thumb.jpg`
 
@@ -510,10 +510,10 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Browse every solution
-0:18 What's inside
-0:30 The deployment checklist · Compare two solutions
+0:17 What's inside
+0:29 The deployment checklist · Compare two solutions
 0:44 Compare across orgs
-0:57 Read the drift
+0:56 Read the drift
 
 Demo data only: no real organization on screen.
 
@@ -531,7 +531,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 13. Environment Variables (`envvars`, 1:14)
+## 13. Environment Variables (`envvars`, 1:13)
 
 Files: `tools/video/out/upload/colvio_envvars_en.mp4` · thumbnail `tools/video/out/upload/colvio_envvars_thumb.jpg`
 
@@ -551,9 +551,9 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 Chapters
 0:00 Spot the missing values
 0:12 Set the value
-0:23 Checked before saving
-0:39 Fall back to the default · What this environment sets
-0:52 Secrets stay in Key Vault · Search, then export
+0:22 Checked before saving
+0:38 Fall back to the default · What this environment sets
+0:51 Secrets stay in Key Vault · Search, then export
 
 Demo data only: no real organization on screen.
 
@@ -571,7 +571,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 14. Web Resources (`webres`, 1:18)
+## 14. Web Resources (`webres`, 1:46)
 
 Files: `tools/video/out/upload/colvio_webres_en.mp4` · thumbnail `tools/video/out/upload/colvio_webres_thumb.jpg`
 
@@ -590,10 +590,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Every web resource, by kind
-0:15 Open one in the editor
-0:25 Search inside every script · Straight to the line
+0:14 Open one in the editor
+0:24 Search inside every script · Straight to the line
 0:39 Edit · Save & publish
-0:59 Managed? You're told · Download, or open it in D365
+0:59 Someone saved it meanwhile
+1:15 Reload, or overwrite
+1:28 Managed? You're told · Download, or open it in D365
 
 Demo data only: no real organization on screen.
 
@@ -611,7 +613,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 15. Translations (`translations`, 1:03)
+## 15. Translations (`translations`, 1:02)
 
 Files: `tools/video/out/upload/colvio_translations_en.mp4` · thumbnail `tools/video/out/upload/colvio_translations_thumb.jpg`
 
@@ -630,7 +632,7 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Every label, every language
-0:13 Only the languages you need · Filter the columns
+0:12 Only the languages you need · Filter the columns
 0:26 Fix a label in place
 0:41 No edit lost by accident · Round-trip through Excel
 
@@ -650,7 +652,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 16. Users & Licenses (`licenses`, 1:53)
+## 16. Users & Licenses (`licenses`, 1:51)
 
 Files: `tools/video/out/upload/colvio_licenses_en.mp4` · thumbnail `tools/video/out/upload/colvio_licenses_thumb.jpg`
 
@@ -669,12 +671,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Every user, at a glance
-0:13 Disabled and service accounts · Search by name, email or business unit
-0:28 Sort by license · Open a user
-0:44 Org-wide breakdowns · Export what you see
-1:00 Bulk settings · Only the people who sign in
-1:13 See what will change · Apply, user by user
-1:32 Time zone, language, currency… · Mailboxes too
+0:12 Disabled and service accounts · Search by name, email or business unit
+0:27 Sort by license · Open a user
+0:43 Org-wide breakdowns · Export what you see
+0:59 Bulk settings · Only the people who sign in
+1:12 See what will change · Apply, user by user
+1:31 Time zone, language, currency… · Mailboxes too
 
 Demo data only: no real organization on screen.
 
@@ -692,7 +694,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 17. Business Units (`bu`, 1:20)
+## 17. Business Units (`bu`, 1:19)
 
 Files: `tools/video/out/upload/colvio_bu_en.mp4` · thumbnail `tools/video/out/upload/colvio_bu_thumb.jpg`
 
@@ -711,11 +713,11 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 The BU tree, with member counts
-0:14 Open a business unit
-0:24 Org chart
-0:40 Filter the members
-0:51 Select by pasting a list
-1:03 Move users to another BU
+0:13 Open a business unit
+0:23 Org chart
+0:39 Filter the members
+0:50 Select by pasting a list
+1:02 Move users to another BU
 
 Demo data only: no real organization on screen.
 
@@ -733,7 +735,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 18. Security Audit (`security`, 1:30)
+## 18. Security Audit (`security`, 1:29)
 
 Files: `tools/video/out/upload/colvio_security_en.mp4` · thumbnail `tools/video/out/upload/colvio_security_thumb.jpg`
 
@@ -752,11 +754,11 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Read a role
-0:15 Org-level and sensitive privileges
-0:25 Matrix view, by table · Who holds the role
-0:48 Assign by pasting emails
-0:58 Teams carrying the role · Org-wide: who can do what
-1:17 Flip it by table
+0:14 Org-level and sensitive privileges
+0:24 Matrix view, by table · Who holds the role
+0:47 Assign by pasting emails · Teams carrying the role
+1:05 Org-wide: who can do what
+1:15 Flip it by table
 
 Demo data only: no real organization on screen.
 
@@ -794,9 +796,9 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 Chapters
 0:00 Every team, by type
 0:15 Search name, BU or administrator · Owner team: the roles its members inherit
-0:34 Entra group team
-0:44 Filter and export members · BU default teams
-1:00 Access teams, on demand
+0:33 Entra group team
+0:43 Filter and export members · BU default teams
+0:59 Access teams, on demand
 
 Demo data only: no real organization on screen.
 
@@ -814,7 +816,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 20. Adoption (`adoption`, 1:27)
+## 20. Adoption (`adoption`, 1:26)
 
 Files: `tools/video/out/upload/colvio_adoption_en.mp4` · thumbnail `tools/video/out/upload/colvio_adoption_thumb.jpg`
 
@@ -833,12 +835,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Access events, honestly counted
-0:12 Read the trend
-0:23 Who uses it most
-0:34 Never signed in · License & inactivity
-0:52 By security role or business unit
-1:04 Pick a period
-1:15 Compare, then share
+0:11 Read the trend
+0:22 Who uses it most
+0:33 Never signed in · License & inactivity
+0:51 By security role or business unit
+1:03 Pick a period
+1:14 Compare, then share
 
 Demo data only: no real organization on screen.
 
@@ -856,7 +858,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 21. Login History (`logins`, 0:52)
+## 21. Login History (`logins`, 0:51)
 
 Files: `tools/video/out/upload/colvio_logins_en.mp4` · thumbnail `tools/video/out/upload/colvio_logins_thumb.jpg`
 
@@ -875,9 +877,9 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Find a user
-0:11 Their access audit at a glance
-0:21 Day by day · Load more history
-0:34 Switch user in one search · Export it
+0:10 Their access audit at a glance
+0:20 Day by day · Load more history
+0:33 Switch user in one search · Export it
 
 Demo data only: no real organization on screen.
 
@@ -895,7 +897,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 22. Storage (`storage`, 1:02)
+## 22. Storage (`storage`, 1:01)
 
 Files: `tools/video/out/upload/colvio_storage_en.mp4` · thumbnail `tools/video/out/upload/colvio_storage_thumb.jpg`
 
@@ -914,9 +916,9 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Where your capacity goes
-0:14 Tables that grow silently · Real file bytes per table
-0:30 Filter by storage class
-0:41 Find any table · Refresh on demand
+0:13 Tables that grow silently · Real file bytes per table
+0:29 Filter by storage class
+0:40 Find any table · Refresh on demand
 
 Demo data only: no real organization on screen.
 
@@ -934,7 +936,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 23. Health check (`health`, 1:21)
+## 23. Health check (`health`, 1:33)
 
 Files: `tools/video/out/upload/colvio_health_en.mp4` · thumbnail `tools/video/out/upload/colvio_health_thumb.jpg`
 
@@ -953,11 +955,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 One click, 12 checks
-0:12 Worst first · Failing and suspended jobs
-0:28 Orphan flows, noisy plug-ins
-0:39 Empty connections and variables · Log tables eating storage
-0:56 Notes, and what doesn't apply
-1:08 Copy, paste, export
+0:11 Worst first · Failing and suspended jobs
+0:27 Orphan flows, noisy plug-ins
+0:38 Empty connections and variables · Log tables eating storage
+0:55 Production: unmanaged solutions
+1:05 Stricter on production, and the notes
+1:20 Copy, paste, export
 
 Demo data only: no real organization on screen.
 
@@ -975,7 +978,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 24. Record access (`access`, 1:40)
+## 24. Record access (`access`, 1:38)
 
 Files: `tools/video/out/upload/colvio_access_en.mp4` · thumbnail `tools/video/out/upload/colvio_access_thumb.jpg`
 
@@ -994,12 +997,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Pick a user
-0:18 Dataverse's own yes / no · For every no, what would fix it
-0:34 Roles, teams and shares · Same record, another user
-0:52 Record activity: what each save triggered
-1:02 A save that failed
-1:13 An async job that keeps failing
-1:25 Which cloud flows it set off
+0:17 Dataverse's own yes / no · For every no, what would fix it
+0:33 Roles, teams and shares · Same record, another user
+0:51 Record activity: what each save triggered
+1:01 A save that failed
+1:11 An async job that keeps failing
+1:24 Which cloud flows it set off
 
 Demo data only: no real organization on screen.
 
@@ -1017,7 +1020,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 25. Data Explorer, SQL and beyond (`sqlpower`, 1:42)
+## 25. Data Explorer, SQL and beyond (`sqlpower`, 2:17)
 
 Files: `tools/video/out/upload/colvio_sqlpower_en.mp4` · thumbnail `tools/video/out/upload/colvio_sqlpower_thumb.jpg`
 
@@ -1036,11 +1039,13 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Paste a Web API URL
-0:14 Every row, straight to a file · SQL completes as you type
-0:32 …and the table's columns
-0:43 UPDATE in SQL — checked first · Every row it would touch
-0:58 Apply asks first · Save as a personal view
-1:21 Update a saved query in one click
+0:13 Every row, straight to a file · SQL completes as you type
+0:31 …and the table's columns
+0:42 Your columns, in your order
+0:53 UPDATE in SQL — checked first · Every row it would touch
+1:09 Apply asks first · Save as a personal view
+1:31 …with related tables
+1:56 Update a saved query in one click
 
 Demo data only: no real organization on screen.
 
@@ -1058,7 +1063,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 26. Who runs it (`whoruns`, 1:42)
+## 26. Who runs it (`whoruns`, 1:47)
 
 Files: `tools/video/out/upload/colvio_whoruns_en.mp4` · thumbnail `tools/video/out/upload/colvio_whoruns_thumb.jpg`
 
@@ -1077,12 +1082,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Who runs it
-0:12 What stops when someone leaves
-0:22 The account behind each connection · A flow doesn't run as its owner
-0:38 Classic workflows too · 🎯 What fires when a column changes
-0:58 Switch steps off
-1:12 Set a step's filtering attributes
-1:26 Ask again
+0:11 What stops when someone leaves
+0:21 The account behind each connection · A flow doesn't run as its owner
+0:37 Classic workflows too · 🎯 What fires when a column changes
+0:57 Switch steps off
+1:14 Set a step's filtering attributes
+1:31 Ask again
 
 Demo data only: no real organization on screen.
 
@@ -1100,7 +1105,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 27. Metadata (`datamodel`, 1:34)
+## 27. Metadata (`datamodel`, 1:33)
 
 Files: `tools/video/out/upload/colvio_datamodel_en.mp4` · thumbnail `tools/video/out/upload/colvio_datamodel_thumb.jpg`
 
@@ -1119,12 +1124,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Which columns are really used?
-0:16 A data dictionary for many tables · 🧨 What blocks deleting this column?
-0:36 …and everything that uses the table
-0:47 📑 Solution layers
-0:58 🔎 What the global search shows and searches
-1:09 …and where search falls short
-1:19 Multi-select choices too
+0:15 A data dictionary for many tables · 🧨 What blocks deleting this column?
+0:35 …and everything that uses the table
+0:46 📑 Solution layers
+0:57 🔎 What the global search shows and searches
+1:08 …and where search falls short
+1:18 Multi-select choices too
 
 Demo data only: no real organization on screen.
 
@@ -1142,7 +1147,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 28. Metadata · Automation (`modelwrites`, 1:40)
+## 28. Metadata · Automation (`modelwrites`, 1:38)
 
 Files: `tools/video/out/upload/colvio_modelwrites_en.mp4` · thumbnail `tools/video/out/upload/colvio_modelwrites_thumb.jpg`
 
@@ -1161,11 +1166,11 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Edit a choice column's values
-0:18 Add an option
-0:30 Rename one, reorder them
-0:49 Delete one — knowing who holds it · Create columns from a file
-1:09 …then create them in one go
-1:19 A plug-in step's filtering attributes
+0:17 Add an option
+0:29 Rename one, reorder them
+0:48 Delete one — knowing who holds it · Create columns from a file
+1:07 …then create them in one go
+1:17 A plug-in step's filtering attributes
 
 Demo data only: no real organization on screen.
 
@@ -1183,7 +1188,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 29. Deployments (`deployments`, 1:40)
+## 29. Deployments (`deployments`, 1:38)
 
 Files: `tools/video/out/upload/colvio_deployments_en.mp4` · thumbnail `tools/video/out/upload/colvio_deployments_thumb.jpg`
 
@@ -1202,12 +1207,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Every deployment, one window
-0:13 The timeline
-0:23 What went wrong, flagged
-0:33 Open a run
-0:45 Filter the history
-1:01 Older than 180 days · Version ladders
-1:21 From any solution
+0:12 The timeline
+0:22 What went wrong, flagged
+0:32 Open a run
+0:44 Filter the history
+1:00 Older than 180 days · Version ladders
+1:20 From any solution
 
 Demo data only: no real organization on screen.
 
@@ -1225,7 +1230,7 @@ Dynamics 365, Dataverse, Power Platform, Power Apps, D365, Dynamics 365 CRM, Chr
 
 ---
 
-## 30. Data Loader · N:N tables (`association`, 1:24)
+## 30. Data Loader · N:N tables (`association`, 1:37)
 
 Files: `tools/video/out/upload/colvio_association_en.mp4` · thumbnail `tools/video/out/upload/colvio_association_thumb.jpg`
 
@@ -1244,11 +1249,12 @@ Colvio is a free, open-source browser extension for Microsoft Dynamics 365 and D
 
 Chapters
 0:00 Paste the pairs
-0:12 Pick the N:N table · Records associated, not rows created
-0:26 One column per end · Dry run
-0:41 Associate · A way back
-0:54 Back to a normal table: how the file fits
-1:11 The mapping follows the table
+0:11 Pick the N:N table · Records associated, not rows created
+0:26 One column per end · Matched by email and by name
+0:40 Dry run · Associate
+0:57 A way back
+1:08 Back to a normal table: how the file fits
+1:24 The mapping follows the table
 
 Demo data only: no real organization on screen.
 

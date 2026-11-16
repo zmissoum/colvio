@@ -8,7 +8,7 @@
 
 **Start:** J = the first Tuesday after the Chrome Web Store shows **v1.11.176** (or later). The videos show Teams, Storage, Bulk settings, the current Login History and the enriched demos, which older store versions don't have.
 
-**Posts 48–57 need the store at v1.11.219 (or later)**: they show Fires on, Deployments, search result columns and multi-select values (1.11.213–1.11.219), N:N loading (1.11.209), SQL completion (1.11.207) and Script Console (1.11.202). If the store is behind on the date, push the batch back, never post a video of a feature users can't install.
+**Posts 40–57 need the store at v1.11.220 (or later)** — their videos were rendered from 1.11.220 (Colvio's own confirmation dialog, the latest demo data). Posts 48–57 show Fires on, Deployments, search result columns and multi-select values (1.11.213–1.11.219), N:N loading (1.11.209), SQL completion (1.11.207) and Script Console (1.11.202). If the store is behind on the date, push the batch back, never post a video of a feature users can't install.
 
 ## Posting rules
 
@@ -20,49 +20,52 @@
 
 ## Calendar
 
-Two posts a week for the first month (Tuesday 8:30, Thursday 17:30), then one a week on Tuesdays. The dates are an example if v1.11.176 is live on Monday, October 12, with a break over the holidays. Tick "Posted" as you go.
+One post a week on **Tuesday 8:30** until Dec 15, then **two a week from Jan 5 — Tuesday 8:30 and Thursday 17:30** — to the last on **Tuesday, March 2**. Tick "Posted" as each one goes out.
 
-**Scheduling in two batches** — LinkedIn schedules at most ~3 months ahead:
-- **Batch 1 — now:** Posts 26 → 39 (Oct 13 → Dec 15), everything up to the holiday break.
-- **Batch 2 — from Nov 16:** Posts 40 → 46 (Jan 5 → Feb 16). On Nov 16 the 3-month window reaches Feb 16, so the seven can be scheduled in one sitting.
-- **Batch 3 — from Jan 27:** Posts 48 → 57 (Feb 23 → Apr 27), one a week on Tuesdays. On Jan 27 the window reaches Apr 27, so the ten fit in one sitting (check the store version first, see Start).
-If the start date moves (store approval), shift both batches by the same number of weeks.
+**The videos, on your PC:** `C:\Users\zakar\Documents\Claude\Projects\Colvio\tools\video\out\linkedin` — one file per post, named `post-<number>_<module>.mp4` (the "Video file" column). Upload that file, natively. Any other copy (`tools\video\out\deep\`, `tools\video\out\upload\`, the `colvio-linkedin-videos` folder) is not for LinkedIn: the first is the October series, the second is YouTube's, the third the earlier cloud renders.
 
-| Post | Week | Slot | Date (example) | Topic | Video (`tools/video/out/…`) | Length | Batch | Posted |
-|---|---|---|---|---|---|---|---|---|
-| 26 | 1 | Tue 8:30 | Oct 13 | Colvio in a few minutes (tour) | `video/colvio_tour_en.mp4` | 2 min 54 | 1 | ☐ |
-| 27 | 1 | Thu 17:30 | Oct 15 | Data Explorer | `deep/colvio_explorer_en.mp4` | 94 s | 1 | ☐ |
-| 28 | 2 | Tue 8:30 | Oct 20 | Data Loader | `deep/colvio_loader_en.mp4` | 95 s | 1 | ☐ |
-| 29 | 2 | Thu 17:30 | Oct 22 | Security Audit | `deep/colvio_security_en.mp4` | 90 s | 1 | ☐ |
-| 30 | 3 | Tue 8:30 | Oct 27 | Adoption | `deep/colvio_adoption_en.mp4` | 87 s | 1 | ☐ |
-| 31 | 3 | Thu 17:30 | Oct 29 | Storage | `deep/colvio_storage_en.mp4` | 62 s | 1 | ☐ |
-| 32 | 4 | Tue 8:30 | Nov 3 | Users & Licenses + Bulk settings | `deep/colvio_licenses_en.mp4` | 1 min 53 | 1 | ☐ |
-| 33 | 4 | Thu 17:30 | Nov 5 | Show All Data | `deep/colvio_showalldata_en.mp4` | 67 s | 1 | ☐ |
-| 34 | 5 | Tue 8:30 | Nov 10 | Apps | `deep/colvio_apps_en.mp4` | 68 s | 1 | ☐ |
-| 35 | 6 | Tue 8:30 | Nov 17 | API Tester | `deep/colvio_apitester_en.mp4` | 1 min 54 | 1 | ☐ |
-| 36 | 7 | Tue 8:30 | Nov 24 | Recycle Bin | `deep/colvio_recyclebin_en.mp4` | 79 s | 1 | ☐ |
-| 37 | 8 | Tue 8:30 | Dec 1 | Business Units | `deep/colvio_bu_en.mp4` | 81 s | 1 | ☐ |
-| 38 | 9 | Tue 8:30 | Dec 8 | Solutions | `deep/colvio_solutions_en.mp4` | 70 s | 1 | ☐ |
-| 39 | 10 | Tue 8:30 | Dec 15 | Environment Variables | `deep/colvio_envvars_en.mp4` | 75 s | 1 | ☐ |
-| 40 | 11 | Tue 8:30 | Jan 5 | Automation | `deep/colvio_automation_en.mp4` | 71 s | 2 | ☐ |
-| 41 | 12 | Tue 8:30 | Jan 12 | Metadata | `deep/colvio_metadata_en.mp4` | 83 s | 2 | ☐ |
-| 42 | 13 | Tue 8:30 | Jan 19 | Schema | `deep/colvio_schema_en.mp4` | 77 s | 2 | ☐ |
-| 43 | 14 | Tue 8:30 | Jan 26 | Relationships | `deep/colvio_relationships_en.mp4` | 58 s | 2 | ☐ |
-| 44 | 15 | Tue 8:30 | Feb 2 | Teams | `deep/colvio_teams_en.mp4` | 72 s | 2 | ☐ |
-| 45 | 16 | Tue 8:30 | Feb 9 | Translations | `deep/colvio_translations_en.mp4` | 63 s | 2 | ☐ |
-| 46 | 17 | Tue 8:30 | Feb 16 | Login History | `deep/colvio_logins_en.mp4` | 52 s | 2 | ☐ |
-| 48 | 18 | Tue 8:30 | Feb 23 | Record access & Record activity | `deep/colvio_access_en.mp4` | 1 min 40 | 3 | ☐ |
-| 49 | 19 | Tue 8:30 | Mar 2 | Health check | `deep/colvio_health_en.mp4` | 81 s | 3 | ☐ |
-| 50 | 20 | Tue 8:30 | Mar 9 | Data Explorer: SQL, safe writes, saved views | `deep/colvio_sqlpower_en.mp4` | 1 min 41 | 3 | ☐ |
-| 51 | 21 | Tue 8:30 | Mar 16 | Automation: who runs it, what fires | `deep/colvio_whoruns_en.mp4` | 1 min 41 | 3 | ☐ |
-| 52 | 22 | Tue 8:30 | Mar 23 | Script Console | `deep/colvio_script_en.mp4` | 98 s | 3 | ☐ |
-| 53 | 23 | Tue 8:30 | Mar 30 | Metadata: know your data model | `deep/colvio_datamodel_en.mp4` | 94 s | 3 | ☐ |
-| 54 | 24 | Tue 8:30 | Apr 6 | Solutions › Deployments | `deep/colvio_deployments_en.mp4` | 99 s | 3 | ☐ |
-| 55 | 25 | Tue 8:30 | Apr 13 | Web Resources | `deep/colvio_webres_en.mp4` | 78 s | 3 | ☐ |
-| 56 | 26 | Tue 8:30 | Apr 20 | Change the model without XrmToolBox | `deep/colvio_modelwrites_en.mp4` | 1 min 40 | 3 | ☐ |
-| 57 | 27 | Tue 8:30 | Apr 27 | Data Loader: N:N tables by association | `deep/colvio_association_en.mp4` | 84 s | 3 | ☐ |
+**Where each batch stands (November 16, 2026)**
+- **Posts 26–34** (Oct 13 → Nov 10): out. Leave them — a published post keeps its video and its thumbnail, and deleting one loses its reach and comments.
+- **Posts 35–39** (Nov 17 → Dec 15): scheduled with the October videos, whose first frame — LinkedIn's thumbnail — is the "Connecting to Dataverse…" screen behind the title card. LinkedIn doesn't let a scheduled post's thumbnail be changed, and replacing its video has been reported to create a duplicate instead. So: **delete each of the five scheduled posts, then schedule it again on the same date and time with the same text** and the file in the table — the same video, its first second cut so it opens on the clean title card. Its content matches the version on the store today. **Post 35 goes out on Nov 17 at 8:30: start with it.**
+- **Posts 40–53** (Jan 5 → Feb 16, batch 2): schedule now — on Nov 16 LinkedIn's ~3-month window reaches Feb 16.
+- **Posts 54–57** (Feb 18 → Mar 2, batch 3): schedule from Dec 2, when the window reaches Mar 2.
+- **Store condition:** the videos of Posts 40–57 show Colvio 1.11.220. Publish 1.11.220 on the Chrome Web Store now; it must be live before Jan 5, the first of these posts — if it isn't, move the remaining posts back until it is.
 
-To re-render a video after a UI change: `node make-deep.mjs --module=<module> --lang=en` or `node make-video.mjs --lang=en --no-clips` in `tools/video` (see its README). Post 47 (`linkedin-posts.md`) is the text-only release post of 1.11.182 → 1.11.202; Posts 48–57 show those features, and the later ones, in motion.
+| Post | Date | Topic | Video file (in the folder above) | Length | Batch | What to do | Posted |
+|---|---|---|---|---|---|---|---|
+| 26 | Tue Oct 13 | Colvio in a few minutes (tour) | — (already out: `out/video/colvio_tour_en.mp4`) | 2 min 54 | 1 | Published — leave it | ☐ |
+| 27 | Thu Oct 15 | Data Explorer | — (already out: `out/deep/colvio_explorer_en.mp4`) | 94 s | 1 | Published — leave it | ☐ |
+| 28 | Tue Oct 20 | Data Loader | — (already out: `out/deep/colvio_loader_en.mp4`) | 95 s | 1 | Published — leave it | ☐ |
+| 29 | Thu Oct 22 | Security Audit | — (already out: `out/deep/colvio_security_en.mp4`) | 90 s | 1 | Published — leave it | ☐ |
+| 30 | Tue Oct 27 | Adoption | — (already out: `out/deep/colvio_adoption_en.mp4`) | 87 s | 1 | Published — leave it | ☐ |
+| 31 | Thu Oct 29 | Storage | — (already out: `out/deep/colvio_storage_en.mp4`) | 62 s | 1 | Published — leave it | ☐ |
+| 32 | Tue Nov 3 | Users & Licenses + Bulk settings | — (already out: `out/deep/colvio_licenses_en.mp4`) | 1 min 53 | 1 | Published — leave it | ☐ |
+| 33 | Thu Nov 5 | Show All Data | — (already out: `out/deep/colvio_showalldata_en.mp4`) | 67 s | 1 | Published — leave it | ☐ |
+| 34 | Tue Nov 10 | Apps | — (already out: `out/deep/colvio_apps_en.mp4`) | 68 s | 1 | Published — leave it | ☐ |
+| 35 | Tue Nov 17 | API Tester | `post-35_apitester.mp4` | 1 min 53 | 1 | Scheduled → delete & reschedule | ☐ |
+| 36 | Tue Nov 24 | Recycle Bin | `post-36_recyclebin.mp4` | 78 s | 1 | Scheduled → delete & reschedule | ☐ |
+| 37 | Tue Dec 1 | Business Units | `post-37_bu.mp4` | 80 s | 1 | Scheduled → delete & reschedule | ☐ |
+| 38 | Tue Dec 8 | Solutions | `post-38_solutions.mp4` | 69 s | 1 | Scheduled → delete & reschedule | ☐ |
+| 39 | Tue Dec 15 | Environment Variables | `post-39_envvars.mp4` | 74 s | 1 | Scheduled → delete & reschedule | ☐ |
+| 40 | Tue Jan 5 | Automation | `post-40_automation.mp4` | 71 s | 2 | Schedule now | ☐ |
+| 41 | Thu Jan 7 | Metadata | `post-41_metadata.mp4` | 83 s | 2 | Schedule now | ☐ |
+| 42 | Tue Jan 12 | Schema | `post-42_schema.mp4` | 76 s | 2 | Schedule now | ☐ |
+| 43 | Thu Jan 14 | Relationships | `post-43_relationships.mp4` | 58 s | 2 | Schedule now | ☐ |
+| 44 | Tue Jan 19 | Teams | `post-44_teams.mp4` | 72 s | 2 | Schedule now | ☐ |
+| 45 | Thu Jan 21 | Translations | `post-45_translations.mp4` | 63 s | 2 | Schedule now | ☐ |
+| 46 | Tue Jan 26 | Login History | `post-46_logins.mp4` | 52 s | 2 | Schedule now | ☐ |
+| 48 | Thu Jan 28 | Record access & Record activity | `post-48_access.mp4` | 99 s | 2 | Schedule now | ☐ |
+| 49 | Tue Feb 2 | Health check | `post-49_health.mp4` | 94 s | 2 | Schedule now | ☐ |
+| 50 | Thu Feb 4 | Data Explorer: SQL, safe writes, saved views | `post-50_sqlpower.mp4` | 2 min 18 | 2 | Schedule now | ☐ |
+| 51 | Tue Feb 9 | Automation: who runs it, what fires | `post-51_whoruns.mp4` | 1 min 48 | 2 | Schedule now | ☐ |
+| 52 | Thu Feb 11 | Script Console | `post-52_script.mp4` | 99 s | 2 | Schedule now | ☐ |
+| 53 | Tue Feb 16 | Metadata: know your data model | `post-53_datamodel.mp4` | 94 s | 2 | Schedule now | ☐ |
+| 54 | Thu Feb 18 | Solutions › Deployments | `post-54_deployments.mp4` | 99 s | 3 | Schedule from Dec 2 | ☐ |
+| 55 | Tue Feb 23 | Web Resources | `post-55_webres.mp4` | 1 min 47 | 3 | Schedule from Dec 2 | ☐ |
+| 56 | Thu Feb 25 | Change the model without XrmToolBox | `post-56_modelwrites.mp4` | 99 s | 3 | Schedule from Dec 2 | ☐ |
+| 57 | Tue Mar 2 | Data Loader: N:N tables by association | `post-57_association.mp4` | 97 s | 3 | Schedule from Dec 2 | ☐ |
+
+Each post's text and first comment are below (the first comment is the same for all: see Posting rules). After a UI change, re-render with `node make-deep.mjs --module=<module> --lang=en --res=1440` then `node youtube-deep.mjs` in `tools/video`, and copy `out/upload/colvio_<module>_en.mp4` to the folder above under the post's name. Post 47 (`linkedin-posts.md`) is the text-only release post of 1.11.182 → 1.11.202.
 
 ## The 31 posts
 
@@ -266,7 +269,7 @@ Ever had a form appear where nobody added it? 👇
 
 ---
 
-### Post 35 — API Tester (`apitester`, 1 min 54)
+### Post 35 — API Tester (`apitester`, 1 min 53)
 
 🧪 Calling the Dataverse Web API shouldn't start with an app registration.
 
@@ -288,7 +291,7 @@ What's the first request you'd send? 👇
 
 ---
 
-### Post 36 — Recycle Bin (`recyclebin`, 79 s)
+### Post 36 — Recycle Bin (`recyclebin`, 78 s)
 
 🗑 "Someone deleted 140 accounts last night. Can we get them back?"
 
@@ -312,7 +315,7 @@ Has a mass delete ever ruined your morning? 👇
 
 ---
 
-### Post 37 — Business Units (`bu`, 81 s)
+### Post 37 — Business Units (`bu`, 80 s)
 
 🏢 A reorganisation reaches the admin as a spreadsheet of email addresses.
 
@@ -332,7 +335,7 @@ How many business units does your org have? 👇
 
 ---
 
-### Post 38 — Solutions (`solutions`, 70 s)
+### Post 38 — Solutions (`solutions`, 69 s)
 
 📦 "What's different between DEV and PROD?"
 
@@ -352,7 +355,7 @@ How do you check a deployment today? 👇
 
 ---
 
-### Post 39 — Environment Variables (`envvars`, 75 s)
+### Post 39 — Environment Variables (`envvars`, 74 s)
 
 ⚙️ An environment variable with no value doesn't fail at import. It fails later, as an empty string in a flow or a plug-in.
 
@@ -417,7 +420,7 @@ Do you keep your data dictionary up to date? 👇
 
 ---
 
-### Post 42 — Schema (`schema`, 77 s)
+### Post 42 — Schema (`schema`, 76 s)
 
 🗺 Your Dataverse data model, drawn from the org itself.
 
@@ -524,9 +527,9 @@ Did you know Dataverse has no sign-out event? 👇
 
 ---
 
-### Post 48 — Record access & Record activity (`access`, 1 min 40)
+### Post 48 — Record access & Record activity (`access`, 99 s)
 
-⏱ 1 min 40 inside Colvio's Show All Data: Record access and Record activity.
+⏱ 99 seconds inside Colvio's Show All Data: Record access and Record activity.
 
 "Why can't she see this record?" and "What did that save just trigger?" Two questions people bring to admins every week, answered from the record itself.
 
@@ -548,22 +551,23 @@ Which do you get asked more: "why can't they see it" or "what changed this recor
 
 ---
 
-### Post 49 — Health check (`health`, 81 s)
+### Post 49 — Health check (`health`, 94 s)
 
-⏱ 81 seconds inside Colvio's Health check.
+⏱ 94 seconds inside Colvio's Health check.
 
 Some problems never throw an error. They sit in your environment until something breaks. One click, one report, worst first:
 
 1. 12 checks in one run: jobs, flows, plug-ins, connections, variables, users, solutions, log tables. Read-only.
-2. Every check rated (warning, note, OK, not applicable) and sorted worst first, each finding with what to do
+2. Every check rated (warning, note, OK) and sorted worst first, each finding with what to do
 3. System jobs failed in the last 7 days, grouped by job name, and the suspended ones still waiting for a retry
 4. Active cloud flows owned by disabled users, and synchronous Update plug-in steps with no filtering attributes
 5. Connection references without a connection, environment variables with neither a value nor a default
 6. Log tables against a threshold: 1,240,300 system jobs flagged, with the bulk-delete fix
-7. The notes: trace log on "All", audit kept forever, enabled users without a role. Unmanaged solutions are only checked in production
-8. Copy the whole report as plain text for a ticket, or export it to CSV / Excel
+7. On production, unmanaged solutions are flagged: changes made in them drift from your source, and no upgrade removes them
+8. Stricter on production: the trace log on "All" becomes a warning; audit kept forever and enabled users without a role stay notes
+9. Copy the whole report as plain text for a ticket, or export it to CSV / Excel
 
-All on demo data. No real org on screen.
+All on demo data, the demo org shown as production. No real org on screen.
 
 Which of these would you bet your production org has right now? 👇
 
@@ -571,21 +575,23 @@ Which of these would you bet your production org has right now? 👇
 
 ---
 
-### Post 50 — Data Explorer: SQL, safe writes, saved views (`sqlpower`, 1 min 41)
+### Post 50 — Data Explorer: SQL, safe writes, saved views (`sqlpower`, 2 min 18)
 
-⏱ 1 min 41 inside Colvio's Data Explorer, past the basics: SQL, safe writes and saved views.
+⏱ 2 min 18 inside Colvio's Data Explorer, past the basics: SQL, safe writes and saved views.
 
-The first Explorer video built a query. This one shows what you can do around it, in nine steps:
+The first Explorer video built a query. This one shows what you can do around it, in eleven steps:
 
 1. Paste a full Web API URL, even one from another environment: its table opens in OData mode, and Colvio says the query runs here
 2. ⬇ To file: every row streamed to CSV or Excel, page after page, nothing kept in the browser
 3. SQL that completes as you type: after FROM, the tables matching what you typed; Tab inserts
 4. In the SELECT list, the FROM table's columns, with display name and type
-5. UPDATE in SQL: Execute becomes "Preview UPDATE", and a label where an option set needs its number is refused, with the reason
-6. The preview: the WHERE runs as a SELECT and lists every row the statement would touch. Nothing written yet
-7. Apply asks first, repeating the statement and what each record gets
-8. 👁 Save as view: the Builder query (columns, filter, sort) becomes a personal view under My views
-9. ⭐ Save a query, then 💾 Update overwrites it in one click
+5. Execute: the grid holds exactly the SELECT's columns, in its order, and an alias names its column
+6. UPDATE in SQL: Execute becomes "Preview UPDATE", and a label where an option set needs its number is refused, with the reason
+7. The preview: the WHERE runs as a SELECT and lists every row the statement would touch. Nothing written yet
+8. Apply asks first, repeating the statement and what each record gets
+9. 👁 Save as view: the Builder query (columns, filter, sort) becomes a personal view under My views
+10. With related tables: a filter on related records and a lookup's columns become joins of the view, listed in the confirmation with the FetchXML it saves
+11. ⭐ Save a query, then 💾 Update overwrites it in one click
 
 All on demo data. The update was never applied: the confirmation was cancelled.
 
@@ -595,9 +601,9 @@ Would you run an UPDATE on Dataverse more often if you saw every row it touches 
 
 ---
 
-### Post 51 — Automation: who runs it, what fires (`whoruns`, 1 min 41)
+### Post 51 — Automation: who runs it, what fires (`whoruns`, 1 min 48)
 
-⏱ 1 min 41 inside Colvio's Automation module: who runs it, and what fires when a column changes.
+⏱ 1 min 48 inside Colvio's Automation module: who runs it, and what fires when a column changes.
 
 A cloud flow doesn't run as its owner. A person behind your automation leaves, and things stop. Here is how to see it before that happens.
 
@@ -619,9 +625,9 @@ When someone leaves your team, how do you find what was running under their name
 
 ---
 
-### Post 52 — Script Console (`script`, 98 s)
+### Post 52 — Script Console (`script`, 99 s)
 
-⏱ 98 seconds inside Colvio's Script Console.
+⏱ 99 seconds inside Colvio's Script Console.
 
 For what no screen does: JavaScript on the Dataverse Web API, with a dry run before anything is written and a rollback after.
 
@@ -689,9 +695,9 @@ How long did it take you to find out why your last solution import failed? 👇
 
 ---
 
-### Post 55 — Web Resources (`webres`, 78 s)
+### Post 55 — Web Resources (`webres`, 1 min 47)
 
-⏱ 78 seconds inside Colvio's Web Resources.
+⏱ 1 min 47 inside Colvio's Web Resources.
 
 Before you rename or delete a column: which scripts still use it? Dataverse's dependency tracking doesn't look inside JavaScript.
 
@@ -701,8 +707,10 @@ Before you rename or delete a column: which scripts still use it? Dataverse's de
 4. Click a hit: the resource opens with that line selected
 5. Edit in place: a dot marks unsaved changes, Revert brings back the version you opened
 6. Save & publish: asked first, with the new size and what a publish means for every user
-7. A resource from a managed solution says so: your change is an unmanaged layer the next import may overwrite
-8. Download any resource as its file, or open the published version in Dynamics 365
+7. Someone saved it meanwhile: every save is conditional on the version you opened, so Dataverse refuses yours and Colvio says who and when. Nothing is overwritten
+8. ↻ Reload opens their version to redo your change on top of it; ⚠ Overwrite would replace it with yours
+9. A resource from a managed solution says so: your change is an unmanaged layer the next import may overwrite
+10. Download any resource as its file, or open the published version in Dynamics 365
 
 All on demo data. No real org on screen.
 
@@ -712,9 +720,9 @@ Which column would you search for first in your org's scripts? 👇
 
 ---
 
-### Post 56 — Change the model without XrmToolBox (`modelwrites`, 1 min 40)
+### Post 56 — Change the model without XrmToolBox (`modelwrites`, 99 s)
 
-⏱ 1 min 40 inside Colvio: changing the data model without opening XrmToolBox.
+⏱ 99 seconds inside Colvio: changing the data model without opening XrmToolBox.
 
 A new choice value or ten new columns shouldn't mean another tool and twenty clicks per column. Every write below asks for confirmation first.
 
@@ -734,21 +742,22 @@ Which model change do you still open XrmToolBox for? 👇
 
 ---
 
-### Post 57 — Data Loader: N:N tables by association (`association`, 84 s)
+### Post 57 — Data Loader: N:N tables by association (`association`, 97 s)
 
-⏱ 84 seconds inside Colvio's Data Loader, on the tables most loaders skip: many-to-many.
+⏱ 97 seconds inside Colvio's Data Loader, on the tables most loaders skip: many-to-many.
 
-Putting users in their teams isn't creating rows. Each line of the file links two records, and Colvio's Data Loader now does exactly that, in nine steps:
+Putting users in their teams isn't creating rows. Each line of the file links two records, and Colvio's Data Loader now does exactly that, in ten steps:
 
-1. Paste two columns from Excel: a user and a team per row, as GUIDs
+1. Paste two columns from Excel: a user's email and a team's name per row
 2. Team Membership is in the target list, badged N:N
 3. Its rows aren't created: each file row associates one user with one team, and a link that already exists counts as "already", never as an error
-4. One file column per end (user → systemuser, team → team): a GUID, or a value resolved through a text column
-5. A dry run that writes nothing: 5 pairs would be associated; the row without a team and the repeated pair are skipped, each with its reason
-6. Associate: a result card with associated, already linked, skipped and errors, and a log line for every row
-7. Rollback removes only the links this run added, and the log exports to CSV
-8. Back on a normal table: an Excel export of accounts read against Contact, "1 of 11 columns match", and Colvio spots that the file is an Account export
-9. One click to Account and every column is matched again: display names like "Main Phone", "(Do Not Modify) Account" as the record id, checksum and modified-on skipped
+4. One file column per end (user → systemuser, team → team)
+5. Matched by email and by name: users by their primary email, teams by their name; a value that matches two records is reported, never picked at random
+6. A dry run that writes nothing: 5 pairs would be associated; the row without a team and the repeated pair are skipped, each with its reason
+7. Associate: 3 associated, 2 already linked, and a log line for every row
+8. Rollback removes only the 3 links this run added, after a confirmation, and the log exports to CSV
+9. Back on a normal table: an Excel export of accounts read against Contact, and Colvio spots that the file is an Account export
+10. One click to Account and every column is matched again: display names like "Main Phone", "(Do Not Modify) Account" as the record id, checksum and modified-on skipped
 
 All on demo data. No real org on screen.
 
