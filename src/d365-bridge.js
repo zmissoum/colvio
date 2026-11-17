@@ -34,6 +34,7 @@ const getDemoViews = () => demoViews || (demoViews = createDemoViews((table) => 
 // ObjectTypeCode of the demo tables (a view's layoutxml carries it).
 const DEMO_OTC = { account: 1, contact: 2, opportunity: 3, lead: 4, incident: 112, systemuser: 8, team: 9, businessunit: 10, list: 4300 };
 import { DEMO_USERS, DEMO_REFS, DEMO_INSTANCES, DEMO_FLOW_DEFS, DEMO_XAML_DEFS, DEMO_IDENT } from "./identitiesDemo.js";
+import { demoBusinessRuleDefs, demoFormNames, DEMO_RULE_SAP } from "./businessRulesDemo.js";
 
 // ── Demo constants shared by several mocks ──
 // Views: the account ones the Apps demo exposes, plus the contact view the Account form's
@@ -1033,6 +1034,10 @@ export const bridge = {
     return [
       { id: "w1", name: "Notify owner on big opportunity", category: 0, state: 1, mode: 1, runAs: 0, entity: "opportunity", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "estimatedvalue", owner: "Zakaria Missoum", ownerId: DEMO_IDENT.zakaria, ownerType: "systemuser", modifiedon: new Date(Date.now() - 30 * 86400000).toISOString() },
       { id: "w2", name: "Validate account number", category: 2, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Zakaria Missoum", ownerId: DEMO_IDENT.zakaria, ownerType: "systemuser", modifiedon: new Date(Date.now() - 90 * 86400000).toISOString() },
+      { id: DEMO_RULE_SAP, name: "Lock SAP ID once synced", category: 2, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Paul Durand", ownerId: DEMO_IDENT.paul, ownerType: "systemuser", modifiedon: new Date(Date.now() - 30 * 86400000).toISOString() },
+      { id: "w7", name: "Industry required for customers", category: 2, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Alex Baker", ownerId: DEMO_IDENT.alex, ownerType: "systemuser", modifiedon: new Date(Date.now() - 45 * 86400000).toISOString() },
+      { id: "w8", name: "Revenue can't be negative", category: 2, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Paul Durand", ownerId: DEMO_IDENT.paul, ownerType: "systemuser", modifiedon: new Date(Date.now() - 20 * 86400000).toISOString() },
+      { id: "w9", name: "Copy main phone to other phone", category: 2, state: 0, mode: 0, entity: "account", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Alex Baker", ownerId: DEMO_IDENT.alex, ownerType: "systemuser", modifiedon: new Date(Date.now() - 3 * 86400000).toISOString() },
       { id: DEMO_IDENT.flowSap, name: "Push new accounts to SAP", category: 5, state: 1, mode: 0, entity: "account", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "", owner: "Paul Durand", ownerId: DEMO_IDENT.paul, ownerType: "systemuser", modifiedon: new Date(Date.now() - 60 * 86400000).toISOString() },
       { id: DEMO_IDENT.flowDigest, name: "Weekly account digest", category: 5, state: 1, mode: 0, entity: "", managed: false, triggerCreate: false, triggerDelete: false, triggerUpdate: "", owner: "Integration team", ownerId: DEMO_IDENT.team, ownerType: "team", modifiedon: new Date(Date.now() - 12 * 86400000).toISOString() },
       { id: DEMO_IDENT.flowNotify, name: "Case escalation flow", category: 5, state: 1, mode: 0, entity: "incident", managed: false, triggerCreate: true, triggerDelete: false, triggerUpdate: "", owner: "Alex Baker", ownerId: DEMO_IDENT.alex, ownerType: "systemuser", modifiedon: new Date(Date.now() - 5 * 86400000).toISOString() },
@@ -1058,6 +1063,16 @@ export const bridge = {
   async getWorkflowXamlPage(next) {
     if (!isExtension) { await new Promise(r => setTimeout(r, 150)); return { rows: DEMO_XAML_DEFS, next: null }; }
     return callD365("getWorkflowXamlPage", { next });
+  },
+  // Business rules: their XAML and scope, 25 per page (Automation › Business rules), and the
+  // names of the forms the one-form rules run on.
+  async getBusinessRulesPage(next) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 150)); return { rows: demoBusinessRuleDefs(), next: null, scoped: true }; }
+    return callD365("getBusinessRulesPage", { next });
+  },
+  async getFormNames(ids) {
+    if (!isExtension) { await new Promise(r => setTimeout(r, 80)); return demoFormNames(ids); }
+    return callD365("getFormNames", { ids });
   },
 
   // ── Solutions ──

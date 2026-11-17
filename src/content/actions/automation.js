@@ -146,6 +146,50 @@ const ACTIONS = {
     result = { rows: (dX.value || []).map(w => ({ id: w.workflowid, xaml: w.xaml || "" })), next: dX["@odata.nextLink"] || null };
     return result;
   },
+  async getBusinessRulesPage(params) {
+    let result;
+    // One page of business rule definitions (category 2), 25 at a time: the XAML that says what
+    // each rule does (businessRules.js) and its scope — processtriggerscope 1 Form / 2 Entity,
+    // processtriggerformid = the one form a Form rule runs on (none = All forms). An org whose
+    // schema refuses the scope columns (400) is read for the XAML alone: scope unknown, said so.
+    const SEL = "workflowid,xaml,processtriggerscope,processtriggerformid";
+    let urlB = `workflows?$select=${SEL}&$filter=type eq 1 and category eq 2`;
+    if (params.next) {
+      const rel = String(params.next).replace(/^.*\/api\/data\/v[\d.]+\//, "");
+      if (!/^workflows\?/.test(rel)) throw new Error("Invalid page link.");
+      urlB = rel;
+    }
+    // the panel learns the scope from the rows: a selected column comes back even when null
+    let dB, fellBack = false;
+    try { dB = await dvRequest("GET", urlB, null, { Prefer: "odata.maxpagesize=25", ...NO_ANN }); }
+    catch (e) {
+      if (!/^HTTP 400/.test(e.message || "") || !urlB.includes(SEL)) throw e;
+      fellBack = true;
+      dB = await dvRequest("GET", urlB.replace(SEL, "workflowid,xaml"), null, { Prefer: "odata.maxpagesize=25", ...NO_ANN });
+    }
+    const hasScope = (w) => Object.prototype.hasOwnProperty.call(w, "processtriggerscope");
+    const rowsB = dB.value || [];
+    result = {
+      rows: rowsB.map(w => ({ id: w.workflowid, xaml: w.xaml || "", scope: hasScope(w) ? (w.processtriggerscope ?? null) : undefined, formId: w.processtriggerformid || null })),
+      next: dB["@odata.nextLink"] || null,
+      scoped: rowsB.length ? hasScope(rowsB[0]) : !fellBack,
+    };
+    return result;
+  },
+  async getFormNames(params) {
+    let result;
+    // The names of a set of forms (the form a business rule runs on) — 15 ids per read.
+    const ids = [...new Set((params.ids || []).map(v => String(v || "").toLowerCase()).filter(Boolean))];
+    ids.forEach(validateGuid);
+    const names = {};
+    for (let i = 0; i < ids.length; i += 15) {
+      const part = ids.slice(i, i + 15);
+      const d = await dvRequest("GET", `systemforms?$select=formid,name,objecttypecode&$filter=${part.map(id => `formid eq ${id}`).join(" or ")}`, null, NO_ANN);
+      for (const f of d.value || []) names[String(f.formid || "").toLowerCase()] = f.name || "";
+    }
+    result = names;
+    return result;
+  },
   async orgFeatures(params) {
     let result;
     // ONE consolidated probe for org-level feature switches that gate Colvio modules:

@@ -123,7 +123,7 @@ export default function FiresOn({ steps, procs, flowDefs, flowRead, onStop, bp }
         <Group kind="workflow" rows={shown(res.groups.workflow)} />
         <Group kind="flow" rows={shown(res.groups.flow)} />
       </>)}
-      <div style={{ fontSize: 11.5, color: C.txd, lineHeight: 1.6, marginTop: 4 }}>Read from the registrations themselves: a step's filtering attributes, a workflow's "Record fields change" list (status change = statecode, assignment = ownerid), a cloud flow's Dataverse trigger (change type, Select columns, scope, row filter). Not here: business rules (form logic, client-side), actions and BPFs (called, not triggered), flows started by a schedule, a button or another connector, calculated and rollup columns (not automations). A flow's row filter narrows the rows, not the columns.</div>
+      <div style={{ fontSize: 11.5, color: C.txd, lineHeight: 1.6, marginTop: 4 }}>Read from the registrations themselves: a step's filtering attributes, a workflow's "Record fields change" list (status change = statecode, assignment = ownerid), a cloud flow's Dataverse trigger (change type, Select columns, scope, row filter). Not here: business rules (they don't wait for one column — they run as a form loads and changes, and an Entity-scope rule on every save; the Business rules tab reads each one), actions and BPFs (called, not triggered), flows started by a schedule, a button or another connector, calculated and rollup columns (not automations). A flow's row filter narrows the rows, not the columns.</div>
     </div>
   );
 }

@@ -4,6 +4,8 @@ import { C, I, Spin, mono, inp, bt, crd, ths, tds, exportTable, confirmAsk, conf
 import { t } from "../i18n.js";
 import WhoRunsIt from "./WhoRunsIt.jsx";
 import FiresOn from "./FiresOn.jsx";
+import BusinessRules from "./BusinessRules.jsx";
+import { parseBusinessRule } from "../businessRules.js";
 import { flowTriggerText } from "../triggerIndex.js";
 import { workflowRunAs } from "../identities.js";
 import { parseFlowIdentity, flowConnectionAccounts, flowRunsAs, flowEmailSenders, parseWorkflowXaml, workflowEmailSenders, linesText, RUNAS_HINT, ON_BEHALF_HINT } from "../flowIdentity.js";
@@ -44,6 +46,7 @@ const sourceOf = (r, isStep) => {
   return r.managed ? "isv" : "custom";
 };
 const lcId = (v) => String(v || "").toLowerCase();
+const ruleSource = (r) => sourceOf(r, false);
 // the categories whose definitions say who they run as / send email as (flowIdentity.js):
 // cloud flows (clientdata), classic workflows / dialogs / actions (xaml)
 const FLOW_CATS = new Set(["5", "who", "fires"]), XAML_CATS = new Set(["0", "1", "3"]);
@@ -91,9 +94,14 @@ export default function AutomationInventory({ bp, orgInfo }) {
   const [flowRead, setFlowRead] = useState({ phase: "idle", done: 0 });
   const [xamlDefs, setXamlDefs] = useState({});   // workflow id → parseWorkflowXaml(xaml)
   const [xamlRead, setXamlRead] = useState({ phase: "idle", done: 0 });
+  // the Business rules tab: every definition (what it does + its scope), the forms they name
+  const [brDefs, setBrDefs] = useState({});     // rule id → { parsed: parseBusinessRule(xaml), scope, formId }
+  const [brRead, setBrRead] = useState({ phase: "idle", done: 0 });
+  const [brForms, setBrForms] = useState({ phase: "idle", names: {} });
   const flowStarted = useRef(false), xamlStarted = useRef(false), stopFlows = useRef(false), stopXaml = useRef(false);
+  const brStarted = useRef(false), stopBr = useRef(false);
   // each start bumps a generation: a loop whose generation moved on (↻) stops at its next page
-  const flowGen = useRef(0), xamlGen = useRef(0);
+  const flowGen = useRef(0), xamlGen = useRef(0), brGen = useRef(0);
   // the lines of each definition, computed once (per definition, per connection read)
   const flowCache = useRef({ base: undefined, map: new Map() }), xamlCache = useRef(new Map());
   const mounted = useRef(true);
@@ -108,6 +116,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
     flowStarted.current = false; xamlStarted.current = false; stopFlows.current = true; stopXaml.current = true;
     flowGen.current++; xamlGen.current++; flowCache.current = { base: undefined, map: new Map() }; xamlCache.current = new Map();
     setWhoBase(null); setWhoBaseErr(""); setFlowDefs({}); setFlowRead({ phase: "idle", done: 0 }); setXamlDefs({}); setXamlRead({ phase: "idle", done: 0 });
+    brStarted.current = false; stopBr.current = true; brGen.current++;
+    setBrDefs({}); setBrRead({ phase: "idle", done: 0 }); setBrForms({ phase: "idle", names: {} });
     Promise.all([bridge.getPluginSteps(), bridge.getProcesses()]).then(([st, pr]) => {
       if (cancelled) return;
       setSteps(st || []); setProcs(pr || []); setLoading(false);
@@ -162,6 +172,36 @@ export default function AutomationInventory({ bp, orgInfo }) {
       } catch (e) { if (live()) setXamlRead({ phase: "failed", done, error: e.message || String(e) }); }
     })();
   }, [cat, loading, tick]);
+  // the business rules: every definition, page by page (Stop), then the names of the forms they name
+  useEffect(() => {
+    if (loading || cat !== "2" || brStarted.current) return;
+    brStarted.current = true; stopBr.current = false;
+    const gen = ++brGen.current;
+    const live = () => mounted.current && gen === brGen.current;
+    (async () => {
+      setBrRead({ phase: "reading", done: 0 });
+      let next = null, done = 0, scoped = true;
+      const acc = {};
+      try {
+        do {
+          if (stopBr.current || !live()) break;
+          const page = await bridge.getBusinessRulesPage(next);
+          for (const row of page.rows || []) acc[lcId(row.id)] = { parsed: parseBusinessRule(row.xaml), scope: row.scope ?? null, formId: row.formId ? lcId(row.formId) : null };
+          if (page.scoped === false) scoped = false;
+          done += (page.rows || []).length;
+          next = page.next;
+          if (live()) { setBrDefs({ ...acc }); setBrRead({ phase: "reading", done, scoped }); }
+        } while (next);
+        if (live()) setBrRead({ phase: stopBr.current ? "stopped" : "done", done, scoped });
+      } catch (e) { if (live()) setBrRead({ phase: "failed", done, scoped, error: e.message || String(e) }); }
+      const ids = [...new Set(Object.values(acc).map(d => d.formId).filter(Boolean))];
+      if (!ids.length || !live()) return;
+      setBrForms({ phase: "reading", names: {} });
+      try { const names = await bridge.getFormNames(ids); if (live()) setBrForms({ phase: "done", names: names || {} }); }
+      catch (e) { if (live()) setBrForms({ phase: "failed", names: {}, error: e.message || String(e) }); }
+    })();
+  }, [cat, loading, tick]);
+  const brRules = useMemo(() => (procs || []).filter(p => String(p.category) === "2"), [procs]);
   // per flow: the lines of its Runs as / Sends email as; per workflow: its Sends email as
   // (a page of 25 definitions costs 25 computations, not one per flow already read)
   const flowBase = useMemo(() => whoBase || (whoBaseErr ? { error: whoBaseErr } : null), [whoBase, whoBaseErr]);
@@ -325,7 +365,8 @@ export default function AutomationInventory({ bp, orgInfo }) {
         </div>
 
         {cat === "fires" ? <FiresOn steps={steps} procs={procs} flowDefs={flowDefs} flowRead={flowRead} onStop={() => { stopFlows.current = true; }} bp={bp} />
-        : cat === "who" ? <WhoRunsIt steps={steps} procs={procs} base={whoBase} baseError={whoBaseErr} flowConns={flowConns} flowRead={flowRead} onStop={() => { stopFlows.current = true; }} /> : <>
+        : cat === "who" ? <WhoRunsIt steps={steps} procs={procs} base={whoBase} baseError={whoBaseErr} flowConns={flowConns} flowRead={flowRead} onStop={() => { stopFlows.current = true; }} />
+        : cat === "2" ? <BusinessRules rules={brRules} defs={brDefs} read={brRead} forms={brForms} onStop={() => { stopBr.current = true; }} onRefresh={() => setTick(t => t + 1)} loading={loading} srcBadge={(r) => <SrcBadge r={r} step={false} />} srcLabel={(r) => srcLabel(r, false)} sourceOf={ruleSource} /> : <>
         <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Filter by name, entity, message, assembly…" style={inp({ fontSize: 12, maxWidth: 320, padding: "6px 10px" })} />
           <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} style={inp({ width: "auto", fontSize: 12, padding: "5px 8px" })}>

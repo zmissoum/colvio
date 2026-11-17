@@ -160,6 +160,45 @@ describe("content script - automation reads", () => {
     expect(since(n)[1].url).toContain("$skiptoken=p2");
     expect((await send("getWorkflowXamlPage", { next: `${ORG}/api/data/v9.2/systemusers?$select=domainname` })).error).toMatch(/Invalid page link/);
   });
+  it("getBusinessRulesPage: business rules only, with their scope, 25 per page; an org refusing the scope columns is read for the XAML alone", async () => {
+    let n = requests.length;
+    const SEL = "workflowid,xaml,processtriggerscope,processtriggerformid";
+    script.push({ method: "GET", re: /workflows\?\$select=workflowid,xaml,processtriggerscope/, answer: () => reply(200, { value: [{ workflowid: G(51), xaml: "<Activity/>", processtriggerscope: 1, processtriggerformid: G(61) }, { workflowid: G(52), xaml: null, processtriggerscope: 2, processtriggerformid: null }], "@odata.nextLink": `${ORG}/api/data/v9.2/workflows?$select=${SEL}&$filter=type eq 1 and category eq 2&$skiptoken=b2` }) });
+    const r = await send("getBusinessRulesPage", {});
+    expect(r.result.rows).toEqual([{ id: G(51), xaml: "<Activity/>", scope: 1, formId: G(61) }, { id: G(52), xaml: "", scope: 2, formId: null }]);
+    expect(r.result.scoped).toBe(true);
+    const q = since(n)[0];
+    expect(q.url).toBe(`${ORG}/api/data/v9.2/workflows?$select=${SEL}&$filter=type eq 1 and category eq 2`);
+    expect(q.headers.Prefer).toBe("odata.maxpagesize=25");
+    const r2 = await send("getBusinessRulesPage", { next: r.result.next });
+    expect(since(n)[1].url).toContain("$skiptoken=b2");
+    expect(r2.result).toEqual({ rows: [], next: null, scoped: true });
+    expect((await send("getBusinessRulesPage", { next: `${ORG}/api/data/v9.2/systemusers?$select=domainname` })).error).toMatch(/Invalid page link/);
+    // a 400 on the scope columns → the XAML alone, said as scope unknown; any other failure surfaces
+    n = requests.length;
+    script.push({ method: "GET", re: /processtriggerscope/, answer: () => reply(400, { error: { message: "Could not find a property named 'processtriggerscope' on type 'Microsoft.Dynamics.CRM.workflow'." } }) });
+    script.push({ method: "GET", re: /workflows\?\$select=workflowid,xaml&\$filter=type eq 1 and category eq 2/, answer: () => reply(200, { value: [{ workflowid: G(53), xaml: "<Activity/>" }] }) });
+    const r3 = await send("getBusinessRulesPage", {});
+    expect(r3.result.scoped).toBe(false);
+    expect(r3.result.rows).toEqual([{ id: G(53), xaml: "<Activity/>", formId: null }]);
+    expect(r3.result.rows[0].scope).toBeUndefined();
+    expect(since(n).map(x => x.url)).toEqual([`${ORG}/api/data/v9.2/workflows?$select=${SEL}&$filter=type eq 1 and category eq 2`, `${ORG}/api/data/v9.2/workflows?$select=workflowid,xaml&$filter=type eq 1 and category eq 2`]);
+    script.push({ method: "GET", re: /processtriggerscope/, answer: () => reply(500, { error: { message: "Generic SQL error." } }) });
+    expect((await send("getBusinessRulesPage", {})).error).toMatch(/HTTP 500/);
+  });
+  it("getFormNames: the names of a set of forms, 15 ids per read, every id validated", async () => {
+    const n = requests.length;
+    const ids = Array.from({ length: 16 }, (_, i) => G(70 + i));
+    script.push({ method: "GET", re: /systemforms\?\$select=formid,name/, answer: () => reply(200, { value: [{ formid: G(70), name: "Account" }] }) });
+    const r = await send("getFormNames", { ids: [...ids, ids[0].toUpperCase()] });
+    expect(r.result).toEqual({ [G(70)]: "Account" });
+    const urls = since(n).map(x => x.url);
+    expect(urls.length).toBe(2);
+    expect(urls[0]).toContain(`$filter=formid eq ${G(70)} or formid eq ${G(71)}`);
+    expect(urls[0].split(" or ").length).toBe(15);
+    expect(urls[1]).toContain(`$filter=formid eq ${G(85)}`);
+    expect((await send("getFormNames", { ids: ["not-a-guid"] })).error).toMatch(/Invalid GUID/);
+  });
 });
 
 describe("content script - solutions reads", () => {

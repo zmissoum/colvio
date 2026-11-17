@@ -4,8 +4,9 @@
 // (workflow.triggeronupdateattributelist, where "Record status changes" is statecode and "Record is
 // assigned" is ownerid), a cloud flow's Dataverse trigger (subscriptionRequest/* in its definition:
 // change type, table, "Select columns", row filter, scope). An EMPTY column list on an Update
-// trigger means "every column" — the fact an audit is usually after. Business rules (client-side,
-// form logic), actions (called, not triggered) and BPFs are not triggers and are left out; a flow
+// trigger means "every column" — the fact an audit is usually after. Business rules (they run as a
+// form loads and changes, and an Entity-scope rule on every save — not on one column; the Business
+// rules tab reads them), actions (called, not triggered) and BPFs are not triggers and are left out; a flow
 // whose trigger is manual, scheduled or on another connector has no table and is listed as such on
 // the Cloud flows tab only. Pure: no React, no API.
 const lc = (s) => String(s ?? "").trim().toLowerCase();
