@@ -9,6 +9,7 @@
 
 ### Demo mode
 - Three field security profiles on contact and account: a salary column with full and read-only profiles, a masked government ID read unmasked on one record, and a medical-notes column no profile can read.
+
 ## [1.11.222] - 2026-11-26
 ### Added - Metadata › Size / format of each column
 - **A "Size / format" column in the column list**: the max length of a text or multiline column ("max 100 · Email"), the decimals of a decimal, float or currency column (or "currency precision" / "org pricing precision" when the currency decides), the min – max range of a number when it is narrower than Dataverse's default, a date's format and behavior ("date · date only", "date and time · time-zone independent"), the max size of a file or image column. The tooltip lists every value, defaults included.
