@@ -9,6 +9,16 @@
 
 ### Demo mode
 - Three field security profiles on contact and account: a salary column with full and read-only profiles, a masked government ID read unmasked on one record, and a medical-notes column no profile can read.
+### Added - Metadata › Size / format of each column
+- **A "Size / format" column in the column list**: the max length of a text or multiline column ("max 100 · Email"), the decimals of a decimal, float or currency column (or "currency precision" / "org pricing precision" when the currency decides), the min – max range of a number when it is narrower than Dataverse's default, a date's format and behavior ("date · date only", "date and time · time-zone independent"), the max size of a file or image column. The tooltip lists every value, defaults included.
+- **Export All Fields** (CSV / Excel) gains Max length, Precision, Min, Max and Format.
+- `getFields` reads one typed metadata cast per type (String, Memo, Integer, BigInt, Decimal, Double, Money, DateTime, File, Image) in parallel with the columns; a cast an org refuses only leaves that type's cell empty. Pure `fieldFacets.js` + 7 tests. The columns cache key moves to v5 so the new values show at once.
+
+### Fixed
+- **Metadata**: the Required column showed "—" for every column of a live org (the panel compared the required flag to a level name); required columns get their ● again.
+
+### Demo mode
+- The demo account's columns show stock Dataverse sizes (name 160, email 100 · Email, website 200 · Url, revenue in currency precision, created on date and time · user local).
 
 ## [1.11.221] - 2026-11-17
 ### Added - Automation › Business rules, read

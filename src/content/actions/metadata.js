@@ -1,6 +1,7 @@
 // Content script › metadata. Metadata — tables, columns, choices, relationships, keys, dependencies, layers, publishing, columns from a sheet, labels and translations.
 // One async function per action; `params` is what the panel sent. Every request goes through
 // core.js (dvRequest: host lock, pacing, timeouts, 429 back-off).
+import { FACET_CASTS, facetMap } from "../../fieldFacets.js";
 import { NO_ANN, d365Context, dvRequest, extractContext, validateEntitySet, validateGuid, validateName } from "../core.js";
 
 const ACTIONS = {
@@ -36,18 +37,16 @@ const ACTIONS = {
     let result;
     validateName(params.logicalName, 'logicalName');
     const VIRTUAL_TYPES = { MultiSelectPicklistType: "MultiSelectPicklist", FileType: "File", ImageType: "Image" };
-    // Base attribute metadata + the typed String/Memo casts — MaxLength/Format live only on
-    // those typed metadata, not on the base AttributeMetadata. The casts are best-effort: if
-    // an org/version rejects them, fields still return (without lengths).
-    const [raw, strMeta, memoMeta] = await Promise.all([
-      dvRequest("GET", `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes`),
-      dvRequest("GET", `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes/Microsoft.Dynamics.CRM.StringAttributeMetadata?$select=LogicalName,MaxLength,Format`).catch(() => ({ value: [] })),
-      dvRequest("GET", `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes/Microsoft.Dynamics.CRM.MemoAttributeMetadata?$select=LogicalName,MaxLength,Format`).catch(() => ({ value: [] })),
+    // Base attribute metadata + one typed cast per type — MaxLength, Min/Max, Precision, Format,
+    // date behavior and file size live only on the typed metadata, not on the base
+    // AttributeMetadata. The casts are best-effort: if an org/version rejects one, fields still
+    // return (without that type's facets).
+    const base = `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes`;
+    const [raw, ...typed] = await Promise.all([
+      dvRequest("GET", base),
+      ...FACET_CASTS.map(([cast, sel]) => dvRequest("GET", `${base}/Microsoft.Dynamics.CRM.${cast}?$select=${sel}`).catch(() => ({ value: [] }))),
     ]);
-    const lenMap = {};
-    for (const a of [...(strMeta.value || []), ...(memoMeta.value || [])]) {
-      lenMap[a.LogicalName] = { maxLength: typeof a.MaxLength === "number" ? a.MaxLength : null, format: a.Format || null };
-    }
+    const facets = facetMap(typed.flatMap(r => r?.value || []));
 
     result = (raw.value || [])
       .filter(a => {
@@ -100,9 +99,16 @@ const ACTIONS = {
           // fields out of CREATE/UPDATE mapping (they 400 per row otherwise).
           validForCreate: a.IsValidForCreate !== false,
           validForUpdate: a.IsValidForUpdate !== false,
-          // MaxLength/Format (String + Memo only) — fuels the Loader pre-flight length check.
-          maxLength: lenMap[logicalName]?.maxLength ?? null,
-          format: lenMap[logicalName]?.format ?? null,
+          // MaxLength (String + Memo) — fuels the Loader pre-flight length check and, with the
+          // other typed facets, Metadata's "Size / format" column.
+          maxLength: facets[logicalName]?.maxLength ?? null,
+          format: facets[logicalName]?.format ?? null,
+          minValue: facets[logicalName]?.minValue ?? null,
+          maxValue: facets[logicalName]?.maxValue ?? null,
+          precision: facets[logicalName]?.precision ?? null,
+          precisionSource: facets[logicalName]?.precisionSource ?? null,
+          dateBehavior: facets[logicalName]?.dateBehavior ?? null,
+          maxSizeKB: facets[logicalName]?.maxSizeKB ?? null,
         };
       });
     return result;

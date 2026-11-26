@@ -464,7 +464,7 @@ export const bridge = {
 
   async getFields(logicalName) {
     if (!isExtension) return demoFields(logicalName);
-    const k = cacheKey("fields4", logicalName); // v4: multi-select / File / Image columns included (v3 added metadataId)
+    const k = cacheKey("fields5", logicalName); // v5: size / format facets (max length, min / max, precision, date behavior, file size). v4: multi-select / File / Image columns included (v3 added metadataId)
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getFields", { logicalName });
