@@ -13,6 +13,7 @@ import LayersModal from "./LayersModal.jsx";
 import OptionSetEditor from "./OptionSetEditor.jsx";
 import ColumnsFromFile from "./ColumnsFromFile.jsx";
 import SearchColumns from "./SearchColumns.jsx";
+import { facetText, facetTitle, facetCells, FACET_HEADERS, DEMO_FACETS } from "../fieldFacets.js";
 
 export default function MetadataBrowser({bp,orgInfo,theme}){
   const isLive = orgInfo?.isExtension;
@@ -48,8 +49,8 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
   const exportAllFields=(format="csv")=>{
     if(!selEnt||!fields.length)return;
     const fr=fill?.phase==="done"&&fill.entity===selEnt.l?fill.result:null;
-    const headers=["Logical Name","Display Name","OData Name","Type","Required","Custom",...(fr?["Filled rows","Filled %"]:[])];
-    const rows=fields.map(f=>[f.l,f.d,f.o||f.l,displayType(f.t),f.req?"Yes":"No",f.cust?"Yes":"No",
+    const headers=["Logical Name","Display Name","OData Name","Type","Required","Custom",...FACET_HEADERS,...(fr?["Filled rows","Filled %"]:[])];
+    const rows=fields.map(f=>[f.l,f.d,f.o||f.l,displayType(f.t),f.req?"Yes":"No",f.cust?"Yes":"No",...facetCells(f.fc),
       ...(fr?(f.l in fr.filled?[fr.filled[f.l],fr.total?Math.round(fr.filled[f.l]/fr.total*1000)/10:""]:[fr.errors[f.l]?"error":"not countable",""]):[])]);
     exportTable(headers,rows,`${selEnt.l}_fields`,format,"Fields");
   };
@@ -136,11 +137,13 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
       bridge.getFields(e.l).then(data=>{
         if(selGen.current!==gen)return; // user switched entity while this was loading
         if(data&&Array.isArray(data)){
-          setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,o:f.odataName||f.logical,t:f.type||"String",req:f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false,mid:f.metadataId||null})).sort((a,b)=>a.l.localeCompare(b.l)));
+          setFields(data.map(f=>({l:f.logical,d:f.display||f.logical,o:f.odataName||f.logical,t:f.type||"String",req:f.required===true||f.required==="ApplicationRequired"||f.required==="SystemRequired",cust:f.isCustom||false,mid:f.metadataId||null,
+            // size / format facets of the typed metadata (max length, min / max, precision…)
+            fc:{type:f.type,maxLength:f.maxLength??null,format:f.format??null,minValue:f.minValue??null,maxValue:f.maxValue??null,precision:f.precision??null,precisionSource:f.precisionSource??null,dateBehavior:f.dateBehavior??null,maxSizeKB:f.maxSizeKB??null}})).sort((a,b)=>a.l.localeCompare(b.l)));
         }
       }).catch(err=>{if(selGen.current===gen)setFieldsErr(err.message||String(err));}).finally(()=>{if(selGen.current===gen)setLoadingFields(false);});
     } else {
-      setFields(FLDS);
+      setFields(FLDS.map(f=>({...f,fc:{type:f.t,...DEMO_FACETS[f.l]}})));
     }
   };
   const handleSelectEntity=(e)=>{
@@ -317,13 +320,14 @@ export default function MetadataBrowser({bp,orgInfo,theme}){
             ) : (
             <div style={{...crd({overflow:"hidden"})}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:450}}>
-                <thead><tr><th style={{...ths(),width:20}}></th><th style={ths()}>Logical Name</th><th style={ths()}>Label</th><th style={ths()}>Type</th><th style={ths()}>Required</th>{fill?.phase==="done"&&fill.entity===selEnt.l&&<th style={{...ths(),width:130}}>Filled</th>}<th style={ths()}>Actions</th></tr></thead>
+                <thead><tr><th style={{...ths(),width:20}}></th><th style={ths()}>Logical Name</th><th style={ths()}>Label</th><th style={ths()}>Type</th><th style={ths()} title="Max length of a text, decimals and range of a number, behavior of a date, max size of a file — from the column's typed metadata">Size / format</th><th style={ths()}>Required</th>{fill?.phase==="done"&&fill.entity===selEnt.l&&<th style={{...ths(),width:130}}>Filled</th>}<th style={ths()}>Actions</th></tr></thead>
                 <tbody>{filteredFields.map((f,i)=>(
                   <tr key={f.l} style={{borderBottom:`1px solid ${C.bd}`}} onMouseEnter={e=>e.currentTarget.style.background=C.sfh} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <td style={{...tds,textAlign:"center"}}>{f.cust&&<span style={{width:5,height:5,borderRadius:"50%",background:C.or,display:"inline-block"}}/>}</td>
                     <td style={tds}><span style={{color:C.cy,...mono,fontSize:13,cursor:"pointer"}} onClick={()=>cp(f.l,`m-${i}`)}>{f.l}</span>{copied===`m-${i}`&&<span style={{color:C.gn,fontSize:11,marginLeft:3}}>✓</span>}</td>
                     <td style={{...tds,color:C.txm}}>{f.d}</td>
                     <td style={tds}><span style={{fontSize:12,padding:"2px 6px",borderRadius:3,background:f.t==="Lookup"?C.vid:isChoice(f.t)?C.gnd:C.sfh,color:f.t==="Lookup"?C.lv:isChoice(f.t)?C.gn:C.txm}}>{displayType(f.t)}</span></td>
+                    {(()=>{const ft=facetText(f.fc);return <td style={{...tds,fontSize:12,color:C.txm,whiteSpace:"nowrap"}} title={facetTitle(f.fc)||undefined}>{ft||<span style={{color:C.txd}}>—</span>}</td>;})()}
                     <td style={tds}>{f.req?<span style={{color:C.rd,fontSize:13}}>●</span>:<span style={{color:C.txd}}>—</span>}</td>
                     {fill?.phase==="done"&&fill.entity===selEnt.l&&(()=>{
                       const r=fill.result;
