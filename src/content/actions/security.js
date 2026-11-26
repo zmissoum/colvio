@@ -848,5 +848,50 @@ const ACTIONS = {
     }
     return result;
   },
+
+  // ── Field security (column-level security) ─────────────────
+  // Every field security profile and every field permission of the org, in two paged reads: a
+  // few hundred rows on a typical org. canreadunmasked (masked columns) is missing on older
+  // schemas — the read falls back without it.
+  async getFieldSecurity() {
+    const profiles = await pageAll("fieldsecurityprofiles?$select=fieldsecurityprofileid,name,description&$orderby=name asc", NO_ANN);
+    const sel = "entityname,attributelogicalname,canread,cancreate,canupdate,_fieldsecurityprofileid_value";
+    let perms;
+    try { perms = await pageAll(`fieldpermissions?$select=${sel},canreadunmasked`, NO_ANN); }
+    catch { perms = await pageAll(`fieldpermissions?$select=${sel}`, NO_ANN); }
+    return {
+      profiles: profiles.map(p => ({ id: p.fieldsecurityprofileid, name: p.name || p.fieldsecurityprofileid, description: p.description || "" })),
+      perms: perms.map(p => ({
+        profileId: p._fieldsecurityprofileid_value, entity: p.entityname, column: p.attributelogicalname,
+        canread: p.canread, cancreate: p.cancreate, canupdate: p.canupdate, canreadunmasked: p.canreadunmasked ?? null,
+      })),
+    };
+  },
+  // The secured columns of one table (IsSecured). Filtered server-side; should an org refuse the
+  // filter, every column is read and filtered here.
+  async getSecuredColumns(params) {
+    validateName(params.logicalName, "logicalName");
+    const base = `EntityDefinitions(LogicalName='${params.logicalName}')/Attributes?$select=LogicalName,DisplayName,AttributeType,IsSecured`;
+    let rows;
+    try { rows = (await dvRequest("GET", `${base}&$filter=IsSecured eq true`)).value || []; }
+    catch { rows = ((await dvRequest("GET", base)).value || []).filter(a => a.IsSecured === true); }
+    return rows.filter(a => a.IsSecured === true).map(a => ({
+      logical: a.LogicalName, display: a.DisplayName?.UserLocalizedLabel?.Label || a.LogicalName, type: a.AttributeType || "",
+    })).sort((a, b) => a.logical.localeCompare(b.logical));
+  },
+  // Who a field security profile is given to: its users and its teams (a team's members get it).
+  async getFieldProfileMembers(params) {
+    validateGuid(params.profileId);
+    if (!params.profileId) throw new Error("Missing profileId");
+    const id = params.profileId;
+    const [users, teams] = await Promise.all([
+      pageAll(`fieldsecurityprofiles(${id})/systemuserprofiles_association?$select=systemuserid,fullname,domainname,isdisabled&$orderby=fullname asc`, NO_ANN),
+      pageAll(`fieldsecurityprofiles(${id})/teamprofiles_association?$select=teamid,name,teamtype&$orderby=name asc`),
+    ]);
+    return {
+      users: users.map(u => ({ id: u.systemuserid, name: u.fullname || u.domainname || u.systemuserid, upn: u.domainname || "", disabled: !!u.isdisabled })),
+      teams: teams.map(tm => ({ id: tm.teamid, name: tm.name || tm.teamid, type: tm["teamtype@OData.Community.Display.V1.FormattedValue"] || "" })),
+    };
+  },
 };
 export default ACTIONS;
