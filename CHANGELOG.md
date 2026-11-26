@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.11.222] - 2026-11-26
+### Added - Security › Field security, access per column
+- **Who can read, create or update each secured column of a table.** A new **🔐 Field security — access per column** button in Security Audit: pick a table (the ones with field permissions first) and see each secured column (IsSecured) × the field security profiles that grant **R**ead / **C**reate / **U**pdate on it, with 👁 when a profile reads the unmasked value. Security roles grant rights on whole tables; a column's own access exists only once it is secured, and comes from these profiles, given to users and teams — the view says so.
+- **Flags**: a secured column no profile can read (only System Administrators see its values), and a permission still listed on a column that is no longer secured (Dataverse ignores it).
+- **Who holds each profile**: its users (disabled ones struck through) and teams, read on demand. **🌐 Table rights by role** opens the org-wide view grouped by entity on that table, for the table-level rights. CSV / Excel export, one row per column × profile.
+- Read-only. Pure `fieldSecurity.js` + tests; new content actions `getFieldSecurity` (every profile and field permission, paged; falls back without `canreadunmasked` on older schemas), `getSecuredColumns` (`IsSecured eq true`, client-side filter fallback) and `getFieldProfileMembers`. 944 tests.
+
+### Demo mode
+- Three field security profiles on contact and account: a salary column with full and read-only profiles, a masked government ID read unmasked on one record, and a medical-notes column no profile can read.
+
 ## [1.11.221] - 2026-11-17
 ### Added - Automation › Business rules, read
 - **What each business rule does, without opening the designer.** The Business rules tab reads every rule's definition (the XAML of its workflow row, 25 a page, Stop) and shows its **scope** — Entity (every form, and the server on each save: imports, API writes and flows included), All forms, or the one form it runs on, by name — the **columns it reads** (its conditions, the values it copies) and the **columns it acts on**. A click opens its logic as IF / ELSE IF / ELSE with the actions in plain words: show / hide, lock / unlock, business required or not, an error message (every language kept), set or default a value (a fixed value, another column, a formula) or clear it — with the table's display names and choice labels (one read of its columns and one of its choices, per table, on the first open). The filter matches the columns too ("which rule hides telephone1?"), plus a scope filter; CSV / Excel with the logic as text.
