@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.222] - 2026-11-26
+### Added - Metadata › Size / format of each column
+- **A "Size / format" column in the column list**: the max length of a text or multiline column ("max 100 · Email"), the decimals of a decimal, float or currency column (or "currency precision" / "org pricing precision" when the currency decides), the min – max range of a number when it is narrower than Dataverse's default, a date's format and behavior ("date · date only", "date and time · time-zone independent"), the max size of a file or image column. The tooltip lists every value, defaults included.
+- **Export All Fields** (CSV / Excel) gains Max length, Precision, Min, Max and Format.
+- `getFields` reads one typed metadata cast per type (String, Memo, Integer, BigInt, Decimal, Double, Money, DateTime, File, Image) in parallel with the columns; a cast an org refuses only leaves that type's cell empty. Pure `fieldFacets.js` + 7 tests. The columns cache key moves to v5 so the new values show at once.
+
+### Fixed
+- **Metadata**: the Required column showed "—" for every column of a live org (the panel compared the required flag to a level name); required columns get their ● again.
+
+### Demo mode
+- The demo account's columns show stock Dataverse sizes (name 160, email 100 · Email, website 200 · Url, revenue in currency precision, created on date and time · user local).
+
 ## [1.11.221] - 2026-11-17
 ### Added - Automation › Business rules, read
 - **What each business rule does, without opening the designer.** The Business rules tab reads every rule's definition (the XAML of its workflow row, 25 a page, Stop) and shows its **scope** — Entity (every form, and the server on each save: imports, API writes and flows included), All forms, or the one form it runs on, by name — the **columns it reads** (its conditions, the values it copies) and the **columns it acts on**. A click opens its logic as IF / ELSE IF / ELSE with the actions in plain words: show / hide, lock / unlock, business required or not, an error message (every language kept), set or default a value (a fixed value, another column, a formula) or clear it — with the table's display names and choice labels (one read of its columns and one of its choices, per table, on the first open). The filter matches the columns too ("which rule hides telephone1?"), plus a scope filter; CSV / Excel with the logic as text.
