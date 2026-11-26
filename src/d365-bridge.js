@@ -178,7 +178,7 @@ async function callD365(action, params = {}) {
 
     // Timeout: batch operations get 5 minutes, normal ops get 30s
     const isBatchOp = action === "batchCreate" || action === "batchUpsert" || action === "batchDeleteKeyed" || action === "batchAssociate";
-    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleMemberIds" || action === "getSearchConfig" || action === "getWorkflowXamlPage" || action === "getSolutionHistory" || action === "getImportJobLog" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
+    const isLongOp = isBatchOp || action === "restoreRecord" || action === "getAllUsers" || action === "getAllRoles" || action === "getRolePrivileges" || action === "getRolePrivilegeMatrix" || action === "getPrivilegeCatalog" || action === "getRolesWithPrivilege" || action === "getRoleGrants" || action === "getFieldSecurity" || action === "getFieldProfileMembers" || action === "getLastLoginsWindow" || action === "getDictionaryChunk" || action === "getAllOptionSets" || action === "getRoleUsers" || action === "getRoleMemberIds" || action === "getSearchConfig" || action === "getWorkflowXamlPage" || action === "getSolutionHistory" || action === "getImportJobLog" || action === "getRoleUserCount" || action === "getRoleTeams" || action === "getRoleTeamCount" || action === "assignRoleUsers" || action === "moveUsersToBu" || action === "getLoginStatsSlice" || action === "getUsersByBu" || action === "getUserCountsByBu" || action === "getPluginSteps" || action === "getProcesses" || action === "exportTranslations" || action === "importTranslations" || action === "publishAll" || action === "getSolutionComponents" || action === "getAppActions" || action === "getAppComponents" || action === "getAllForms" || action === "getAllViews" || action === "getFormViewDependencies" || action === "getComponentDependencies" || action === "resolveComponents" || action === "getAccessContext" || action === "getComponentLayers" || action === "getWebResources" || action === "getWebResourceContents" || action === "publishEntity" || action === "publishOptionSet" || action === "publishWebResources" || action === "createColumn" || action === "getAccessAuditFloor" || action === "getWhoRunsData" || action === "getIdentityUsers" || action === "getFlowDefinitionsPage" || action === "scriptRequest" || action === "customRequest"; // customRequest: pacing may wait before the 60 s fetch
     const timeoutMs = isLongOp ? 600000 : 30000;
     const timer = setTimeout(() => {
       if (!settled) {
@@ -464,7 +464,7 @@ export const bridge = {
 
   async getFields(logicalName) {
     if (!isExtension) return demoFields(logicalName);
-    const k = cacheKey("fields4", logicalName); // v4: multi-select / File / Image columns included (v3 added metadataId)
+    const k = cacheKey("fields5", logicalName); // v5: size / format facets (max length, min / max, precision, date behavior, file size). v4: multi-select / File / Image columns included (v3 added metadataId)
     const cached = await cacheGet(k);
     if (cached) return cached;
     const data = await callD365("getFields", { logicalName });
@@ -1626,6 +1626,39 @@ export const bridge = {
       { id: "t2", name: "Support AAD Group", type: "AAD Security Group", typeCode: 2, bu: "Contoso", admin: "Pierre Bernard", description: "", memberCount: 37 },
     ];
     return callD365("getRoleTeams", { roleName });
+  },
+
+  // Field security: every profile and field permission, a table's secured columns, a profile's holders.
+  async getFieldSecurity() {
+    if (!isExtension) return {
+      profiles: [
+        { id: "fp1", name: "Finance – salaries", description: "Payroll team" },
+        { id: "fp2", name: "Sales managers", description: "" },
+        { id: "fp3", name: "Support read-only", description: "" },
+      ],
+      perms: [
+        { profileId: "fp1", entity: "contact", column: "new_salary", canread: 4, cancreate: 4, canupdate: 4, canreadunmasked: null },
+        { profileId: "fp2", entity: "contact", column: "new_salary", canread: 4, cancreate: 0, canupdate: 0, canreadunmasked: null },
+        { profileId: "fp2", entity: "account", column: "creditlimit", canread: 4, cancreate: 4, canupdate: 4, canreadunmasked: null },
+        { profileId: "fp3", entity: "account", column: "creditlimit", canread: 4, cancreate: 0, canupdate: 0, canreadunmasked: null },
+        { profileId: "fp3", entity: "contact", column: "governmentid", canread: 4, cancreate: 0, canupdate: 0, canreadunmasked: 1 },
+      ],
+    };
+    return callD365("getFieldSecurity");
+  },
+  async getSecuredColumns(logicalName) {
+    if (!isExtension) return ({
+      contact: [{ logical: "governmentid", display: "Government ID", type: "String" }, { logical: "new_salary", display: "Salary", type: "Money" }, { logical: "new_medicalnotes", display: "Medical notes", type: "Memo" }],
+      account: [{ logical: "creditlimit", display: "Credit Limit", type: "Money" }],
+    })[logicalName] || [];
+    return callD365("getSecuredColumns", { logicalName });
+  },
+  async getFieldProfileMembers(profileId) {
+    if (!isExtension) return {
+      users: [{ id: "u1", name: "Alice Martin", upn: "alice.martin@contoso.com", disabled: false }, { id: "u4", name: "Old Account", upn: "old@contoso.com", disabled: true }],
+      teams: [{ id: "t1", name: "Sales EU Team", type: "Owner" }],
+    };
+    return callD365("getFieldProfileMembers", { profileId });
   },
 
   async getManyToManyRelationships(logicalName) {

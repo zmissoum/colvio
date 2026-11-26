@@ -69,6 +69,28 @@ describe("content script - security actions", () => {
     expect(sent[0].url).toContain("systemuserroles_association/any(o:o/name eq 'Basic%20User')"); // odataStr: percent-encoded value
     expect(sent[0].headers.Prefer).toBe("odata.maxpagesize=5000");
   });
+  it("field security: profiles + permissions (unmasked fallback), secured columns, a profile's users and teams", async () => {
+    let n = requests.length;
+    script.push({ method: "GET", re: /fieldsecurityprofiles\?\$select=/, answer: () => reply(200, { value: [{ fieldsecurityprofileid: G(7), name: "Finance", description: "" }] }) });
+    script.push({ method: "GET", re: /fieldpermissions\?.*canreadunmasked/, answer: () => reply(400, { error: { message: "Could not find a property named 'canreadunmasked'" } }) });
+    script.push({ method: "GET", re: /fieldpermissions\?/, answer: () => reply(200, { value: [{ entityname: "contact", attributelogicalname: "new_salary", canread: 4, cancreate: 0, canupdate: 4, _fieldsecurityprofileid_value: G(7) }] }) });
+    const r = await send("getFieldSecurity", {});
+    expect(r.result).toEqual({ profiles: [{ id: G(7), name: "Finance", description: "" }], perms: [{ profileId: G(7), entity: "contact", column: "new_salary", canread: 4, cancreate: 0, canupdate: 4, canreadunmasked: null }] });
+    expect(since(n).filter(q => /fieldpermissions/.test(q.url)).length).toBe(2);
+
+    n = requests.length;
+    script.push({ method: "GET", re: /EntityDefinitions\(LogicalName='contact'\)\/Attributes/, answer: () => reply(200, { value: [{ LogicalName: "new_salary", IsSecured: true, AttributeType: "Money", DisplayName: { UserLocalizedLabel: { Label: "Salary" } } }] }) });
+    expect((await send("getSecuredColumns", { logicalName: "contact" })).result).toEqual([{ logical: "new_salary", display: "Salary", type: "Money" }]);
+    expect(since(n)[0].url).toContain("$filter=IsSecured eq true");
+    expect((await send("getSecuredColumns", { logicalName: "contact'x" })).error).toMatch(/Invalid logicalName/);
+
+    n = requests.length;
+    script.push({ method: "GET", re: /systemuserprofiles_association/, answer: () => reply(200, { value: [{ systemuserid: G(1), fullname: "Alice", domainname: "alice@contoso.com", isdisabled: false }] }) });
+    script.push({ method: "GET", re: /teamprofiles_association/, answer: () => reply(200, { value: [{ teamid: G(2), name: "Payroll", "teamtype@OData.Community.Display.V1.FormattedValue": "Owner" }] }) });
+    expect((await send("getFieldProfileMembers", { profileId: G(7) })).result).toEqual({ users: [{ id: G(1), name: "Alice", upn: "alice@contoso.com", disabled: false }], teams: [{ id: G(2), name: "Payroll", type: "Owner" }] });
+    expect(since(n).every(q => q.url.includes(`fieldsecurityprofiles(${G(7)})/`))).toBe(true);
+    expect((await send("getFieldProfileMembers", { profileId: "x) or 1" })).error).toMatch(/Invalid GUID/);
+  });
   it("searchUsers matches the sign-in name (domainname) too, and returns it as upn", async () => {
     const n = requests.length;
     script.push({ method: "GET", re: /systemusers\?\$select=systemuserid,fullname,internalemailaddress,domainname/, answer: () => reply(200, { value: [{ systemuserid: G(1), fullname: "Alex Baker", internalemailaddress: "alex@contoso.com", domainname: "abaker@contoso.onmicrosoft.com", isdisabled: false, title: "Sales" }] }) });

@@ -7,6 +7,7 @@ import { formatPrivName, searchPrivileges, rolesHolding, holderExportRows, DEPTH
 import { holdersCountLabel } from "../userRolesUtils.js";
 import { userLookupFilter, resolveUsers } from "../userResolve.js";
 import { matricesFromGrants, catalogIndex } from "../privilegeMatrix.js";
+import FieldSecurity from "./FieldSecurity.jsx";
 
 // Privileges considered sensitive for security review
 const SENSITIVE_PRIVS = new Set([
@@ -84,6 +85,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   // Org-wide cross-role view: "which roles can <operation> which entities, at which depth?" —
   // answered across EVERY role at once instead of opening them one by one.
   const [orgView, setOrgView] = useState(false);
+  const [fieldView, setFieldView] = useState(false); // Field security: secured columns × field security profiles
   const [orgOp, setOrgOp] = useState("Delete");        // audited operation (Delete is the classic ask)
   const [orgDepthMin, setOrgDepthMin] = useState(8);   // 8 = Organization only (default) … 1 = any granted
   const [orgSearch, setOrgSearch] = useState("");
@@ -134,7 +136,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
   // Load privileges when role is selected — progressive (privileges first, user count in parallel)
   const handleSelect = async (role) => {
     const gen = ++selectGen.current;
-    orgGen.current++; setOrgScan(null); setOrgView(false); // picking a role leaves the org-wide view (and stops its scan)
+    orgGen.current++; setOrgScan(null); setOrgView(false); setFieldView(false); // picking a role leaves the org-wide / field views (and stops the scan)
     setSelRole(role);
     setLoadingPriv(true);
     setLoadingCount(true);
@@ -449,7 +451,10 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
       setOrgScan(null); setOrgFailed(todo.map(r => r.name)); setOrgErr(e.message || String(e));
     }
   };
-  const openOrgView = () => { setOrgView(true); scanAllRoles(); };
+  const openOrgView = () => { setFieldView(false); setOrgView(true); scanAllRoles(); };
+  const openFieldView = () => { closeOrgView(); selectGen.current++; setSelRole(null); setFieldView(true); };
+  // From Field security: the table-level rights of one table, every role, grouped by entity.
+  const tableRights = (logical) => { setOrgGroup("entity"); setOrgOp("Read"); setOrgDepthMin(1); setOrgSearch(logical); openOrgView(); };
   const closeOrgView = () => { orgGen.current++; setOrgScan(null); setOrgFailed([]); setOrgView(false); };
 
   // Role-grouped rows for the current op/depth/search — entity-grouped view derives from these.
@@ -559,6 +564,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
           )}
           {holderFeedback && <div style={{ fontSize: 11, color: C.gn, marginTop: 4 }}>{holderFeedback}</div>}
           <button onClick={() => orgView ? closeOrgView() : openOrgView()} disabled={loading} style={bt(orgView ? C.cy : null, { fontSize: 12, width: "100%", justifyContent: "center", marginTop: 8, opacity: loading ? 0.5 : 1 })}>🌐 Org-wide view — who can do what</button>
+          <button onClick={() => fieldView ? setFieldView(false) : openFieldView()} disabled={loading} title="Secured columns of a table × the field security profiles that can read, create or update them" style={bt(fieldView ? C.cy : null, { fontSize: 12, width: "100%", justifyContent: "center", marginTop: 6, opacity: loading ? 0.5 : 1 })}>🔐 Field security — access per column</button>
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
           {loading && <div style={{ textAlign: "center", padding: 20 }}><Spin /> Loading roles...</div>}
@@ -578,6 +584,7 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
 
       {/* Right panel — role detail OR the org-wide cross-role view */}
       <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+        {fieldView && !orgView && <FieldSecurity onTableRights={tableRights} />}
         {orgView && (
           <div>
             <div style={{ ...crd({ padding: "14px 18px" }), marginBottom: 12 }}>
@@ -650,8 +657,8 @@ export default function SecurityAudit({ bp, orgInfo, theme }) {
             ))}
           </div>
         )}
-        {!orgView && !selRole && <div style={{ textAlign: "center", color: C.txd, marginTop: 60 }}>{t("security.select_role")}</div>}
-        {!orgView && selRole && (
+        {!orgView && !fieldView && !selRole && <div style={{ textAlign: "center", color: C.txd, marginTop: 60 }}>{t("security.select_role")}</div>}
+        {!orgView && !fieldView && selRole && (
           <div>
             {/* Role header */}
             <div style={{ ...crd({ padding: "16px 20px", marginBottom: 16 }) }}>
